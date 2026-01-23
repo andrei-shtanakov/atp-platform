@@ -203,7 +203,7 @@ End-to-end тесты критических user journeys.
 ---
 
 ### TASK-004: Test Loader
-🔴 P0 | ⬜ TODO | Est: 4d
+🔴 P0 | 🔄 IN_PROGRESS | Est: 4d
 
 **Description:**  
 Парсинг и валидация YAML test definitions.

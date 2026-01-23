@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "TASK-004": {
+      "status": "running",
+      "attempts": [],
+      "started_at": "2026-01-23T10:58:32.063467",
+      "completed_at": null
+    }
+  },
+  "consecutive_failures": 0,
+  "total_completed": 0,
+  "total_failed": 0,
+  "last_updated": "2026-01-23T10:58:32.063552"
+}

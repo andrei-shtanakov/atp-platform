@@ -1,0 +1,16 @@
+# Test suite with invalid scoring weights
+test_suite: "invalid_weights_suite"
+version: "1.0"
+
+defaults:
+  scoring:
+    quality_weight: 0.5
+    completeness_weight: 0.3
+    efficiency_weight: 0.1
+    cost_weight: 0.05  # Sum is 0.95, not 1.0
+
+tests:
+  - id: "test-001"
+    name: "Test"
+    task:
+      description: "Task"

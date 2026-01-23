@@ -1,0 +1,16 @@
+# Test suite with variable substitution
+test_suite: "suite_with_vars"
+version: "1.0"
+
+agents:
+  - name: "test-agent"
+    type: "http"
+    config:
+      endpoint: "${API_ENDPOINT}"
+      api_key: "${API_KEY:default_key}"
+
+tests:
+  - id: "test-001"
+    name: "Test with variables"
+    task:
+      description: "Test using ${TEST_VAR} variable"

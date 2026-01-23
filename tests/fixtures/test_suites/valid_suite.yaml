@@ -1,0 +1,53 @@
+# Valid test suite for testing
+test_suite: "sample_suite"
+version: "1.0"
+description: "A sample test suite for validation"
+
+defaults:
+  runs_per_test: 3
+  timeout_seconds: 180
+  scoring:
+    quality_weight: 0.4
+    completeness_weight: 0.3
+    efficiency_weight: 0.2
+    cost_weight: 0.1
+
+agents:
+  - name: "test-agent"
+    type: "http"
+    config:
+      endpoint: "http://localhost:8000"
+
+tests:
+  - id: "test-001"
+    name: "Basic test"
+    description: "A basic test case"
+    tags: ["smoke", "basic"]
+    task:
+      description: "Perform a basic task"
+      input_data:
+        key: "value"
+      expected_artifacts:
+        - "output.txt"
+    constraints:
+      max_steps: 10
+      max_tokens: 1000
+      timeout_seconds: 60
+      allowed_tools: ["file_write", "web_search"]
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "output.txt"
+      - type: "behavior"
+        config:
+          must_use_tools: ["file_write"]
+
+  - id: "test-002"
+    name: "Advanced test"
+    task:
+      description: "Perform an advanced task"
+    assertions:
+      - type: "llm_eval"
+        config:
+          criteria: "factual_accuracy"
+          threshold: 0.8
