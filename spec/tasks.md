@@ -55,7 +55,7 @@
 ---
 
 ### TASK-101: Contract Tests
-🔴 P0 | 🔄 IN_PROGRESS | Est: 2d
+🔴 P0 | ✅ DONE | Est: 2d
 
 **Description:**
 Тесты контракта ATP Protocol — валидация схем.
@@ -164,7 +164,7 @@ End-to-end тесты критических user journeys.
 ---
 
 ### TASK-003: Core Adapters
-🔴 P0 | ⬜ TODO | Est: 5d
+🔴 P0 | 🔄 IN_PROGRESS | Est: 5d
 
 **Description:**
 Реализовать HTTP, Container и CLI адаптеры.
