@@ -1,0 +1,190 @@
+{
+  "missing_task_id": {
+    "description": "Response missing required task_id field",
+    "data": {
+      "status": "completed"
+    },
+    "expected_error": "task_id"
+  },
+  "missing_status": {
+    "description": "Response missing required status field",
+    "data": {
+      "task_id": "task-001"
+    },
+    "expected_error": "status"
+  },
+  "empty_task_id": {
+    "description": "Response with empty string task_id",
+    "data": {
+      "task_id": "",
+      "status": "completed"
+    },
+    "expected_error": "task_id cannot be empty"
+  },
+  "whitespace_task_id": {
+    "description": "Response with whitespace-only task_id",
+    "data": {
+      "task_id": "   ",
+      "status": "completed"
+    },
+    "expected_error": "task_id cannot be empty"
+  },
+  "invalid_status_value": {
+    "description": "Response with invalid status enum value",
+    "data": {
+      "task_id": "task-002",
+      "status": "success"
+    },
+    "expected_error": "status"
+  },
+  "null_status": {
+    "description": "Response with null status",
+    "data": {
+      "task_id": "task-003",
+      "status": null
+    },
+    "expected_error": "status"
+  },
+  "negative_total_tokens": {
+    "description": "Response with negative token count",
+    "data": {
+      "task_id": "task-004",
+      "status": "completed",
+      "metrics": {
+        "total_tokens": -100
+      }
+    },
+    "expected_error": "total_tokens"
+  },
+  "negative_wall_time": {
+    "description": "Response with negative wall time",
+    "data": {
+      "task_id": "task-005",
+      "status": "completed",
+      "metrics": {
+        "wall_time_seconds": -10.5
+      }
+    },
+    "expected_error": "wall_time_seconds"
+  },
+  "negative_cost": {
+    "description": "Response with negative cost",
+    "data": {
+      "task_id": "task-006",
+      "status": "completed",
+      "metrics": {
+        "cost_usd": -0.50
+      }
+    },
+    "expected_error": "cost_usd"
+  },
+  "negative_size_bytes": {
+    "description": "Response with negative artifact size",
+    "data": {
+      "task_id": "task-007",
+      "status": "completed",
+      "artifacts": [
+        {
+          "type": "file",
+          "path": "output.txt",
+          "size_bytes": -1024
+        }
+      ]
+    },
+    "expected_error": "size_bytes"
+  },
+  "invalid_artifact_type": {
+    "description": "Response with invalid artifact type",
+    "data": {
+      "task_id": "task-008",
+      "status": "completed",
+      "artifacts": [
+        {
+          "type": "invalid_type",
+          "path": "output.txt"
+        }
+      ]
+    },
+    "expected_error": "type"
+  },
+  "file_artifact_empty_path": {
+    "description": "File artifact with empty path",
+    "data": {
+      "task_id": "task-009",
+      "status": "completed",
+      "artifacts": [
+        {
+          "type": "file",
+          "path": ""
+        }
+      ]
+    },
+    "expected_error": "path"
+  },
+  "structured_artifact_empty_name": {
+    "description": "Structured artifact with empty name",
+    "data": {
+      "task_id": "task-010",
+      "status": "completed",
+      "artifacts": [
+        {
+          "type": "structured",
+          "name": "",
+          "data": {}
+        }
+      ]
+    },
+    "expected_error": "name"
+  },
+  "structured_artifact_missing_data": {
+    "description": "Structured artifact missing data field",
+    "data": {
+      "task_id": "task-011",
+      "status": "completed",
+      "artifacts": [
+        {
+          "type": "structured",
+          "name": "results"
+        }
+      ]
+    },
+    "expected_error": "data"
+  },
+  "reference_artifact_empty_path": {
+    "description": "Reference artifact with empty path",
+    "data": {
+      "task_id": "task-012",
+      "status": "completed",
+      "artifacts": [
+        {
+          "type": "reference",
+          "path": ""
+        }
+      ]
+    },
+    "expected_error": "path"
+  },
+  "artifacts_not_array": {
+    "description": "Artifacts field is not an array",
+    "data": {
+      "task_id": "task-013",
+      "status": "completed",
+      "artifacts": {"path": "single-artifact.txt"}
+    },
+    "expected_error": "artifacts"
+  },
+  "metrics_not_object": {
+    "description": "Metrics field is not an object",
+    "data": {
+      "task_id": "task-014",
+      "status": "completed",
+      "metrics": [1, 2, 3]
+    },
+    "expected_error": "metrics"
+  },
+  "completely_empty": {
+    "description": "Completely empty response object",
+    "data": {},
+    "expected_error": "task_id"
+  }
+}

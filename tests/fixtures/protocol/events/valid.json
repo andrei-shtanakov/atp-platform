@@ -1,0 +1,271 @@
+{
+  "minimal_progress_event": {
+    "description": "Minimal valid progress event",
+    "data": {
+      "task_id": "task-001",
+      "sequence": 0,
+      "event_type": "progress",
+      "payload": {}
+    }
+  },
+  "tool_call_start": {
+    "description": "Tool call event at start (before result)",
+    "data": {
+      "version": "1.0",
+      "task_id": "task-002",
+      "timestamp": "2024-01-15T10:30:00Z",
+      "sequence": 1,
+      "event_type": "tool_call",
+      "payload": {
+        "tool": "web_search",
+        "input": {
+          "query": "Python testing best practices",
+          "max_results": 10
+        },
+        "status": "started"
+      }
+    }
+  },
+  "tool_call_complete": {
+    "description": "Tool call event with result",
+    "data": {
+      "version": "1.0",
+      "task_id": "task-002",
+      "timestamp": "2024-01-15T10:30:05Z",
+      "sequence": 2,
+      "event_type": "tool_call",
+      "payload": {
+        "tool": "web_search",
+        "input": {
+          "query": "Python testing best practices",
+          "max_results": 10
+        },
+        "output": {
+          "results": [
+            {"title": "PyTest Documentation", "url": "https://pytest.org"},
+            {"title": "Testing Best Practices", "url": "https://example.com"}
+          ],
+          "total_results": 2
+        },
+        "duration_ms": 4500.5,
+        "status": "success"
+      }
+    }
+  },
+  "tool_call_error": {
+    "description": "Tool call event that resulted in error",
+    "data": {
+      "version": "1.0",
+      "task_id": "task-003",
+      "timestamp": "2024-01-15T10:31:00Z",
+      "sequence": 3,
+      "event_type": "tool_call",
+      "payload": {
+        "tool": "file_write",
+        "input": {
+          "path": "/readonly/file.txt",
+          "content": "test"
+        },
+        "output": {
+          "error": "Permission denied"
+        },
+        "duration_ms": 15.2,
+        "status": "error"
+      }
+    }
+  },
+  "llm_request_basic": {
+    "description": "Basic LLM request event",
+    "data": {
+      "version": "1.0",
+      "task_id": "task-004",
+      "timestamp": "2024-01-15T10:32:00Z",
+      "sequence": 4,
+      "event_type": "llm_request",
+      "payload": {
+        "model": "claude-sonnet-4-20250514",
+        "input_tokens": 1500,
+        "output_tokens": 500,
+        "duration_ms": 2500.0
+      }
+    }
+  },
+  "llm_request_minimal": {
+    "description": "LLM request with only model name",
+    "data": {
+      "version": "1.0",
+      "task_id": "task-005",
+      "timestamp": "2024-01-15T10:33:00Z",
+      "sequence": 5,
+      "event_type": "llm_request",
+      "payload": {
+        "model": "gpt-4-turbo"
+      }
+    }
+  },
+  "reasoning_thought": {
+    "description": "Reasoning event with thought process",
+    "data": {
+      "version": "1.0",
+      "task_id": "task-006",
+      "timestamp": "2024-01-15T10:34:00Z",
+      "sequence": 6,
+      "event_type": "reasoning",
+      "payload": {
+        "thought": "I need to gather more information about the market before making conclusions",
+        "step": "Information gathering"
+      }
+    }
+  },
+  "reasoning_plan": {
+    "description": "Reasoning event with execution plan",
+    "data": {
+      "version": "1.0",
+      "task_id": "task-007",
+      "timestamp": "2024-01-15T10:35:00Z",
+      "sequence": 7,
+      "event_type": "reasoning",
+      "payload": {
+        "plan": "1. Search for competitor data\n2. Analyze market trends\n3. Generate report",
+        "step": "Planning phase"
+      }
+    }
+  },
+  "reasoning_full": {
+    "description": "Full reasoning event with all fields",
+    "data": {
+      "version": "1.0",
+      "task_id": "task-008",
+      "timestamp": "2024-01-15T10:36:00Z",
+      "sequence": 8,
+      "event_type": "reasoning",
+      "payload": {
+        "thought": "The search results indicate a growing market trend",
+        "plan": "Next step: validate findings with additional sources",
+        "step": "Analysis and validation"
+      }
+    }
+  },
+  "error_recoverable": {
+    "description": "Recoverable error event",
+    "data": {
+      "version": "1.0",
+      "task_id": "task-009",
+      "timestamp": "2024-01-15T10:37:00Z",
+      "sequence": 9,
+      "event_type": "error",
+      "payload": {
+        "error_type": "RateLimitError",
+        "message": "API rate limit exceeded, retrying in 30 seconds",
+        "recoverable": true
+      }
+    }
+  },
+  "error_fatal": {
+    "description": "Fatal error event",
+    "data": {
+      "version": "1.0",
+      "task_id": "task-010",
+      "timestamp": "2024-01-15T10:38:00Z",
+      "sequence": 10,
+      "event_type": "error",
+      "payload": {
+        "error_type": "AuthenticationError",
+        "message": "Invalid API key, cannot proceed",
+        "recoverable": false
+      }
+    }
+  },
+  "progress_percentage": {
+    "description": "Progress event with percentage",
+    "data": {
+      "version": "1.0",
+      "task_id": "task-011",
+      "timestamp": "2024-01-15T10:39:00Z",
+      "sequence": 11,
+      "event_type": "progress",
+      "payload": {
+        "current_step": 5,
+        "percentage": 50.0,
+        "message": "Processing data: 50% complete"
+      }
+    }
+  },
+  "progress_step_only": {
+    "description": "Progress event with step number only",
+    "data": {
+      "version": "1.0",
+      "task_id": "task-012",
+      "timestamp": "2024-01-15T10:40:00Z",
+      "sequence": 12,
+      "event_type": "progress",
+      "payload": {
+        "current_step": 3,
+        "message": "Step 3: Generating visualizations"
+      }
+    }
+  },
+  "progress_start": {
+    "description": "Progress event at start (0%)",
+    "data": {
+      "version": "1.0",
+      "task_id": "task-013",
+      "timestamp": "2024-01-15T10:41:00Z",
+      "sequence": 0,
+      "event_type": "progress",
+      "payload": {
+        "current_step": 0,
+        "percentage": 0.0,
+        "message": "Starting task execution"
+      }
+    }
+  },
+  "progress_complete": {
+    "description": "Progress event at completion (100%)",
+    "data": {
+      "version": "1.0",
+      "task_id": "task-014",
+      "timestamp": "2024-01-15T10:42:00Z",
+      "sequence": 25,
+      "event_type": "progress",
+      "payload": {
+        "current_step": 10,
+        "percentage": 100.0,
+        "message": "Task completed successfully"
+      }
+    }
+  },
+  "high_sequence_number": {
+    "description": "Event with high sequence number",
+    "data": {
+      "version": "1.0",
+      "task_id": "task-015",
+      "timestamp": "2024-01-15T10:43:00Z",
+      "sequence": 999999,
+      "event_type": "progress",
+      "payload": {
+        "message": "Event with very high sequence number"
+      }
+    }
+  },
+  "custom_payload": {
+    "description": "Event with custom payload fields",
+    "data": {
+      "version": "1.0",
+      "task_id": "task-016",
+      "timestamp": "2024-01-15T10:44:00Z",
+      "sequence": 16,
+      "event_type": "progress",
+      "payload": {
+        "custom_field": "custom_value",
+        "nested": {
+          "data": [1, 2, 3]
+        },
+        "metrics": {
+          "memory_mb": 512,
+          "cpu_percent": 45.5
+        }
+      }
+    }
+  }
+}

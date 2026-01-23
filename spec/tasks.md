@@ -55,7 +55,7 @@
 ---
 
 ### TASK-101: Contract Tests
-🔴 P0 | ⬜ TODO | Est: 2d
+🔴 P0 | 🔄 IN_PROGRESS | Est: 2d
 
 **Description:**
 Тесты контракта ATP Protocol — валидация схем.
@@ -119,24 +119,24 @@ End-to-end тесты критических user journeys.
 ## Milestone 1: MVP
 
 ### TASK-001: ATP Protocol Models
-🔴 P0 | ⬜ TODO | Est: 3d
+🔴 P0 | ✅ DONE | Est: 3d
 
 **Description:**
 Реализовать Pydantic модели для ATP Request, Response, Event.
 
 **Checklist:**
-- [ ] ATPRequest model с валидацией
-- [ ] ATPResponse model со всеми статусами
-- [ ] ATPEvent model для всех event types
-- [ ] Artifact models (file, structured, reference)
-- [ ] Metrics model
-- [ ] JSON Schema генерация из моделей
+- [x] ATPRequest model с валидацией
+- [x] ATPResponse model со всеми статусами
+- [x] ATPEvent model для всех event types
+- [x] Artifact models (file, structured, reference)
+- [x] Metrics model
+- [x] JSON Schema генерация из моделей
 
 **Tests (Definition of Done):**
-- [ ] Unit tests: serialization/deserialization
-- [ ] Unit tests: validation (valid + invalid inputs)
-- [ ] Unit tests: edge cases (null, empty, large)
-- [ ] Coverage ≥80%
+- [x] Unit tests: serialization/deserialization
+- [x] Unit tests: validation (valid + invalid inputs)
+- [x] Unit tests: edge cases (null, empty, large)
+- [x] Coverage ≥80%
 
 **Traces to:** [REQ-001], [REQ-002]
 **Depends on:** [TASK-100]
@@ -225,7 +225,7 @@ End-to-end тесты критических user journeys.
 ---
 
 ### TASK-005: Tags и Filtering
-🟠 P1 | ⬜ TODO | Est: 1d
+🟠 P1 | ✅ DONE | Est: 1d
 
 **Description:**
 Фильтрация тестов по tags.

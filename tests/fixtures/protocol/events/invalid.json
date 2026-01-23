@@ -1,0 +1,134 @@
+{
+  "missing_task_id": {
+    "description": "Event missing required task_id field",
+    "data": {
+      "sequence": 0,
+      "event_type": "progress",
+      "payload": {}
+    },
+    "expected_error": "task_id"
+  },
+  "missing_sequence": {
+    "description": "Event missing required sequence field",
+    "data": {
+      "task_id": "task-001",
+      "event_type": "progress",
+      "payload": {}
+    },
+    "expected_error": "sequence"
+  },
+  "missing_event_type": {
+    "description": "Event missing required event_type field",
+    "data": {
+      "task_id": "task-002",
+      "sequence": 0,
+      "payload": {}
+    },
+    "expected_error": "event_type"
+  },
+  "missing_payload": {
+    "description": "Event missing required payload field",
+    "data": {
+      "task_id": "task-003",
+      "sequence": 0,
+      "event_type": "progress"
+    },
+    "expected_error": "payload"
+  },
+  "empty_task_id": {
+    "description": "Event with empty string task_id",
+    "data": {
+      "task_id": "",
+      "sequence": 0,
+      "event_type": "progress",
+      "payload": {}
+    },
+    "expected_error": "task_id cannot be empty"
+  },
+  "whitespace_task_id": {
+    "description": "Event with whitespace-only task_id",
+    "data": {
+      "task_id": "   ",
+      "sequence": 0,
+      "event_type": "progress",
+      "payload": {}
+    },
+    "expected_error": "task_id cannot be empty"
+  },
+  "negative_sequence": {
+    "description": "Event with negative sequence number",
+    "data": {
+      "task_id": "task-004",
+      "sequence": -1,
+      "event_type": "progress",
+      "payload": {}
+    },
+    "expected_error": "sequence"
+  },
+  "invalid_event_type": {
+    "description": "Event with invalid event_type value",
+    "data": {
+      "task_id": "task-005",
+      "sequence": 0,
+      "event_type": "invalid_type",
+      "payload": {}
+    },
+    "expected_error": "event_type"
+  },
+  "null_payload": {
+    "description": "Event with null payload",
+    "data": {
+      "task_id": "task-006",
+      "sequence": 0,
+      "event_type": "progress",
+      "payload": null
+    },
+    "expected_error": "payload"
+  },
+  "payload_not_object": {
+    "description": "Event with non-object payload",
+    "data": {
+      "task_id": "task-007",
+      "sequence": 0,
+      "event_type": "progress",
+      "payload": "invalid string payload"
+    },
+    "expected_error": "payload"
+  },
+  "invalid_timestamp_format": {
+    "description": "Event with invalid timestamp format",
+    "data": {
+      "task_id": "task-008",
+      "timestamp": "not-a-timestamp",
+      "sequence": 0,
+      "event_type": "progress",
+      "payload": {}
+    },
+    "expected_error": "timestamp"
+  },
+  "sequence_not_integer": {
+    "description": "Event with non-integer sequence",
+    "data": {
+      "task_id": "task-009",
+      "sequence": 5.5,
+      "event_type": "progress",
+      "payload": {}
+    },
+    "expected_error": "sequence"
+  },
+  "sequence_string": {
+    "description": "Event with string sequence",
+    "data": {
+      "task_id": "task-010",
+      "sequence": "five",
+      "event_type": "progress",
+      "payload": {}
+    },
+    "expected_error": "sequence"
+  },
+  "completely_empty": {
+    "description": "Completely empty event object",
+    "data": {},
+    "expected_error": "task_id"
+  }
+}

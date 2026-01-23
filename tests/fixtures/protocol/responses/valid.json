@@ -1,0 +1,270 @@
+{
+  "minimal_completed": {
+    "description": "Minimal completed response",
+    "data": {
+      "task_id": "task-001",
+      "status": "completed"
+    }
+  },
+  "completed_with_file_artifact": {
+    "description": "Completed response with file artifact",
+    "data": {
+      "version": "1.0",
+      "task_id": "task-002",
+      "status": "completed",
+      "artifacts": [
+        {
+          "type": "file",
+          "path": "output/report.md",
+          "content_type": "text/markdown",
+          "size_bytes": 2048,
+          "content": "# Analysis Report\n\n## Summary\nThis is the report content."
+        }
+      ]
+    }
+  },
+  "completed_with_structured_artifact": {
+    "description": "Completed response with structured data artifact",
+    "data": {
+      "version": "1.0",
+      "task_id": "task-003",
+      "status": "completed",
+      "artifacts": [
+        {
+          "type": "structured",
+          "name": "analysis_results",
+          "data": {
+            "total_items": 150,
+            "categories": ["A", "B", "C"],
+            "metrics": {
+              "average": 42.5,
+              "max": 100,
+              "min": 10
+            }
+          },
+          "content_type": "application/json"
+        }
+      ]
+    }
+  },
+  "completed_with_reference_artifact": {
+    "description": "Completed response with reference to external artifact",
+    "data": {
+      "version": "1.0",
+      "task_id": "task-004",
+      "status": "completed",
+      "artifacts": [
+        {
+          "type": "reference",
+          "path": "s3://bucket/results/large-dataset.parquet",
+          "content_type": "application/vnd.apache.parquet",
+          "size_bytes": 1073741824
+        }
+      ]
+    }
+  },
+  "completed_with_multiple_artifacts": {
+    "description": "Completed response with multiple artifact types",
+    "data": {
+      "version": "1.0",
+      "task_id": "task-005",
+      "status": "completed",
+      "artifacts": [
+        {
+          "type": "file",
+          "path": "report.md",
+          "content_type": "text/markdown"
+        },
+        {
+          "type": "file",
+          "path": "data.json",
+          "content_type": "application/json",
+          "size_bytes": 4096
+        },
+        {
+          "type": "structured",
+          "name": "summary",
+          "data": {"status": "ok", "count": 10}
+        },
+        {
+          "type": "reference",
+          "path": "/workspace/outputs/chart.png"
+        }
+      ]
+    }
+  },
+  "completed_with_metrics": {
+    "description": "Completed response with execution metrics",
+    "data": {
+      "version": "1.0",
+      "task_id": "task-006",
+      "status": "completed",
+      "artifacts": [],
+      "metrics": {
+        "total_tokens": 15000,
+        "input_tokens": 10000,
+        "output_tokens": 5000,
+        "total_steps": 25,
+        "tool_calls": 8,
+        "llm_calls": 12,
+        "wall_time_seconds": 45.5,
+        "cost_usd": 0.15
+      }
+    }
+  },
+  "failed_response": {
+    "description": "Failed response with error message",
+    "data": {
+      "version": "1.0",
+      "task_id": "task-007",
+      "status": "failed",
+      "error": "Failed to connect to external API: Connection timeout",
+      "metrics": {
+        "wall_time_seconds": 30.0,
+        "total_steps": 3
+      }
+    }
+  },
+  "timeout_response": {
+    "description": "Timeout response with partial artifacts",
+    "data": {
+      "version": "1.0",
+      "task_id": "task-008",
+      "status": "timeout",
+      "artifacts": [
+        {
+          "type": "file",
+          "path": "partial_output.txt",
+          "content": "Partial results before timeout..."
+        }
+      ],
+      "metrics": {
+        "wall_time_seconds": 300.0,
+        "total_steps": 50,
+        "total_tokens": 100000
+      }
+    }
+  },
+  "cancelled_response": {
+    "description": "Cancelled response",
+    "data": {
+      "version": "1.0",
+      "task_id": "task-009",
+      "status": "cancelled",
+      "error": "Task cancelled by user request",
+      "metrics": {
+        "wall_time_seconds": 15.2,
+        "total_steps": 8
+      }
+    }
+  },
+  "partial_response": {
+    "description": "Partial completion response",
+    "data": {
+      "version": "1.0",
+      "task_id": "task-010",
+      "status": "partial",
+      "artifacts": [
+        {
+          "type": "structured",
+          "name": "partial_results",
+          "data": {
+            "completed_items": 7,
+            "total_items": 10,
+            "results": [1, 2, 3, 4, 5, 6, 7]
+          }
+        }
+      ],
+      "error": "Resource limit reached, partial results available"
+    }
+  },
+  "response_with_trace_id": {
+    "description": "Response with trace identifier for debugging",
+    "data": {
+      "version": "1.0",
+      "task_id": "task-011",
+      "status": "completed",
+      "artifacts": [],
+      "trace_id": "trace-abc123-def456"
+    }
+  },
+  "response_with_content_hash": {
+    "description": "Response with content hash for verification",
+    "data": {
+      "version": "1.0",
+      "task_id": "task-012",
+      "status": "completed",
+      "artifacts": [
+        {
+          "type": "file",
+          "path": "verified_output.bin",
+          "content_type": "application/octet-stream",
+          "size_bytes": 65536,
+          "content_hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ]
+    }
+  },
+  "response_zero_metrics": {
+    "description": "Response with zero metric values (valid edge case)",
+    "data": {
+      "version": "1.0",
+      "task_id": "task-013",
+      "status": "completed",
+      "artifacts": [],
+      "metrics": {
+        "total_tokens": 0,
+        "total_steps": 0,
+        "tool_calls": 0,
+        "wall_time_seconds": 0.0,
+        "cost_usd": 0.0
+      }
+    }
+  },
+  "full_response": {
+    "description": "Complete response with all optional fields",
+    "data": {
+      "version": "1.0",
+      "task_id": "task-014-complete",
+      "status": "completed",
+      "artifacts": [
+        {
+          "type": "file",
+          "path": "report.md",
+          "content_type": "text/markdown",
+          "size_bytes": 8192,
+          "content_hash": "sha256:abc123",
+          "content": "# Final Report\n\nComplete analysis..."
+        },
+        {
+          "type": "structured",
+          "name": "metrics_summary",
+          "data": {
+            "processed": 1000,
+            "errors": 0,
+            "warnings": 5
+          },
+          "content_type": "application/json"
+        },
+        {
+          "type": "reference",
+          "path": "s3://results/data.parquet",
+          "content_type": "application/vnd.apache.parquet",
+          "size_bytes": 104857600
+        }
+      ],
+      "metrics": {
+        "total_tokens": 50000,
+        "input_tokens": 30000,
+        "output_tokens": 20000,
+        "total_steps": 75,
+        "tool_calls": 20,
+        "llm_calls": 30,
+        "wall_time_seconds": 120.5,
+        "cost_usd": 0.75
+      },
+      "error": null,
+      "trace_id": "trace-full-example-001"
+    }
+  }
+}
