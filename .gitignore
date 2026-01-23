@@ -18,3 +18,28 @@ coverage.xml
 
 # Pre-commit
 .pre-commit-cache/
+
+# Executor (runtime state and logs)
+spec/.executor-logs/
+spec/.executor-state.json
+spec/.task-history.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Type checkers
+.mypy_cache/
+.pyrefly/
+.ruff_cache/
+
+# Misc
+*.log
+.env
+.env.local
