@@ -77,7 +77,7 @@
 ---
 
 ### TASK-102: Integration Test Suite
-🟠 P1 | 🔄 IN_PROGRESS | Est: 3d
+🟠 P1 | ✅ DONE | Est: 3d
 
 **Description:**
 Integration тесты для ключевых компонентов.
@@ -310,20 +310,20 @@ Artifact и Behavior evaluators.
 ---
 
 ### TASK-008: Scoring Aggregator
-🟠 P1 | ⬜ TODO | Est: 2d
+🟠 P1 | ✅ DONE | Est: 2d
 
 **Description:**
 Агрегация результатов evaluators в composite score.
 
 **Checklist:**
-- [ ] ScoreAggregator class
-- [ ] Weight configuration
-- [ ] Quality score calculation
-- [ ] Completeness score calculation
-- [ ] Efficiency normalization
-- [ ] Cost normalization
-- [ ] Final score 0-100
-- [ ] Score breakdown in results
+- [x] ScoreAggregator class
+- [x] Weight configuration
+- [x] Quality score calculation
+- [x] Completeness score calculation
+- [x] Efficiency normalization
+- [x] Cost normalization
+- [x] Final score 0-100
+- [x] Score breakdown in results
 
 **Traces to:** [REQ-043]
 **Depends on:** [TASK-007]
