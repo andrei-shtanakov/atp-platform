@@ -1,7 +1,7 @@
 # Agent Test Protocol (ATP) Specification
 
-**Version**: 1.0  
-**Status**: Draft  
+**Version**: 1.0
+**Status**: Draft
 **Last Updated**: 2025-01-21
 
 ---
@@ -599,25 +599,25 @@ def main():
     # Read request from stdin
     request_line = sys.stdin.readline()
     request = json.loads(request_line)
-    
+
     task_id = request["task_id"]
     description = request["task"]["description"]
-    
+
     # Emit start event to stderr
     emit_event(task_id, 0, "progress", {
         "message": "Starting task",
         "percentage": 0
     })
-    
+
     # Do actual work here...
     result = f"Processed: {description}"
-    
+
     # Emit completion event
     emit_event(task_id, 1, "progress", {
         "message": "Task completed",
         "percentage": 100
     })
-    
+
     # Write response to stdout
     response = {
         "version": "1.0",
@@ -638,7 +638,7 @@ def main():
             "wall_time_seconds": 1.0
         }
     }
-    
+
     print(json.dumps(response))
 
 def emit_event(task_id: str, seq: int, event_type: str, payload: dict):
@@ -688,7 +688,7 @@ async def execute_stream(request: ATPRequest):
     async def event_generator():
         async for event in run_agent_streaming(request):
             yield f"data: {json.dumps(event)}\n\n"
-    
+
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream"

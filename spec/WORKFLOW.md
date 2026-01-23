@@ -190,7 +190,7 @@ spec/.executor-logs/
 executor:
   max_retries: 3
   task_timeout_minutes: 30
-  
+
   hooks:
     pre_start:
       create_git_branch: true
@@ -261,7 +261,7 @@ python task.py next
 
 # Вывод:
 # 🚀 Следующие задачи (готовы к работе):
-# 
+#
 # 1. 🔴 TASK-100: Test Infrastructure Setup
 #    Est: 2d | Milestone 1: MVP ✓ deps OK
 ```
@@ -295,7 +295,7 @@ python task.py check TASK-100 1
 python task.py done TASK-100
 
 # ✅ TASK-100 завершена!
-# 
+#
 # 🔓 Разблокированы задачи:
 #    TASK-001: ATP Protocol Models
 #    TASK-004: Test Loader
@@ -308,7 +308,7 @@ python task.py stats
 
 # 📊 Статистика задач
 # ==================
-# 
+#
 # По статусу:
 #   ✅ done          3 ████░░░░░░░░░░░░░░░░ 12%
 #   🔄 in_progress   1 █░░░░░░░░░░░░░░░░░░░  4%

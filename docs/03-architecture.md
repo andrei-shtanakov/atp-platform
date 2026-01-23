@@ -115,7 +115,7 @@ atp/
 # main.py
 def main() -> int:
     """CLI entry point. Returns exit code."""
-    
+
 # commands/test.py
 def run_tests(
     agent: str,
@@ -171,7 +171,7 @@ class TestDefinition(BaseModel):
     name: str
     description: str | None = None
     tags: list[str] = []
-    
+
     task: TaskDefinition
     constraints: TestConstraints = TestConstraints()
     assertions: list[Assertion] = []
@@ -228,14 +228,14 @@ class TestOrchestrator:
         agent_registry: AgentRegistry,
         evaluator_registry: EvaluatorRegistry,
     ): ...
-    
+
     async def run_suite(
         self,
         suite: TestSuite,
         agent_name: str,
         options: RunOptions,
     ) -> SuiteResults: ...
-    
+
     async def run_test(
         self,
         test: TestDefinition,
@@ -322,7 +322,7 @@ from typing import AsyncIterator
 
 class AgentAdapter(ABC):
     """Base class for all agent adapters."""
-    
+
     @abstractmethod
     async def execute(
         self,
@@ -330,7 +330,7 @@ class AgentAdapter(ABC):
     ) -> ATPResponse:
         """Execute task and return response."""
         pass
-    
+
     @abstractmethod
     async def stream_events(
         self,
@@ -338,11 +338,11 @@ class AgentAdapter(ABC):
     ) -> AsyncIterator[ATPEvent]:
         """Execute task and stream events."""
         pass
-    
+
     async def health_check(self) -> bool:
         """Check if agent is available."""
         return True
-    
+
     async def cleanup(self) -> None:
         """Cleanup resources after execution."""
         pass
@@ -356,7 +356,7 @@ class HTTPAdapter(AgentAdapter):
         self.endpoint = endpoint
         self.timeout = timeout
         self.client = httpx.AsyncClient()
-    
+
     async def execute(self, request: ATPRequest) -> ATPResponse:
         response = await self.client.post(
             f"{self.endpoint}/execute",
@@ -365,7 +365,7 @@ class HTTPAdapter(AgentAdapter):
         )
         response.raise_for_status()
         return ATPResponse.model_validate(response.json())
-    
+
     async def stream_events(self, request: ATPRequest) -> AsyncIterator[ATPEvent]:
         async with self.client.stream(
             "POST",
@@ -390,7 +390,7 @@ class ContainerAdapter(AgentAdapter):
         self.image = image
         self.resources = resources or ContainerResources()
         self.docker = docker.from_env()
-    
+
     async def execute(self, request: ATPRequest) -> ATPResponse:
         container = self.docker.containers.run(
             self.image,
@@ -399,16 +399,16 @@ class ContainerAdapter(AgentAdapter):
             mem_limit=self.resources.memory,
             cpu_quota=self.resources.cpu_quota,
         )
-        
+
         try:
             # Send request via stdin
             socket = container.attach_socket(params={'stdin': 1, 'stream': 1})
             socket._sock.sendall(request.model_dump_json().encode() + b'\n')
-            
+
             # Wait and get output
             result = container.wait(timeout=request.constraints.timeout_seconds)
             logs = container.logs(stdout=True, stderr=False)
-            
+
             return ATPResponse.model_validate_json(logs)
         finally:
             container.remove(force=True)
@@ -449,11 +449,11 @@ class EvalCheck:
 class EvalResult:
     evaluator: str
     checks: list[EvalCheck]
-    
+
     @property
     def passed(self) -> bool:
         return all(c.passed for c in self.checks)
-    
+
     @property
     def score(self) -> float:
         if not self.checks:
@@ -462,9 +462,9 @@ class EvalResult:
 
 class Evaluator(ABC):
     """Base class for all evaluators."""
-    
+
     name: str
-    
+
     @abstractmethod
     async def evaluate(
         self,
@@ -482,7 +482,7 @@ class Evaluator(ABC):
 # artifact.py
 class ArtifactEvaluator(Evaluator):
     name = "artifact"
-    
+
     async def evaluate(
         self,
         task: TestDefinition,
@@ -492,7 +492,7 @@ class ArtifactEvaluator(Evaluator):
     ) -> EvalResult:
         checks = []
         config = assertion.config
-        
+
         if assertion.type == "artifact_exists":
             artifact = self._find_artifact(response, config["path"])
             checks.append(EvalCheck(
@@ -501,7 +501,7 @@ class ArtifactEvaluator(Evaluator):
                 score=1.0 if artifact else 0.0,
                 message=f"Artifact {'found' if artifact else 'not found'}",
             ))
-        
+
         elif assertion.type == "artifact_schema":
             artifact = self._find_artifact(response, config["path"])
             if artifact:
@@ -511,7 +511,7 @@ class ArtifactEvaluator(Evaluator):
                     passed=valid,
                     score=1.0 if valid else 0.0,
                 ))
-        
+
         elif assertion.type == "contains":
             artifact = self._find_artifact(response, config["path"])
             if artifact:
@@ -523,7 +523,7 @@ class ArtifactEvaluator(Evaluator):
                     passed=found,
                     score=1.0 if found else 0.0,
                 ))
-        
+
         return EvalResult(evaluator=self.name, checks=checks)
 ```
 
@@ -532,7 +532,7 @@ class ArtifactEvaluator(Evaluator):
 # behavior.py
 class BehaviorEvaluator(Evaluator):
     name = "behavior"
-    
+
     async def evaluate(
         self,
         task: TestDefinition,
@@ -542,10 +542,10 @@ class BehaviorEvaluator(Evaluator):
     ) -> EvalResult:
         checks = []
         config = assertion.config
-        
+
         tool_calls = [e for e in trace if e.event_type == ATPEventType.TOOL_CALL]
         used_tools = {e.payload["tool"] for e in tool_calls}
-        
+
         # must_use_tools
         if "must_use_tools" in config:
             for tool in config["must_use_tools"]:
@@ -555,7 +555,7 @@ class BehaviorEvaluator(Evaluator):
                     score=1.0 if tool in used_tools else 0.0,
                     message=f"Tool {tool} {'was' if tool in used_tools else 'was not'} used",
                 ))
-        
+
         # must_not_use_tools
         if "must_not_use_tools" in config:
             for tool in config["must_not_use_tools"]:
@@ -564,7 +564,7 @@ class BehaviorEvaluator(Evaluator):
                     passed=tool not in used_tools,
                     score=1.0 if tool not in used_tools else 0.0,
                 ))
-        
+
         # max_tool_calls
         if "max_tool_calls" in config:
             count = len(tool_calls)
@@ -575,7 +575,7 @@ class BehaviorEvaluator(Evaluator):
                 score=min(1.0, max_allowed / count) if count > 0 else 1.0,
                 details={"actual": count, "max": max_allowed},
             ))
-        
+
         return EvalResult(evaluator=self.name, checks=checks)
 ```
 
@@ -584,11 +584,11 @@ class BehaviorEvaluator(Evaluator):
 # llm_judge.py
 class LLMJudgeEvaluator(Evaluator):
     name = "llm_judge"
-    
+
     def __init__(self, model: str = "claude-sonnet-4-20250514"):
         self.model = model
         self.client = anthropic.Anthropic()
-    
+
     async def evaluate(
         self,
         task: TestDefinition,
@@ -598,18 +598,18 @@ class LLMJudgeEvaluator(Evaluator):
     ) -> EvalResult:
         config = assertion.config
         artifact_content = self._get_artifact_content(response, config.get("artifact"))
-        
+
         prompt = self._build_prompt(
             criteria=config["criteria"],
             custom_prompt=config.get("prompt"),
             task_description=task.task.description,
             artifact_content=artifact_content,
         )
-        
+
         result = await self._call_llm(prompt)
         score = result["score"]
         explanation = result["explanation"]
-        
+
         return EvalResult(
             evaluator=self.name,
             checks=[EvalCheck(
@@ -637,16 +637,16 @@ class ScoreAggregator:
     ) -> AggregatedScore:
         # Quality score from evaluators
         quality_score = self._compute_quality(eval_results)
-        
+
         # Completeness from assertions
         completeness_score = self._compute_completeness(eval_results)
-        
+
         # Efficiency from metrics
         efficiency_score = self._compute_efficiency(metrics, constraints)
-        
+
         # Cost score
         cost_score = self._compute_cost(metrics, constraints)
-        
+
         # Weighted sum
         total = (
             weights.quality * quality_score +
@@ -654,7 +654,7 @@ class ScoreAggregator:
             weights.efficiency * efficiency_score +
             weights.cost * cost_score
         )
-        
+
         return AggregatedScore(
             total=total * 100,  # 0-100 scale
             quality=quality_score,
@@ -686,20 +686,20 @@ atp/
 class ConsoleReporter(Reporter):
     def report(self, results: SuiteResults) -> None:
         self._print_header(results)
-        
+
         for test_result in results.tests:
             self._print_test_result(test_result)
-        
+
         self._print_summary(results)
-    
+
     def _print_test_result(self, result: TestResult) -> None:
         status = "✓" if result.passed else "✗"
         color = "green" if result.passed else "red"
-        
+
         print(f"  {status} {result.test_id}")
         print(f"    Score: {result.score.total:.1f}/100")
         print(f"    Duration: {result.duration_ms}ms")
-        
+
         if self.verbose and not result.passed:
             for check in result.failed_checks:
                 print(f"      - {check.name}: {check.message}")

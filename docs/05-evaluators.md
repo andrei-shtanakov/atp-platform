@@ -65,13 +65,13 @@ assertions:
   - type: artifact_exists
     config:
       path: "report.md"
-      
+
   - type: contains
     config:
       artifact: "report.md"
       pattern: "Microsoft Teams|Zoom|Google Meet"
       regex: true
-      
+
   - type: sections_exist
     config:
       artifact: "report.md"
@@ -79,7 +79,7 @@ assertions:
         - "Executive Summary"
         - "Competitor Analysis"
         - "Recommendations"
-        
+
   - type: artifact_schema
     config:
       artifact: "competitors.json"
@@ -101,18 +101,18 @@ assertions:
 def score_artifact_check(check: ArtifactCheck) -> float:
     if check.type == "artifact_exists":
         return 1.0 if check.passed else 0.0
-    
+
     elif check.type == "contains":
         if check.regex:
             matches = len(re.findall(check.pattern, content))
             expected = check.min_matches or 1
             return min(1.0, matches / expected)
         return 1.0 if check.pattern in content else 0.0
-    
+
     elif check.type == "sections_exist":
         found = sum(1 for s in check.sections if s in content)
         return found / len(check.sections)
-    
+
     # ... etc
 ```
 
@@ -143,13 +143,13 @@ assertions:
       must_not_use_tools:
         - code_execution  # Not allowed for this task
       max_tool_calls: 15
-      
+
   - type: behavior
     config:
       no_errors: true
       allowed_error_types:
         - rate_limit  # Transient errors OK
-        
+
   - type: behavior
     config:
       tool_call_efficiency:
@@ -162,21 +162,21 @@ assertions:
 def analyze_trace(trace: list[ATPEvent]) -> BehaviorMetrics:
     tool_calls = [e for e in trace if e.event_type == "tool_call"]
     errors = [e for e in trace if e.event_type == "error"]
-    
+
     # Tool usage analysis
     used_tools = Counter(tc.payload["tool"] for tc in tool_calls)
-    
+
     # Redundancy detection
     call_signatures = [
         (tc.payload["tool"], json.dumps(tc.payload["input"], sort_keys=True))
         for tc in tool_calls
     ]
     redundant_calls = len(call_signatures) - len(set(call_signatures))
-    
+
     # Error analysis
     recoverable_errors = sum(1 for e in errors if e.payload.get("recoverable"))
     fatal_errors = len(errors) - recoverable_errors
-    
+
     return BehaviorMetrics(
         tool_usage=dict(used_tools),
         total_tool_calls=len(tool_calls),
@@ -211,7 +211,7 @@ assertions:
       artifact: "report.md"
       criteria: factual_accuracy
       threshold: 0.8
-      
+
   - type: llm_eval
     config:
       artifact: "report.md"
@@ -222,7 +222,7 @@ assertions:
         2. Key differentiating features
         3. Pricing comparison where available
         4. SWOT analysis or similar framework
-        
+
         Score from 0 to 1 based on how many criteria are met.
       threshold: 0.7
 ```
@@ -308,14 +308,14 @@ assertions:
         - "--tb=short"
         - "-v"
       timeout: 60
-      
+
   - type: code_execution
     config:
       type: lint
       tool: ruff
       target: "agent_output/"
       fail_on_warning: false
-      
+
   - type: code_execution
     config:
       type: custom_command
@@ -340,19 +340,19 @@ async def run_code_check(
         "--cpus", "1",
         f"atp-code-runner:{config.runtime}",
     ]
-    
+
     if config.type == "pytest":
         docker_cmd.extend(["pytest", "/workspace", *config.options])
     elif config.type == "custom_command":
         docker_cmd.extend(["sh", "-c", config.command])
-    
+
     # Run with timeout
     proc = await asyncio.create_subprocess_exec(
         *docker_cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    
+
     try:
         stdout, stderr = await asyncio.wait_for(
             proc.communicate(),
@@ -365,7 +365,7 @@ async def run_code_check(
             exit_code=-1,
             error="Execution timeout",
         )
-    
+
     return CodeExecutionResult(
         passed=proc.returncode == config.expected_exit_code,
         exit_code=proc.returncode,
@@ -382,16 +382,16 @@ def parse_pytest_output(output: str) -> TestResults:
     # Match: "5 passed, 2 failed, 1 skipped"
     pattern = r"(\d+) passed|(\d+) failed|(\d+) skipped|(\d+) error"
     matches = re.findall(pattern, output)
-    
+
     passed = failed = skipped = errors = 0
     for m in matches:
         if m[0]: passed = int(m[0])
         if m[1]: failed = int(m[1])
         if m[2]: skipped = int(m[2])
         if m[3]: errors = int(m[3])
-    
+
     total = passed + failed + skipped + errors
-    
+
     return TestResults(
         passed=passed,
         failed=failed,
@@ -447,12 +447,12 @@ def normalize_efficiency(
     """
     if optimal_steps is None:
         optimal_steps = max_steps // 4
-    
+
     if actual_steps <= optimal_steps:
         return 1.0
     if actual_steps >= max_steps:
         return 0.0
-    
+
     return 1.0 - (actual_steps - optimal_steps) / (max_steps - optimal_steps)
 ```
 
@@ -470,9 +470,9 @@ def normalize_cost(
     """
     if actual_tokens == 0:
         return 1.0
-    
+
     ratio = actual_tokens / max_tokens
-    
+
     # Log scale: score = 1 - log(1 + ratio) / log(2)
     # At ratio=0: score=1.0
     # At ratio=1: score=0.0
@@ -499,7 +499,7 @@ def compute_statistics(scores: list[float], confidence: float = 0.95) -> Statist
     n = len(scores)
     mean = statistics.mean(scores)
     std = statistics.stdev(scores) if n > 1 else 0.0
-    
+
     # Confidence interval (t-distribution for small samples)
     if n > 1:
         t_value = scipy.stats.t.ppf((1 + confidence) / 2, n - 1)
@@ -507,7 +507,7 @@ def compute_statistics(scores: list[float], confidence: float = 0.95) -> Statist
         ci = (mean - margin, mean + margin)
     else:
         ci = (mean, mean)
-    
+
     return StatisticalScore(
         mean=mean,
         std=std,
@@ -526,7 +526,7 @@ def compute_statistics(scores: list[float], confidence: float = 0.95) -> Statist
 ```python
 def assess_stability(stats: StatisticalScore) -> StabilityAssessment:
     cv = stats.std / stats.mean if stats.mean > 0 else float('inf')  # Coefficient of variation
-    
+
     if cv < 0.05:
         level = "stable"
         message = "Agent produces consistent results"
@@ -539,7 +539,7 @@ def assess_stability(stats: StatisticalScore) -> StabilityAssessment:
     else:
         level = "critical"
         message = "Extremely high variance - agent behavior is unpredictable"
-    
+
     return StabilityAssessment(
         level=level,
         coefficient_of_variation=cv,
@@ -574,7 +574,7 @@ agents:
   - name: langgraph-research
     adapter: langgraph
     config_path: "./agents/langgraph_agent.py"
-    
+
   - name: crewai-research
     adapter: crewai
     config_path: "./agents/crewai_agent.py"
@@ -585,30 +585,30 @@ tests:
     name: "Find competitors for known company"
     description: "Agent should find and analyze top competitors"
     tags: [smoke, core]
-    
+
     # Task definition
     task:
       description: |
-        Find the top 5 competitors for Slack in the enterprise 
+        Find the top 5 competitors for Slack in the enterprise
         communication and collaboration market. For each competitor,
         provide:
         - Company name and brief description
         - Estimated market share (if available)
         - Key differentiating features
         - Pricing tier (enterprise/SMB/freemium)
-        
+
         Output a markdown report with an executive summary and
         detailed analysis of each competitor.
-        
+
       input_data:
         company: "Slack"
         market: "enterprise communication"
-        
+
       expected_artifacts:
         - type: file
           format: markdown
           name: "report.md"
-          
+
     # Constraints
     constraints:
       max_steps: 30
@@ -617,53 +617,53 @@ tests:
       allowed_tools:
         - web_search
         - file_write
-        
+
     # Assertions
     assertions:
       # Artifact checks
       - type: artifact_exists
         config:
           path: "report.md"
-          
+
       - type: sections_exist
         config:
           artifact: "report.md"
           sections:
             - "Executive Summary"
             - "Competitor Analysis"
-            
+
       - type: contains
         config:
           artifact: "report.md"
           pattern: "Microsoft Teams|Zoom|Google"
           regex: true
           min_matches: 3
-          
+
       - type: min_length
         config:
           artifact: "report.md"
           chars: 2000
-          
+
       # Behavior checks
       - type: behavior
         config:
           must_use_tools:
             - web_search
           max_tool_calls: 15
-          
+
       # LLM evaluation
       - type: llm_eval
         config:
           artifact: "report.md"
           criteria: factual_accuracy
           threshold: 0.75
-          
+
       - type: llm_eval
         config:
           artifact: "report.md"
           criteria: completeness
           threshold: 0.8
-          
+
     # Scoring weights (override defaults)
     scoring:
       quality_weight: 0.5
@@ -675,18 +675,18 @@ tests:
     name: "Handle unknown company gracefully"
     description: "Agent should indicate uncertainty for unknown companies"
     tags: [edge_case, error_handling]
-    
+
     task:
       description: |
-        Find competitors for "XyzNonexistent123 Corp" in the 
+        Find competitors for "XyzNonexistent123 Corp" in the
         quantum computing market.
-        
+
     assertions:
       - type: behavior
         config:
           should_indicate_uncertainty: true
           must_not_hallucinate: true
-          
+
       - type: llm_eval
         config:
           criteria: custom
@@ -696,7 +696,7 @@ tests:
             1. Clearly indicated it couldn't find the company
             2. Did NOT make up fake competitor information
             3. Suggested alternative approaches or asked for clarification
-            
+
             Score 1.0 if all criteria met, 0.0 if hallucinated data.
           threshold: 0.9
 
@@ -704,26 +704,26 @@ tests:
     name: "Performance on large market analysis"
     description: "Test efficiency on complex market"
     tags: [performance]
-    
+
     task:
       description: |
         Analyze the global cloud infrastructure market and identify
         the top 10 providers with detailed analysis.
-        
+
     constraints:
       max_steps: 50
       max_tokens: 100000
       timeout_seconds: 600
-      
+
     assertions:
       - type: artifact_exists
         config:
           path: "report.md"
-          
+
       - type: behavior
         config:
           max_tool_calls: 30
-          
+
     scoring:
       efficiency_weight: 0.4  # Higher weight for performance test
 ```
@@ -740,9 +740,9 @@ from atp.evaluators.base import Evaluator, EvalResult, EvalCheck
 
 class DomainSpecificEvaluator(Evaluator):
     """Custom evaluator for domain-specific checks."""
-    
+
     name = "domain_specific"
-    
+
     async def evaluate(
         self,
         task: TestDefinition,
@@ -752,7 +752,7 @@ class DomainSpecificEvaluator(Evaluator):
     ) -> EvalResult:
         checks = []
         config = assertion.config
-        
+
         if assertion.type == "financial_accuracy":
             # Domain-specific check for financial data
             artifact = self._get_artifact(response, config["artifact"])
@@ -762,9 +762,9 @@ class DomainSpecificEvaluator(Evaluator):
                 passed=accuracy >= config.get("threshold", 0.9),
                 score=accuracy,
             ))
-        
+
         return EvalResult(evaluator=self.name, checks=checks)
-    
+
     async def _check_financial_data(self, content: str) -> float:
         # Custom validation logic
         pass
@@ -812,7 +812,7 @@ evaluator_registry.register(DomainSpecificEvaluator())
   - Tighten thresholds
   - Add more specific assertions
   - Include negative cases (must_not_contain)
-  
+
 - **False negatives** (good result fails):
   - Use flexible patterns (regex with alternatives)
   - Lower thresholds for LLM evals

@@ -78,7 +78,7 @@ class ATPResponse(BaseModel):
 async def execute(request: ATPRequest) -> ATPResponse:
     """Execute agent task."""
     start_time = datetime.now(timezone.utc)
-    
+
     try:
         # Your agent logic here
         result = await run_your_agent(
@@ -86,7 +86,7 @@ async def execute(request: ATPRequest) -> ATPResponse:
             inputs=request.task.input_data,
             constraints=request.constraints,
         )
-        
+
         # Build response
         return ATPResponse(
             task_id=request.task_id,
@@ -106,7 +106,7 @@ async def execute(request: ATPRequest) -> ATPResponse:
                 wall_time_seconds=(datetime.now(timezone.utc) - start_time).total_seconds(),
             ),
         )
-        
+
     except Exception as e:
         return ATPResponse(
             task_id=request.task_id,
@@ -185,18 +185,18 @@ def main():
     # Read ATP Request from stdin
     request_json = sys.stdin.read()
     request = json.loads(request_json)
-    
+
     task_id = request["task_id"]
     task_description = request["task"]["description"]
     constraints = request.get("constraints", {})
-    
+
     # Emit progress events to stderr (optional)
     emit_event(task_id, 0, "progress", {"message": "Starting", "percentage": 0})
-    
+
     try:
         # Run your agent
         result = run_agent(task_description, constraints)
-        
+
         # Build ATP Response
         response = {
             "version": "1.0",
@@ -217,7 +217,7 @@ def main():
                 "wall_time_seconds": result.get("duration", 0),
             },
         }
-        
+
     except Exception as e:
         response = {
             "version": "1.0",
@@ -227,7 +227,7 @@ def main():
             "metrics": {},
             "error": str(e),
         }
-    
+
     # Write ATP Response to stdout
     print(json.dumps(response))
 
@@ -346,12 +346,12 @@ def create_crew(task_description: str) -> Crew:
         description=task_description,
         agent=researcher,
     )
-    
+
     analysis_task = Task(
         description="Analyze the research findings",
         agent=analyst,
     )
-    
+
     return Crew(
         agents=[researcher, analyst],
         tasks=[research_task, analysis_task],
@@ -388,28 +388,28 @@ import json
 @app.post("/execute/stream")
 async def execute_stream(request: ATPRequest):
     """Execute with event streaming."""
-    
+
     async def event_generator():
         seq = 0
-        
+
         # Start event
         yield format_sse(create_event(request.task_id, seq, "progress", {
             "message": "Starting task",
             "percentage": 0,
         }))
         seq += 1
-        
+
         # Run agent with callbacks
         async for event in run_agent_with_events(request):
             yield format_sse(create_event(
                 request.task_id, seq, event["type"], event["payload"]
             ))
             seq += 1
-        
+
         # Final response
         response = await build_response(request.task_id)
         yield format_sse({"type": "response", "data": response.model_dump()})
-    
+
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
@@ -442,7 +442,7 @@ class EventEmitter:
     def __init__(self, task_id: str):
         self.task_id = task_id
         self.seq = 0
-    
+
     def emit(self, event_type: str, payload: dict):
         event = {
             "version": "1.0",
@@ -454,7 +454,7 @@ class EventEmitter:
         }
         print(json.dumps(event), file=sys.stderr, flush=True)
         self.seq += 1
-    
+
     def tool_call(self, tool: str, input: dict, output: dict, duration_ms: int):
         self.emit("tool_call", {
             "tool": tool,
@@ -463,14 +463,14 @@ class EventEmitter:
             "duration_ms": duration_ms,
             "status": "success",
         })
-    
+
     def llm_request(self, model: str, input_tokens: int, output_tokens: int):
         self.emit("llm_request", {
             "model": model,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
         })
-    
+
     def progress(self, message: str, percentage: int):
         self.emit("progress", {
             "message": message,
@@ -506,7 +506,7 @@ responses:
         - title: "Zoom vs Slack"
           url: "https://example.com/zoom-slack"
           snippet: "..."
-          
+
   - match:
       query: "*"  # Default for any query
     response:
@@ -531,7 +531,7 @@ responses:
 ```python
 async def call_tool(tool_name: str, input: dict) -> dict:
     tools_endpoint = context.get("tools_endpoint")
-    
+
     if tools_endpoint:
         # Call mock tools
         response = await httpx.post(
@@ -559,28 +559,28 @@ class ConstraintChecker:
         self.max_tokens = constraints.get("max_tokens", float("inf"))
         self.timeout = constraints.get("timeout_seconds", 300)
         self.allowed_tools = set(constraints.get("allowed_tools") or [])
-        
+
         self.current_steps = 0
         self.current_tokens = 0
         self.start_time = time.time()
-    
+
     def check_step(self) -> bool:
         self.current_steps += 1
         return self.current_steps <= self.max_steps
-    
+
     def check_tokens(self, tokens: int) -> bool:
         self.current_tokens += tokens
         return self.current_tokens <= self.max_tokens
-    
+
     def check_timeout(self) -> bool:
         elapsed = time.time() - self.start_time
         return elapsed < self.timeout
-    
+
     def check_tool(self, tool: str) -> bool:
         if not self.allowed_tools:  # Empty = all allowed
             return True
         return tool in self.allowed_tools
-    
+
     def get_metrics(self) -> dict:
         return {
             "total_steps": self.current_steps,
@@ -594,10 +594,10 @@ checker = ConstraintChecker(request.constraints)
 for step in agent_loop():
     if not checker.check_step():
         raise ConstraintViolation("Max steps exceeded")
-    
+
     if not checker.check_timeout():
         raise ConstraintViolation("Timeout exceeded")
-    
+
     if step.tool_call:
         if not checker.check_tool(step.tool_call.name):
             raise ConstraintViolation(f"Tool {step.tool_call.name} not allowed")
@@ -614,7 +614,7 @@ async def execute(request: ATPRequest) -> ATPResponse:
     try:
         result = await run_agent(request)
         return build_success_response(request.task_id, result)
-        
+
     except ConstraintViolation as e:
         # Agent hit a limit
         return ATPResponse(
@@ -624,7 +624,7 @@ async def execute(request: ATPRequest) -> ATPResponse:
             metrics=checker.get_metrics(),
             error=str(e),
         )
-        
+
     except asyncio.TimeoutError:
         return ATPResponse(
             task_id=request.task_id,
@@ -633,7 +633,7 @@ async def execute(request: ATPRequest) -> ATPResponse:
             metrics=checker.get_metrics(),
             error="Execution timed out",
         )
-        
+
     except Exception as e:
         logger.exception("Agent failed")
         return ATPResponse(
@@ -687,14 +687,14 @@ logger = structlog.get_logger()
 async def execute(request: ATPRequest) -> ATPResponse:
     logger = logger.bind(task_id=request.task_id)
     logger.info("Starting execution", task=request.task.description[:100])
-    
+
     try:
         result = await run_agent(request)
-        logger.info("Execution completed", 
+        logger.info("Execution completed",
                    status="completed",
                    tokens=result.metrics.total_tokens)
         return result
-        
+
     except Exception as e:
         logger.error("Execution failed", error=str(e), exc_info=True)
         raise
@@ -718,20 +718,20 @@ def test_response_schema():
     """Verify agent produces valid ATP Response."""
     request = build_test_request()
     response = agent.execute(request)
-    
+
     validate(response.model_dump(), ATP_RESPONSE_SCHEMA)
 
 def test_event_streaming():
     """Verify events are emitted correctly."""
     events = []
-    
+
     async for event in agent.execute_stream(request):
         events.append(event)
-    
+
     # Check events are ordered
     sequences = [e["sequence"] for e in events if "sequence" in e]
     assert sequences == sorted(sequences)
-    
+
     # Check required event types
     event_types = {e["event_type"] for e in events if "event_type" in e}
     assert "progress" in event_types
@@ -740,7 +740,7 @@ def test_constraints_respected():
     """Verify agent respects constraints."""
     request = build_test_request(constraints={"max_steps": 5})
     response = agent.execute(request)
-    
+
     assert response.metrics.total_steps <= 5
 ```
 
@@ -802,18 +802,18 @@ class AutoGenATPWrapper:
     def __init__(self, assistant, user_proxy):
         self.assistant = assistant
         self.user_proxy = user_proxy
-    
+
     async def execute(self, request: ATPRequest) -> ATPResponse:
         # Initiate chat
         self.user_proxy.initiate_chat(
             self.assistant,
             message=request.task.description,
         )
-        
+
         # Collect results
         messages = self.assistant.chat_messages[self.user_proxy]
         output = messages[-1]["content"] if messages else ""
-        
+
         return ATPResponse(
             task_id=request.task_id,
             status="completed",
@@ -835,12 +835,12 @@ agent_executor = AgentExecutor(agent=agent, tools=tools)
 class LangChainATPWrapper:
     def __init__(self, executor: AgentExecutor):
         self.executor = executor
-    
+
     async def execute(self, request: ATPRequest) -> ATPResponse:
         result = await self.executor.ainvoke({
             "input": request.task.description,
         })
-        
+
         return ATPResponse(
             task_id=request.task_id,
             status="completed",

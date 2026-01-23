@@ -156,14 +156,14 @@ class AgentAdapter(ABC):
     @abstractmethod
     async def execute(self, request: ATPRequest) -> ATPResponse:
         """Execute task synchronously."""
-        
+
     @abstractmethod
     async def stream_events(self, request: ATPRequest) -> AsyncIterator[ATPEvent]:
         """Execute with event streaming."""
-        
+
     async def health_check(self) -> bool:
         """Check agent availability."""
-        
+
     async def cleanup(self) -> None:
         """Release resources."""
 ```
@@ -188,7 +188,7 @@ agents:
     timeout: 300
     headers:
       Authorization: "Bearer ${API_KEY}"
-      
+
   my-container-agent:
     type: container
     image: "registry/agent:v1"
@@ -196,7 +196,7 @@ agents:
       memory: "2Gi"
       cpu: "1"
     network: "none"  # isolated
-    
+
   my-langgraph-agent:
     type: langgraph
     module: "agents.research"
@@ -237,18 +237,18 @@ tests:
     name: "string"
     description: "string (optional)"
     tags: ["smoke", "regression"]
-    
+
     task:
       description: "string (required)"
       input_data: {}
       expected_artifacts: []
-      
+
     constraints:
       max_steps: 50
       max_tokens: 100000
       timeout_seconds: 180
       allowed_tools: ["web_search", "file_write"]
-      
+
     assertions:
       - type: "artifact_exists"
         config:
@@ -260,7 +260,7 @@ tests:
         config:
           criteria: "factual_accuracy"
           threshold: 0.8
-          
+
     scoring:
       quality_weight: 0.5
 ```
@@ -305,15 +305,15 @@ class SandboxConfig:
     # Resource limits
     memory_limit: str = "2Gi"
     cpu_limit: str = "2"
-    
+
     # Network
     network_mode: str = "none"  # none | host | custom
     allowed_hosts: list[str] = field(default_factory=list)
-    
+
     # Filesystem
     workspace_path: Path = Path("/workspace")
     readonly_mounts: list[tuple[Path, Path]] = field(default_factory=list)
-    
+
     # Timeout
     hard_timeout: int = 600  # seconds, kills container
 ```
@@ -324,7 +324,7 @@ class SandboxConfig:
 class ParallelExecutor:
     def __init__(self, max_workers: int = 4):
         self.semaphore = asyncio.Semaphore(max_workers)
-        
+
     async def run_tests(self, tests: list[Test]) -> list[Result]:
         tasks = [self._run_with_semaphore(t) for t in tests]
         return await asyncio.gather(*tasks, return_exceptions=True)
@@ -349,8 +349,8 @@ class StatisticalResult:
     confidence_interval: tuple[float, float]  # 95% CI
     n_runs: int
     coefficient_of_variation: float  # std / mean
-    
-@dataclass  
+
+@dataclass
 class StabilityAssessment:
     level: str  # stable | moderate | unstable | critical
     cv: float
@@ -377,7 +377,7 @@ class StabilityAssessment:
 ```python
 class Evaluator(ABC):
     name: str
-    
+
     @abstractmethod
     async def evaluate(
         self,
@@ -400,7 +400,7 @@ class EvalCheck:
 class EvalResult:
     evaluator: str
     checks: list[EvalCheck]
-    
+
     @property
     def passed(self) -> bool:
         return all(c.passed for c in self.checks)
@@ -488,7 +488,7 @@ class Reporter(ABC):
     @abstractmethod
     def report(self, results: SuiteResults) -> None:
         pass
-        
+
     @abstractmethod
     def supports_streaming(self) -> bool:
         pass
@@ -554,16 +554,16 @@ Total time: 7.4s
 def detect_regression(current: Stats, baseline: Stats) -> RegressionResult:
     # Welch's t-test for unequal variances
     t_stat, p_value = scipy.stats.ttest_ind(
-        current.scores, 
+        current.scores,
         baseline.scores,
         equal_var=False
     )
-    
+
     is_regression = (
-        p_value < 0.05 and 
+        p_value < 0.05 and
         current.mean < baseline.mean
     )
-    
+
     return RegressionResult(
         is_regression=is_regression,
         p_value=p_value,
@@ -615,28 +615,28 @@ YAML File
 ## 5. Ключевые решения
 
 ### ADR-001: Framework Agnostic Design
-**Decision:** Агент = чёрный ящик с ATP Protocol  
-**Rationale:** Фреймворки устаревают, протокол стабилен  
+**Decision:** Агент = чёрный ящик с ATP Protocol
+**Rationale:** Фреймворки устаревают, протокол стабилен
 **Consequences:** (+) Гибкость, (-) Overhead на интеграцию
 
 ### ADR-002: YAML для тестов
-**Decision:** Декларативные тесты в YAML, не в коде  
-**Rationale:** Читаемость, версионирование, доступность для QA  
+**Decision:** Декларативные тесты в YAML, не в коде
+**Rationale:** Читаемость, версионирование, доступность для QA
 **Consequences:** (+) Low barrier, (-) Ограниченная выразительность
 
 ### ADR-003: LLM-as-Judge
-**Decision:** Использовать LLM для семантической оценки  
-**Rationale:** Невозможно оценить качество текста программно  
+**Decision:** Использовать LLM для семантической оценки
+**Rationale:** Невозможно оценить качество текста программно
 **Consequences:** (+) Глубокая оценка, (-) Стоимость, недетерминизм
 
 ### ADR-004: Docker для изоляции
-**Decision:** Sandbox через Docker контейнеры  
-**Rationale:** Industry standard, cross-platform  
+**Decision:** Sandbox через Docker контейнеры
+**Rationale:** Industry standard, cross-platform
 **Consequences:** (+) Безопасность, (-) Docker dependency
 
 ### ADR-005: Multiple runs by default
-**Decision:** Статистика по N прогонам вместо single run  
-**Rationale:** LLM недетерминированы, один прогон ничего не доказывает  
+**Decision:** Статистика по N прогонам вместо single run
+**Rationale:** LLM недетерминированы, один прогон ничего не доказывает
 **Consequences:** (+) Надёжность, (-) Время и стоимость ×N
 
 ---
@@ -683,11 +683,11 @@ evaluators:
   llm_judge:
     model: "claude-sonnet-4-20250514"
     temperature: 0
-    
+
 reporting:
   default: console
   verbose: false
-  
+
 secrets:
   # Reference environment variables
   anthropic_api_key: ${ANTHROPIC_API_KEY}

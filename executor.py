@@ -723,14 +723,14 @@ def cmd_status(args, config: ExecutorConfig):
     """Статус выполнения"""
 
     state = ExecutorState(config)
-    tasks = parse_tasks(TASKS_FILE)
 
     print("\n📊 Executor Status")
     print(f"{'=' * 50}")
     print(f"Total completed:       {state.total_completed}")
     print(f"Total failed:          {state.total_failed}")
     print(
-        f"Consecutive failures:  {state.consecutive_failures}/{config.max_consecutive_failures}"
+        f"Consecutive failures:  "
+        f"{state.consecutive_failures}/{config.max_consecutive_failures}"
     )
 
     # Задачи с попытками

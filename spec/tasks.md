@@ -34,9 +34,9 @@
 ## Testing Tasks (Cross-cutting)
 
 ### TASK-100: Test Infrastructure Setup
-🔴 P0 | ⏸️ BLOCKED | Est: 2d
+🔴 P0 | ✅ DONE | Est: 2d
 
-**Description:**  
+**Description:**
 Настроить тестовую инфраструктуру: pytest, fixtures, CI.
 
 **Checklist:**
@@ -48,8 +48,8 @@
 - [ ] Coverage reporting (≥80% gate)
 - [ ] Pre-commit hooks (ruff, mypy)
 
-**Traces to:** [NFR-000]  
-**Depends on:** —  
+**Traces to:** [NFR-000]
+**Depends on:** —
 **Blocks:** All other tasks (soft dependency)
 
 ---
@@ -57,7 +57,7 @@
 ### TASK-101: Contract Tests
 🔴 P0 | ⬜ TODO | Est: 2d
 
-**Description:**  
+**Description:**
 Тесты контракта ATP Protocol — валидация схем.
 
 **Checklist:**
@@ -70,8 +70,8 @@
 - [ ] Pydantic model roundtrip tests
 - [ ] Protocol version handling tests
 
-**Traces to:** [REQ-001], [REQ-002], [NFR-000]  
-**Depends on:** [TASK-001], [TASK-100]  
+**Traces to:** [REQ-001], [REQ-002], [NFR-000]
+**Depends on:** [TASK-001], [TASK-100]
 **Blocks:** —
 
 ---
@@ -79,7 +79,7 @@
 ### TASK-102: Integration Test Suite
 🟠 P1 | ⬜ TODO | Est: 3d
 
-**Description:**  
+**Description:**
 Integration тесты для ключевых компонентов.
 
 **Checklist:**
@@ -90,8 +90,8 @@ Integration тесты для ключевых компонентов.
 - [ ] Error recovery scenarios
 - [ ] Multi-run statistics accuracy
 
-**Traces to:** [NFR-000]  
-**Depends on:** [TASK-003], [TASK-006], [TASK-100]  
+**Traces to:** [NFR-000]
+**Depends on:** [TASK-003], [TASK-006], [TASK-100]
 **Blocks:** —
 
 ---
@@ -99,7 +99,7 @@ Integration тесты для ключевых компонентов.
 ### TASK-103: E2E Test Suite
 🟠 P1 | ⬜ TODO | Est: 2d
 
-**Description:**  
+**Description:**
 End-to-end тесты критических user journeys.
 
 **Checklist:**
@@ -110,8 +110,8 @@ End-to-end тесты критических user journeys.
 - [ ] JSON report generation
 - [ ] Exit codes verification
 
-**Traces to:** [NFR-000], [REQ-030]  
-**Depends on:** [TASK-014], [TASK-100]  
+**Traces to:** [NFR-000], [REQ-030]
+**Depends on:** [TASK-014], [TASK-100]
 **Blocks:** —
 
 ---
@@ -121,7 +121,7 @@ End-to-end тесты критических user journeys.
 ### TASK-001: ATP Protocol Models
 🔴 P0 | ⬜ TODO | Est: 3d
 
-**Description:**  
+**Description:**
 Реализовать Pydantic модели для ATP Request, Response, Event.
 
 **Checklist:**
@@ -138,8 +138,8 @@ End-to-end тесты критических user journeys.
 - [ ] Unit tests: edge cases (null, empty, large)
 - [ ] Coverage ≥80%
 
-**Traces to:** [REQ-001], [REQ-002]  
-**Depends on:** [TASK-100]  
+**Traces to:** [REQ-001], [REQ-002]
+**Depends on:** [TASK-100]
 **Blocks:** [TASK-003], [TASK-006], [TASK-101]
 
 ---
@@ -147,7 +147,7 @@ End-to-end тесты критических user journeys.
 ### TASK-002: Event Streaming Support
 🟠 P1 | ⬜ TODO | Est: 2d
 
-**Description:**  
+**Description:**
 Добавить поддержку streaming событий в протоколе и адаптерах.
 
 **Checklist:**
@@ -157,8 +157,8 @@ End-to-end тесты критических user journeys.
 - [ ] Event ordering validation
 - [ ] Event buffering и replay
 
-**Traces to:** [REQ-003]  
-**Depends on:** [TASK-001]  
+**Traces to:** [REQ-003]
+**Depends on:** [TASK-001]
 **Blocks:** [TASK-007] (behavior evaluator needs trace)
 
 ---
@@ -166,7 +166,7 @@ End-to-end тесты критических user journeys.
 ### TASK-003: Core Adapters
 🔴 P0 | ⬜ TODO | Est: 5d
 
-**Description:**  
+**Description:**
 Реализовать HTTP, Container и CLI адаптеры.
 
 **Checklist:**
@@ -196,8 +196,8 @@ End-to-end тесты критических user journeys.
 - [ ] Integration test: ContainerAdapter + test Docker image
 - [ ] Coverage ≥80%
 
-**Traces to:** [REQ-010], [REQ-011]  
-**Depends on:** [TASK-001], [TASK-100]  
+**Traces to:** [REQ-010], [REQ-011]
+**Depends on:** [TASK-001], [TASK-100]
 **Blocks:** [TASK-006], [TASK-102]
 
 ---
@@ -205,7 +205,7 @@ End-to-end тесты критических user journeys.
 ### TASK-004: Test Loader
 🔴 P0 | ✅ DONE | Est: 4d
 
-**Description:**  
+**Description:**
 Парсинг и валидация YAML test definitions.
 
 **Checklist:**
@@ -218,8 +218,8 @@ End-to-end тесты критических user journeys.
 - [ ] Error messages с line numbers
 - [ ] Unit tests для edge cases
 
-**Traces to:** [REQ-020], [REQ-021]  
-**Depends on:** —  
+**Traces to:** [REQ-020], [REQ-021]
+**Depends on:** —
 **Blocks:** [TASK-006]
 
 ---
@@ -227,7 +227,7 @@ End-to-end тесты критических user journeys.
 ### TASK-005: Tags и Filtering
 🟠 P1 | ⬜ TODO | Est: 1d
 
-**Description:**  
+**Description:**
 Фильтрация тестов по tags.
 
 **Checklist:**
@@ -237,8 +237,8 @@ End-to-end тесты критических user journeys.
 - [ ] Exclude logic (--tags=!slow)
 - [ ] Combination logic (AND/OR)
 
-**Traces to:** [REQ-022]  
-**Depends on:** [TASK-004]  
+**Traces to:** [REQ-022]
+**Depends on:** [TASK-004]
 **Blocks:** —
 
 ---
@@ -246,7 +246,7 @@ End-to-end тесты критических user journeys.
 ### TASK-006: Test Runner Core
 🔴 P0 | ⬜ TODO | Est: 5d
 
-**Description:**  
+**Description:**
 Основной runner для выполнения тестов.
 
 **Checklist:**
@@ -264,8 +264,8 @@ End-to-end тесты критических user journeys.
 - [ ] Error handling и recovery
 - [ ] Progress reporting callback
 
-**Traces to:** [REQ-030], [REQ-032]  
-**Depends on:** [TASK-001], [TASK-003], [TASK-004]  
+**Traces to:** [REQ-030], [REQ-032]
+**Depends on:** [TASK-001], [TASK-003], [TASK-004]
 **Blocks:** [TASK-007], [TASK-009]
 
 ---
@@ -273,7 +273,7 @@ End-to-end тесты критических user journeys.
 ### TASK-007: Basic Evaluators
 🔴 P0 | ⬜ TODO | Est: 4d
 
-**Description:**  
+**Description:**
 Artifact и Behavior evaluators.
 
 **Checklist:**
@@ -303,8 +303,8 @@ Artifact и Behavior evaluators.
 - [ ] Test fixtures: sample artifacts, traces
 - [ ] Coverage ≥80%
 
-**Traces to:** [REQ-040], [REQ-041]  
-**Depends on:** [TASK-001], [TASK-006], [TASK-100]  
+**Traces to:** [REQ-040], [REQ-041]
+**Depends on:** [TASK-001], [TASK-006], [TASK-100]
 **Blocks:** [TASK-008], [TASK-102]
 
 ---
@@ -312,7 +312,7 @@ Artifact и Behavior evaluators.
 ### TASK-008: Scoring Aggregator
 🟠 P1 | ⬜ TODO | Est: 2d
 
-**Description:**  
+**Description:**
 Агрегация результатов evaluators в composite score.
 
 **Checklist:**
@@ -325,8 +325,8 @@ Artifact и Behavior evaluators.
 - [ ] Final score 0-100
 - [ ] Score breakdown in results
 
-**Traces to:** [REQ-043]  
-**Depends on:** [TASK-007]  
+**Traces to:** [REQ-043]
+**Depends on:** [TASK-007]
 **Blocks:** [TASK-009]
 
 ---
@@ -334,7 +334,7 @@ Artifact и Behavior evaluators.
 ### TASK-009: Basic Reporters
 🔴 P0 | ⬜ TODO | Est: 3d
 
-**Description:**  
+**Description:**
 Console и JSON reporters.
 
 **Checklist:**
@@ -351,8 +351,8 @@ Console и JSON reporters.
   - [ ] Stable format (documented)
 - [ ] Reporter selection via CLI
 
-**Traces to:** [REQ-050], [REQ-051]  
-**Depends on:** [TASK-006], [TASK-008]  
+**Traces to:** [REQ-050], [REQ-051]
+**Depends on:** [TASK-006], [TASK-008]
 **Blocks:** —
 
 ---
@@ -360,7 +360,7 @@ Console и JSON reporters.
 ### TASK-014: CLI Implementation
 🔴 P0 | ⬜ TODO | Est: 3d
 
-**Description:**  
+**Description:**
 CLI interface с Click/Typer.
 
 **Checklist:**
@@ -383,8 +383,8 @@ CLI interface с Click/Typer.
 - [ ] Exit codes (0=success, 1=failures, 2=error)
 - [ ] Help text и examples
 
-**Traces to:** [REQ-030]  
-**Depends on:** [TASK-006], [TASK-009]  
+**Traces to:** [REQ-030]
+**Depends on:** [TASK-006], [TASK-009]
 **Blocks:** —
 
 ---
@@ -392,7 +392,7 @@ CLI interface с Click/Typer.
 ### TASK-015: Documentation (MVP)
 🔴 P0 | ✅ DONE | Est: 3d
 
-**Description:**  
+**Description:**
 Минимальная документация для MVP.
 
 **Checklist:**
@@ -404,8 +404,8 @@ CLI interface с Click/Typer.
 - [ ] 3+ example test suites
 - [ ] Troubleshooting guide
 
-**Traces to:** [NFR-003]  
-**Depends on:** All MVP tasks  
+**Traces to:** [NFR-003]
+**Depends on:** All MVP tasks
 **Blocks:** — (но нужно для релиза)
 
 ---
@@ -415,7 +415,7 @@ CLI interface с Click/Typer.
 ### TASK-010: Framework Adapters
 🟠 P1 | ⬜ TODO | Est: 5d
 
-**Description:**  
+**Description:**
 Адаптеры для LangGraph и CrewAI.
 
 **Checklist:**
@@ -432,8 +432,8 @@ CLI interface с Click/Typer.
 - [ ] Adapter development guide
 - [ ] Integration tests с реальными agents
 
-**Traces to:** [REQ-012]  
-**Depends on:** [TASK-003]  
+**Traces to:** [REQ-012]
+**Depends on:** [TASK-003]
 **Blocks:** —
 
 ---
@@ -441,7 +441,7 @@ CLI interface с Click/Typer.
 ### TASK-011: Multiple Runs & Statistics
 🟠 P1 | ⬜ TODO | Est: 3d
 
-**Description:**  
+**Description:**
 Поддержка N прогонов и статистический анализ.
 
 **Checklist:**
@@ -454,8 +454,8 @@ CLI interface с Click/Typer.
 - [ ] StabilityAssessment (stable/moderate/unstable/critical)
 - [ ] Statistical summary in reports
 
-**Traces to:** [REQ-031]  
-**Depends on:** [TASK-006]  
+**Traces to:** [REQ-031]
+**Depends on:** [TASK-006]
 **Blocks:** [TASK-013]
 
 ---
@@ -463,7 +463,7 @@ CLI interface с Click/Typer.
 ### TASK-012: LLM-as-Judge Evaluator
 🟠 P1 | ⬜ TODO | Est: 4d
 
-**Description:**  
+**Description:**
 Evaluator с использованием LLM для семантической оценки.
 
 **Checklist:**
@@ -482,8 +482,8 @@ Evaluator с использованием LLM для семантической 
 - [ ] Cost tracking
 - [ ] Error handling (rate limits, etc.)
 
-**Traces to:** [REQ-042]  
-**Depends on:** [TASK-007]  
+**Traces to:** [REQ-042]
+**Depends on:** [TASK-007]
 **Blocks:** —
 
 ---
@@ -491,7 +491,7 @@ Evaluator с использованием LLM для семантической 
 ### TASK-013: Baseline & Regression Detection
 🟡 P2 | ⬜ TODO | Est: 3d
 
-**Description:**  
+**Description:**
 Сохранение baseline и обнаружение регрессий.
 
 **Checklist:**
@@ -505,8 +505,8 @@ Evaluator с использованием LLM для семантической 
 - [ ] Diff visualization в console
 - [ ] JSON diff output
 
-**Traces to:** [REQ-052]  
-**Depends on:** [TASK-011]  
+**Traces to:** [REQ-052]
+**Depends on:** [TASK-011]
 **Blocks:** —
 
 ---
@@ -514,7 +514,7 @@ Evaluator с использованием LLM для семантической 
 ### TASK-016: HTML Reporter
 🟡 P2 | ⬜ TODO | Est: 3d
 
-**Description:**  
+**Description:**
 Self-contained HTML отчёт.
 
 **Checklist:**
@@ -528,8 +528,8 @@ Self-contained HTML отчёт.
 - [ ] Trace viewer (collapsible)
 - [ ] Single-file output
 
-**Traces to:** [REQ-051]  
-**Depends on:** [TASK-009]  
+**Traces to:** [REQ-051]
+**Depends on:** [TASK-009]
 **Blocks:** —
 
 ---
@@ -537,7 +537,7 @@ Self-contained HTML отчёт.
 ### TASK-017: CI/CD Integration
 🟠 P1 | ⬜ TODO | Est: 3d
 
-**Description:**  
+**Description:**
 Интеграция с CI системами.
 
 **Checklist:**
@@ -550,8 +550,8 @@ Self-contained HTML отчёт.
 - [ ] Exit codes documentation
 - [ ] CI usage examples
 
-**Traces to:** [REQ-051]  
-**Depends on:** [TASK-009], [TASK-014]  
+**Traces to:** [REQ-051]
+**Depends on:** [TASK-009], [TASK-014]
 **Blocks:** —
 
 ---
@@ -559,7 +559,7 @@ Self-contained HTML отчёт.
 ### TASK-018: Code Execution Evaluator
 🟡 P2 | ⬜ TODO | Est: 3d
 
-**Description:**  
+**Description:**
 Evaluator для запуска сгенерированного кода.
 
 **Checklist:**
@@ -573,8 +573,8 @@ Evaluator для запуска сгенерированного кода.
 - [ ] Test count extraction
 - [ ] Pass rate calculation
 
-**Traces to:** [REQ-041]  
-**Depends on:** [TASK-007]  
+**Traces to:** [REQ-041]
+**Depends on:** [TASK-007]
 **Blocks:** —
 
 ---
@@ -582,7 +582,7 @@ Evaluator для запуска сгенерированного кода.
 ### TASK-019: Mock Tools
 🟡 P2 | ⬜ TODO | Est: 2d
 
-**Description:**  
+**Description:**
 Mock tools для детерминированного тестирования.
 
 **Checklist:**
@@ -593,8 +593,8 @@ Mock tools для детерминированного тестирования.
 - [ ] tools_endpoint в ATP Request
 - [ ] Documentation
 
-**Traces to:** [REQ-010]  
-**Depends on:** [TASK-003]  
+**Traces to:** [REQ-010]
+**Depends on:** [TASK-003]
 **Blocks:** —
 
 ---
@@ -604,7 +604,7 @@ Mock tools для детерминированного тестирования.
 ### TASK-020: Parallel Execution
 🟡 P2 | ⬜ TODO | Est: 2d
 
-**Description:**  
+**Description:**
 Параллельный запуск тестов.
 
 **Checklist:**
@@ -614,8 +614,8 @@ Mock tools для детерминированного тестирования.
 - [ ] Result aggregation
 - [ ] Progress tracking (multiple tests)
 
-**Traces to:** [REQ-030]  
-**Depends on:** [TASK-006]  
+**Traces to:** [REQ-030]
+**Depends on:** [TASK-006]
 **Blocks:** —
 
 ---
@@ -623,7 +623,7 @@ Mock tools для детерминированного тестирования.
 ### TASK-021: Web Dashboard (Basic)
 🟢 P3 | ⬜ TODO | Est: 10d
 
-**Description:**  
+**Description:**
 Веб-интерфейс для просмотра результатов.
 
 **Checklist:**
@@ -636,8 +636,8 @@ Mock tools для детерминированного тестирования.
 - [ ] Agent comparison
 - [ ] Authentication (basic)
 
-**Traces to:** —  
-**Depends on:** [TASK-009]  
+**Traces to:** —
+**Depends on:** [TASK-009]
 **Blocks:** —
 
 ---
@@ -645,7 +645,7 @@ Mock tools для детерминированного тестирования.
 ### TASK-022: Security Hardening
 🔴 P0 | ⬜ TODO | Est: 3d
 
-**Description:**  
+**Description:**
 Аудит безопасности и hardening.
 
 **Checklist:**
@@ -657,8 +657,8 @@ Mock tools для детерминированного тестирования.
 - [ ] Resource limits testing
 - [ ] Documentation: security model
 
-**Traces to:** [NFR-004]  
-**Depends on:** [TASK-006]  
+**Traces to:** [NFR-004]
+**Depends on:** [TASK-006]
 **Blocks:** — (но нужно для GA)
 
 ---
@@ -666,7 +666,7 @@ Mock tools для детерминированного тестирования.
 ### TASK-023: Performance Optimization
 🟠 P1 | ⬜ TODO | Est: 3d
 
-**Description:**  
+**Description:**
 Оптимизация производительности.
 
 **Checklist:**
@@ -678,16 +678,16 @@ Mock tools для детерминированного тестирования.
 - [ ] Benchmark suite
 - [ ] Performance documentation
 
-**Traces to:** [NFR-001]  
-**Depends on:** [TASK-006]  
+**Traces to:** [NFR-001]
+**Depends on:** [TASK-006]
 **Blocks:** —
 
 ---
 
 ### TASK-024: Complete Documentation
-🔴 P0 | 🔄 IN_PROGRESS | Est: 5d
+🔴 P0 | ✅ DONE | Est: 5d
 
-**Description:**  
+**Description:**
 Полная документация для GA.
 
 **Checklist:**
@@ -701,8 +701,8 @@ Mock tools для детерминированного тестирования.
 - [ ] Video tutorials
 - [ ] FAQ
 
-**Traces to:** [NFR-003]  
-**Depends on:** All  
+**Traces to:** [NFR-003]
+**Depends on:** All
 **Blocks:** — (но нужно для GA)
 
 ---

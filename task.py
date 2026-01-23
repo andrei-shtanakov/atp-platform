@@ -312,9 +312,11 @@ def cmd_list(args, tasks: list[Task]):
         print("Нет задач по заданным критериям")
         return
 
-    print(
-        f"\n{'ID':<12} {'Статус':<4} {'P':<3} {'Название':<40} {'Прогресс':<10} {'Est':<6}"
+    header = (
+        f"\n{'ID':<12} {'Статус':<4} {'P':<3} "
+        f"{'Название':<40} {'Прогресс':<10} {'Est':<6}"
     )
+    print(header)
     print("-" * 85)
 
     for task in filtered:
@@ -324,9 +326,11 @@ def cmd_list(args, tasks: list[Task]):
         priority_icon = PRIORITY_EMOJI.get(task.priority, "?")
 
         name = task.name[:38] + ".." if len(task.name) > 40 else task.name
-        print(
-            f"{task.id:<12} {status_icon:<4} {priority_icon:<3} {name:<40} {progress:<10} {task.estimate:<6}"
+        line = (
+            f"{task.id:<12} {status_icon:<4} {priority_icon:<3} "
+            f"{name:<40} {progress:<10} {task.estimate:<6}"
         )
+        print(line)
 
     print(f"\nВсего: {len(filtered)} задач")
 
@@ -551,7 +555,6 @@ def cmd_graph(args, tasks: list[Task]):
 
         prefix = "  " * indent + ("├── " if indent > 0 else "")
         status_icon = STATUS_EMOJI.get(task.status, "?")
-        priority_icon = PRIORITY_EMOJI.get(task.priority, "?")
 
         print(f"{prefix}{status_icon} {task.id}: {task.name[:30]}")
 
@@ -589,9 +592,11 @@ def cmd_export_gh(args, tasks: list[Task]):
         if task.depends_on:
             body += f"\\n**Depends on:** {', '.join(task.depends_on)}"
 
-        print(
-            f'gh issue create --title "{task.id}: {task.name}" --body "{body}" --label "{labels}"'
+        cmd = (
+            f'gh issue create --title "{task.id}: {task.name}" '
+            f'--body "{body}" --label "{labels}"'
         )
+        print(cmd)
 
     print("```")
 

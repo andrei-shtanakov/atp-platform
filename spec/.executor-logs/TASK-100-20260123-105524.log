@@ -5,7 +5,7 @@
 
 **Priority:** P0
 **Estimate:** 2d
-**Milestone:** 
+**Milestone:**
 
 ## Checklist (implement ALL items):
 
@@ -65,7 +65,7 @@ I'm setting up the test infrastructure for the ATP platform. I need permission t
 
 1. Create the `tests/` directory structure with subdirectories:
    - `tests/unit/` - for unit tests
-   - `tests/integration/` - for integration tests  
+   - `tests/integration/` - for integration tests
    - `tests/e2e/` - for end-to-end tests
    - `tests/fixtures/` - for test data and fixtures
 

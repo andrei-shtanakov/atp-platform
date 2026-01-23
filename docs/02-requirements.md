@@ -269,7 +269,7 @@
 - Packaging: pip + pyproject.toml
 - Container runtime: Docker (primary)
 
-### C-2: Integration constraints  
+### C-2: Integration constraints
 - Протокол: JSON over HTTP/stdin-stdout
 - Schema validation: JSON Schema draft-07
 - YAML parsing: PyYAML или ruamel.yaml

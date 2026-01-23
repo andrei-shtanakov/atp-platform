@@ -6,30 +6,30 @@ executor:
   max_retries: 3                    # Максимум попыток на задачу
   retry_delay_seconds: 5            # Пауза между попытками
   max_consecutive_failures: 2       # Стоп после N подряд неудач
-  
+
   # Timeout
   task_timeout_minutes: 30          # Таймаут на одну задачу
-  
+
   # Claude CLI
   claude_command: "claude"          # Команда (claude, claude-code, etc.)
   claude_model: ""                  # Модель (пусто = default)
   skip_permissions: true            # Пропускать запросы разрешений (--dangerously-skip-permissions)
-  
+
   # Hooks
   hooks:
     pre_start:
       create_git_branch: true       # Создавать ветку task/TASK-XXX
-    
+
     post_done:
       run_tests: true               # Запускать тесты
       run_lint: true                # Запускать lint
       auto_commit: true             # Автокоммит изменений
-  
+
   # Commands (using uv)
   commands:
     test: "uv run pytest tests/ -v -m 'not slow'"  # Команда тестов
     lint: "uv run ruff check ."                     # Команда lint
-    
+
   # Paths
   paths:
     logs: "spec/.executor-logs"     # Директория логов
@@ -42,7 +42,7 @@ execution_order:
   # - TASK-100
   # - TASK-001
   # - TASK-004
-  
+
 # Skip tasks (won't be executed automatically)
 skip_tasks:
   # - TASK-021  # Web Dashboard - manual
