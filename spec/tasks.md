@@ -439,20 +439,20 @@ CLI interface с Click/Typer.
 ---
 
 ### TASK-011: Multiple Runs & Statistics
-🟠 P1 | ⬜ TODO | Est: 3d
+🟠 P1 | ✅ DONE | Est: 3d
 
 **Description:**
 Поддержка N прогонов и статистический анализ.
 
 **Checklist:**
-- [ ] runs_per_test configuration
-- [ ] Parallel runs execution
-- [ ] StatisticalResult model
-- [ ] Mean, std, min, max, median
-- [ ] 95% Confidence Interval (t-distribution)
-- [ ] Coefficient of Variation
-- [ ] StabilityAssessment (stable/moderate/unstable/critical)
-- [ ] Statistical summary in reports
+- [x] runs_per_test configuration
+- [x] Parallel runs execution
+- [x] StatisticalResult model
+- [x] Mean, std, min, max, median
+- [x] 95% Confidence Interval (t-distribution)
+- [x] Coefficient of Variation
+- [x] StabilityAssessment (stable/moderate/unstable/critical)
+- [x] Statistical summary in reports
 
 **Traces to:** [REQ-031]
 **Depends on:** [TASK-006]

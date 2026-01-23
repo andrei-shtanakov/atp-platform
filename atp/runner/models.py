@@ -189,6 +189,38 @@ class TestResult:
             return None
         return (self.end_time - self.start_time).total_seconds()
 
+    def get_run_durations(self) -> list[float]:
+        """Get list of run durations (excluding None values)."""
+        return [
+            run.duration_seconds
+            for run in self.runs
+            if run.duration_seconds is not None
+        ]
+
+    def get_run_steps(self) -> list[int]:
+        """Get list of steps from each run (excluding None values)."""
+        return [
+            run.response.metrics.total_steps
+            for run in self.runs
+            if run.response.metrics and run.response.metrics.total_steps is not None
+        ]
+
+    def get_run_tokens(self) -> list[int]:
+        """Get list of tokens from each run (excluding None values)."""
+        return [
+            run.response.metrics.total_tokens
+            for run in self.runs
+            if run.response.metrics and run.response.metrics.total_tokens is not None
+        ]
+
+    def get_run_costs(self) -> list[float]:
+        """Get list of costs from each run (excluding None values)."""
+        return [
+            run.response.metrics.cost_usd
+            for run in self.runs
+            if run.response.metrics and run.response.metrics.cost_usd is not None
+        ]
+
 
 @dataclass
 class SuiteResult:
@@ -234,3 +266,15 @@ class SuiteResult:
         if self.end_time is None:
             return None
         return (self.end_time - self.start_time).total_seconds()
+
+    @property
+    def total_runs(self) -> int:
+        """Get total number of runs across all tests."""
+        return sum(t.total_runs for t in self.tests)
+
+    @property
+    def runs_per_test(self) -> int:
+        """Get the number of runs per test (assumes uniform)."""
+        if not self.tests:
+            return 0
+        return self.tests[0].total_runs if self.tests else 0

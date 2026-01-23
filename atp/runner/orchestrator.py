@@ -49,6 +49,8 @@ class TestOrchestrator:
         progress_callback: ProgressCallback | None = None,
         runs_per_test: int = 1,
         fail_fast: bool = False,
+        parallel_runs: bool = False,
+        max_parallel: int = 5,
     ) -> None:
         """
         Initialize the orchestrator.
@@ -59,13 +61,18 @@ class TestOrchestrator:
             progress_callback: Optional callback for progress reporting.
             runs_per_test: Number of times to run each test (default 1).
             fail_fast: Stop suite execution on first failure if True.
+            parallel_runs: If True, run multiple runs in parallel.
+            max_parallel: Maximum number of parallel runs (default 5).
         """
         self.adapter = adapter
         self.sandbox_config = sandbox_config or SandboxConfig()
         self.progress_callback = progress_callback
         self.runs_per_test = runs_per_test
         self.fail_fast = fail_fast
+        self.parallel_runs = parallel_runs
+        self.max_parallel = max_parallel
         self._sandbox_manager: SandboxManager | None = None
+        self._semaphore: asyncio.Semaphore | None = None
 
     def _emit_progress(self, event: ProgressEvent) -> None:
         """Emit a progress event if callback is registered."""
@@ -243,6 +250,7 @@ class TestOrchestrator:
         self,
         test: TestDefinition,
         runs: int | None = None,
+        parallel: bool | None = None,
     ) -> TestResult:
         """
         Execute a single test.
@@ -250,11 +258,13 @@ class TestOrchestrator:
         Args:
             test: Test definition to execute.
             runs: Number of runs (overrides instance default).
+            parallel: Run tests in parallel (overrides instance default).
 
         Returns:
             TestResult with all run results.
         """
         num_runs = runs if runs is not None else self.runs_per_test
+        use_parallel = parallel if parallel is not None else self.parallel_runs
         result = TestResult(test=test, start_time=datetime.now())
 
         # Emit test started event
@@ -278,23 +288,32 @@ class TestOrchestrator:
             workspace_path = str(self._sandbox_manager.get_workspace(sandbox_id))
 
         try:
-            for run_number in range(1, num_runs + 1):
-                run_result = await self._execute_run(
+            if use_parallel and num_runs > 1:
+                # Execute runs in parallel with semaphore limiting
+                result.runs = await self._execute_runs_parallel(
                     test=test,
-                    run_number=run_number,
-                    total_runs=num_runs,
+                    num_runs=num_runs,
                     workspace_path=workspace_path,
                 )
-                result.runs.append(run_result)
-
-                # Check for fail-fast on this test
-                if not run_result.success and self.fail_fast:
-                    logger.info(
-                        "Test %s failed on run %d, stopping due to fail_fast",
-                        test.id,
-                        run_number,
+            else:
+                # Execute runs sequentially
+                for run_number in range(1, num_runs + 1):
+                    run_result = await self._execute_run(
+                        test=test,
+                        run_number=run_number,
+                        total_runs=num_runs,
+                        workspace_path=workspace_path,
                     )
-                    break
+                    result.runs.append(run_result)
+
+                    # Check for fail-fast on this test
+                    if not run_result.success and self.fail_fast:
+                        logger.info(
+                            "Test %s failed on run %d, stopping due to fail_fast",
+                            test.id,
+                            run_number,
+                        )
+                        break
 
         except Exception as e:
             result.error = str(e)
@@ -336,6 +355,70 @@ class TestOrchestrator:
         )
 
         return result
+
+    async def _execute_runs_parallel(
+        self,
+        test: TestDefinition,
+        num_runs: int,
+        workspace_path: str | None = None,
+    ) -> list[RunResult]:
+        """
+        Execute multiple runs in parallel with semaphore limiting.
+
+        Args:
+            test: Test definition.
+            num_runs: Number of runs to execute.
+            workspace_path: Optional workspace path.
+
+        Returns:
+            List of RunResult objects, sorted by run_number.
+        """
+        # Initialize semaphore if not already done
+        if self._semaphore is None:
+            self._semaphore = asyncio.Semaphore(self.max_parallel)
+
+        async def run_with_semaphore(run_number: int) -> RunResult:
+            async with self._semaphore:  # type: ignore[union-attr]
+                return await self._execute_run(
+                    test=test,
+                    run_number=run_number,
+                    total_runs=num_runs,
+                    workspace_path=workspace_path,
+                )
+
+        # Create tasks for all runs
+        tasks = [run_with_semaphore(i) for i in range(1, num_runs + 1)]
+
+        # Execute all tasks concurrently and gather results
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Process results, converting exceptions to failed runs
+        run_results: list[RunResult] = []
+        for i, result in enumerate(results, start=1):
+            if isinstance(result, BaseException):
+                logger.error("Run %d failed with exception: %s", i, result)
+                # Create a failed run result for the exception
+                run_results.append(
+                    RunResult(
+                        test_id=test.id,
+                        run_number=i,
+                        response=ATPResponse(
+                            task_id=f"{test.id}-run-{i}",
+                            status=ResponseStatus.FAILED,
+                            error=str(result),
+                        ),
+                        start_time=datetime.now(),
+                        end_time=datetime.now(),
+                        error=str(result),
+                    )
+                )
+            elif isinstance(result, RunResult):
+                run_results.append(result)
+
+        # Sort by run_number to maintain consistent ordering
+        run_results.sort(key=lambda r: r.run_number)
+
+        return run_results
 
     async def _execute_run(
         self,
