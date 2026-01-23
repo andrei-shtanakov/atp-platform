@@ -101,34 +101,35 @@ Evaluators, Adapters, Reporters — плагины с общим интерфе�
 atp/
 ├── cli/
 │   ├── __init__.py
-│   ├── main.py          # Entry point, argument parsing
-│   ├── commands/
-│   │   ├── test.py      # atp test command
-│   │   ├── compare.py   # atp compare command
-│   │   ├── baseline.py  # atp baseline command
-│   │   └── version.py   # atp version command
-│   └── utils.py         # CLI helpers
+│   └── main.py          # All CLI commands (Click-based)
 ```
+
+**Команды CLI**:
+- `atp test` — запуск тестов с опциями --agent, --suite, --tags, --runs, --parallel, --output, --fail-fast
+- `atp validate` — валидация test definitions
+- `atp baseline save/compare` — управление baseline
+- `atp list-agents` — список зарегистрированных агентов
+- `atp version` — версия
 
 **Интерфейс**:
 ```python
 # main.py
-def main() -> int:
-    """CLI entry point. Returns exit code."""
+@click.group()
+def cli():
+    """ATP - Agent Test Platform CLI."""
 
-# commands/test.py
-def run_tests(
-    agent: str,
-    suite: str | None = None,
-    tests: list[str] | None = None,
-    tags: list[str] | None = None,
-    runs: int = 1,
-    parallel: int = 1,
-    fail_fast: bool = False,
-    output: str = "console",
-    output_file: Path | None = None,
-) -> TestResults:
-    """Execute tests and return results."""
+@cli.command()
+@click.argument("suite")
+@click.option("--agent", required=True)
+@click.option("--runs", default=1)
+@click.option("--parallel", default=1)
+@click.option("--tags", multiple=True)
+@click.option("--output", type=click.Choice(["console", "json", "html", "junit"]))
+@click.option("--output-file", type=click.Path())
+@click.option("--fail-fast", is_flag=True)
+@click.option("--verbose", "-v", is_flag=True)
+def test(suite, agent, runs, parallel, tags, output, output_file, fail_fast, verbose):
+    """Run test suite against an agent."""
 ```
 
 ### 2. Test Loader
@@ -139,10 +140,11 @@ def run_tests(
 atp/
 ├── loader/
 │   ├── __init__.py
-│   ├── parser.py        # YAML/JSON parsing
-│   ├── validator.py     # Schema validation
-│   ├── resolver.py      # Variable resolution, inheritance
-│   └── models.py        # Pydantic models for test definitions
+│   ├── loader.py        # Main TestLoader class
+│   ├── parser.py        # YAML/JSON parsing, variable substitution
+│   ├── models.py        # Pydantic models (TestSuite, TestDefinition, etc.)
+│   ├── filters.py       # Tag-based test filtering (include/exclude)
+│   └── schema.py        # JSON Schema validation
 ```
 
 **Модели данных**:
@@ -193,11 +195,18 @@ class TestSuite(BaseModel):
 atp/
 ├── runner/
 │   ├── __init__.py
-│   ├── orchestrator.py  # Main test orchestration
-│   ├── executor.py      # Single test execution
-│   ├── parallel.py      # Parallel execution manager
-│   ├── statistics.py    # Multi-run statistics
-│   └── sandbox.py       # Docker sandbox management
+│   ├── orchestrator.py  # TestOrchestrator - main test execution engine
+│   ├── models.py        # TestResult, SuiteResult, RunResult, ProgressEvent
+│   ├── sandbox.py       # SandboxManager for test isolation
+│   ├── progress.py      # Progress reporting
+│   └── exceptions.py    # Runner-specific exceptions
+
+atp/
+├── statistics/          # Separate module for statistical analysis
+│   ├── __init__.py
+│   ├── calculator.py    # Statistical calculations (mean, CI, etc.)
+│   ├── models.py        # StatisticalResult models
+│   └── reporter.py      # Statistics reporting
 ```
 
 **Алгоритм выполнения**:
@@ -244,17 +253,22 @@ class TestOrchestrator:
     ) -> TestResults: ...
 ```
 
-### 4. ATP Gateway
+### 4. ATP Protocol
 
-**Ответственность**: унификация взаимодействия с агентами разных типов.
+**Ответственность**: определение контракта взаимодействия с агентами.
 
 ```
 atp/
-├── gateway/
+├── protocol/
 │   ├── __init__.py
-│   ├── protocol.py      # ATP Request/Response/Event models
-│   ├── gateway.py       # Gateway implementation
-│   └── tracer.py        # Event collection and tracing
+│   ├── models.py        # ATP Request/Response/Event Pydantic models
+│   └── schema.py        # JSON Schema generation
+
+atp/
+├── streaming/           # Event streaming support
+│   ├── __init__.py
+│   ├── buffer.py        # Event buffering and replay
+│   └── validation.py    # Event ordering validation
 ```
 
 **Протокольные модели**:
@@ -306,12 +320,15 @@ class ATPEvent(BaseModel):
 atp/
 ├── adapters/
 │   ├── __init__.py
-│   ├── base.py          # Abstract base adapter
-│   ├── http.py          # HTTP endpoint adapter
-│   ├── container.py     # Docker container adapter
-│   ├── cli.py           # CLI process adapter
-│   ├── langgraph.py     # LangGraph framework adapter
-│   └── crewai.py        # CrewAI framework adapter
+│   ├── base.py          # AgentAdapter abstract class, AdapterConfig
+│   ├── registry.py      # AdapterRegistry for dynamic adapter management
+│   ├── exceptions.py    # AdapterError, AdapterTimeoutError, AdapterConnectionError
+│   ├── http.py          # HTTPAdapter - REST/SSE endpoints
+│   ├── container.py     # ContainerAdapter - Docker-based agents
+│   ├── cli.py           # CLIAdapter - subprocess management
+│   ├── langgraph.py     # LangGraphAdapter - LangGraph native integration
+│   ├── crewai.py        # CrewAIAdapter - CrewAI framework
+│   └── autogen.py       # AutoGenAdapter - AutoGen legacy support
 ```
 
 **Base Adapter Interface**:
@@ -422,13 +439,12 @@ class ContainerAdapter(AgentAdapter):
 atp/
 ├── evaluators/
 │   ├── __init__.py
-│   ├── base.py          # Abstract base evaluator
-│   ├── artifact.py      # Artifact presence/format checks
-│   ├── behavior.py      # Trace analysis
-│   ├── llm_judge.py     # LLM-based semantic evaluation
-│   ├── code_exec.py     # Code execution tests
-│   ├── composite.py     # Combines multiple evaluators
-│   └── registry.py      # Evaluator discovery and registration
+│   ├── base.py          # Evaluator abstract class, EvalResult, EvalCheck
+│   ├── registry.py      # EvaluatorRegistry for evaluator management
+│   ├── artifact.py      # ArtifactEvaluator - file checks, content, schema
+│   ├── behavior.py      # BehaviorEvaluator - tool usage, steps, errors
+│   ├── llm_judge.py     # LLMJudgeEvaluator - semantic evaluation via Claude
+│   └── code_exec.py     # CodeExecEvaluator - pytest, npm, custom runners
 ```
 
 **Base Evaluator Interface**:
@@ -673,11 +689,12 @@ class ScoreAggregator:
 atp/
 ├── reporters/
 │   ├── __init__.py
-│   ├── base.py          # Abstract base reporter
-│   ├── console.py       # Terminal output
-│   ├── json_reporter.py # JSON export
-│   ├── html.py          # HTML report generation
-│   └── junit.py         # JUnit XML format
+│   ├── base.py            # Reporter abstract class, TestReport, SuiteReport
+│   ├── registry.py        # ReporterRegistry
+│   ├── console.py         # ConsoleReporter - ANSI colored terminal output
+│   ├── json_reporter.py   # JSONReporter - structured JSON export
+│   ├── html_reporter.py   # HTMLReporter - self-contained HTML with charts
+│   └── junit_reporter.py  # JUnitReporter - JUnit XML for CI/CD
 ```
 
 **Console Reporter**:
@@ -760,86 +777,127 @@ class ConsoleReporter(Reporter):
 atp-platform/
 ├── atp/
 │   ├── __init__.py
+│   │
 │   ├── cli/
 │   │   ├── __init__.py
-│   │   ├── main.py
-│   │   └── commands/
-│   │       ├── test.py
-│   │       ├── compare.py
-│   │       └── baseline.py
+│   │   └── main.py              # All CLI commands (Click-based)
 │   │
 │   ├── core/
 │   │   ├── __init__.py
-│   │   ├── config.py        # Configuration management
-│   │   ├── registry.py      # Plugin registries
-│   │   └── exceptions.py    # Custom exceptions
-│   │
-│   ├── loader/
-│   │   ├── __init__.py
-│   │   ├── parser.py
-│   │   ├── validator.py
-│   │   └── models.py
+│   │   ├── exceptions.py        # Custom exceptions
+│   │   └── security.py          # URL, DNS, path traversal validation
 │   │
 │   ├── protocol/
 │   │   ├── __init__.py
-│   │   ├── models.py        # ATP Request/Response/Event
-│   │   └── serialization.py
+│   │   ├── models.py            # ATP Request/Response/Event
+│   │   └── schema.py            # JSON Schema generation
+│   │
+│   ├── loader/
+│   │   ├── __init__.py
+│   │   ├── loader.py            # TestLoader class
+│   │   ├── parser.py            # YAML/JSON parsing
+│   │   ├── models.py            # TestSuite, TestDefinition models
+│   │   ├── filters.py           # Tag filtering
+│   │   └── schema.py            # Validation
 │   │
 │   ├── runner/
 │   │   ├── __init__.py
-│   │   ├── orchestrator.py
-│   │   ├── executor.py
-│   │   ├── sandbox.py
-│   │   └── statistics.py
-│   │
-│   ├── gateway/
-│   │   ├── __init__.py
-│   │   ├── gateway.py
-│   │   └── tracer.py
+│   │   ├── orchestrator.py      # TestOrchestrator
+│   │   ├── models.py            # TestResult, SuiteResult
+│   │   ├── sandbox.py           # SandboxManager
+│   │   ├── progress.py          # Progress reporting
+│   │   └── exceptions.py        # Runner exceptions
 │   │
 │   ├── adapters/
 │   │   ├── __init__.py
-│   │   ├── base.py
-│   │   ├── http.py
-│   │   ├── container.py
-│   │   └── cli.py
+│   │   ├── base.py              # AgentAdapter base class
+│   │   ├── registry.py          # AdapterRegistry
+│   │   ├── exceptions.py        # Adapter exceptions
+│   │   ├── http.py              # HTTPAdapter
+│   │   ├── container.py         # ContainerAdapter
+│   │   ├── cli.py               # CLIAdapter
+│   │   ├── langgraph.py         # LangGraphAdapter
+│   │   ├── crewai.py            # CrewAIAdapter
+│   │   └── autogen.py           # AutoGenAdapter
 │   │
 │   ├── evaluators/
 │   │   ├── __init__.py
-│   │   ├── base.py
-│   │   ├── artifact.py
-│   │   ├── behavior.py
-│   │   ├── llm_judge.py
-│   │   └── code_exec.py
+│   │   ├── base.py              # Evaluator base class
+│   │   ├── registry.py          # EvaluatorRegistry
+│   │   ├── artifact.py          # ArtifactEvaluator
+│   │   ├── behavior.py          # BehaviorEvaluator
+│   │   ├── llm_judge.py         # LLMJudgeEvaluator
+│   │   └── code_exec.py         # CodeExecEvaluator
 │   │
 │   ├── scoring/
 │   │   ├── __init__.py
-│   │   └── aggregator.py
+│   │   ├── aggregator.py        # ScoreAggregator
+│   │   └── models.py            # Scoring models
+│   │
+│   ├── statistics/
+│   │   ├── __init__.py
+│   │   ├── calculator.py        # Statistical calculations
+│   │   ├── models.py            # StatisticalResult
+│   │   └── reporter.py          # Statistics reporting
+│   │
+│   ├── baseline/
+│   │   ├── __init__.py
+│   │   ├── storage.py           # Baseline file management
+│   │   ├── comparison.py        # Welch's t-test comparison
+│   │   ├── reporter.py          # Diff visualization
+│   │   └── models.py            # Baseline models
 │   │
 │   ├── reporters/
 │   │   ├── __init__.py
-│   │   ├── base.py
-│   │   ├── console.py
-│   │   ├── json_reporter.py
-│   │   └── html.py
+│   │   ├── base.py              # Reporter base class
+│   │   ├── registry.py          # ReporterRegistry
+│   │   ├── console.py           # ConsoleReporter
+│   │   ├── json_reporter.py     # JSONReporter
+│   │   ├── html_reporter.py     # HTMLReporter
+│   │   └── junit_reporter.py    # JUnitReporter
 │   │
-│   └── tools/
+│   ├── streaming/
+│   │   ├── __init__.py
+│   │   ├── buffer.py            # Event buffering
+│   │   └── validation.py        # Event ordering
+│   │
+│   ├── mock_tools/
+│   │   ├── __init__.py
+│   │   ├── server.py            # FastAPI mock tool server
+│   │   ├── loader.py            # YAML mock definitions
+│   │   ├── models.py            # Mock tool models
+│   │   └── recorder.py          # Call recording
+│   │
+│   ├── performance/
+│   │   ├── __init__.py
+│   │   ├── benchmark.py         # Performance benchmarking
+│   │   ├── profiler.py          # Execution profiling
+│   │   ├── cache.py             # Caching layer
+│   │   ├── memory.py            # Memory tracking
+│   │   ├── async_utils.py       # Async optimization
+│   │   └── startup.py           # Startup optimization
+│   │
+│   └── dashboard/
 │       ├── __init__.py
-│       ├── mock.py
-│       └── recording.py
-│
-├── adapters/                  # Community/optional adapters
-│   ├── langgraph/
-│   └── crewai/
+│       ├── app.py               # FastAPI application
+│       ├── api.py               # REST API endpoints
+│       ├── database.py          # SQLAlchemy setup
+│       ├── storage.py           # Result persistence
+│       ├── models.py            # Domain models
+│       ├── schemas.py           # Pydantic schemas
+│       └── auth.py              # Authentication
 │
 ├── tests/
-│   ├── unit/
-│   ├── integration/
-│   └── fixtures/
+│   ├── unit/                    # Unit tests (~70%)
+│   ├── e2e/                     # End-to-end tests (~10%)
+│   ├── fixtures/                # Test fixtures
+│   └── conftest.py              # Shared pytest fixtures
 │
-├── docs/
+├── docs/                        # Documentation
 ├── examples/
-├── schemas/
+│   ├── test_suites/             # Sample test suites
+│   └── ci/                      # CI/CD templates
+├── spec/                        # Requirements and tasks
 │
 ├── pyproject.toml
 ├── README.md

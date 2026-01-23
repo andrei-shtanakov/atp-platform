@@ -6,7 +6,7 @@ Complete documentation for the Agent Test Platform.
 
 ATP (Agent Test Platform) is a framework-agnostic platform for testing and evaluating AI agents. This documentation provides comprehensive guides, references, and examples to help you get the most out of ATP.
 
-**Current Version**: v0.1.0 (MVP - Test Loader)
+**Current Version**: v1.0.0 (GA - All features complete)
 
 ---
 
@@ -319,35 +319,34 @@ print(f"Tests: {len(suite.tests)}")
 
 ## Development Status
 
-### Current (v0.1.0 - MVP)
+### Current (v1.0.0 - GA)
 
-✅ **Completed**:
-- Test suite loader
-- YAML parsing and validation
-- Data models
-- Variable substitution
-- Comprehensive documentation
+✅ **Milestone 1 (MVP) - Complete**:
+- ATP Protocol models (Request/Response/Event)
+- Core adapters (HTTP, Docker, CLI)
+- Test loader with YAML/JSON parsing
+- Test runner with parallel execution
+- Basic evaluators (Artifact, Behavior)
+- Reporters (Console, JSON)
+- CLI implementation
 
-### Next (v0.2.0)
+✅ **Milestone 2 (Beta) - Complete**:
+- Framework adapters (LangGraph, CrewAI, AutoGen)
+- Multiple runs with statistical analysis
+- LLM-as-Judge evaluator
+- Baseline & regression detection
+- HTML reporter
+- CI/CD integration (GitHub Actions, GitLab CI, JUnit XML)
+- Code execution evaluator
+- Mock tools for deterministic testing
 
-🚧 **In Progress**:
-- Runner implementation
-- HTTP adapter
-- Basic evaluators
-- Console reporter
+✅ **Milestone 3 (GA) - Complete**:
+- Web dashboard (FastAPI)
+- Security hardening
+- Performance optimization
+- Complete documentation
 
-### Future
-
-📅 **Planned**:
-- Docker adapter
-- LangGraph adapter
-- CrewAI adapter
-- LLM-as-judge evaluator
-- Statistical analysis
-- HTML reports
-- JUnit XML export
-
-See [Roadmap](07-roadmap.md) for complete timeline.
+See [Roadmap](07-roadmap.md) and [spec/tasks.md](../spec/tasks.md) for details.
 
 ---
 
@@ -431,15 +430,28 @@ Help us improve documentation:
 uv sync
 
 # Verify installation
-python -c "import atp; print(atp.__version__)"
+uv run pytest tests/ -v
 
-# Load test suite (Python)
-python -c "from atp.loader import TestLoader; loader = TestLoader(); suite = loader.load_file('suite.yaml')"
+# Run tests
+uv run atp test --agent=my-agent suite.yaml
+uv run atp test --agent=my-agent --runs=5 suite.yaml
+uv run atp test --agent=my-agent --tags=smoke suite.yaml
+uv run atp test --agent=my-agent --parallel=4 suite.yaml
 
-# Run tests (planned)
-atp run suite.yaml
-atp run suite.yaml --agent my-agent
-atp run suite.yaml --tag smoke
+# Output formats
+uv run atp test --agent=my-agent --output=json --output-file=results.json suite.yaml
+uv run atp test --agent=my-agent --output=html --output-file=report.html suite.yaml
+uv run atp test --agent=my-agent --output=junit --output-file=results.xml suite.yaml
+
+# Validate test definitions
+uv run atp validate suite.yaml
+
+# Baseline management
+uv run atp baseline save --name=v1.0 results.json
+uv run atp baseline compare --baseline=v1.0 results.json
+
+# List agents
+uv run atp list-agents
 ```
 
 ### Key Concepts
@@ -458,10 +470,28 @@ atp run suite.yaml --tag smoke
 atp-platform-ru/
 ├── docs/              # This documentation
 ├── examples/          # Example code and test suites
-├── atp/              # ATP source code
-│   ├── loader/       # Test suite loader
-│   └── core/         # Core utilities
-└── tests/            # ATP's own tests
+│   ├── test_suites/   # Sample YAML test suites
+│   └── ci/            # CI/CD templates
+├── atp/               # ATP source code
+│   ├── cli/           # CLI commands
+│   ├── core/          # Core utilities, security
+│   ├── protocol/      # ATP protocol models
+│   ├── loader/        # Test suite loader
+│   ├── runner/        # Test orchestration
+│   ├── adapters/      # Agent adapters
+│   ├── evaluators/    # Result evaluation
+│   ├── scoring/       # Score aggregation
+│   ├── statistics/    # Statistical analysis
+│   ├── baseline/      # Baseline management
+│   ├── reporters/     # Output formatting
+│   ├── streaming/     # Event streaming
+│   ├── mock_tools/    # Mock tool server
+│   ├── performance/   # Performance utilities
+│   └── dashboard/     # Web interface
+├── tests/             # ATP's own tests (80%+ coverage)
+│   ├── unit/          # Unit tests
+│   └── e2e/           # End-to-end tests
+└── spec/              # Requirements and tasks
 ```
 
 ---

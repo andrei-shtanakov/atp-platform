@@ -65,15 +65,21 @@ Test Definition (YAML) → Loader → Runner → Adapter → Agent → Response 
 
 ```
 atp/
-├── cli/           # CLI entry point and commands
-├── core/          # Config, registry, exceptions
-├── protocol/      # ATP message models
-├── loader/        # YAML/JSON test parsing
-├── runner/        # Test orchestration, sandbox
-├── adapters/      # Agent adapters
-├── evaluators/    # Result evaluation
+├── cli/           # CLI entry point (atp test, validate, baseline)
+├── core/          # Config, exceptions, security utilities
+├── protocol/      # ATP Request/Response/Event models
+├── loader/        # YAML/JSON test parsing, filtering
+├── runner/        # Test orchestration, sandbox, progress
+├── adapters/      # Agent adapters (HTTP, Docker, CLI, LangGraph, CrewAI, AutoGen)
+├── evaluators/    # Result evaluation (artifact, behavior, LLM-judge, code-exec)
 ├── scoring/       # Score aggregation
-└── reporters/     # Output formatting
+├── statistics/    # Statistical analysis (mean, CI, stability)
+├── baseline/      # Baseline storage, regression detection (Welch's t-test)
+├── reporters/     # Output formatting (console, JSON, HTML, JUnit)
+├── streaming/     # Event streaming, buffering, validation
+├── mock_tools/    # Mock tool server for deterministic testing
+├── performance/   # Profiling, caching, memory tracking
+└── dashboard/     # Web interface (FastAPI, SQLAlchemy)
 
 spec/              # Task specifications and requirements
 ├── tasks.md       # Task definitions with dependencies
@@ -81,6 +87,9 @@ spec/              # Task specifications and requirements
 └── design.md
 
 docs/              # Architecture documentation
+examples/
+├── test_suites/   # Sample test suite YAML files
+└── ci/            # CI/CD templates (GitHub, GitLab, Jenkins, Azure, CircleCI)
 ```
 
 ## Code Style
