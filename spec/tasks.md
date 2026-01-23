@@ -461,26 +461,27 @@ CLI interface с Click/Typer.
 ---
 
 ### TASK-012: LLM-as-Judge Evaluator
-🟠 P1 | ⬜ TODO | Est: 4d
+🟠 P1 | ✅ DONE | Est: 4d
 
 **Description:**
 Evaluator с использованием LLM для семантической оценки.
 
 **Checklist:**
-- [ ] LLMJudgeEvaluator class
-- [ ] Anthropic client integration
-- [ ] Built-in criteria prompts
-  - [ ] factual_accuracy
-  - [ ] completeness
-  - [ ] relevance
-  - [ ] coherence
-  - [ ] clarity
-- [ ] Custom prompt support
-- [ ] Score parsing
-- [ ] Explanation extraction
-- [ ] Multi-call averaging (optional)
-- [ ] Cost tracking
-- [ ] Error handling (rate limits, etc.)
+- [x] LLMJudgeEvaluator class
+- [x] Anthropic client integration
+- [x] Built-in criteria prompts
+  - [x] factual_accuracy
+  - [x] completeness
+  - [x] relevance
+  - [x] coherence
+  - [x] clarity
+  - [x] actionability
+- [x] Custom prompt support
+- [x] Score parsing
+- [x] Explanation extraction
+- [x] Multi-call averaging (optional)
+- [x] Cost tracking
+- [x] Error handling (rate limits, etc.)
 
 **Traces to:** [REQ-042]
 **Depends on:** [TASK-007]

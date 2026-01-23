@@ -5,6 +5,7 @@ from typing import Any
 from .artifact import ArtifactEvaluator
 from .base import Evaluator
 from .behavior import BehaviorEvaluator
+from .llm_judge import LLMJudgeEvaluator
 
 
 class EvaluatorNotFoundError(Exception):
@@ -29,6 +30,7 @@ class EvaluatorRegistry:
 
         self.register("artifact", ArtifactEvaluator)
         self.register("behavior", BehaviorEvaluator)
+        self.register("llm_judge", LLMJudgeEvaluator)
 
         self._register_assertion_mapping("artifact_exists", "artifact")
         self._register_assertion_mapping("contains", "artifact")
@@ -41,6 +43,8 @@ class EvaluatorRegistry:
         self._register_assertion_mapping("min_tool_calls", "behavior")
         self._register_assertion_mapping("no_errors", "behavior")
         self._register_assertion_mapping("forbidden_tools", "behavior")
+
+        self._register_assertion_mapping("llm_eval", "llm_judge")
 
     def register(
         self,
