@@ -145,17 +145,17 @@ End-to-end тесты критических user journeys.
 ---
 
 ### TASK-002: Event Streaming Support
-🟠 P1 | ⬜ TODO | Est: 2d
+🟠 P1 | ✅ DONE | Est: 2d
 
 **Description:**
 Добавить поддержку streaming событий в протоколе и адаптерах.
 
 **Checklist:**
-- [ ] AsyncIterator interface для событий
-- [ ] SSE parsing для HTTP
-- [ ] stderr parsing для containers
-- [ ] Event ordering validation
-- [ ] Event buffering и replay
+- [x] AsyncIterator interface для событий
+- [x] SSE parsing для HTTP
+- [x] stderr parsing для containers
+- [x] Event ordering validation
+- [x] Event buffering и replay
 
 **Traces to:** [REQ-003]
 **Depends on:** [TASK-001]
@@ -164,7 +164,7 @@ End-to-end тесты критических user journeys.
 ---
 
 ### TASK-003: Core Adapters
-🔴 P0 | 🔄 IN_PROGRESS | Est: 5d
+🔴 P0 | ✅ DONE | Est: 5d
 
 **Description:**
 Реализовать HTTP, Container и CLI адаптеры.
