@@ -2,13 +2,19 @@
 
 import asyncio
 import json
+import os
 import shlex
+import tempfile
 from collections.abc import AsyncIterator
 from datetime import datetime
 from pathlib import Path
 
 from pydantic import Field
 
+from atp.core.security import (
+    filter_environment_variables,
+    sanitize_error_message,
+)
 from atp.protocol import (
     ATPEvent,
     ATPRequest,
@@ -49,6 +55,15 @@ class CLIAdapterConfig(AdapterConfig):
     output_file: str | None = Field(
         None, description="File path for output when output_format=file"
     )
+    # Security settings
+    inherit_environment: bool = Field(
+        default=False,
+        description="Whether to inherit parent environment variables (filtered)",
+    )
+    allowed_env_vars: list[str] = Field(
+        default_factory=list,
+        description="Additional environment variables to allow when inheriting",
+    )
 
 
 class CLIAdapter(AgentAdapter):
@@ -61,6 +76,9 @@ class CLIAdapter(AgentAdapter):
     - ATP Events received via stderr (JSONL)
     """
 
+    _temp_input_file: Path | None
+    _temp_output_file: Path | None
+
     def __init__(self, config: CLIAdapterConfig) -> None:
         """
         Initialize CLI adapter.
@@ -70,6 +88,8 @@ class CLIAdapter(AgentAdapter):
         """
         super().__init__(config)
         self._config: CLIAdapterConfig = config
+        self._temp_input_file = None
+        self._temp_output_file = None
 
     @property
     def adapter_type(self) -> str:
@@ -89,32 +109,93 @@ class CLIAdapter(AgentAdapter):
         cmd_parts = shlex.split(self._config.command)
         return cmd_parts + list(self._config.args)
 
-    def _get_env(self) -> dict[str, str] | None:
-        """Get environment variables for the subprocess."""
-        if not self._config.environment:
-            return None
+    def _get_env(self) -> dict[str, str]:
+        """Get environment variables for the subprocess.
 
-        import os
+        Security: Filters sensitive environment variables to prevent
+        credential leakage to subprocesses.
+        """
+        # Start with filtered parent environment if inheritance is enabled
+        if self._config.inherit_environment:
+            env = filter_environment_variables(
+                additional_allowlist=set(self._config.allowed_env_vars)
+            )
+        else:
+            # Minimal environment for subprocess execution
+            env = {
+                "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                "HOME": os.environ.get("HOME", "/tmp"),
+                "LANG": os.environ.get("LANG", "en_US.UTF-8"),
+                "TERM": os.environ.get("TERM", "xterm"),
+            }
 
-        env = os.environ.copy()
+        # Apply explicit environment variables from config
         env.update(self._config.environment)
         return env
 
     async def _write_input_file(self, request: ATPRequest) -> Path:
-        """Write request to input file."""
-        input_path = Path(self._config.input_file or "/tmp/atp_request.json")
+        """Write request to input file securely.
+
+        Security: Uses secure temp file creation with restricted permissions.
+        """
+        if self._config.input_file:
+            input_path = Path(self._config.input_file)
+        else:
+            # Create secure temporary file with restricted permissions
+            fd, temp_path = tempfile.mkstemp(
+                prefix="atp_request_",
+                suffix=".json",
+            )
+            input_path = Path(temp_path)
+            os.close(fd)
+
+        # Write with restrictive permissions (owner read/write only)
         input_path.write_text(request.model_dump_json())
+        try:
+            os.chmod(input_path, 0o600)
+        except OSError:
+            pass  # May fail on some systems, not critical
+
+        # Track for cleanup
+        self._temp_input_file = input_path
         return input_path
 
     async def _read_output_file(self) -> str:
-        """Read response from output file."""
-        output_path = Path(self._config.output_file or "/tmp/atp_response.json")
+        """Read response from output file securely.
+
+        Security: Uses secure temp file if no explicit output file configured.
+        """
+        if self._config.output_file:
+            output_path = Path(self._config.output_file)
+        elif hasattr(self, "_temp_output_file") and self._temp_output_file:
+            output_path = self._temp_output_file
+        else:
+            raise AdapterResponseError(
+                "Output file not configured",
+                adapter_type=self.adapter_type,
+            )
+
         if not output_path.exists():
             raise AdapterResponseError(
-                f"Output file not found: {output_path}",
+                "Output file not found",
                 adapter_type=self.adapter_type,
             )
         return output_path.read_text()
+
+    def _create_temp_output_file(self) -> Path:
+        """Create a secure temporary output file."""
+        fd, temp_path = tempfile.mkstemp(
+            prefix="atp_response_",
+            suffix=".json",
+        )
+        os.close(fd)
+        output_path = Path(temp_path)
+        try:
+            os.chmod(output_path, 0o600)
+        except OSError:
+            pass
+        self._temp_output_file = output_path
+        return output_path
 
     async def execute(self, request: ATPRequest) -> ATPResponse:
         """
@@ -190,6 +271,8 @@ class CLIAdapter(AgentAdapter):
 
         if process.returncode != 0:
             error_msg = stderr.decode() if stderr else "Unknown error"
+            # Sanitize error message (redacts secrets and file paths)
+            error_msg = sanitize_error_message(error_msg, include_type=False)
             raise AdapterError(
                 f"Command exited with code {process.returncode}: {error_msg}",
                 adapter_type=self.adapter_type,
@@ -403,14 +486,38 @@ class CLIAdapter(AgentAdapter):
         return shutil.which(cmd_name) is not None
 
     async def cleanup(self) -> None:
-        """Clean up temporary files."""
-        # Clean up input/output files if they exist
+        """Clean up temporary files securely."""
+        # Clean up temporary input file
+        if hasattr(self, "_temp_input_file") and self._temp_input_file:
+            try:
+                if self._temp_input_file.exists():
+                    self._temp_input_file.unlink(missing_ok=True)
+            except OSError:
+                pass
+            self._temp_input_file = None
+
+        # Clean up temporary output file
+        if hasattr(self, "_temp_output_file") and self._temp_output_file:
+            try:
+                if self._temp_output_file.exists():
+                    self._temp_output_file.unlink(missing_ok=True)
+            except OSError:
+                pass
+            self._temp_output_file = None
+
+        # Clean up explicit input/output files only if we created them
         if self._config.input_format == "file" and self._config.input_file:
             path = Path(self._config.input_file)
             if path.exists():
-                path.unlink(missing_ok=True)
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    pass
 
         if self._config.output_format == "file" and self._config.output_file:
             path = Path(self._config.output_file)
             if path.exists():
-                path.unlink(missing_ok=True)
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    pass

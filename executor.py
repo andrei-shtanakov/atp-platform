@@ -583,10 +583,20 @@ def execute_task(task: Task, config: ExecutorConfig, state: ExecutorState) -> bo
             f.write(f"=== RETURN CODE: {result.returncode} ===\n")
 
         # Проверяем результат
-        success = "TASK_COMPLETE" in output and "TASK_FAILED" not in output
+        # Успех если:
+        # 1. Явно написано TASK_COMPLETE, или
+        # 2. Return code 0 и нет TASK_FAILED (Claude забыл написать маркер)
+        has_complete_marker = "TASK_COMPLETE" in output
+        has_failed_marker = "TASK_FAILED" in output
+        implicit_success = result.returncode == 0 and not has_failed_marker
+
+        success = (has_complete_marker and not has_failed_marker) or implicit_success
 
         if success:
-            print("✅ Claude reports: TASK_COMPLETE")
+            if has_complete_marker:
+                print("✅ Claude reports: TASK_COMPLETE")
+            else:
+                print("✅ Implicit success (return code 0, no TASK_FAILED)")
 
             # Post-done hook (тесты, lint)
             hook_success = post_done_hook(task, config, True)

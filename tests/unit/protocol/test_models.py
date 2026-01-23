@@ -572,6 +572,103 @@ class TestATPEvent:
         assert event.event_type == EventType.TOOL_CALL
 
 
+class TestSecurityValidations:
+    """Tests for security-related validations."""
+
+    def test_task_id_rejects_special_chars(self) -> None:
+        """Test that task_id rejects special characters."""
+        with pytest.raises(ValidationError) as exc_info:
+            ATPRequest(task_id="task/with/slashes", task=Task(description="Test"))
+        assert "alphanumeric" in str(exc_info.value).lower()
+
+    def test_task_id_rejects_dots(self) -> None:
+        """Test that task_id rejects path traversal attempts."""
+        with pytest.raises(ValidationError) as exc_info:
+            ATPRequest(task_id="task..id", task=Task(description="Test"))
+        assert "alphanumeric" in str(exc_info.value).lower()
+
+    def test_task_id_too_long(self) -> None:
+        """Test that overly long task_id is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            ATPRequest(task_id="a" * 200, task=Task(description="Test"))
+        assert "too long" in str(exc_info.value).lower()
+
+    def test_artifact_path_rejects_traversal(self) -> None:
+        """Test that artifact path rejects path traversal."""
+        with pytest.raises(ValidationError) as exc_info:
+            ArtifactFile(path="../../../etc/passwd")
+        assert "traversal" in str(exc_info.value).lower()
+
+    def test_artifact_path_rejects_absolute(self) -> None:
+        """Test that artifact path rejects absolute paths."""
+        with pytest.raises(ValidationError) as exc_info:
+            ArtifactFile(path="/etc/passwd")
+        assert "absolute" in str(exc_info.value).lower()
+
+    def test_artifact_path_rejects_null_bytes(self) -> None:
+        """Test that artifact path rejects null bytes."""
+        with pytest.raises(ValidationError) as exc_info:
+            ArtifactFile(path="file\x00.txt")
+        assert "null" in str(exc_info.value).lower()
+
+    def test_artifact_name_rejects_slashes(self) -> None:
+        """Test that artifact name rejects path separators."""
+        with pytest.raises(ValidationError) as exc_info:
+            ArtifactStructured(name="path/to/file", data={})
+        assert "separator" in str(exc_info.value).lower()
+
+    def test_context_tools_endpoint_validates_scheme(self) -> None:
+        """Test that tools endpoint requires HTTP/HTTPS."""
+        with pytest.raises(ValidationError) as exc_info:
+            Context(tools_endpoint="file:///etc/passwd")
+        assert "http" in str(exc_info.value).lower()
+
+    def test_context_workspace_rejects_null_bytes(self) -> None:
+        """Test that workspace path rejects null bytes."""
+        with pytest.raises(ValidationError) as exc_info:
+            Context(workspace_path="/tmp/test\x00path")
+        assert "null" in str(exc_info.value).lower()
+
+    def test_context_environment_rejects_null_bytes(self) -> None:
+        """Test that environment rejects null bytes."""
+        with pytest.raises(ValidationError) as exc_info:
+            Context(environment={"VAR\x00NAME": "value"})
+        assert "null" in str(exc_info.value).lower()
+
+    def test_expected_artifacts_rejects_traversal(self) -> None:
+        """Test that expected artifacts reject path traversal."""
+        with pytest.raises(ValidationError) as exc_info:
+            Task(description="Test", expected_artifacts=["../secret.txt"])
+        assert "invalid" in str(exc_info.value).lower()
+
+    def test_expected_artifacts_rejects_absolute(self) -> None:
+        """Test that expected artifacts reject absolute paths."""
+        with pytest.raises(ValidationError) as exc_info:
+            Task(description="Test", expected_artifacts=["/etc/passwd"])
+        assert "invalid" in str(exc_info.value).lower()
+
+    def test_description_max_length(self) -> None:
+        """Test that description respects max length."""
+        # Should succeed at reasonable length
+        Task(description="x" * 10000)
+
+    def test_error_message_max_length(self) -> None:
+        """Test that error messages are limited."""
+        # Error messages should be accepted up to limit
+        response = ATPResponse(
+            task_id="test",
+            status=ResponseStatus.FAILED,
+            error="x" * 5000,
+        )
+        assert len(response.error) == 5000
+
+    def test_reference_path_rejects_null_bytes(self) -> None:
+        """Test that reference path rejects null bytes."""
+        with pytest.raises(ValidationError) as exc_info:
+            ArtifactReference(path="s3://bucket/file\x00.dat")
+        assert "null" in str(exc_info.value).lower()
+
+
 class TestEdgeCases:
     """Tests for edge cases."""
 

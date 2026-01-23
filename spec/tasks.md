@@ -77,7 +77,7 @@
 ---
 
 ### TASK-102: Integration Test Suite
-🟠 P1 | ⬜ TODO | Est: 3d
+🟠 P1 | 🔄 IN_PROGRESS | Est: 3d
 
 **Description:**
 Integration тесты для ключевых компонентов.
@@ -271,7 +271,7 @@ End-to-end тесты критических user journeys.
 ---
 
 ### TASK-007: Basic Evaluators
-🔴 P0 | 🔄 IN_PROGRESS | Est: 4d
+🔴 P0 | ✅ DONE | Est: 4d
 
 **Description:**
 Artifact и Behavior evaluators.
@@ -643,7 +643,7 @@ Mock tools для детерминированного тестирования.
 ---
 
 ### TASK-022: Security Hardening
-🔴 P0 | ⬜ TODO | Est: 3d
+🔴 P0 | 🔄 IN_PROGRESS | Est: 3d
 
 **Description:**
 Аудит безопасности и hardening.
