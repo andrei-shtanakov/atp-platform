@@ -413,24 +413,24 @@ CLI interface с Click/Typer.
 ## Milestone 2: Beta
 
 ### TASK-010: Framework Adapters
-🟠 P1 | ⬜ TODO | Est: 5d
+🟠 P1 | ✅ DONE | Est: 5d
 
 **Description:**
 Адаптеры для LangGraph и CrewAI.
 
 **Checklist:**
-- [ ] LangGraphAdapter
-  - [ ] Graph loading from module
-  - [ ] State mapping to ATP
-  - [ ] Event extraction from steps
-  - [ ] Metrics collection
-- [ ] CrewAIAdapter
-  - [ ] Crew factory pattern
-  - [ ] Task mapping
-  - [ ] Agent events
-- [ ] AutoGen legacy adapter (optional)
-- [ ] Adapter development guide
-- [ ] Integration tests с реальными agents
+- [x] LangGraphAdapter
+  - [x] Graph loading from module
+  - [x] State mapping to ATP
+  - [x] Event extraction from steps
+  - [x] Metrics collection
+- [x] CrewAIAdapter
+  - [x] Crew factory pattern
+  - [x] Task mapping
+  - [x] Agent events
+- [x] AutoGen legacy adapter (optional)
+- [x] Adapter development guide
+- [x] Integration tests с реальными agents
 
 **Traces to:** [REQ-012]
 **Depends on:** [TASK-003]
@@ -580,7 +580,7 @@ Evaluator для запуска сгенерированного кода.
 ---
 
 ### TASK-019: Mock Tools
-🟡 P2 | ⬜ TODO | Est: 2d
+🟡 P2 | 🔄 IN_PROGRESS | Est: 2d
 
 **Description:**
 Mock tools для детерминированного тестирования.

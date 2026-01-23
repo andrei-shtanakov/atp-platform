@@ -1,0 +1,69 @@
+name: sample_mock
+description: Sample mock definition for testing
+
+default_delay_ms: 0
+
+tools:
+  - name: web_search
+    description: Search the web for information
+    responses:
+      - when:
+          type: contains
+          field: query
+          pattern: "python"
+        then:
+          output:
+            results:
+              - title: "Python Documentation"
+                url: "https://docs.python.org"
+              - title: "Learn Python"
+                url: "https://learnpython.org"
+          status: success
+
+      - when:
+          type: regex
+          field: query
+          pattern: "error|fail"
+        then:
+          error: "Search service unavailable"
+          status: error
+          delay_ms: 50
+
+    default:
+      output:
+        results: []
+      status: success
+
+  - name: file_read
+    description: Read file contents
+    responses:
+      - when:
+          type: exact
+          field: path
+          pattern: "/etc/passwd"
+        then:
+          error: "Permission denied"
+          status: error
+
+      - when:
+          type: contains
+          field: path
+          pattern: ".py"
+        then:
+          output:
+            content: "# Python file content"
+            size: 21
+          status: success
+
+    default:
+      output:
+        content: "default file content"
+        size: 20
+      status: success
+
+  - name: calculator
+    description: Perform calculations
+    default:
+      output:
+        result: 42
+      status: success
