@@ -1,0 +1,132 @@
+# ATP Test Suite: Smoke Tests
+# Purpose: Quick validation of basic agent functionality
+# Duration: ~1-2 minutes
+# Use case: Run before deployments, after changes, in CI/CD
+
+test_suite: "smoke_tests"
+version: "1.0"
+description: >
+  Smoke tests for basic agent functionality.
+  Quick validation that agent can respond and perform basic operations.
+
+defaults:
+  runs_per_test: 1
+  timeout_seconds: 60
+  constraints:
+    max_steps: 5
+    timeout_seconds: 60
+  scoring:
+    quality_weight: 0.3
+    completeness_weight: 0.5
+    efficiency_weight: 0.2
+    cost_weight: 0.0
+
+agents:
+  - name: "test-agent"
+    type: "http"
+    config:
+      endpoint: "${API_ENDPOINT:http://localhost:8000}"
+      timeout: 30
+
+tests:
+  # Test 1: Basic response
+  - id: "smoke-001"
+    name: "Agent responds to simple request"
+    tags: ["smoke", "critical", "basic"]
+    task:
+      description: "Echo the text 'Hello, ATP!' back to me"
+    constraints:
+      max_steps: 1
+      timeout_seconds: 30
+    assertions:
+      - type: "behavior"
+        config:
+          check: "no_errors"
+
+  # Test 2: File creation
+  - id: "smoke-002"
+    name: "Create a simple text file"
+    tags: ["smoke", "critical", "file-ops"]
+    task:
+      description: "Create a file named test.txt containing the text 'This is a test'"
+      expected_artifacts: ["test.txt"]
+    constraints:
+      max_steps: 3
+      timeout_seconds: 45
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "test.txt"
+      - type: "behavior"
+        config:
+          check: "no_errors"
+
+  # Test 3: Simple calculation
+  - id: "smoke-003"
+    name: "Perform basic calculation"
+    tags: ["smoke", "math"]
+    task:
+      description: "Calculate 123 * 456 and save the result to result.txt"
+      expected_artifacts: ["result.txt"]
+    constraints:
+      max_steps: 3
+      timeout_seconds: 45
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "result.txt"
+      - type: "llm_eval"
+        config:
+          criteria: "factual_accuracy"
+          threshold: 1.0
+
+  # Test 4: Multi-step task
+  - id: "smoke-004"
+    name: "Execute multi-step workflow"
+    tags: ["smoke", "workflow"]
+    task:
+      description: >
+        Create three files:
+        1. numbers.txt with content "1 2 3 4 5"
+        2. Calculate the sum of these numbers
+        3. Save the sum to sum.txt
+      expected_artifacts: ["numbers.txt", "sum.txt"]
+    constraints:
+      max_steps: 5
+      timeout_seconds: 60
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "numbers.txt"
+      - type: "artifact_exists"
+        config:
+          path: "sum.txt"
+      - type: "llm_eval"
+        config:
+          criteria: "completeness"
+          threshold: 0.9
+
+  # Test 5: Error handling
+  - id: "smoke-005"
+    name: "Graceful error handling"
+    tags: ["smoke", "error-handling"]
+    task:
+      description: >
+        Try to read a file that doesn't exist (nonexistent.txt),
+        handle the error gracefully, and create error_log.txt
+        documenting what happened.
+      expected_artifacts: ["error_log.txt"]
+    constraints:
+      max_steps: 5
+      timeout_seconds: 60
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "error_log.txt"
+      - type: "behavior"
+        config:
+          check: "no_repeated_actions"
+      - type: "llm_eval"
+        config:
+          criteria: "completeness"
+          threshold: 0.8

@@ -1,0 +1,243 @@
+# ATP Test Suite: Web Research
+# Purpose: Test agent's web research and information synthesis capabilities
+# Duration: ~10-15 minutes
+# Use case: Integration testing for agents with web access
+
+test_suite: "web_research"
+version: "1.0"
+description: >
+  Integration tests for web research capabilities including
+  search, information extraction, synthesis, and documentation.
+
+defaults:
+  runs_per_test: 2
+  timeout_seconds: 600
+  constraints:
+    max_steps: 30
+    max_tokens: 100000
+    timeout_seconds: 600
+    allowed_tools:
+      - "web_search"
+      - "web_scrape"
+      - "file_write"
+    budget_usd: 0.50
+  scoring:
+    quality_weight: 0.4
+    completeness_weight: 0.3
+    efficiency_weight: 0.2
+    cost_weight: 0.1
+
+agents:
+  - name: "research-agent"
+    type: "http"
+    config:
+      endpoint: "${API_ENDPOINT}"
+      api_key: "${API_KEY}"
+      timeout: 300
+
+tests:
+  # Test 1: Simple search and save
+  - id: "research-001"
+    name: "Basic web search"
+    tags: ["integration", "web", "search", "basic"]
+    task:
+      description: >
+        Search for 'Python async programming' and save the top 3 results
+        to 'search_results.txt'. Each result should include: title, URL, snippet.
+      expected_artifacts: ["search_results.txt"]
+    constraints:
+      max_steps: 5
+      timeout_seconds: 120
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "search_results.txt"
+      - type: "behavior"
+        config:
+          check: "no_errors"
+      - type: "llm_eval"
+        config:
+          criteria: "completeness"
+          threshold: 0.9
+
+  # Test 2: Research with synthesis
+  - id: "research-002"
+    name: "Research and synthesize findings"
+    tags: ["integration", "web", "synthesis"]
+    task:
+      description: >
+        Research 'best practices for API design in 2024' and create
+        'api_design_guide.md' with:
+        - Introduction paragraph
+        - Top 5 best practices with explanations
+        - Examples for each practice
+        - Conclusion
+        - Sources (list of URLs used)
+      expected_artifacts: ["api_design_guide.md"]
+    constraints:
+      max_steps: 20
+      timeout_seconds: 300
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "api_design_guide.md"
+      - type: "behavior"
+        config:
+          check: "no_repeated_actions"
+      - type: "llm_eval"
+        config:
+          criteria: "completeness"
+          threshold: 0.85
+      - type: "llm_eval"
+        config:
+          criteria: "factual_accuracy"
+          threshold: 0.8
+
+  # Test 3: Comparative research
+  - id: "research-003"
+    name: "Compare technologies"
+    tags: ["integration", "web", "comparison", "complex"]
+    task:
+      description: >
+        Research and compare 'Docker vs Kubernetes for small teams'.
+        Create 'docker_vs_k8s.md' with:
+        - Brief overview of each technology
+        - Comparison table (features, complexity, cost, use cases)
+        - Pros and cons for each
+        - Recommendation for small teams
+        - References
+      expected_artifacts: ["docker_vs_k8s.md"]
+    constraints:
+      max_steps: 25
+      timeout_seconds: 400
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "docker_vs_k8s.md"
+      - type: "behavior"
+        config:
+          check: "efficient_tool_use"
+      - type: "llm_eval"
+        config:
+          criteria: "completeness"
+          threshold: 0.85
+      - type: "llm_eval"
+        config:
+          criteria: "factual_accuracy"
+          threshold: 0.8
+      - type: "llm_eval"
+        config:
+          criteria: "coherence"
+          threshold: 0.85
+
+  # Test 4: Multi-topic research
+  - id: "research-004"
+    name: "Multi-topic research compilation"
+    tags: ["integration", "web", "multi-topic"]
+    task:
+      description: >
+        Research the following topics and create separate files:
+        1. 'ai_agents.md' - Current state of AI agents (2024)
+        2. 'testing_frameworks.md' - Popular testing frameworks for Python
+        3. 'devops_trends.md' - DevOps trends in 2024
+
+        Each file should have:
+        - Summary paragraph
+        - Key points (3-5 bullet points)
+        - Sources
+      expected_artifacts:
+        - "ai_agents.md"
+        - "testing_frameworks.md"
+        - "devops_trends.md"
+    constraints:
+      max_steps: 30
+      timeout_seconds: 500
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "ai_agents.md"
+      - type: "artifact_exists"
+        config:
+          path: "testing_frameworks.md"
+      - type: "artifact_exists"
+        config:
+          path: "devops_trends.md"
+      - type: "behavior"
+        config:
+          check: "no_repeated_actions"
+      - type: "llm_eval"
+        config:
+          criteria: "completeness"
+          threshold: 0.85
+
+  # Test 5: Fact-checking research
+  - id: "research-005"
+    name: "Fact-check claims"
+    tags: ["integration", "web", "fact-check"]
+    task:
+      description: >
+        Fact-check the following claims and create 'fact_check_report.md':
+
+        Claims:
+        1. "Python is the most popular programming language in 2024"
+        2. "Docker containers are more secure than VMs"
+        3. "GPT-4 has 1 trillion parameters"
+
+        For each claim, research and document:
+        - Claim status (True/False/Partially True/Unverified)
+        - Evidence summary
+        - Source URLs
+        - Confidence level
+      expected_artifacts: ["fact_check_report.md"]
+    constraints:
+      max_steps: 25
+      timeout_seconds: 400
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "fact_check_report.md"
+      - type: "behavior"
+        config:
+          check: "efficient_tool_use"
+      - type: "llm_eval"
+        config:
+          criteria: "factual_accuracy"
+          threshold: 0.9
+      - type: "llm_eval"
+        config:
+          criteria: "completeness"
+          threshold: 0.85
+    scoring:
+      quality_weight: 0.5
+      completeness_weight: 0.3
+      efficiency_weight: 0.1
+      cost_weight: 0.1
+
+  # Test 6: Recent news summary
+  - id: "research-006"
+    name: "Recent news compilation"
+    tags: ["integration", "web", "news", "current"]
+    task:
+      description: >
+        Find and summarize recent news (last 7 days) about 'artificial intelligence'.
+        Create 'ai_news_weekly.md' with:
+        - Summary of top 5 news stories
+        - Each story should have: headline, date, source, brief summary
+        - Overall trends or themes
+        - Sources section
+      expected_artifacts: ["ai_news_weekly.md"]
+    constraints:
+      max_steps: 20
+      timeout_seconds: 300
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "ai_news_weekly.md"
+      - type: "llm_eval"
+        config:
+          criteria: "completeness"
+          threshold: 0.85
+      - type: "llm_eval"
+        config:
+          criteria: "relevance"
+          threshold: 0.85

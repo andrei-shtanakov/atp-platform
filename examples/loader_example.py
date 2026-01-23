@@ -10,7 +10,7 @@ suite = loader.load_file("tests/fixtures/test_suites/valid_suite.yaml")
 print(f"Test Suite: {suite.test_suite}")
 print(f"Version: {suite.version}")
 print(f"Number of tests: {len(suite.tests)}")
-print(f"\nTests:")
+print("\nTests:")
 for test in suite.tests:
     print(f"  - {test.id}: {test.name}")
     print(f"    Tags: {test.tags}")
