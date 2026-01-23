@@ -7,12 +7,18 @@ from atp.adapters import (
     AdapterNotFoundError,
     AdapterRegistry,
     AgentAdapter,
+    AutoGenAdapter,
+    AutoGenAdapterConfig,
     CLIAdapter,
     CLIAdapterConfig,
     ContainerAdapter,
     ContainerAdapterConfig,
+    CrewAIAdapter,
+    CrewAIAdapterConfig,
     HTTPAdapter,
     HTTPAdapterConfig,
+    LangGraphAdapter,
+    LangGraphAdapterConfig,
     create_adapter,
     get_registry,
 )
@@ -29,6 +35,9 @@ class TestAdapterRegistry:
         assert registry.is_registered("http")
         assert registry.is_registered("container")
         assert registry.is_registered("cli")
+        assert registry.is_registered("langgraph")
+        assert registry.is_registered("crewai")
+        assert registry.is_registered("autogen")
 
     def test_list_adapters(self) -> None:
         """Test listing all registered adapters."""
@@ -38,6 +47,9 @@ class TestAdapterRegistry:
         assert "http" in adapters
         assert "container" in adapters
         assert "cli" in adapters
+        assert "langgraph" in adapters
+        assert "crewai" in adapters
+        assert "autogen" in adapters
 
     def test_get_adapter_class(self) -> None:
         """Test getting adapter class."""
@@ -46,6 +58,9 @@ class TestAdapterRegistry:
         assert registry.get_adapter_class("http") is HTTPAdapter
         assert registry.get_adapter_class("container") is ContainerAdapter
         assert registry.get_adapter_class("cli") is CLIAdapter
+        assert registry.get_adapter_class("langgraph") is LangGraphAdapter
+        assert registry.get_adapter_class("crewai") is CrewAIAdapter
+        assert registry.get_adapter_class("autogen") is AutoGenAdapter
 
     def test_get_adapter_class_not_found(self) -> None:
         """Test getting non-existent adapter class."""
@@ -63,6 +78,9 @@ class TestAdapterRegistry:
         assert registry.get_config_class("http") is HTTPAdapterConfig
         assert registry.get_config_class("container") is ContainerAdapterConfig
         assert registry.get_config_class("cli") is CLIAdapterConfig
+        assert registry.get_config_class("langgraph") is LangGraphAdapterConfig
+        assert registry.get_config_class("crewai") is CrewAIAdapterConfig
+        assert registry.get_config_class("autogen") is AutoGenAdapterConfig
 
     def test_get_config_class_not_found(self) -> None:
         """Test getting non-existent config class."""
@@ -207,3 +225,88 @@ class TestGlobalRegistry:
         """Test create_adapter with non-existent type."""
         with pytest.raises(AdapterNotFoundError):
             create_adapter("nonexistent", {})
+
+
+class TestFrameworkAdapters:
+    """Tests for framework adapter registration."""
+
+    def test_create_langgraph_adapter(self) -> None:
+        """Test creating LangGraph adapter from dict config."""
+        registry = AdapterRegistry()
+
+        adapter = registry.create(
+            "langgraph",
+            {"module": "my.module", "graph": "my_graph"},
+        )
+
+        assert isinstance(adapter, LangGraphAdapter)
+        assert adapter.adapter_type == "langgraph"
+
+    def test_create_crewai_adapter(self) -> None:
+        """Test creating CrewAI adapter from dict config."""
+        registry = AdapterRegistry()
+
+        adapter = registry.create(
+            "crewai",
+            {"module": "my.module", "crew": "my_crew"},
+        )
+
+        assert isinstance(adapter, CrewAIAdapter)
+        assert adapter.adapter_type == "crewai"
+
+    def test_create_autogen_adapter(self) -> None:
+        """Test creating AutoGen adapter from dict config."""
+        registry = AdapterRegistry()
+
+        adapter = registry.create(
+            "autogen",
+            {"module": "my.module", "agent": "my_agent"},
+        )
+
+        assert isinstance(adapter, AutoGenAdapter)
+        assert adapter.adapter_type == "autogen"
+
+    def test_create_langgraph_with_config_object(self) -> None:
+        """Test creating LangGraph adapter from config object."""
+        registry = AdapterRegistry()
+        config = LangGraphAdapterConfig(
+            module="my.module",
+            graph="my_graph",
+            config={"recursion_limit": 50},
+        )
+
+        adapter = registry.create("langgraph", config)
+
+        assert isinstance(adapter, LangGraphAdapter)
+
+    def test_create_crewai_with_factory(self) -> None:
+        """Test creating CrewAI adapter with factory config."""
+        registry = AdapterRegistry()
+
+        adapter = registry.create(
+            "crewai",
+            {
+                "module": "my.module",
+                "crew": "create_crew",
+                "is_factory": True,
+                "factory_args": {"model": "gpt-4"},
+            },
+        )
+
+        assert isinstance(adapter, CrewAIAdapter)
+
+    def test_create_autogen_with_user_proxy(self) -> None:
+        """Test creating AutoGen adapter with user proxy config."""
+        registry = AdapterRegistry()
+
+        adapter = registry.create(
+            "autogen",
+            {
+                "module": "my.module",
+                "agent": "my_agent",
+                "user_proxy": "my_user_proxy",
+                "max_consecutive_auto_reply": 5,
+            },
+        )
+
+        assert isinstance(adapter, AutoGenAdapter)

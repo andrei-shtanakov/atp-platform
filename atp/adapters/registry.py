@@ -2,11 +2,14 @@
 
 from typing import Any
 
+from .autogen import AutoGenAdapter, AutoGenAdapterConfig
 from .base import AdapterConfig, AgentAdapter
 from .cli import CLIAdapter, CLIAdapterConfig
 from .container import ContainerAdapter, ContainerAdapterConfig
+from .crewai import CrewAIAdapter, CrewAIAdapterConfig
 from .exceptions import AdapterNotFoundError
 from .http import HTTPAdapter, HTTPAdapterConfig
+from .langgraph import LangGraphAdapter, LangGraphAdapterConfig
 
 
 class AdapterRegistry:
@@ -25,6 +28,9 @@ class AdapterRegistry:
         self.register("http", HTTPAdapter, HTTPAdapterConfig)
         self.register("container", ContainerAdapter, ContainerAdapterConfig)
         self.register("cli", CLIAdapter, CLIAdapterConfig)
+        self.register("langgraph", LangGraphAdapter, LangGraphAdapterConfig)
+        self.register("crewai", CrewAIAdapter, CrewAIAdapterConfig)
+        self.register("autogen", AutoGenAdapter, AutoGenAdapterConfig)
 
     def register(
         self,

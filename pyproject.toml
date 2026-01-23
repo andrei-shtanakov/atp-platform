@@ -10,6 +10,8 @@ dependencies = [
     "httpx>=0.27",
     "ruamel-yaml>=0.18",
     "click>=8.3.1",
+    "fastapi>=0.128.0",
+    "uvicorn[standard]>=0.40.0",
 ]
 
 [project.optional-dependencies]
