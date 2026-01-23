@@ -1,0 +1,40 @@
+[
+  {
+    "version": "1.0",
+    "task_id": "test-task-002",
+    "timestamp": "2024-01-15T10:00:00Z",
+    "sequence": 0,
+    "event_type": "tool_call",
+    "payload": {
+      "tool": "web_search",
+      "input": {"query": "something"},
+      "output": null,
+      "duration_ms": 100,
+      "status": "error"
+    }
+  },
+  {
+    "version": "1.0",
+    "task_id": "test-task-002",
+    "timestamp": "2024-01-15T10:00:01Z",
+    "sequence": 1,
+    "event_type": "error",
+    "payload": {
+      "error_type": "RateLimitError",
+      "message": "API rate limit exceeded",
+      "recoverable": true
+    }
+  },
+  {
+    "version": "1.0",
+    "task_id": "test-task-002",
+    "timestamp": "2024-01-15T10:00:02Z",
+    "sequence": 2,
+    "event_type": "error",
+    "payload": {
+      "error_type": "TimeoutError",
+      "message": "Request timed out after 30 seconds",
+      "recoverable": false
+    }
+  }
+]
