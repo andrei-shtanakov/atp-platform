@@ -271,7 +271,7 @@ End-to-end тесты критических user journeys.
 ---
 
 ### TASK-007: Basic Evaluators
-🔴 P0 | ⬜ TODO | Est: 4d
+🔴 P0 | 🔄 IN_PROGRESS | Est: 4d
 
 **Description:**
 Artifact и Behavior evaluators.
@@ -580,7 +580,7 @@ Evaluator для запуска сгенерированного кода.
 ---
 
 ### TASK-019: Mock Tools
-🟡 P2 | 🔄 IN_PROGRESS | Est: 2d
+🟡 P2 | ✅ DONE | Est: 2d
 
 **Description:**
 Mock tools для детерминированного тестирования.

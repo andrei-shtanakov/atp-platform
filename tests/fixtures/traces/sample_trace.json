@@ -1,0 +1,55 @@
+[
+  {
+    "version": "1.0",
+    "task_id": "test-task-001",
+    "timestamp": "2024-01-15T10:00:00Z",
+    "sequence": 0,
+    "event_type": "tool_call",
+    "payload": {
+      "tool": "web_search",
+      "input": {"query": "competitor analysis"},
+      "output": {"results": []},
+      "duration_ms": 150,
+      "status": "success"
+    }
+  },
+  {
+    "version": "1.0",
+    "task_id": "test-task-001",
+    "timestamp": "2024-01-15T10:00:01Z",
+    "sequence": 1,
+    "event_type": "llm_request",
+    "payload": {
+      "model": "claude-3-sonnet",
+      "input_tokens": 500,
+      "output_tokens": 200,
+      "duration_ms": 2000
+    }
+  },
+  {
+    "version": "1.0",
+    "task_id": "test-task-001",
+    "timestamp": "2024-01-15T10:00:02Z",
+    "sequence": 2,
+    "event_type": "tool_call",
+    "payload": {
+      "tool": "file_write",
+      "input": {"path": "report.md"},
+      "output": {"success": true},
+      "duration_ms": 50,
+      "status": "success"
+    }
+  },
+  {
+    "version": "1.0",
+    "task_id": "test-task-001",
+    "timestamp": "2024-01-15T10:00:03Z",
+    "sequence": 3,
+    "event_type": "progress",
+    "payload": {
+      "current_step": 3,
+      "percentage": 100,
+      "message": "Task completed"
+    }
+  }
+]
