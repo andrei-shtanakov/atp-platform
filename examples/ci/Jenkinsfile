@@ -1,0 +1,49 @@
+// Basic Jenkins Pipeline for ATP testing
+//
+// This is a minimal example showing how to run ATP tests in Jenkins.
+// Copy this file to your repository root as Jenkinsfile.
+
+pipeline {
+    agent {
+        docker {
+            image 'python:3.12'
+        }
+    }
+
+    environment {
+        // Set API key from Jenkins credentials
+        ANTHROPIC_API_KEY = credentials('anthropic-api-key')
+    }
+
+    stages {
+        stage('Setup') {
+            steps {
+                sh '''
+                    pip install uv
+                    uv sync
+                '''
+            }
+        }
+
+        stage('Test') {
+            steps {
+                sh '''
+                    mkdir -p results
+                    atp test tests/suite.yaml \
+                        --output=junit \
+                        --output-file=results/junit.xml
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            // Publish JUnit results
+            junit 'results/junit.xml'
+
+            // Archive all results
+            archiveArtifacts artifacts: 'results/**', fingerprint: true
+        }
+    }
+}

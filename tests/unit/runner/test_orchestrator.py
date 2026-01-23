@@ -571,3 +571,369 @@ class TestRequestCreation:
         assert captured_request.metadata is not None
         assert captured_request.metadata.get("test_id") == "test-001"
         assert captured_request.metadata.get("test_name") == "Sample Test"
+
+
+class TestParallelTestExecution:
+    """Tests for parallel test execution."""
+
+    @pytest.fixture
+    def large_test_suite(self) -> TestSuite:
+        """Create a test suite with multiple tests."""
+        tests = [
+            TestDefinition(
+                id=f"test-{i:03d}",
+                name=f"Test {i}",
+                task=TaskDefinition(description=f"Task {i}"),
+                constraints=Constraints(timeout_seconds=10),
+            )
+            for i in range(1, 6)
+        ]
+        return TestSuite(
+            test_suite="parallel-test-suite",
+            tests=tests,
+            defaults=TestDefaults(runs_per_test=1),
+        )
+
+    @pytest.mark.anyio
+    async def test_parallel_tests_initialization(
+        self,
+        success_response: ATPResponse,
+    ) -> None:
+        """Orchestrator initializes with parallel tests options."""
+        adapter = MockAdapter(success_response)
+        orchestrator = TestOrchestrator(
+            adapter=adapter,
+            parallel_tests=True,
+            max_parallel_tests=3,
+        )
+
+        assert orchestrator.parallel_tests is True
+        assert orchestrator.max_parallel_tests == 3
+        assert orchestrator._tests_semaphore is None  # Created on first use
+
+    @pytest.mark.anyio
+    async def test_parallel_suite_execution(
+        self,
+        large_test_suite: TestSuite,
+        success_response: ATPResponse,
+    ) -> None:
+        """Test running suite with parallel tests."""
+        adapter = MockAdapter(success_response)
+
+        async with TestOrchestrator(
+            adapter=adapter,
+            parallel_tests=True,
+            max_parallel_tests=3,
+        ) as orchestrator:
+            result = await orchestrator.run_suite(large_test_suite, "test-agent")
+
+        assert result.suite_name == "parallel-test-suite"
+        assert result.agent_name == "test-agent"
+        assert result.total_tests == 5
+        assert result.passed_tests == 5
+        assert result.success is True
+
+    @pytest.mark.anyio
+    async def test_parallel_tests_with_delay_verifies_concurrency(
+        self,
+        large_test_suite: TestSuite,
+    ) -> None:
+        """Test that parallel execution actually runs concurrently."""
+        import time
+
+        execution_times: list[tuple[str, float, float]] = []
+
+        class TimingAdapter(MockAdapter):
+            async def stream_events(
+                self, request: ATPRequest
+            ) -> AsyncIterator[ATPEvent | ATPResponse]:
+                import asyncio
+
+                start = time.monotonic()
+                await asyncio.sleep(0.1)  # Simulate work
+                end = time.monotonic()
+                test_id = str(
+                    request.metadata.get("test_id", "?") if request.metadata else "?"
+                )
+                execution_times.append((test_id, start, end))
+                yield ATPResponse(
+                    task_id=request.task_id, status=ResponseStatus.COMPLETED
+                )
+
+        adapter = TimingAdapter()
+
+        start_time = time.monotonic()
+        async with TestOrchestrator(
+            adapter=adapter,
+            parallel_tests=True,
+            max_parallel_tests=5,  # All 5 tests can run together
+        ) as orchestrator:
+            result = await orchestrator.run_suite(large_test_suite, "test-agent")
+        total_time = time.monotonic() - start_time
+
+        assert result.success is True
+        assert len(execution_times) == 5
+
+        # If sequential, this would take ~0.5s (5 * 0.1s)
+        # If parallel, it should be close to 0.1s (all run together)
+        # Allow some margin for overhead
+        assert total_time < 0.4, f"Expected parallel execution, took {total_time}s"
+
+    @pytest.mark.anyio
+    async def test_parallel_tests_respects_semaphore_limit(
+        self,
+        large_test_suite: TestSuite,
+    ) -> None:
+        """Test that semaphore limits concurrent tests."""
+
+        max_concurrent = 0
+        current_concurrent = 0
+
+        class ConcurrencyTrackingAdapter(MockAdapter):
+            async def stream_events(
+                self, request: ATPRequest
+            ) -> AsyncIterator[ATPEvent | ATPResponse]:
+                import asyncio
+
+                nonlocal max_concurrent, current_concurrent
+                current_concurrent += 1
+                if current_concurrent > max_concurrent:
+                    max_concurrent = current_concurrent
+                await asyncio.sleep(0.05)  # Simulate work
+                current_concurrent -= 1
+                yield ATPResponse(
+                    task_id=request.task_id, status=ResponseStatus.COMPLETED
+                )
+
+        adapter = ConcurrencyTrackingAdapter()
+
+        async with TestOrchestrator(
+            adapter=adapter,
+            parallel_tests=True,
+            max_parallel_tests=2,  # Limit to 2 concurrent
+        ) as orchestrator:
+            result = await orchestrator.run_suite(large_test_suite, "test-agent")
+
+        assert result.success is True
+        assert max_concurrent <= 2, f"Expected max 2 concurrent, got {max_concurrent}"
+
+    @pytest.mark.anyio
+    async def test_parallel_tests_result_order_preserved(
+        self,
+        large_test_suite: TestSuite,
+    ) -> None:
+        """Test that results are returned in original test order."""
+        import random
+
+        class RandomDelayAdapter(MockAdapter):
+            async def stream_events(
+                self, request: ATPRequest
+            ) -> AsyncIterator[ATPEvent | ATPResponse]:
+                import asyncio
+
+                # Random delay to ensure out-of-order completion
+                await asyncio.sleep(random.uniform(0.01, 0.05))
+                yield ATPResponse(
+                    task_id=request.task_id, status=ResponseStatus.COMPLETED
+                )
+
+        adapter = RandomDelayAdapter()
+
+        async with TestOrchestrator(
+            adapter=adapter,
+            parallel_tests=True,
+            max_parallel_tests=5,
+        ) as orchestrator:
+            result = await orchestrator.run_suite(large_test_suite, "test-agent")
+
+        # Verify order is preserved
+        expected_ids = ["test-001", "test-002", "test-003", "test-004", "test-005"]
+        actual_ids = [t.test.id for t in result.tests]
+        assert actual_ids == expected_ids
+
+    @pytest.mark.anyio
+    async def test_parallel_tests_with_some_failures(
+        self,
+        large_test_suite: TestSuite,
+    ) -> None:
+        """Test parallel execution with some test failures."""
+        call_count = 0
+
+        class AlternatingAdapter(MockAdapter):
+            async def stream_events(
+                self, request: ATPRequest
+            ) -> AsyncIterator[ATPEvent | ATPResponse]:
+                nonlocal call_count
+                call_count += 1
+                # Fail every second test
+                status = (
+                    ResponseStatus.COMPLETED
+                    if call_count % 2 == 1
+                    else ResponseStatus.FAILED
+                )
+                yield ATPResponse(task_id=request.task_id, status=status)
+
+        adapter = AlternatingAdapter()
+
+        async with TestOrchestrator(
+            adapter=adapter,
+            parallel_tests=True,
+            max_parallel_tests=3,
+        ) as orchestrator:
+            result = await orchestrator.run_suite(large_test_suite, "test-agent")
+
+        assert result.total_tests == 5
+        assert result.passed_tests == 3  # Tests 1, 3, 5 pass
+        assert result.failed_tests == 2  # Tests 2, 4 fail
+        assert result.success is False
+
+    @pytest.mark.anyio
+    async def test_parallel_tests_disabled_with_fail_fast(
+        self,
+        large_test_suite: TestSuite,
+        failed_response: ATPResponse,
+    ) -> None:
+        """Test that fail_fast disables parallel execution."""
+        adapter = MockAdapter(failed_response)
+
+        async with TestOrchestrator(
+            adapter=adapter,
+            parallel_tests=True,  # Enabled
+            max_parallel_tests=3,
+            fail_fast=True,  # But fail_fast takes precedence
+        ) as orchestrator:
+            result = await orchestrator.run_suite(large_test_suite, "test-agent")
+
+        # With fail_fast, should stop after first failure (sequential)
+        assert len(result.tests) == 1
+
+    @pytest.mark.anyio
+    async def test_parallel_tests_progress_events(
+        self,
+        large_test_suite: TestSuite,
+        success_response: ATPResponse,
+    ) -> None:
+        """Test progress events are emitted correctly for parallel tests."""
+        adapter = MockAdapter(success_response)
+        events: list[ProgressEvent] = []
+
+        async with TestOrchestrator(
+            adapter=adapter,
+            parallel_tests=True,
+            max_parallel_tests=3,
+            progress_callback=events.append,
+        ) as orchestrator:
+            await orchestrator.run_suite(large_test_suite, "test-agent")
+
+        event_types = [e.event_type for e in events]
+
+        # Suite events
+        assert ProgressEventType.SUITE_STARTED in event_types
+        assert ProgressEventType.SUITE_COMPLETED in event_types
+
+        # Each test should have started and completed events
+        assert event_types.count(ProgressEventType.TEST_STARTED) == 5
+        assert event_types.count(ProgressEventType.TEST_COMPLETED) == 5
+
+        # Each test should have run started and completed events
+        assert event_types.count(ProgressEventType.RUN_STARTED) == 5
+        assert event_types.count(ProgressEventType.RUN_COMPLETED) == 5
+
+    @pytest.mark.anyio
+    async def test_parallel_tests_with_exception(
+        self,
+    ) -> None:
+        """Test parallel execution handles exceptions gracefully."""
+        tests = [
+            TestDefinition(
+                id="test-001",
+                name="Test 1",
+                task=TaskDefinition(description="Task 1"),
+                constraints=Constraints(timeout_seconds=10),
+            ),
+            TestDefinition(
+                id="test-002",
+                name="Test 2",
+                task=TaskDefinition(description="Task 2"),
+                constraints=Constraints(timeout_seconds=10),
+            ),
+        ]
+        suite = TestSuite(
+            test_suite="exception-suite",
+            tests=tests,
+            defaults=TestDefaults(runs_per_test=1),
+        )
+
+        call_count = 0
+
+        class ExceptionAdapter(MockAdapter):
+            async def stream_events(
+                self, request: ATPRequest
+            ) -> AsyncIterator[ATPEvent | ATPResponse]:
+                nonlocal call_count
+                call_count += 1
+                if call_count == 2:
+                    raise RuntimeError("Simulated error")
+                yield ATPResponse(
+                    task_id=request.task_id, status=ResponseStatus.COMPLETED
+                )
+
+        adapter = ExceptionAdapter()
+
+        async with TestOrchestrator(
+            adapter=adapter,
+            parallel_tests=True,
+            max_parallel_tests=2,
+        ) as orchestrator:
+            result = await orchestrator.run_suite(suite, "test-agent")
+
+        assert result.total_tests == 2
+        # First test should succeed, second should have error
+        assert result.tests[0].success is True
+        assert result.tests[1].success is False
+
+    @pytest.mark.anyio
+    async def test_single_test_no_parallel(
+        self,
+        test_definition: TestDefinition,
+        success_response: ATPResponse,
+    ) -> None:
+        """Test that single test doesn't use parallel execution."""
+        suite = TestSuite(
+            test_suite="single-test-suite",
+            tests=[test_definition],
+            defaults=TestDefaults(runs_per_test=1),
+        )
+        adapter = MockAdapter(success_response)
+
+        async with TestOrchestrator(
+            adapter=adapter,
+            parallel_tests=True,
+            max_parallel_tests=3,
+        ) as orchestrator:
+            result = await orchestrator.run_suite(suite, "test-agent")
+
+        assert result.success is True
+        assert result.total_tests == 1
+
+
+class TestRunSuiteConvenience:
+    """Tests for run_suite convenience function with parallel options."""
+
+    @pytest.mark.anyio
+    async def test_run_suite_with_parallel_option(
+        self,
+        test_suite: TestSuite,
+        success_response: ATPResponse,
+    ) -> None:
+        """Test run_suite convenience function with parallel tests."""
+        adapter = MockAdapter(success_response)
+        result = await run_suite(
+            adapter,
+            test_suite,
+            "test-agent",
+            parallel_tests=True,
+            max_parallel_tests=2,
+        )
+        assert result.success is True
+        assert result.total_tests == 2

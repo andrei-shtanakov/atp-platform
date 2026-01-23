@@ -1,0 +1,40 @@
+# Valid test suite for E2E testing - happy path
+test_suite: "e2e-happy-path"
+version: "1.0"
+description: "E2E test suite for happy path scenarios"
+
+defaults:
+  runs_per_test: 1
+  timeout_seconds: 30
+  scoring:
+    quality_weight: 0.4
+    completeness_weight: 0.3
+    efficiency_weight: 0.2
+    cost_weight: 0.1
+
+tests:
+  - id: "e2e-test-001"
+    name: "Simple task completion"
+    description: "A basic test that should pass"
+    tags: ["smoke", "e2e"]
+    task:
+      description: "Complete a simple task"
+      input_data:
+        key: "value"
+      expected_artifacts:
+        - "result"
+    constraints:
+      max_steps: 10
+      max_tokens: 1000
+      timeout_seconds: 30
+      allowed_tools: ["file_write"]
+
+  - id: "e2e-test-002"
+    name: "Second test case"
+    description: "Another test that should pass"
+    tags: ["e2e"]
+    task:
+      description: "Perform another task"
+    constraints:
+      max_steps: 5
+      timeout_seconds: 30

@@ -721,12 +721,20 @@ def cmd_run(args, config: ExecutorConfig):
             break
 
     # Итог
+    # Подсчёт статистики
+    failed_attempts = sum(
+        1 for ts in state.tasks.values() for a in ts.attempts if not a.success
+    )
+    remaining = len([t for t in tasks if t.status == "todo"])
+
     print(f"\n{'=' * 60}")
     print("📊 Execution Summary")
     print(f"{'=' * 60}")
-    print(f"   Completed: {state.total_completed}")
-    print(f"   Failed:    {state.total_failed}")
-    print(f"   Remaining: {len([t for t in tasks if t.status == 'todo'])}")
+    print(f"   Tasks completed:    {state.total_completed}")
+    print(f"   Tasks failed:       {state.total_failed}")
+    print(f"   Tasks remaining:    {remaining}")
+    if failed_attempts > 0:
+        print(f"   Failed attempts:    {failed_attempts} (retried successfully)")
 
 
 def cmd_status(args, config: ExecutorConfig):
@@ -734,10 +742,22 @@ def cmd_status(args, config: ExecutorConfig):
 
     state = ExecutorState(config)
 
+    # Подсчёт статистики из реального состояния задач
+    completed_tasks = sum(1 for ts in state.tasks.values() if ts.status == "success")
+    failed_tasks = sum(1 for ts in state.tasks.values() if ts.status == "failed")
+    running_tasks = [ts for ts in state.tasks.values() if ts.status == "running"]
+    failed_attempts = sum(
+        1 for ts in state.tasks.values() for a in ts.attempts if not a.success
+    )
+
     print("\n📊 Executor Status")
     print(f"{'=' * 50}")
-    print(f"Total completed:       {state.total_completed}")
-    print(f"Total failed:          {state.total_failed}")
+    print(f"Tasks completed:       {completed_tasks}")
+    print(f"Tasks failed:          {failed_tasks}")
+    if running_tasks:
+        print(f"Tasks in progress:     {len(running_tasks)}")
+    if failed_attempts > 0:
+        print(f"Failed attempts:       {failed_attempts} (retried)")
     print(
         f"Consecutive failures:  "
         f"{state.consecutive_failures}/{config.max_consecutive_failures}"
@@ -755,9 +775,14 @@ def cmd_status(args, config: ExecutorConfig):
                 if ts.status == "failed"
                 else "🔄"
             )
-            print(f"   {icon} {ts.task_id}: {ts.status} ({ts.attempt_count} attempts)")
-            if ts.last_error:
+            attempts_info = f"{ts.attempt_count} attempt"
+            if ts.attempt_count > 1:
+                attempts_info += "s"
+            print(f"   {icon} {ts.task_id}: {ts.status} ({attempts_info})")
+            if ts.status == "failed" and ts.last_error:
                 print(f"      Last error: {ts.last_error[:50]}...")
+            elif ts.status == "running" and ts.last_error:
+                print(f"      ⚠️  Last attempt failed: {ts.last_error[:50]}...")
 
 
 def cmd_retry(args, config: ExecutorConfig):

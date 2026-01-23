@@ -5,6 +5,7 @@ from typing import Any
 from .artifact import ArtifactEvaluator
 from .base import Evaluator
 from .behavior import BehaviorEvaluator
+from .code_exec import CodeExecEvaluator
 from .llm_judge import LLMJudgeEvaluator
 
 
@@ -31,6 +32,7 @@ class EvaluatorRegistry:
         self.register("artifact", ArtifactEvaluator)
         self.register("behavior", BehaviorEvaluator)
         self.register("llm_judge", LLMJudgeEvaluator)
+        self.register("code_exec", CodeExecEvaluator)
 
         self._register_assertion_mapping("artifact_exists", "artifact")
         self._register_assertion_mapping("contains", "artifact")
@@ -45,6 +47,11 @@ class EvaluatorRegistry:
         self._register_assertion_mapping("forbidden_tools", "behavior")
 
         self._register_assertion_mapping("llm_eval", "llm_judge")
+
+        self._register_assertion_mapping("pytest", "code_exec")
+        self._register_assertion_mapping("npm", "code_exec")
+        self._register_assertion_mapping("custom_command", "code_exec")
+        self._register_assertion_mapping("lint", "code_exec")
 
     def register(
         self,

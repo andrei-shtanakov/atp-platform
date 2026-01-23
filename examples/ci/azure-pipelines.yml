@@ -1,0 +1,47 @@
+# Basic Azure DevOps Pipeline for ATP testing
+#
+# This is a minimal example showing how to run ATP tests in Azure DevOps.
+# Copy this file to your repository as azure-pipelines.yml.
+
+trigger:
+  - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+  - task: UsePythonVersion@0
+    displayName: 'Set up Python'
+    inputs:
+      versionSpec: '3.12'
+      addToPath: true
+
+  - script: |
+      pip install uv
+      uv sync
+    displayName: 'Install dependencies'
+
+  - script: |
+      mkdir -p results
+      atp test tests/suite.yaml \
+        --output=junit \
+        --output-file=results/junit.xml
+    displayName: 'Run ATP tests'
+    env:
+      ANTHROPIC_API_KEY: $(ANTHROPIC_API_KEY)
+
+  - task: PublishTestResults@2
+    displayName: 'Publish test results'
+    condition: always()
+    inputs:
+      testResultsFormat: 'JUnit'
+      testResultsFiles: 'results/junit.xml'
+      failTaskOnFailedTests: true
+      testRunTitle: 'ATP Agent Tests'
+
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish artifacts'
+    condition: always()
+    inputs:
+      pathToPublish: 'results'
+      artifactName: 'test-results'

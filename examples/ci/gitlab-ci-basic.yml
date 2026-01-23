@@ -1,0 +1,27 @@
+# Basic GitLab CI configuration for ATP testing
+#
+# This is a minimal example showing how to run ATP tests in GitLab CI.
+# Copy this file to .gitlab-ci.yml in your repository.
+
+stages:
+  - test
+
+variables:
+  PYTHON_VERSION: "3.12"
+
+test:atp:
+  stage: test
+  image: python:${PYTHON_VERSION}
+  before_script:
+    - pip install uv
+    - uv sync
+  script:
+    - mkdir -p results
+    - atp test tests/suite.yaml --output=junit --output-file=results/junit.xml
+  artifacts:
+    when: always
+    reports:
+      junit: results/junit.xml
+    paths:
+      - results/
+    expire_in: 30 days

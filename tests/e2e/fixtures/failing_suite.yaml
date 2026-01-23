@@ -1,0 +1,28 @@
+# Test suite with tests expected to fail
+test_suite: "e2e-failing-tests"
+version: "1.0"
+description: "E2E test suite with failing tests"
+
+defaults:
+  runs_per_test: 1
+  timeout_seconds: 30
+
+tests:
+  - id: "fail-test-001"
+    name: "Test that should fail"
+    description: "This test is expected to fail"
+    tags: ["fail", "e2e"]
+    task:
+      description: "Task that will fail"
+    constraints:
+      max_steps: 5
+      timeout_seconds: 30
+
+  - id: "fail-test-002"
+    name: "Another failing test"
+    tags: ["fail", "e2e"]
+    task:
+      description: "Another task that will fail"
+    constraints:
+      max_steps: 5
+      timeout_seconds: 30

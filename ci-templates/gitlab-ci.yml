@@ -1,0 +1,261 @@
+# ATP (Agent Test Platform) GitLab CI Template
+#
+# This template provides CI/CD integration for ATP agent testing.
+# It supports test execution, JUnit report generation, and baseline comparison.
+#
+# Usage:
+#   Include this template in your .gitlab-ci.yml:
+#
+#   include:
+#     - local: 'ci-templates/gitlab-ci.yml'
+#
+#   Or copy this file directly to your repository as .gitlab-ci.yml
+#
+# Required CI/CD Variables:
+#   - ANTHROPIC_API_KEY: For LLM-as-judge evaluations (if using llm_eval assertions)
+#
+# Optional CI/CD Variables:
+#   - OPENAI_API_KEY: Alternative LLM provider
+#   - AGENT_API_KEY: If your agent requires authentication
+#   - ATP_SUITE: Test suite file path (default: tests/suite.yaml)
+#   - ATP_TAGS: Test tags to filter
+#   - ATP_RUNS: Number of runs per test (default: 1)
+
+# Variables with defaults
+variables:
+  PYTHON_VERSION: "3.12"
+  ATP_SUITE: "tests/suite.yaml"
+  ATP_RUNS: "1"
+  ATP_PARALLEL: "4"
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+# Cache pip packages across jobs
+.pip_cache:
+  cache:
+    key: "$CI_JOB_NAME-$PYTHON_VERSION"
+    paths:
+      - .cache/pip
+      - .venv/
+
+# Default job template
+.atp_base:
+  image: python:${PYTHON_VERSION}
+  before_script:
+    - pip install uv
+    - uv venv .venv
+    - source .venv/bin/activate
+    - uv sync
+  extends: .pip_cache
+
+# Stages
+stages:
+  - validate
+  - test
+  - compare
+  - report
+
+# Validate test suite and configuration
+validate:suite:
+  stage: validate
+  extends: .atp_base
+  script:
+    - |
+      echo "Validating test suite: $ATP_SUITE"
+      atp validate --suite="$ATP_SUITE"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+
+# Main test job
+test:atp:
+  stage: test
+  extends: .atp_base
+  script:
+    - |
+      mkdir -p results
+
+      # Build test command
+      CMD="atp test '$ATP_SUITE'"
+      CMD="$CMD --runs=$ATP_RUNS"
+      CMD="$CMD --parallel=$ATP_PARALLEL"
+
+      # Add tags filter if specified
+      if [ -n "$ATP_TAGS" ]; then
+        CMD="$CMD --tags='$ATP_TAGS'"
+      fi
+
+      # Generate JSON report
+      CMD="$CMD --output=json --output-file=results/atp-results.json"
+
+      echo "Running: $CMD"
+      eval $CMD
+      TEST_EXIT_CODE=$?
+
+      # Also generate JUnit report for GitLab integration
+      atp test "$ATP_SUITE" --runs=$ATP_RUNS --parallel=$ATP_PARALLEL --output=junit --output-file=results/junit.xml || true
+
+      exit $TEST_EXIT_CODE
+  artifacts:
+    when: always
+    paths:
+      - results/
+    reports:
+      junit: results/junit.xml
+    expire_in: 30 days
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+  allow_failure: false
+
+# Baseline comparison job (only on merge requests)
+compare:baseline:
+  stage: compare
+  extends: .atp_base
+  script:
+    - |
+      # Check if baseline exists
+      if [ ! -f baselines/baseline.json ]; then
+        echo "No baseline found at baselines/baseline.json, skipping comparison"
+        exit 0
+      fi
+
+      mkdir -p results
+
+      echo "Comparing against baseline..."
+      atp baseline compare "$ATP_SUITE" \
+        -b baselines/baseline.json \
+        --runs=$ATP_RUNS \
+        --parallel=$ATP_PARALLEL \
+        --output=json \
+        --output-file=results/comparison.json
+
+      # Check for regressions
+      HAS_REGRESSIONS=$(jq -r '.has_regressions' results/comparison.json)
+
+      if [ "$HAS_REGRESSIONS" == "true" ]; then
+        echo "WARNING: Regressions detected!"
+        jq '.regressions' results/comparison.json
+
+        if [ "$FAIL_ON_REGRESSION" == "true" ]; then
+          echo "Failing pipeline due to regressions (FAIL_ON_REGRESSION=true)"
+          exit 1
+        fi
+      fi
+  artifacts:
+    when: always
+    paths:
+      - results/comparison.json
+    expire_in: 30 days
+  needs:
+    - test:atp
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: on_success
+  allow_failure: true
+
+# Generate baseline from main branch
+generate:baseline:
+  stage: report
+  extends: .atp_base
+  script:
+    - |
+      mkdir -p baselines
+
+      echo "Generating baseline with $ATP_BASELINE_RUNS runs per test..."
+      atp baseline save "$ATP_SUITE" \
+        -o baselines/baseline.json \
+        --runs=${ATP_BASELINE_RUNS:-5} \
+        --parallel=$ATP_PARALLEL
+  artifacts:
+    paths:
+      - baselines/baseline.json
+    expire_in: never
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      when: manual
+  allow_failure: true
+
+# Smoke tests (quick subset)
+test:smoke:
+  stage: test
+  extends: .atp_base
+  variables:
+    ATP_TAGS: "smoke"
+    ATP_RUNS: "1"
+  script:
+    - |
+      mkdir -p results
+
+      atp test "$ATP_SUITE" \
+        --tags=smoke \
+        --runs=1 \
+        --output=junit \
+        --output-file=results/junit-smoke.xml
+  artifacts:
+    when: always
+    paths:
+      - results/
+    reports:
+      junit: results/junit-smoke.xml
+    expire_in: 7 days
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      when: always
+  allow_failure: false
+
+# Nightly comprehensive tests
+test:nightly:
+  stage: test
+  extends: .atp_base
+  variables:
+    ATP_RUNS: "5"
+  script:
+    - |
+      mkdir -p results
+
+      atp test "$ATP_SUITE" \
+        --runs=5 \
+        --parallel=$ATP_PARALLEL \
+        --output=json \
+        --output-file=results/atp-nightly.json
+
+      atp test "$ATP_SUITE" \
+        --runs=5 \
+        --parallel=$ATP_PARALLEL \
+        --output=junit \
+        --output-file=results/junit-nightly.xml
+  artifacts:
+    when: always
+    paths:
+      - results/
+    reports:
+      junit: results/junit-nightly.xml
+    expire_in: 90 days
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+  allow_failure: false
+
+# HTML report generation
+report:html:
+  stage: report
+  extends: .atp_base
+  script:
+    - |
+      mkdir -p public
+
+      atp test "$ATP_SUITE" \
+        --runs=$ATP_RUNS \
+        --output=html \
+        --output-file=public/index.html || true
+  artifacts:
+    paths:
+      - public/
+    expire_in: 30 days
+  needs:
+    - test:atp
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  pages:
+    publish: public

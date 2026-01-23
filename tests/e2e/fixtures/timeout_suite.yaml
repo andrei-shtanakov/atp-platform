@@ -1,0 +1,19 @@
+# Test suite with timeout configuration
+test_suite: "e2e-timeout-tests"
+version: "1.0"
+description: "E2E test suite for timeout scenarios"
+
+defaults:
+  runs_per_test: 1
+  timeout_seconds: 1  # Very short timeout to trigger timeout behavior
+
+tests:
+  - id: "timeout-test-001"
+    name: "Test with very short timeout"
+    description: "This test should timeout"
+    tags: ["timeout", "e2e"]
+    task:
+      description: "Task that will timeout"
+    constraints:
+      max_steps: 10
+      timeout_seconds: 1  # 1 second timeout - should trigger timeout

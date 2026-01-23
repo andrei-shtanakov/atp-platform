@@ -1,0 +1,51 @@
+# Basic GitHub Actions workflow for ATP testing
+#
+# This is a minimal example showing how to run ATP tests in GitHub Actions.
+# Copy this file to .github/workflows/atp.yml in your repository.
+
+name: ATP Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install ATP
+        run: |
+          pip install uv
+          uv sync
+
+      - name: Run ATP tests
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          mkdir -p results
+          atp test tests/suite.yaml \
+            --output=junit \
+            --output-file=results/junit.xml
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: results/
+
+      - name: Publish Test Report
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          files: results/junit.xml

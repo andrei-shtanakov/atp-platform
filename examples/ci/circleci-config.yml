@@ -1,0 +1,56 @@
+# Basic CircleCI configuration for ATP testing
+#
+# This is a minimal example showing how to run ATP tests in CircleCI.
+# Copy this file to .circleci/config.yml in your repository.
+
+version: 2.1
+
+executors:
+  python:
+    docker:
+      - image: cimg/python:3.12
+    working_directory: ~/project
+
+jobs:
+  test:
+    executor: python
+    steps:
+      - checkout
+
+      - restore_cache:
+          keys:
+            - pip-{{ checksum "pyproject.toml" }}
+            - pip-
+
+      - run:
+          name: Install dependencies
+          command: |
+            pip install uv
+            uv sync
+
+      - save_cache:
+          key: pip-{{ checksum "pyproject.toml" }}
+          paths:
+            - ~/.cache/pip
+            - .venv
+
+      - run:
+          name: Run ATP tests
+          command: |
+            mkdir -p test-results
+            atp test tests/suite.yaml \
+              --output=junit \
+              --output-file=test-results/junit.xml
+
+      - store_test_results:
+          path: test-results
+
+      - store_artifacts:
+          path: test-results
+          destination: test-results
+
+workflows:
+  version: 2
+  test:
+    jobs:
+      - test

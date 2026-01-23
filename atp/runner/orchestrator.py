@@ -51,6 +51,8 @@ class TestOrchestrator:
         fail_fast: bool = False,
         parallel_runs: bool = False,
         max_parallel: int = 5,
+        parallel_tests: bool = False,
+        max_parallel_tests: int = 5,
     ) -> None:
         """
         Initialize the orchestrator.
@@ -63,6 +65,8 @@ class TestOrchestrator:
             fail_fast: Stop suite execution on first failure if True.
             parallel_runs: If True, run multiple runs in parallel.
             max_parallel: Maximum number of parallel runs (default 5).
+            parallel_tests: If True, run multiple tests in parallel.
+            max_parallel_tests: Maximum number of parallel tests (default 5).
         """
         self.adapter = adapter
         self.sandbox_config = sandbox_config or SandboxConfig()
@@ -71,8 +75,11 @@ class TestOrchestrator:
         self.fail_fast = fail_fast
         self.parallel_runs = parallel_runs
         self.max_parallel = max_parallel
+        self.parallel_tests = parallel_tests
+        self.max_parallel_tests = max_parallel_tests
         self._sandbox_manager: SandboxManager | None = None
         self._semaphore: asyncio.Semaphore | None = None
+        self._tests_semaphore: asyncio.Semaphore | None = None
 
     def _emit_progress(self, event: ProgressEvent) -> None:
         """Emit a progress event if callback is registered."""
@@ -420,6 +427,61 @@ class TestOrchestrator:
 
         return run_results
 
+    async def _execute_tests_parallel(
+        self,
+        tests: list[TestDefinition],
+        num_runs: int,
+    ) -> list[TestResult]:
+        """
+        Execute multiple tests in parallel with semaphore limiting.
+
+        Args:
+            tests: List of test definitions to execute.
+            num_runs: Number of runs per test.
+
+        Returns:
+            List of TestResult objects, in the same order as input tests.
+        """
+        # Initialize tests semaphore if not already done
+        if self._tests_semaphore is None:
+            self._tests_semaphore = asyncio.Semaphore(self.max_parallel_tests)
+
+        # Create mapping to preserve order
+        test_indices = {test.id: idx for idx, test in enumerate(tests)}
+
+        async def run_test_with_semaphore(test: TestDefinition) -> TestResult:
+            async with self._tests_semaphore:  # type: ignore[union-attr]
+                logger.info(
+                    "Starting parallel test: %s (%s)",
+                    test.name,
+                    test.id,
+                )
+                return await self.run_single_test(test, runs=num_runs)
+
+        # Create tasks for all tests
+        tasks = [run_test_with_semaphore(test) for test in tests]
+
+        # Execute all tasks concurrently and gather results
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Process results, converting exceptions to failed test results
+        test_results: list[TestResult] = []
+        for test, result in zip(tests, results):
+            if isinstance(result, BaseException):
+                logger.error("Test %s failed with exception: %s", test.id, result)
+                # Create a failed test result for the exception
+                test_result = TestResult(test=test)
+                test_result.error = str(result)
+                test_result.end_time = test_result.start_time
+                test_results.append(test_result)
+            elif isinstance(result, TestResult):
+                test_results.append(result)
+
+        # Sort by original order using test indices
+        test_results.sort(key=lambda r: test_indices.get(r.test.id, 0))
+
+        return test_results
+
     async def _execute_run(
         self,
         test: TestDefinition,
@@ -551,25 +613,38 @@ class TestOrchestrator:
         suite.apply_defaults()
 
         try:
-            for idx, test in enumerate(suite.tests):
+            if self.parallel_tests and not self.fail_fast and total_tests > 1:
+                # Execute tests in parallel (fail_fast is incompatible)
                 logger.info(
-                    "Running test %d/%d: %s (%s)",
-                    idx + 1,
+                    "Running %d tests in parallel (max_parallel=%d)",
                     total_tests,
-                    test.name,
-                    test.id,
+                    self.max_parallel_tests,
                 )
-
-                test_result = await self.run_single_test(test, runs=num_runs)
-                result.tests.append(test_result)
-
-                # Check for fail-fast
-                if not test_result.success and self.fail_fast:
+                result.tests = await self._execute_tests_parallel(
+                    tests=suite.tests,
+                    num_runs=num_runs,
+                )
+            else:
+                # Execute tests sequentially
+                for idx, test in enumerate(suite.tests):
                     logger.info(
-                        "Test %s failed, stopping suite due to fail_fast",
+                        "Running test %d/%d: %s (%s)",
+                        idx + 1,
+                        total_tests,
+                        test.name,
                         test.id,
                     )
-                    break
+
+                    test_result = await self.run_single_test(test, runs=num_runs)
+                    result.tests.append(test_result)
+
+                    # Check for fail-fast
+                    if not test_result.success and self.fail_fast:
+                        logger.info(
+                            "Test %s failed, stopping suite due to fail_fast",
+                            test.id,
+                        )
+                        break
 
         except Exception as e:
             result.error = str(e)
@@ -652,6 +727,8 @@ async def run_suite(
     progress_callback: ProgressCallback | None = None,
     runs_per_test: int = 1,
     fail_fast: bool = False,
+    parallel_tests: bool = False,
+    max_parallel_tests: int = 5,
 ) -> SuiteResult:
     """
     Convenience function to run a test suite.
@@ -663,6 +740,8 @@ async def run_suite(
         progress_callback: Optional progress callback.
         runs_per_test: Number of runs per test.
         fail_fast: Stop on first failure.
+        parallel_tests: If True, run tests in parallel.
+        max_parallel_tests: Maximum number of parallel tests.
 
     Returns:
         SuiteResult.
@@ -672,5 +751,7 @@ async def run_suite(
         progress_callback=progress_callback,
         runs_per_test=runs_per_test,
         fail_fast=fail_fast,
+        parallel_tests=parallel_tests,
+        max_parallel_tests=max_parallel_tests,
     ) as orchestrator:
         return await orchestrator.run_suite(suite, agent_name, runs_per_test)

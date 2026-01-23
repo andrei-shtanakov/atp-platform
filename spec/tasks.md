@@ -97,7 +97,7 @@ Integration тесты для ключевых компонентов.
 ---
 
 ### TASK-103: E2E Test Suite
-🟠 P1 | ⬜ TODO | Est: 2d
+🟠 P1 | ✅ DONE | Est: 2d
 
 **Description:**
 End-to-end тесты критических user journeys.
@@ -332,24 +332,24 @@ Artifact и Behavior evaluators.
 ---
 
 ### TASK-009: Basic Reporters
-🔴 P0 | ⬜ TODO | Est: 3d
+🔴 P0 | ✅ DONE | Est: 3d
 
 **Description:**
 Console и JSON reporters.
 
 **Checklist:**
-- [ ] Reporter base class
-- [ ] ConsoleReporter
-  - [ ] Colored output (rich/click)
-  - [ ] Progress during execution
-  - [ ] Summary table
-  - [ ] Failed checks details
-  - [ ] Verbose mode
-- [ ] JSONReporter
-  - [ ] Full result structure
-  - [ ] File output
-  - [ ] Stable format (documented)
-- [ ] Reporter selection via CLI
+- [x] Reporter base class
+- [x] ConsoleReporter
+  - [x] Colored output (rich/click)
+  - [x] Progress during execution
+  - [x] Summary table
+  - [x] Failed checks details
+  - [x] Verbose mode
+- [x] JSONReporter
+  - [x] Full result structure
+  - [x] File output
+  - [x] Stable format (documented)
+- [x] Reporter selection via CLI
 
 **Traces to:** [REQ-050], [REQ-051]
 **Depends on:** [TASK-006], [TASK-008]
@@ -358,30 +358,29 @@ Console и JSON reporters.
 ---
 
 ### TASK-014: CLI Implementation
-🔴 P0 | ⬜ TODO | Est: 3d
+🔴 P0 | ✅ DONE | Est: 3d
 
 **Description:**
 CLI interface с Click/Typer.
 
 **Checklist:**
-- [ ] Main entry point
-- [ ] `atp test` command
-  - [ ] --agent option
-  - [ ] --suite option
-  - [ ] --test option (single test)
-  - [ ] --tags option
-  - [ ] --runs option
-  - [ ] --parallel option
-  - [ ] --output option
-  - [ ] --output-file option
-  - [ ] --verbose flag
-  - [ ] --fail-fast flag
-- [ ] `atp validate` command
-- [ ] `atp version` command
-- [ ] `atp list-agents` command
-- [ ] Config file loading (atp.config.yaml)
-- [ ] Exit codes (0=success, 1=failures, 2=error)
-- [ ] Help text и examples
+- [x] Main entry point
+- [x] `atp test` command
+  - [x] --agent option
+  - [x] --suite option (via positional arg)
+  - [x] --tags option
+  - [x] --runs option
+  - [x] --parallel option
+  - [x] --output option
+  - [x] --output-file option
+  - [x] --verbose flag
+  - [x] --fail-fast flag
+- [x] `atp validate` command
+- [x] `atp version` command
+- [x] `atp list-agents` command
+- [x] Config file loading (atp.config.yaml)
+- [x] Exit codes (0=success, 1=failures, 2=error)
+- [x] Help text и examples
 
 **Traces to:** [REQ-030]
 **Depends on:** [TASK-006], [TASK-009]
@@ -490,21 +489,21 @@ Evaluator с использованием LLM для семантической 
 ---
 
 ### TASK-013: Baseline & Regression Detection
-🟡 P2 | ⬜ TODO | Est: 3d
+🟡 P2 | ✅ DONE | Est: 3d
 
 **Description:**
 Сохранение baseline и обнаружение регрессий.
 
 **Checklist:**
-- [ ] Baseline file format
-- [ ] `atp baseline save` command
-- [ ] `atp baseline compare` command
-- [ ] Welch's t-test для сравнения
-- [ ] Regression detection (p < 0.05)
-- [ ] Improvement detection
-- [ ] Delta calculation
-- [ ] Diff visualization в console
-- [ ] JSON diff output
+- [x] Baseline file format
+- [x] `atp baseline save` command
+- [x] `atp baseline compare` command
+- [x] Welch's t-test для сравнения
+- [x] Regression detection (p < 0.05)
+- [x] Improvement detection
+- [x] Delta calculation
+- [x] Diff visualization в console
+- [x] JSON diff output
 
 **Traces to:** [REQ-052]
 **Depends on:** [TASK-011]
@@ -513,21 +512,21 @@ Evaluator с использованием LLM для семантической 
 ---
 
 ### TASK-016: HTML Reporter
-🟡 P2 | ⬜ TODO | Est: 3d
+🟡 P2 | ✅ DONE | Est: 3d
 
 **Description:**
 Self-contained HTML отчёт.
 
 **Checklist:**
-- [ ] HTMLReporter class
-- [ ] Jinja2 template
-- [ ] Embedded CSS (no external deps)
-- [ ] Summary section
-- [ ] Test details accordion
-- [ ] Score charts (Chart.js inline)
-- [ ] Failed checks highlighting
-- [ ] Trace viewer (collapsible)
-- [ ] Single-file output
+- [x] HTMLReporter class
+- [x] Jinja2 template
+- [x] Embedded CSS (no external deps)
+- [x] Summary section
+- [x] Test details accordion
+- [x] Score charts (Chart.js inline)
+- [x] Failed checks highlighting
+- [x] Trace viewer (collapsible)
+- [x] Single-file output
 
 **Traces to:** [REQ-051]
 **Depends on:** [TASK-009]
@@ -536,20 +535,20 @@ Self-contained HTML отчёт.
 ---
 
 ### TASK-017: CI/CD Integration
-🟠 P1 | ⬜ TODO | Est: 3d
+🟠 P1 | ✅ DONE | Est: 3d
 
 **Description:**
 Интеграция с CI системами.
 
 **Checklist:**
-- [ ] JUnit XML reporter
-- [ ] GitHub Action
-  - [ ] action.yml
-  - [ ] Caching
-  - [ ] Artifact upload
-- [ ] GitLab CI template
-- [ ] Exit codes documentation
-- [ ] CI usage examples
+- [x] JUnit XML reporter
+- [x] GitHub Action
+  - [x] action.yml
+  - [x] Caching
+  - [x] Artifact upload
+- [x] GitLab CI template
+- [x] Exit codes documentation
+- [x] CI usage examples
 
 **Traces to:** [REQ-051]
 **Depends on:** [TASK-009], [TASK-014]
@@ -558,21 +557,21 @@ Self-contained HTML отчёт.
 ---
 
 ### TASK-018: Code Execution Evaluator
-🟡 P2 | ⬜ TODO | Est: 3d
+🟡 P2 | ✅ DONE | Est: 3d
 
 **Description:**
 Evaluator для запуска сгенерированного кода.
 
 **Checklist:**
-- [ ] CodeExecEvaluator class
-- [ ] pytest runner
-- [ ] npm test runner
-- [ ] Custom command runner
-- [ ] Lint runner (ruff, eslint)
-- [ ] Sandbox execution (Docker)
-- [ ] Output parsing
-- [ ] Test count extraction
-- [ ] Pass rate calculation
+- [x] CodeExecEvaluator class
+- [x] pytest runner
+- [x] npm test runner
+- [x] Custom command runner
+- [x] Lint runner (ruff, eslint)
+- [x] Sandbox execution (Docker)
+- [x] Output parsing
+- [x] Test count extraction
+- [x] Pass rate calculation
 
 **Traces to:** [REQ-041]
 **Depends on:** [TASK-007]
@@ -603,17 +602,17 @@ Mock tools для детерминированного тестирования.
 ## Milestone 3: GA
 
 ### TASK-020: Parallel Execution
-🟡 P2 | ⬜ TODO | Est: 2d
+🟡 P2 | ✅ DONE | Est: 2d
 
 **Description:**
 Параллельный запуск тестов.
 
 **Checklist:**
-- [ ] --parallel CLI option
-- [ ] Semaphore-based concurrency
-- [ ] Resource isolation
-- [ ] Result aggregation
-- [ ] Progress tracking (multiple tests)
+- [x] --parallel CLI option
+- [x] Semaphore-based concurrency
+- [x] Resource isolation
+- [x] Result aggregation
+- [x] Progress tracking (multiple tests)
 
 **Traces to:** [REQ-030]
 **Depends on:** [TASK-006]
@@ -622,7 +621,7 @@ Mock tools для детерминированного тестирования.
 ---
 
 ### TASK-021: Web Dashboard (Basic)
-🟢 P3 | ⬜ TODO | Est: 10d
+🟢 P3 | ✅ DONE | Est: 10d
 
 **Description:**
 Веб-интерфейс для просмотра результатов.
@@ -644,7 +643,7 @@ Mock tools для детерминированного тестирования.
 ---
 
 ### TASK-022: Security Hardening
-🔴 P0 | 🔄 IN_PROGRESS | Est: 3d
+🔴 P0 | ✅ DONE | Est: 3d
 
 **Description:**
 Аудит безопасности и hardening.
@@ -665,7 +664,7 @@ Mock tools для детерминированного тестирования.
 ---
 
 ### TASK-023: Performance Optimization
-🟠 P1 | ⬜ TODO | Est: 3d
+🟠 P1 | ✅ DONE | Est: 3d
 
 **Description:**
 Оптимизация производительности.

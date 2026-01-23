@@ -3,6 +3,12 @@
 from .artifact import ArtifactEvaluator
 from .base import EvalCheck, EvalResult, Evaluator
 from .behavior import BehaviorEvaluator
+from .code_exec import (
+    CodeExecEvaluator,
+    CodeTestResults,
+    CommandResult,
+    LintResults,
+)
 from .llm_judge import (
     BUILTIN_CRITERIA,
     LLMJudgeConfig,
@@ -22,6 +28,10 @@ __all__ = [
     "Evaluator",
     "ArtifactEvaluator",
     "BehaviorEvaluator",
+    "CodeExecEvaluator",
+    "CodeTestResults",
+    "CommandResult",
+    "LintResults",
     "LLMJudgeEvaluator",
     "LLMJudgeConfig",
     "LLMJudgeCost",

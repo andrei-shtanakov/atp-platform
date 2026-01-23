@@ -1,0 +1,294 @@
+"""Pydantic schemas for API request/response models."""
+
+from datetime import datetime
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
+
+# ==================== Agent Schemas ====================
+
+
+class AgentCreate(BaseModel):
+    """Schema for creating an agent."""
+
+    name: str = Field(..., min_length=1, max_length=100)
+    agent_type: str = Field(..., min_length=1, max_length=50)
+    config: dict[str, Any] = Field(default_factory=dict)
+    description: str | None = Field(None, max_length=1000)
+
+
+class AgentUpdate(BaseModel):
+    """Schema for updating an agent."""
+
+    agent_type: str | None = Field(None, min_length=1, max_length=50)
+    config: dict[str, Any] | None = None
+    description: str | None = None
+
+
+class AgentResponse(BaseModel):
+    """Schema for agent response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    agent_type: str
+    config: dict[str, Any]
+    description: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+# ==================== Suite Execution Schemas ====================
+
+
+class SuiteExecutionSummary(BaseModel):
+    """Summary of a suite execution."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    suite_name: str
+    agent_id: int
+    agent_name: str | None = None
+    started_at: datetime
+    completed_at: datetime | None
+    duration_seconds: float | None
+    runs_per_test: int
+    total_tests: int
+    passed_tests: int
+    failed_tests: int
+    success_rate: float
+    status: str
+    error: str | None
+
+
+class SuiteExecutionDetail(SuiteExecutionSummary):
+    """Detailed suite execution with test results."""
+
+    tests: list["TestExecutionSummary"] = Field(default_factory=list)
+
+
+class SuiteExecutionList(BaseModel):
+    """Paginated list of suite executions."""
+
+    total: int
+    items: list[SuiteExecutionSummary]
+    limit: int
+    offset: int
+
+
+# ==================== Test Execution Schemas ====================
+
+
+class TestExecutionSummary(BaseModel):
+    """Summary of a test execution."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    suite_execution_id: int
+    test_id: str
+    test_name: str
+    tags: list[str]
+    started_at: datetime
+    completed_at: datetime | None
+    duration_seconds: float | None
+    total_runs: int
+    successful_runs: int
+    success: bool
+    score: float | None
+    status: str
+    error: str | None
+
+
+class RunResultSummary(BaseModel):
+    """Summary of a run result."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    run_number: int
+    started_at: datetime
+    completed_at: datetime | None
+    duration_seconds: float | None
+    response_status: str
+    success: bool
+    error: str | None
+    total_tokens: int | None
+    input_tokens: int | None
+    output_tokens: int | None
+    total_steps: int | None
+    tool_calls: int | None
+    llm_calls: int | None
+    cost_usd: float | None
+
+
+class EvaluationResultResponse(BaseModel):
+    """Evaluation result response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    evaluator_name: str
+    passed: bool
+    score: float | None
+    total_checks: int
+    passed_checks: int
+    failed_checks: int
+    checks_json: list[dict[str, Any]]
+
+
+class ScoreComponentResponse(BaseModel):
+    """Score component response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    component_name: str
+    raw_value: float | None
+    normalized_value: float
+    weight: float
+    weighted_value: float
+    details_json: dict[str, Any] | None
+
+
+class TestExecutionDetail(TestExecutionSummary):
+    """Detailed test execution with runs and evaluations."""
+
+    runs: list[RunResultSummary] = Field(default_factory=list)
+    evaluations: list[EvaluationResultResponse] = Field(default_factory=list)
+    score_components: list[ScoreComponentResponse] = Field(default_factory=list)
+    statistics: dict[str, Any] | None = None
+
+
+class TestExecutionList(BaseModel):
+    """Paginated list of test executions."""
+
+    total: int
+    items: list[TestExecutionSummary]
+    limit: int
+    offset: int
+
+
+# ==================== Historical Trends Schemas ====================
+
+
+class TrendDataPoint(BaseModel):
+    """Single data point in a trend."""
+
+    timestamp: datetime
+    value: float
+    execution_id: int
+
+
+class TestTrend(BaseModel):
+    """Trend data for a single test."""
+
+    test_id: str
+    test_name: str
+    data_points: list[TrendDataPoint]
+    metric: str  # score, duration, success_rate, etc.
+
+
+class SuiteTrend(BaseModel):
+    """Trend data for a suite."""
+
+    suite_name: str
+    agent_name: str
+    data_points: list[TrendDataPoint]
+    metric: str
+
+
+class TrendResponse(BaseModel):
+    """Response containing trend data."""
+
+    suite_trends: list[SuiteTrend] = Field(default_factory=list)
+    test_trends: list[TestTrend] = Field(default_factory=list)
+
+
+# ==================== Agent Comparison Schemas ====================
+
+
+class AgentComparisonMetrics(BaseModel):
+    """Metrics for agent comparison."""
+
+    agent_name: str
+    total_executions: int
+    avg_success_rate: float
+    avg_score: float | None
+    avg_duration_seconds: float | None
+    latest_success_rate: float | None
+    latest_score: float | None
+
+
+class TestComparisonMetrics(BaseModel):
+    """Test-level metrics for agent comparison."""
+
+    test_id: str
+    test_name: str
+    metrics_by_agent: dict[str, AgentComparisonMetrics]
+
+
+class AgentComparisonResponse(BaseModel):
+    """Response for agent comparison."""
+
+    suite_name: str
+    agents: list[AgentComparisonMetrics]
+    tests: list[TestComparisonMetrics] = Field(default_factory=list)
+
+
+# ==================== Authentication Schemas ====================
+
+
+class UserCreate(BaseModel):
+    """Schema for creating a user."""
+
+    username: str = Field(..., min_length=3, max_length=50)
+    email: str = Field(..., max_length=255)
+    password: str = Field(..., min_length=8)
+
+
+class UserResponse(BaseModel):
+    """Schema for user response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    username: str
+    email: str
+    is_active: bool
+    is_admin: bool
+    created_at: datetime
+
+
+class Token(BaseModel):
+    """JWT token response."""
+
+    access_token: str
+    token_type: str = "bearer"
+
+
+class TokenData(BaseModel):
+    """Data extracted from JWT token."""
+
+    username: str | None = None
+    user_id: int | None = None
+
+
+# ==================== Dashboard Summary Schemas ====================
+
+
+class DashboardSummary(BaseModel):
+    """Summary statistics for dashboard home."""
+
+    total_agents: int
+    total_suites: int
+    total_executions: int
+    recent_success_rate: float
+    recent_avg_score: float | None
+    recent_executions: list[SuiteExecutionSummary]
+
+
+# Update forward references
+SuiteExecutionDetail.model_rebuild()
