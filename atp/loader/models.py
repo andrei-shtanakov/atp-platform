@@ -126,3 +126,28 @@ class TestSuite(BaseModel):
             # Apply default scoring weights if not specified
             if test.scoring is None:
                 test.scoring = self.defaults.scoring
+
+    def filter_by_tags(self, tag_filter: str | None) -> "TestSuite":
+        """Filter tests by tag expressions.
+
+        Args:
+            tag_filter: Comma-separated tag expressions (e.g., "smoke,!slow")
+                       None means no filtering (return all tests)
+
+        Returns:
+            New TestSuite with filtered tests
+
+        Example:
+            >>> suite.filter_by_tags("smoke,!slow")
+            # Returns suite with tests tagged 'smoke' but not 'slow'
+        """
+        if not tag_filter:
+            return self
+
+        from atp.loader.filters import TagFilter
+
+        filter_obj = TagFilter.from_string(tag_filter)
+        filtered_tests = [test for test in self.tests if filter_obj.matches(test.tags)]
+
+        # Create new suite with filtered tests
+        return self.model_copy(update={"tests": filtered_tests})

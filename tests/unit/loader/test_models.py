@@ -276,3 +276,210 @@ class TestTestSuite:
 
         # Explicit scoring should be preserved
         assert suite.tests[0].scoring.quality_weight == 0.8
+
+    def test_filter_by_tags_no_filter(self):
+        """Test that filter_by_tags with None returns same suite."""
+        suite = TestSuite(
+            test_suite="sample",
+            tests=[
+                TestDefinition(
+                    id="test-001",
+                    name="Test 1",
+                    tags=["smoke"],
+                    task=TaskDefinition(description="Task"),
+                ),
+                TestDefinition(
+                    id="test-002",
+                    name="Test 2",
+                    tags=["slow"],
+                    task=TaskDefinition(description="Task"),
+                ),
+            ],
+        )
+
+        filtered = suite.filter_by_tags(None)
+        assert len(filtered.tests) == 2
+
+    def test_filter_by_tags_empty_string(self):
+        """Test that filter_by_tags with empty string returns all tests."""
+        suite = TestSuite(
+            test_suite="sample",
+            tests=[
+                TestDefinition(
+                    id="test-001",
+                    name="Test 1",
+                    tags=["smoke"],
+                    task=TaskDefinition(description="Task"),
+                ),
+                TestDefinition(
+                    id="test-002",
+                    name="Test 2",
+                    tags=["slow"],
+                    task=TaskDefinition(description="Task"),
+                ),
+            ],
+        )
+
+        filtered = suite.filter_by_tags("")
+        assert len(filtered.tests) == 2
+
+    def test_filter_by_tags_include_single(self):
+        """Test filtering with single include tag."""
+        suite = TestSuite(
+            test_suite="sample",
+            tests=[
+                TestDefinition(
+                    id="test-001",
+                    name="Test 1",
+                    tags=["smoke"],
+                    task=TaskDefinition(description="Task"),
+                ),
+                TestDefinition(
+                    id="test-002",
+                    name="Test 2",
+                    tags=["slow"],
+                    task=TaskDefinition(description="Task"),
+                ),
+                TestDefinition(
+                    id="test-003",
+                    name="Test 3",
+                    tags=["smoke", "fast"],
+                    task=TaskDefinition(description="Task"),
+                ),
+            ],
+        )
+
+        filtered = suite.filter_by_tags("smoke")
+        assert len(filtered.tests) == 2
+        assert filtered.tests[0].id == "test-001"
+        assert filtered.tests[1].id == "test-003"
+
+    def test_filter_by_tags_include_multiple(self):
+        """Test filtering with multiple include tags (OR logic)."""
+        suite = TestSuite(
+            test_suite="sample",
+            tests=[
+                TestDefinition(
+                    id="test-001",
+                    name="Test 1",
+                    tags=["smoke"],
+                    task=TaskDefinition(description="Task"),
+                ),
+                TestDefinition(
+                    id="test-002",
+                    name="Test 2",
+                    tags=["core"],
+                    task=TaskDefinition(description="Task"),
+                ),
+                TestDefinition(
+                    id="test-003",
+                    name="Test 3",
+                    tags=["slow"],
+                    task=TaskDefinition(description="Task"),
+                ),
+            ],
+        )
+
+        filtered = suite.filter_by_tags("smoke,core")
+        assert len(filtered.tests) == 2
+        assert filtered.tests[0].id == "test-001"
+        assert filtered.tests[1].id == "test-002"
+
+    def test_filter_by_tags_exclude(self):
+        """Test filtering with exclude tag."""
+        suite = TestSuite(
+            test_suite="sample",
+            tests=[
+                TestDefinition(
+                    id="test-001",
+                    name="Test 1",
+                    tags=["smoke"],
+                    task=TaskDefinition(description="Task"),
+                ),
+                TestDefinition(
+                    id="test-002",
+                    name="Test 2",
+                    tags=["slow"],
+                    task=TaskDefinition(description="Task"),
+                ),
+                TestDefinition(
+                    id="test-003",
+                    name="Test 3",
+                    tags=["smoke", "fast"],
+                    task=TaskDefinition(description="Task"),
+                ),
+            ],
+        )
+
+        filtered = suite.filter_by_tags("!slow")
+        assert len(filtered.tests) == 2
+        assert filtered.tests[0].id == "test-001"
+        assert filtered.tests[1].id == "test-003"
+
+    def test_filter_by_tags_combination(self):
+        """Test filtering with combination of include and exclude."""
+        suite = TestSuite(
+            test_suite="sample",
+            tests=[
+                TestDefinition(
+                    id="test-001",
+                    name="Test 1",
+                    tags=["smoke"],
+                    task=TaskDefinition(description="Task"),
+                ),
+                TestDefinition(
+                    id="test-002",
+                    name="Test 2",
+                    tags=["smoke", "slow"],
+                    task=TaskDefinition(description="Task"),
+                ),
+                TestDefinition(
+                    id="test-003",
+                    name="Test 3",
+                    tags=["core"],
+                    task=TaskDefinition(description="Task"),
+                ),
+            ],
+        )
+
+        filtered = suite.filter_by_tags("smoke,!slow")
+        assert len(filtered.tests) == 1
+        assert filtered.tests[0].id == "test-001"
+
+    def test_filter_by_tags_no_matches(self):
+        """Test filtering that results in no matches."""
+        suite = TestSuite(
+            test_suite="sample",
+            tests=[
+                TestDefinition(
+                    id="test-001",
+                    name="Test 1",
+                    tags=["slow"],
+                    task=TaskDefinition(description="Task"),
+                ),
+            ],
+        )
+
+        filtered = suite.filter_by_tags("smoke")
+        assert len(filtered.tests) == 0
+
+    def test_filter_by_tags_preserves_suite_metadata(self):
+        """Test that filtering preserves suite metadata."""
+        suite = TestSuite(
+            test_suite="sample",
+            version="2.0",
+            description="Test suite description",
+            tests=[
+                TestDefinition(
+                    id="test-001",
+                    name="Test 1",
+                    tags=["smoke"],
+                    task=TaskDefinition(description="Task"),
+                ),
+            ],
+        )
+
+        filtered = suite.filter_by_tags("smoke")
+        assert filtered.test_suite == "sample"
+        assert filtered.version == "2.0"
+        assert filtered.description == "Test suite description"

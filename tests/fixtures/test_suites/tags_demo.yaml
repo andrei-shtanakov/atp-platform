@@ -1,0 +1,41 @@
+# Test suite demonstrating tag filtering
+test_suite: "tags_demo"
+version: "1.0"
+description: "Demonstration of tag filtering capabilities"
+
+tests:
+  - id: "smoke-001"
+    name: "Quick smoke test"
+    tags: ["smoke", "fast"]
+    task:
+      description: "Basic smoke test that runs quickly"
+
+  - id: "smoke-002"
+    name: "Another smoke test"
+    tags: ["smoke", "core"]
+    task:
+      description: "Core functionality smoke test"
+
+  - id: "regression-001"
+    name: "Full regression test"
+    tags: ["regression", "slow"]
+    task:
+      description: "Comprehensive regression test"
+
+  - id: "edge-001"
+    name: "Edge case test"
+    tags: ["edge_case", "slow"]
+    task:
+      description: "Test edge cases"
+
+  - id: "integration-001"
+    name: "Integration test"
+    tags: ["integration", "core", "slow"]
+    task:
+      description: "Integration test for core features"
+
+  - id: "unit-001"
+    name: "Fast unit test"
+    tags: ["unit", "fast"]
+    task:
+      description: "Quick unit test"

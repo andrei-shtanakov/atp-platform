@@ -1,0 +1,146 @@
+{
+  "missing_task_id": {
+    "description": "Request missing required task_id field",
+    "data": {
+      "task": {
+        "description": "Task without task_id"
+      }
+    },
+    "expected_error": "task_id"
+  },
+  "missing_task": {
+    "description": "Request missing required task field",
+    "data": {
+      "task_id": "task-001"
+    },
+    "expected_error": "task"
+  },
+  "empty_task_id": {
+    "description": "Request with empty string task_id",
+    "data": {
+      "task_id": "",
+      "task": {
+        "description": "Task with empty task_id"
+      }
+    },
+    "expected_error": "task_id cannot be empty"
+  },
+  "whitespace_task_id": {
+    "description": "Request with whitespace-only task_id",
+    "data": {
+      "task_id": "   ",
+      "task": {
+        "description": "Task with whitespace task_id"
+      }
+    },
+    "expected_error": "task_id cannot be empty"
+  },
+  "missing_task_description": {
+    "description": "Request with task missing description",
+    "data": {
+      "task_id": "task-002",
+      "task": {}
+    },
+    "expected_error": "description"
+  },
+  "empty_task_description": {
+    "description": "Request with empty task description",
+    "data": {
+      "task_id": "task-003",
+      "task": {
+        "description": ""
+      }
+    },
+    "expected_error": "at least 1 character"
+  },
+  "null_task_id": {
+    "description": "Request with null task_id",
+    "data": {
+      "task_id": null,
+      "task": {
+        "description": "Task with null task_id"
+      }
+    },
+    "expected_error": "task_id"
+  },
+  "null_task": {
+    "description": "Request with null task",
+    "data": {
+      "task_id": "task-004",
+      "task": null
+    },
+    "expected_error": "task"
+  },
+  "wrong_type_task_id": {
+    "description": "Request with numeric task_id",
+    "data": {
+      "task_id": 12345,
+      "task": {
+        "description": "Task with numeric task_id"
+      }
+    },
+    "expected_error": "string"
+  },
+  "wrong_type_constraints": {
+    "description": "Request with non-object constraints",
+    "data": {
+      "task_id": "task-005",
+      "task": {
+        "description": "Task description"
+      },
+      "constraints": "invalid"
+    },
+    "expected_error": "constraints"
+  },
+  "wrong_type_input_data": {
+    "description": "Request with non-object input_data",
+    "data": {
+      "task_id": "task-006",
+      "task": {
+        "description": "Task description",
+        "input_data": "should be object"
+      }
+    },
+    "expected_error": "input_data"
+  },
+  "wrong_type_expected_artifacts": {
+    "description": "Request with non-array expected_artifacts",
+    "data": {
+      "task_id": "task-007",
+      "task": {
+        "description": "Task description",
+        "expected_artifacts": "should be array"
+      }
+    },
+    "expected_error": "expected_artifacts"
+  },
+  "invalid_context_type": {
+    "description": "Request with non-object context",
+    "data": {
+      "task_id": "task-010",
+      "task": {
+        "description": "Task description"
+      },
+      "context": ["invalid", "array"]
+    },
+    "expected_error": "context"
+  },
+  "invalid_environment_type": {
+    "description": "Request with non-object environment in context",
+    "data": {
+      "task_id": "task-011",
+      "task": {
+        "description": "Task description"
+      },
+      "context": {
+        "environment": "should be object"
+      }
+    },
+    "expected_error": "environment"
+  },
+  "completely_empty": {
+    "description": "Completely empty request object",
+    "data": {},
+    "expected_error": "task_id"
+  }
+}
