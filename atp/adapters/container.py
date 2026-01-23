@@ -4,9 +4,17 @@ import asyncio
 import json
 from collections.abc import AsyncIterator
 from datetime import datetime
+from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
+from atp.core.security import (
+    sanitize_error_message,
+    validate_cpu_limit,
+    validate_docker_image,
+    validate_docker_network,
+    validate_volume_mount,
+)
 from atp.protocol import (
     ATPEvent,
     ATPRequest,
@@ -28,6 +36,13 @@ class ContainerResources(AdapterConfig):
 
     memory: str = Field(default="2g", description="Memory limit (e.g., '2g', '512m')")
     cpu: str = Field(default="1", description="CPU limit (e.g., '1', '0.5')")
+
+    @field_validator("cpu")
+    @classmethod
+    def validate_cpu(cls, v: str) -> str:
+        """Validate CPU limit."""
+        validate_cpu_limit(v)
+        return v
 
 
 class ContainerAdapterConfig(AdapterConfig):
@@ -52,6 +67,35 @@ class ContainerAdapterConfig(AdapterConfig):
     auto_remove: bool = Field(
         default=True, description="Automatically remove container after execution"
     )
+    # Security settings
+    allowed_volume_paths: list[str] = Field(
+        default_factory=list,
+        description="Allowed base paths for host volume mounts",
+    )
+    read_only_root: bool = Field(
+        default=False,
+        description="Mount root filesystem as read-only",
+    )
+    no_new_privileges: bool = Field(
+        default=True,
+        description="Prevent privilege escalation",
+    )
+    cap_drop: list[str] = Field(
+        default_factory=lambda: ["ALL"],
+        description="Linux capabilities to drop",
+    )
+
+    @field_validator("image")
+    @classmethod
+    def validate_image(cls, v: str) -> str:
+        """Validate Docker image name."""
+        return validate_docker_image(v)
+
+    @field_validator("network")
+    @classmethod
+    def validate_network(cls, v: str) -> str:
+        """Validate network mode."""
+        return validate_docker_network(v)
 
 
 class ContainerAdapter(AgentAdapter):
@@ -81,7 +125,11 @@ class ContainerAdapter(AgentAdapter):
         return "container"
 
     def _build_docker_command(self) -> list[str]:
-        """Build the docker run command arguments."""
+        """Build the docker run command arguments.
+
+        Security: Applies resource limits, privilege restrictions,
+        and capability drops for defense in depth.
+        """
         cmd = ["docker", "run", "-i"]
 
         if self._config.auto_remove:
@@ -91,22 +139,48 @@ class ContainerAdapter(AgentAdapter):
         cmd.extend(["--memory", self._config.resources.memory])
         cmd.extend(["--cpus", self._config.resources.cpu])
 
+        # Memory swap limit (prevent swap abuse)
+        cmd.extend(["--memory-swap", self._config.resources.memory])
+
+        # PID limit to prevent fork bombs
+        cmd.extend(["--pids-limit", "256"])
+
         # Network
         cmd.extend(["--network", self._config.network])
 
+        # Security options
+        if self._config.no_new_privileges:
+            cmd.append("--security-opt=no-new-privileges:true")
+
+        if self._config.read_only_root:
+            cmd.append("--read-only")
+
+        # Drop capabilities
+        for cap in self._config.cap_drop:
+            cmd.extend(["--cap-drop", cap])
+
         # Environment variables
         for key, value in self._config.environment.items():
+            # Ensure proper escaping
             cmd.extend(["-e", f"{key}={value}"])
 
-        # Volume mounts
+        # Volume mounts with validation
+        allowed_paths = (
+            [Path(p) for p in self._config.allowed_volume_paths]
+            if self._config.allowed_volume_paths
+            else None
+        )
         for host_path, container_path in self._config.volumes.items():
-            cmd.extend(["-v", f"{host_path}:{container_path}"])
+            validated_host, validated_container = validate_volume_mount(
+                host_path, container_path, allowed_paths
+            )
+            cmd.extend(["-v", f"{validated_host}:{validated_container}"])
 
         # Working directory
         if self._config.working_dir:
             cmd.extend(["-w", self._config.working_dir])
 
-        # Image
+        # Image (already validated in config)
         cmd.append(self._config.image)
 
         return cmd
@@ -165,6 +239,8 @@ class ContainerAdapter(AgentAdapter):
 
         if process.returncode != 0:
             error_msg = stderr.decode() if stderr else "Unknown error"
+            # Sanitize error message (redacts secrets and file paths)
+            error_msg = sanitize_error_message(error_msg, include_type=False)
             raise AdapterError(
                 f"Container exited with code {process.returncode}: {error_msg}",
                 adapter_type=self.adapter_type,

@@ -205,11 +205,11 @@
     }
   },
   "request_special_chars_task_id": {
-    "description": "Request with special characters in task_id",
+    "description": "Request with underscores and hyphens in task_id",
     "data": {
-      "task_id": "task_v1.2.3-beta+build.123",
+      "task_id": "task_v1_2_3-beta-build_123",
       "task": {
-        "description": "Task with semver-style identifier"
+        "description": "Task with semver-style identifier (safe format)"
       }
     }
   }

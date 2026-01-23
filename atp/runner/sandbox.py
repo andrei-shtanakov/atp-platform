@@ -1,10 +1,18 @@
 """Sandbox management for isolated test execution."""
 
 import logging
+import os
 import shutil
+import stat
 import uuid
 from pathlib import Path
 
+from atp.core.security import (
+    SecurityEventType,
+    log_security_event,
+    sanitize_filename,
+    validate_path_within_workspace,
+)
 from atp.runner.exceptions import SandboxError
 from atp.runner.models import SandboxConfig
 
@@ -50,6 +58,9 @@ class SandboxManager:
         """
         Create a new sandbox environment.
 
+        Security: Uses full UUID and restrictive permissions to prevent
+        sandbox escape and collision attacks.
+
         Args:
             test_id: Optional test identifier for the sandbox.
 
@@ -59,19 +70,30 @@ class SandboxManager:
         Raises:
             SandboxError: If sandbox creation fails.
         """
-        sandbox_id = f"sandbox-{uuid.uuid4().hex[:8]}"
+        # Use full UUID to prevent collision attacks
+        sandbox_id = f"sandbox-{uuid.uuid4().hex}"
 
         try:
             sandbox_path = self.base_dir / sandbox_id
-            sandbox_path.mkdir(parents=True, exist_ok=True)
+            # Create with restrictive permissions (owner only)
+            sandbox_path.mkdir(parents=True, exist_ok=True, mode=0o700)
 
             # Create workspace directory inside sandbox
             workspace = sandbox_path / "workspace"
-            workspace.mkdir(exist_ok=True)
+            workspace.mkdir(exist_ok=True, mode=0o700)
 
             # Create other standard directories
-            (sandbox_path / "logs").mkdir(exist_ok=True)
-            (sandbox_path / "artifacts").mkdir(exist_ok=True)
+            (sandbox_path / "logs").mkdir(exist_ok=True, mode=0o700)
+            (sandbox_path / "artifacts").mkdir(exist_ok=True, mode=0o700)
+
+            # Ensure permissions are set correctly (mkdir mode can be affected by umask)
+            try:
+                os.chmod(sandbox_path, stat.S_IRWXU)  # 0o700
+                os.chmod(workspace, stat.S_IRWXU)
+                os.chmod(sandbox_path / "logs", stat.S_IRWXU)
+                os.chmod(sandbox_path / "artifacts", stat.S_IRWXU)
+            except OSError:
+                pass  # May fail on some systems
 
             self._active_sandboxes[sandbox_id] = sandbox_path
 
@@ -208,6 +230,170 @@ class SandboxManager:
             List of active sandbox IDs.
         """
         return list(self._active_sandboxes.keys())
+
+    def validate_path(self, sandbox_id: str, path: str | Path) -> Path:
+        """
+        Validate that a path is safely within the sandbox workspace.
+
+        Security: Prevents path traversal attacks by ensuring the resolved
+        path stays within the sandbox workspace directory.
+
+        Args:
+            sandbox_id: Sandbox identifier.
+            path: Path to validate (relative to workspace).
+
+        Returns:
+            Resolved Path object within workspace.
+
+        Raises:
+            SandboxError: If path escapes sandbox or sandbox not found.
+        """
+        workspace = self.get_workspace(sandbox_id)
+        try:
+            return validate_path_within_workspace(path, workspace)
+        except Exception as e:
+            log_security_event(
+                SecurityEventType.SANDBOX_VIOLATION,
+                f"Invalid path in sandbox {sandbox_id}: {path}",
+                field="path",
+            )
+            raise SandboxError(
+                f"Invalid path in sandbox: {e}",
+                sandbox_id=sandbox_id,
+            ) from e
+
+    def safe_write_file(
+        self,
+        sandbox_id: str,
+        path: str | Path,
+        content: str | bytes,
+    ) -> Path:
+        """
+        Safely write a file within the sandbox workspace.
+
+        Security: Validates path and creates parent directories safely.
+
+        Args:
+            sandbox_id: Sandbox identifier.
+            path: File path relative to workspace.
+            content: Content to write.
+
+        Returns:
+            Path to the written file.
+
+        Raises:
+            SandboxError: If path is invalid or write fails.
+        """
+        validated_path = self.validate_path(sandbox_id, path)
+
+        try:
+            # Create parent directories if needed
+            validated_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Write file with appropriate mode
+            if isinstance(content, bytes):
+                validated_path.write_bytes(content)
+            else:
+                validated_path.write_text(content)
+
+            # Set restrictive permissions
+            os.chmod(validated_path, stat.S_IRUSR | stat.S_IWUSR)  # 0o600
+
+            return validated_path
+
+        except OSError as e:
+            raise SandboxError(
+                f"Failed to write file in sandbox: {e}",
+                sandbox_id=sandbox_id,
+            ) from e
+
+    def safe_read_file(
+        self,
+        sandbox_id: str,
+        path: str | Path,
+        binary: bool = False,
+    ) -> str | bytes:
+        """
+        Safely read a file from the sandbox workspace.
+
+        Security: Validates path before reading.
+
+        Args:
+            sandbox_id: Sandbox identifier.
+            path: File path relative to workspace.
+            binary: Whether to read as binary.
+
+        Returns:
+            File contents.
+
+        Raises:
+            SandboxError: If path is invalid or read fails.
+        """
+        validated_path = self.validate_path(sandbox_id, path)
+
+        if not validated_path.exists():
+            raise SandboxError(
+                f"File not found in sandbox: {path}",
+                sandbox_id=sandbox_id,
+            )
+
+        try:
+            if binary:
+                return validated_path.read_bytes()
+            return validated_path.read_text()
+        except OSError as e:
+            raise SandboxError(
+                f"Failed to read file in sandbox: {e}",
+                sandbox_id=sandbox_id,
+            ) from e
+
+    def save_artifact(
+        self,
+        sandbox_id: str,
+        name: str,
+        content: str | bytes,
+    ) -> Path:
+        """
+        Save an artifact to the sandbox artifacts directory.
+
+        Security: Sanitizes filename and validates path.
+
+        Args:
+            sandbox_id: Sandbox identifier.
+            name: Artifact name (will be sanitized).
+            content: Artifact content.
+
+        Returns:
+            Path to the saved artifact.
+
+        Raises:
+            SandboxError: If save fails.
+        """
+        if sandbox_id not in self._active_sandboxes:
+            raise SandboxError(
+                f"Sandbox not found: {sandbox_id}",
+                sandbox_id=sandbox_id,
+            )
+
+        # Sanitize the artifact name
+        safe_name = sanitize_filename(name)
+        artifacts_dir = self._active_sandboxes[sandbox_id] / "artifacts"
+        artifact_path = artifacts_dir / safe_name
+
+        try:
+            if isinstance(content, bytes):
+                artifact_path.write_bytes(content)
+            else:
+                artifact_path.write_text(content)
+
+            os.chmod(artifact_path, stat.S_IRUSR | stat.S_IWUSR)  # 0o600
+            return artifact_path
+
+        except OSError as e:
+            raise SandboxError(
+                f"Failed to save artifact: {e}",
+                sandbox_id=sandbox_id,
+            ) from e
 
     async def __aenter__(self) -> "SandboxManager":
         """Async context manager entry."""

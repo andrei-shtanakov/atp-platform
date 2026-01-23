@@ -47,6 +47,7 @@ def http_config() -> HTTPAdapterConfig:
     return HTTPAdapterConfig(
         endpoint="http://localhost:8000/agent",
         timeout_seconds=30.0,
+        allow_internal=True,  # Allow localhost for testing
     )
 
 
@@ -192,6 +193,7 @@ class TestHTTPAdapter:
         config = HTTPAdapterConfig(
             endpoint="http://localhost:8000/agent",
             timeout_seconds=0.001,  # Very short timeout
+            allow_internal=True,  # Allow localhost for testing
         )
         adapter = HTTPAdapter(config)
 

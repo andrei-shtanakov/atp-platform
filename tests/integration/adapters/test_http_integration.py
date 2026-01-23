@@ -181,6 +181,7 @@ class TestHTTPAdapterIntegration:
         config = HTTPAdapterConfig(
             endpoint=f"{mock_server}/agent",
             timeout_seconds=10.0,
+            allow_internal=True,  # Allow localhost for testing
         )
 
         async with HTTPAdapter(config) as adapter:
@@ -200,6 +201,7 @@ class TestHTTPAdapterIntegration:
             endpoint=f"{mock_server}/agent",
             health_endpoint=f"{mock_server}/health",
             timeout_seconds=10.0,
+            allow_internal=True,  # Allow localhost for testing
         )
 
         async with HTTPAdapter(config) as adapter:
@@ -228,6 +230,7 @@ class TestHTTPAdapterIntegration:
         config = HTTPAdapterConfig(
             endpoint=f"{mock_server}/agent/error",
             timeout_seconds=10.0,
+            allow_internal=True,  # Allow localhost for testing
         )
 
         async with HTTPAdapter(config) as adapter:
@@ -244,6 +247,7 @@ class TestHTTPAdapterIntegration:
         config = HTTPAdapterConfig(
             endpoint=f"{mock_server}/agent/invalid",
             timeout_seconds=10.0,
+            allow_internal=True,  # Allow localhost for testing
         )
 
         async with HTTPAdapter(config) as adapter:
@@ -260,6 +264,7 @@ class TestHTTPAdapterIntegration:
         config = HTTPAdapterConfig(
             endpoint=f"{mock_server}/agent/slow",
             timeout_seconds=0.5,  # Short timeout
+            allow_internal=True,  # Allow localhost for testing
         )
 
         async with HTTPAdapter(config) as adapter:
@@ -276,6 +281,7 @@ class TestHTTPAdapterIntegration:
         config = HTTPAdapterConfig(
             endpoint=f"{mock_server}/agent",
             timeout_seconds=10.0,
+            allow_internal=True,  # Allow localhost for testing
             headers={
                 "Authorization": "Bearer test-token",
                 "X-Custom-Header": "custom-value",
@@ -295,6 +301,7 @@ class TestHTTPAdapterIntegration:
         config = HTTPAdapterConfig(
             endpoint=f"{mock_server}/agent/stream",
             timeout_seconds=10.0,
+            allow_internal=True,  # Allow localhost for testing
         )
 
         async with HTTPAdapter(config) as adapter:
@@ -314,6 +321,7 @@ class TestHTTPAdapterIntegration:
         config = HTTPAdapterConfig(
             endpoint=f"{mock_server}/agent",
             timeout_seconds=10.0,
+            allow_internal=True,  # Allow localhost for testing
         )
 
         async with HTTPAdapter(config) as adapter:
@@ -332,6 +340,7 @@ class TestHTTPAdapterIntegration:
         config = HTTPAdapterConfig(
             endpoint=f"{mock_server}/agent",
             timeout_seconds=10.0,
+            allow_internal=True,  # Allow localhost for testing
         )
 
         async def make_request(adapter: HTTPAdapter, task_id: str) -> ATPResponse:

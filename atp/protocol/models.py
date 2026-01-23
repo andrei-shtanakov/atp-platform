@@ -1,10 +1,25 @@
 """ATP Protocol data models."""
 
+import re
 from datetime import datetime
 from enum import Enum
+from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
+
+# Maximum lengths for various fields
+MAX_TASK_ID_LENGTH = 128
+MAX_DESCRIPTION_LENGTH = 100_000
+MAX_PATH_LENGTH = 4096
+MAX_ERROR_LENGTH = 10_000
+MAX_CONTENT_LENGTH = 10_000_000  # 10MB for inline content
+MAX_ARTIFACTS_COUNT = 1000  # Maximum artifacts per response
+MAX_ENV_VARS_COUNT = 100  # Maximum environment variables
+MAX_METADATA_KEYS = 50  # Maximum metadata keys
+
+# Valid task ID pattern - alphanumeric, underscore, hyphen
+TASK_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 
 class ResponseStatus(str, Enum):
@@ -30,13 +45,39 @@ class EventType(str, Enum):
 class Task(BaseModel):
     """Task specification for the agent."""
 
-    description: str = Field(..., description="Task description", min_length=1)
+    description: str = Field(
+        ...,
+        description="Task description",
+        min_length=1,
+        max_length=MAX_DESCRIPTION_LENGTH,
+    )
     input_data: dict[str, Any] | None = Field(
         None, description="Optional input data for the task"
     )
     expected_artifacts: list[str] | None = Field(
         None, description="Expected artifact paths/names"
     )
+
+    @field_validator("expected_artifacts")
+    @classmethod
+    def validate_expected_artifacts(cls, v: list[str] | None) -> list[str] | None:
+        """Validate expected artifact paths."""
+        if v is None:
+            return v
+
+        validated = []
+        for path in v:
+            if not path or not path.strip():
+                raise ValueError("Artifact path cannot be empty")
+            if len(path) > MAX_PATH_LENGTH:
+                raise ValueError(
+                    f"Artifact path too long: {len(path)} > {MAX_PATH_LENGTH}"
+                )
+            # Reject obvious path traversal
+            if ".." in path or path.startswith("/"):
+                raise ValueError(f"Invalid artifact path: {path}")
+            validated.append(path.strip())
+        return validated
 
 
 class Context(BaseModel):
@@ -47,6 +88,64 @@ class Context(BaseModel):
     environment: dict[str, str] | None = Field(
         None, description="Environment variables"
     )
+
+    @field_validator("tools_endpoint")
+    @classmethod
+    def validate_tools_endpoint(cls, v: str | None) -> str | None:
+        """Validate tools endpoint URL."""
+        if v is None:
+            return v
+        # Basic URL validation - must be http/https
+        v = v.strip()
+        if not v:
+            return None
+        if not (v.startswith("http://") or v.startswith("https://")):
+            raise ValueError("Tools endpoint must be an HTTP/HTTPS URL")
+        return v
+
+    @field_validator("workspace_path")
+    @classmethod
+    def validate_workspace_path(cls, v: str | None) -> str | None:
+        """Validate workspace path."""
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            return None
+        if len(v) > MAX_PATH_LENGTH:
+            raise ValueError(f"Workspace path too long: {len(v)} > {MAX_PATH_LENGTH}")
+        # Check for null bytes
+        if "\x00" in v:
+            raise ValueError("Null bytes not allowed in workspace path")
+        return v
+
+    @field_validator("environment")
+    @classmethod
+    def validate_environment(cls, v: dict[str, str] | None) -> dict[str, str] | None:
+        """Validate environment variables."""
+        if v is None:
+            return v
+
+        # Check count limit
+        if len(v) > MAX_ENV_VARS_COUNT:
+            raise ValueError(
+                f"Too many environment variables: {len(v)} > {MAX_ENV_VARS_COUNT}"
+            )
+
+        # Check for null bytes in keys and values
+        for key, value in v.items():
+            if "\x00" in key or "\x00" in value:
+                raise ValueError("Null bytes not allowed in environment variables")
+            if not key.strip():
+                raise ValueError("Environment variable name cannot be empty")
+            # Validate key format
+            if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", key):
+                raise ValueError(
+                    f"Invalid environment variable name: {key}. "
+                    "Must start with letter or underscore, "
+                    "contain only alphanumeric and underscore."
+                )
+        return v
 
 
 class ATPRequest(BaseModel):
@@ -64,9 +163,27 @@ class ATPRequest(BaseModel):
     @field_validator("task_id")
     @classmethod
     def validate_task_id(cls, v: str) -> str:
-        """Validate task_id is not empty."""
+        """Validate task_id format and length."""
         if not v or not v.strip():
             raise ValueError("task_id cannot be empty")
+        v = v.strip()
+        if len(v) > MAX_TASK_ID_LENGTH:
+            raise ValueError(f"task_id too long: {len(v)} > {MAX_TASK_ID_LENGTH}")
+        if not TASK_ID_PATTERN.match(v):
+            raise ValueError(
+                "task_id must contain only alphanumeric characters, "
+                "underscores, and hyphens"
+            )
+        return v
+
+    @field_validator("metadata")
+    @classmethod
+    def validate_metadata(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
+        """Validate metadata size constraints."""
+        if v is None:
+            return v
+        if len(v) > MAX_METADATA_KEYS:
+            raise ValueError(f"Too many metadata keys: {len(v)} > {MAX_METADATA_KEYS}")
         return v
 
 
@@ -89,35 +206,95 @@ class ArtifactFile(BaseModel):
     """File artifact produced by agent."""
 
     type: Literal["file"] = "file"
-    path: str = Field(..., description="File path", min_length=1)
-    content_type: str | None = Field(None, description="MIME type")
+    path: str = Field(
+        ..., description="File path", min_length=1, max_length=MAX_PATH_LENGTH
+    )
+    content_type: str | None = Field(None, description="MIME type", max_length=256)
     size_bytes: int | None = Field(None, description="File size in bytes", ge=0)
     content_hash: str | None = Field(
-        None, description="Hash of content (e.g., SHA-256)"
+        None, description="Hash of content (e.g., SHA-256)", max_length=128
     )
     content: str | None = Field(
-        None, description="Inline content (optional, base64 for binary)"
+        None,
+        description="Inline content (optional, base64 for binary)",
+        max_length=MAX_CONTENT_LENGTH,
     )
+
+    @field_validator("path")
+    @classmethod
+    def validate_artifact_path(cls, v: str) -> str:
+        """Validate artifact file path for security."""
+        if not v or not v.strip():
+            raise ValueError("Artifact path cannot be empty")
+        v = v.strip()
+
+        # Check for null bytes
+        if "\x00" in v:
+            raise ValueError("Null bytes not allowed in artifact path")
+
+        # Check for path traversal
+        path_parts = v.replace("\\", "/").split("/")
+        if ".." in path_parts:
+            raise ValueError("Path traversal (..) not allowed in artifact path")
+
+        # Normalize and validate
+        try:
+            # Use Path to normalize but keep as relative
+            path_obj = Path(v)
+            # Reject absolute paths
+            if path_obj.is_absolute():
+                raise ValueError("Absolute paths not allowed in artifacts")
+        except Exception as e:
+            raise ValueError(f"Invalid artifact path: {e}")
+
+        return v
 
 
 class ArtifactStructured(BaseModel):
     """Structured data artifact."""
 
     type: Literal["structured"] = "structured"
-    name: str = Field(..., description="Artifact name", min_length=1)
+    name: str = Field(..., description="Artifact name", min_length=1, max_length=256)
     data: dict[str, Any] = Field(..., description="Structured data")
     content_type: str | None = Field(
-        None, description="Content type (e.g., application/json)"
+        None, description="Content type (e.g., application/json)", max_length=256
     )
+
+    @field_validator("name")
+    @classmethod
+    def validate_artifact_name(cls, v: str) -> str:
+        """Validate artifact name."""
+        if not v or not v.strip():
+            raise ValueError("Artifact name cannot be empty")
+        v = v.strip()
+        # Reject path separators in name
+        if "/" in v or "\\" in v:
+            raise ValueError("Path separators not allowed in artifact name")
+        if "\x00" in v:
+            raise ValueError("Null bytes not allowed in artifact name")
+        return v
 
 
 class ArtifactReference(BaseModel):
     """Reference to external artifact."""
 
     type: Literal["reference"] = "reference"
-    path: str = Field(..., description="Reference path/URL", min_length=1)
-    content_type: str | None = Field(None, description="Content type")
+    path: str = Field(
+        ..., description="Reference path/URL", min_length=1, max_length=MAX_PATH_LENGTH
+    )
+    content_type: str | None = Field(None, description="Content type", max_length=256)
     size_bytes: int | None = Field(None, description="Size in bytes", ge=0)
+
+    @field_validator("path")
+    @classmethod
+    def validate_reference_path(cls, v: str) -> str:
+        """Validate reference path."""
+        if not v or not v.strip():
+            raise ValueError("Reference path cannot be empty")
+        v = v.strip()
+        if "\x00" in v:
+            raise ValueError("Null bytes not allowed in reference path")
+        return v
 
 
 Artifact = ArtifactFile | ArtifactStructured | ArtifactReference
@@ -133,15 +310,32 @@ class ATPResponse(BaseModel):
         default_factory=list, description="Output artifacts"
     )
     metrics: Metrics | None = Field(None, description="Execution metrics")
-    error: str | None = Field(None, description="Error message if failed")
-    trace_id: str | None = Field(None, description="Optional trace identifier")
+    error: str | None = Field(
+        None, description="Error message if failed", max_length=MAX_ERROR_LENGTH
+    )
+    trace_id: str | None = Field(
+        None, description="Optional trace identifier", max_length=256
+    )
 
     @field_validator("task_id")
     @classmethod
     def validate_task_id(cls, v: str) -> str:
-        """Validate task_id is not empty."""
+        """Validate task_id format and length."""
         if not v or not v.strip():
             raise ValueError("task_id cannot be empty")
+        v = v.strip()
+        if len(v) > MAX_TASK_ID_LENGTH:
+            raise ValueError(f"task_id too long: {len(v)} > {MAX_TASK_ID_LENGTH}")
+        # Note: We don't enforce pattern here since this is a response
+        # and the task_id comes from the agent
+        return v
+
+    @field_validator("artifacts")
+    @classmethod
+    def validate_artifacts_count(cls, v: list[Artifact]) -> list[Artifact]:
+        """Validate artifacts count limit."""
+        if len(v) > MAX_ARTIFACTS_COUNT:
+            raise ValueError(f"Too many artifacts: {len(v)} > {MAX_ARTIFACTS_COUNT}")
         return v
 
 

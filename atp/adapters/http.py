@@ -5,8 +5,9 @@ from collections.abc import AsyncIterator
 from datetime import datetime
 
 import httpx
-from pydantic import Field
+from pydantic import Field, field_validator
 
+from atp.core.security import validate_url, validate_url_with_dns
 from atp.protocol import (
     ATPEvent,
     ATPRequest,
@@ -36,6 +37,50 @@ class HTTPAdapterConfig(AdapterConfig):
     health_endpoint: str | None = Field(
         None, description="Optional health check endpoint"
     )
+    # Security settings
+    allow_internal: bool = Field(
+        default=False,
+        description="Allow connections to internal/private IPs (use with caution)",
+    )
+
+    @field_validator("endpoint")
+    @classmethod
+    def validate_endpoint(cls, v: str) -> str:
+        """Validate endpoint URL for security."""
+        # Note: allow_internal is not available here, so we do basic validation
+        # Full validation with allow_internal happens in the adapter
+        if not v or not v.strip():
+            raise ValueError("Endpoint URL cannot be empty")
+        v = v.strip()
+        if not (v.startswith("http://") or v.startswith("https://")):
+            raise ValueError("Endpoint must be an HTTP/HTTPS URL")
+        return v
+
+    @field_validator("stream_endpoint")
+    @classmethod
+    def validate_stream_endpoint(cls, v: str | None) -> str | None:
+        """Validate stream endpoint URL."""
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            return None
+        if not (v.startswith("http://") or v.startswith("https://")):
+            raise ValueError("Stream endpoint must be an HTTP/HTTPS URL")
+        return v
+
+    @field_validator("health_endpoint")
+    @classmethod
+    def validate_health_endpoint(cls, v: str | None) -> str | None:
+        """Validate health endpoint URL."""
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            return None
+        if not (v.startswith("http://") or v.startswith("https://")):
+            raise ValueError("Health endpoint must be an HTTP/HTTPS URL")
+        return v
 
 
 class HTTPAdapter(AgentAdapter):
@@ -69,8 +114,25 @@ class HTTPAdapter(AgentAdapter):
                 timeout=httpx.Timeout(self._config.timeout_seconds),
                 verify=self._config.verify_ssl,
                 headers=self._config.headers,
+                # Security: Limit redirects to prevent redirect-based attacks
+                follow_redirects=True,
+                max_redirects=5,
             )
         return self._client
+
+    def _validate_endpoint(self, url: str, check_dns: bool = True) -> str:
+        """Validate endpoint URL for security (SSRF prevention).
+
+        Args:
+            url: URL to validate.
+            check_dns: Whether to perform DNS resolution check.
+
+        Returns:
+            Validated URL.
+        """
+        if check_dns and not self._config.allow_internal:
+            return validate_url_with_dns(url, allow_internal=False)
+        return validate_url(url, allow_internal=self._config.allow_internal)
 
     async def execute(self, request: ATPRequest) -> ATPResponse:
         """
@@ -87,12 +149,15 @@ class HTTPAdapter(AgentAdapter):
             AdapterTimeoutError: If request times out.
             AdapterResponseError: If agent returns invalid response.
         """
+        # Validate endpoint URL for SSRF prevention
+        endpoint = self._validate_endpoint(self._config.endpoint)
+
         client = await self._get_client()
         request_data = request.model_dump(mode="json")
 
         try:
             response = await client.post(
-                self._config.endpoint,
+                endpoint,
                 json=request_data,
             )
         except httpx.TimeoutException as e:
@@ -160,8 +225,11 @@ class HTTPAdapter(AgentAdapter):
             AdapterTimeoutError: If request times out.
             AdapterResponseError: If agent returns invalid response.
         """
+        # Validate endpoint URL for SSRF prevention
+        raw_endpoint = self._config.stream_endpoint or self._config.endpoint
+        endpoint = self._validate_endpoint(raw_endpoint)
+
         client = await self._get_client()
-        endpoint = self._config.stream_endpoint or self._config.endpoint
         request_data = request.model_dump(mode="json")
         sequence = 0
 
