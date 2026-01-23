@@ -390,7 +390,7 @@ CLI interface с Click/Typer.
 ---
 
 ### TASK-015: Documentation (MVP)
-🔴 P0 | 🔄 IN_PROGRESS | Est: 3d
+🔴 P0 | ✅ DONE | Est: 3d
 
 **Description:**  
 Минимальная документация для MVP.
@@ -685,7 +685,7 @@ Mock tools для детерминированного тестирования.
 ---
 
 ### TASK-024: Complete Documentation
-🔴 P0 | ⬜ TODO | Est: 5d
+🔴 P0 | 🔄 IN_PROGRESS | Est: 5d
 
 **Description:**  
 Полная документация для GA.
