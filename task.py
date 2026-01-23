@@ -18,13 +18,12 @@ ATP Task Manager — CLI для управления задачами из tasks
     python task.py export-gh               # Экспорт в GitHub Issues
 """
 
+import argparse
 import re
 import sys
-import argparse
-from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Optional
 from datetime import datetime
+from pathlib import Path
 
 # Конфигурация
 TASKS_FILE = Path("spec/tasks.md")
@@ -259,7 +258,7 @@ def log_change(task_id: str, change: str):
         f.write(f"{timestamp} | {task_id} | {change}\n")
 
 
-def get_task_by_id(tasks: list[Task], task_id: str) -> Optional[Task]:
+def get_task_by_id(tasks: list[Task], task_id: str) -> Task | None:
     """Находит задачу по ID"""
     for task in tasks:
         if task.id == task_id:
@@ -360,7 +359,7 @@ def cmd_show(args, tasks: list[Task]):
         print(f"📋 Traces to:  {', '.join(task.traces_to)}")
 
     if task.checklist:
-        print(f"\n📝 Checklist:")
+        print("\n📝 Checklist:")
         for i, (item, checked) in enumerate(task.checklist):
             mark = "✅" if checked else "⬜"
             print(f"   {i}. {mark} {item}")
@@ -386,7 +385,7 @@ def cmd_start(args, tasks: list[Task]):
     if update_task_status(TASKS_FILE, task.id, "in_progress"):
         print(f"🔄 {task.id} начата!")
     else:
-        print(f"❌ Не удалось обновить статус")
+        print("❌ Не удалось обновить статус")
 
 
 def cmd_done(args, tasks: list[Task]):
@@ -412,11 +411,11 @@ def cmd_done(args, tasks: list[Task]):
         tasks = resolve_dependencies(tasks)
         unblocked = [t for t in tasks if t.status == "todo" and not t.depends_on]
         if unblocked:
-            print(f"\n🔓 Разблокированы задачи:")
+            print("\n🔓 Разблокированы задачи:")
             for t in unblocked[:5]:
                 print(f"   {t.id}: {t.name}")
     else:
-        print(f"❌ Не удалось обновить статус")
+        print("❌ Не удалось обновить статус")
 
 
 def cmd_block(args, tasks: list[Task]):
@@ -429,7 +428,7 @@ def cmd_block(args, tasks: list[Task]):
     if update_task_status(TASKS_FILE, task.id, "blocked"):
         print(f"⏸️ {task.id} заблокирована")
     else:
-        print(f"❌ Не удалось обновить статус")
+        print("❌ Не удалось обновить статус")
 
 
 def cmd_check(args, tasks: list[Task]):
@@ -451,7 +450,7 @@ def cmd_check(args, tasks: list[Task]):
         mark = "✅" if new_checked else "⬜"
         print(f"{mark} {item_text}")
     else:
-        print(f"❌ Не удалось обновить чеклист")
+        print("❌ Не удалось обновить чеклист")
 
 
 def cmd_stats(args, tasks: list[Task]):

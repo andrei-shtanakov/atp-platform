@@ -203,7 +203,7 @@ End-to-end тесты критических user journeys.
 ---
 
 ### TASK-004: Test Loader
-🔴 P0 | 🔄 IN_PROGRESS | Est: 4d
+🔴 P0 | ✅ DONE | Est: 4d
 
 **Description:**  
 Парсинг и валидация YAML test definitions.
@@ -390,7 +390,7 @@ CLI interface с Click/Typer.
 ---
 
 ### TASK-015: Documentation (MVP)
-🔴 P0 | ⬜ TODO | Est: 3d
+🔴 P0 | 🔄 IN_PROGRESS | Est: 3d
 
 **Description:**  
 Минимальная документация для MVP.

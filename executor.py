@@ -12,26 +12,23 @@ ATP Task Executor — автоматическое выполнение зада
     python executor.py logs TASK-001          # Логи задачи
 """
 
-import os
-import re
-import sys
-import json
-import subprocess
 import argparse
-from pathlib import Path
-from datetime import datetime
-from dataclasses import dataclass, field
-from typing import Optional
+import json
+import re
 import shutil
+import subprocess
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
 
 # Импортируем парсер задач
 from task import (
-    parse_tasks,
-    get_task_by_id,
-    get_next_tasks,
-    update_task_status,
-    Task,
     TASKS_FILE,
+    Task,
+    get_next_tasks,
+    get_task_by_id,
+    parse_tasks,
+    update_task_status,
 )
 
 # === Configuration ===
@@ -76,8 +73,8 @@ class TaskAttempt:
     timestamp: str
     success: bool
     duration_seconds: float
-    error: Optional[str] = None
-    claude_output: Optional[str] = None
+    error: str | None = None
+    claude_output: str | None = None
 
 
 @dataclass
@@ -87,15 +84,15 @@ class TaskState:
     task_id: str
     status: str  # pending, running, success, failed, skipped
     attempts: list = field(default_factory=list)
-    started_at: Optional[str] = None
-    completed_at: Optional[str] = None
+    started_at: str | None = None
+    completed_at: str | None = None
 
     @property
     def attempt_count(self) -> int:
         return len(self.attempts)
 
     @property
-    def last_error(self) -> Optional[str]:
+    def last_error(self) -> str | None:
         if self.attempts:
             return self.attempts[-1].error
         return None
@@ -167,8 +164,8 @@ class ExecutorState:
         task_id: str,
         success: bool,
         duration: float,
-        error: Optional[str] = None,
-        output: Optional[str] = None,
+        error: str | None = None,
+        output: str | None = None,
     ):
         """Записать попытку выполнения"""
         state = self.get_task_state(task_id)
@@ -422,7 +419,7 @@ def post_done_hook(task: Task, config: ExecutorConfig, success: bool) -> bool:
             cwd=config.project_root,
         )
         if result.returncode != 0:
-            print(f"   ❌ Tests failed!")
+            print("   ❌ Tests failed!")
             print(result.stderr.decode()[:500])
             return False
         print("   ✅ Tests passed")
@@ -437,7 +434,7 @@ def post_done_hook(task: Task, config: ExecutorConfig, success: bool) -> bool:
             cwd=config.project_root,
         )
         if result.returncode != 0:
-            print(f"   ⚠️  Lint warnings (non-blocking)")
+            print("   ⚠️  Lint warnings (non-blocking)")
 
     # Auto-commit
     if config.auto_commit:
@@ -471,7 +468,7 @@ def post_done_hook(task: Task, config: ExecutorConfig, success: bool) -> bool:
                 subprocess.run(
                     ["git", "commit", "-m", commit_msg], cwd=config.project_root
                 )
-                print(f"   Committed changes")
+                print("   Committed changes")
         except Exception as e:
             print(f"   Commit failed: {e}")
 
@@ -589,7 +586,7 @@ def execute_task(task: Task, config: ExecutorConfig, state: ExecutorState) -> bo
         success = "TASK_COMPLETE" in output and "TASK_FAILED" not in output
 
         if success:
-            print(f"✅ Claude reports: TASK_COMPLETE")
+            print("✅ Claude reports: TASK_COMPLETE")
 
             # Post-done hook (тесты, lint)
             hook_success = post_done_hook(task, config, True)
@@ -710,12 +707,12 @@ def cmd_run(args, config: ExecutorConfig):
         success = run_with_retries(task, config, state)
 
         if not success and state.should_stop():
-            print(f"\n⛔ Stopping: too many consecutive failures")
+            print("\n⛔ Stopping: too many consecutive failures")
             break
 
     # Итог
     print(f"\n{'=' * 60}")
-    print(f"📊 Execution Summary")
+    print("📊 Execution Summary")
     print(f"{'=' * 60}")
     print(f"   Completed: {state.total_completed}")
     print(f"   Failed:    {state.total_failed}")
@@ -728,7 +725,7 @@ def cmd_status(args, config: ExecutorConfig):
     state = ExecutorState(config)
     tasks = parse_tasks(TASKS_FILE)
 
-    print(f"\n📊 Executor Status")
+    print("\n📊 Executor Status")
     print(f"{'=' * 50}")
     print(f"Total completed:       {state.total_completed}")
     print(f"Total failed:          {state.total_failed}")
@@ -739,7 +736,7 @@ def cmd_status(args, config: ExecutorConfig):
     # Задачи с попытками
     attempted = [ts for ts in state.tasks.values() if ts.attempts]
     if attempted:
-        print(f"\n📝 Task History:")
+        print("\n📝 Task History:")
         for ts in attempted:
             icon = (
                 "✅"

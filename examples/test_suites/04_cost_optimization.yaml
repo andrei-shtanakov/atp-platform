@@ -1,0 +1,257 @@
+# ATP Test Suite: Cost Optimization
+# Purpose: Test agent efficiency and cost-effectiveness
+# Duration: ~5-8 minutes
+# Use case: Cost analysis and optimization testing
+
+test_suite: "cost_optimization"
+version: "1.0"
+description: >
+  Tests focused on cost efficiency and resource optimization.
+  Validates that agents complete tasks within budget constraints
+  while maintaining quality standards.
+
+defaults:
+  runs_per_test: 5
+  timeout_seconds: 180
+  constraints:
+    max_steps: 15
+    max_tokens: 20000
+    timeout_seconds: 180
+    budget_usd: 0.10
+  scoring:
+    quality_weight: 0.25
+    completeness_weight: 0.25
+    efficiency_weight: 0.25
+    cost_weight: 0.25
+
+agents:
+  - name: "cost-efficient-agent"
+    type: "http"
+    config:
+      endpoint: "${API_ENDPOINT}"
+      api_key: "${API_KEY}"
+      timeout: 90
+
+tests:
+  # Test 1: Simple task with strict budget
+  - id: "cost-001"
+    name: "Simple task under budget"
+    tags: ["cost", "efficiency", "basic"]
+    task:
+      description: >
+        Create a file 'greeting.txt' containing 'Hello, World!' with minimal cost.
+      expected_artifacts: ["greeting.txt"]
+    constraints:
+      max_steps: 2
+      max_tokens: 500
+      timeout_seconds: 30
+      budget_usd: 0.01
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "greeting.txt"
+      - type: "behavior"
+        config:
+          check: "efficient_tool_use"
+    scoring:
+      quality_weight: 0.2
+      completeness_weight: 0.3
+      efficiency_weight: 0.3
+      cost_weight: 0.2
+
+  # Test 2: Data processing with cost constraint
+  - id: "cost-002"
+    name: "Cost-efficient data processing"
+    tags: ["cost", "efficiency", "data"]
+    task:
+      description: >
+        Read 'numbers.txt' (contains: 1 2 3 4 5 6 7 8 9 10),
+        calculate the sum, and save to 'sum.txt'.
+        Optimize for minimal API calls and token usage.
+      input_data:
+        input_file: "numbers.txt"
+      expected_artifacts: ["sum.txt"]
+    constraints:
+      max_steps: 3
+      max_tokens: 1000
+      timeout_seconds: 60
+      budget_usd: 0.02
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "sum.txt"
+      - type: "llm_eval"
+        config:
+          criteria: "factual_accuracy"
+          threshold: 1.0
+      - type: "behavior"
+        config:
+          check: "efficient_tool_use"
+    scoring:
+      quality_weight: 0.3
+      completeness_weight: 0.2
+      efficiency_weight: 0.3
+      cost_weight: 0.2
+
+  # Test 3: Text summarization with budget
+  - id: "cost-003"
+    name: "Cost-efficient text summarization"
+    tags: ["cost", "efficiency", "text"]
+    task:
+      description: >
+        Read 'article.txt' (long article) and create 'summary.txt'
+        with a 3-sentence summary. Use minimal tokens.
+      input_data:
+        input_file: "article.txt"
+      expected_artifacts: ["summary.txt"]
+    constraints:
+      max_steps: 4
+      max_tokens: 5000
+      timeout_seconds: 90
+      budget_usd: 0.05
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "summary.txt"
+      - type: "llm_eval"
+        config:
+          criteria: "completeness"
+          threshold: 0.8
+      - type: "behavior"
+        config:
+          check: "no_repeated_actions"
+    scoring:
+      quality_weight: 0.3
+      completeness_weight: 0.3
+      efficiency_weight: 0.2
+      cost_weight: 0.2
+
+  # Test 4: Batch processing efficiency
+  - id: "cost-004"
+    name: "Batch processing optimization"
+    tags: ["cost", "efficiency", "batch"]
+    task:
+      description: >
+        Process 5 simple tasks in one go to minimize overhead:
+        1. Create 'file1.txt' with "Task 1"
+        2. Create 'file2.txt' with "Task 2"
+        3. Create 'file3.txt' with "Task 3"
+        4. Create 'file4.txt' with "Task 4"
+        5. Create 'file5.txt' with "Task 5"
+
+        Optimize for batch processing to minimize API calls.
+      expected_artifacts:
+        - "file1.txt"
+        - "file2.txt"
+        - "file3.txt"
+        - "file4.txt"
+        - "file5.txt"
+    constraints:
+      max_steps: 6
+      max_tokens: 3000
+      timeout_seconds: 120
+      budget_usd: 0.05
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "file1.txt"
+      - type: "artifact_exists"
+        config:
+          path: "file2.txt"
+      - type: "artifact_exists"
+        config:
+          path: "file3.txt"
+      - type: "artifact_exists"
+        config:
+          path: "file4.txt"
+      - type: "artifact_exists"
+        config:
+          path: "file5.txt"
+      - type: "behavior"
+        config:
+          check: "efficient_tool_use"
+    scoring:
+      quality_weight: 0.2
+      completeness_weight: 0.3
+      efficiency_weight: 0.3
+      cost_weight: 0.2
+
+  # Test 5: Caching and reuse
+  - id: "cost-005"
+    name: "Efficient information reuse"
+    tags: ["cost", "efficiency", "caching"]
+    task:
+      description: >
+        Generate a list of 10 US state names, then:
+        1. Save them to 'states.txt'
+        2. Count how many start with 'C' and save to 'count_c.txt'
+        3. Count how many start with 'M' and save to 'count_m.txt'
+
+        Reuse the generated list instead of regenerating it.
+      expected_artifacts:
+        - "states.txt"
+        - "count_c.txt"
+        - "count_m.txt"
+    constraints:
+      max_steps: 8
+      max_tokens: 4000
+      timeout_seconds: 120
+      budget_usd: 0.05
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "states.txt"
+      - type: "artifact_exists"
+        config:
+          path: "count_c.txt"
+      - type: "artifact_exists"
+        config:
+          path: "count_m.txt"
+      - type: "behavior"
+        config:
+          check: "no_repeated_actions"
+      - type: "llm_eval"
+        config:
+          criteria: "factual_accuracy"
+          threshold: 0.9
+    scoring:
+      quality_weight: 0.25
+      completeness_weight: 0.25
+      efficiency_weight: 0.3
+      cost_weight: 0.2
+
+  # Test 6: Quality vs cost tradeoff
+  - id: "cost-006"
+    name: "Balanced quality and cost"
+    tags: ["cost", "quality", "tradeoff"]
+    task:
+      description: >
+        Write a brief explanation (100-150 words) of 'how HTTP works'
+        and save to 'http_explanation.txt'. Balance accuracy with cost.
+      expected_artifacts: ["http_explanation.txt"]
+    constraints:
+      max_steps: 5
+      max_tokens: 8000
+      timeout_seconds: 90
+      budget_usd: 0.08
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "http_explanation.txt"
+      - type: "llm_eval"
+        config:
+          criteria: "factual_accuracy"
+          threshold: 0.85
+      - type: "llm_eval"
+        config:
+          criteria: "completeness"
+          threshold: 0.8
+      - type: "llm_eval"
+        config:
+          criteria: "coherence"
+          threshold: 0.85
+    scoring:
+      quality_weight: 0.35
+      completeness_weight: 0.25
+      efficiency_weight: 0.2
+      cost_weight: 0.2

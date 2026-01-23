@@ -1,0 +1,247 @@
+# ATP Test Suite: Data Processing
+# Purpose: Validate agent's ability to process and transform data
+# Duration: ~5-10 minutes
+# Use case: Regression testing for data processing agents
+
+test_suite: "data_processing"
+version: "1.0"
+description: >
+  Comprehensive tests for data processing capabilities including
+  CSV/JSON handling, data transformation, and summary generation.
+
+defaults:
+  runs_per_test: 3
+  timeout_seconds: 300
+  constraints:
+    max_steps: 20
+    max_tokens: 50000
+    timeout_seconds: 300
+    allowed_tools:
+      - "file_read"
+      - "file_write"
+      - "python_repl"
+    budget_usd: 0.25
+  scoring:
+    quality_weight: 0.5
+    completeness_weight: 0.3
+    efficiency_weight: 0.15
+    cost_weight: 0.05
+
+agents:
+  - name: "data-agent"
+    type: "http"
+    config:
+      endpoint: "${API_ENDPOINT}"
+      api_key: "${API_KEY}"
+      timeout: 120
+
+tests:
+  # Test 1: CSV parsing and summary
+  - id: "data-001"
+    name: "CSV data analysis"
+    tags: ["regression", "data", "csv"]
+    description: "Parse CSV file and generate summary statistics"
+    task:
+      description: >
+        Read the CSV file 'sales_data.csv' with columns: date, product, quantity, price.
+        Generate a JSON summary file 'sales_summary.json' containing:
+        - Total number of records
+        - Sum of all quantities
+        - Total revenue (quantity * price)
+        - List of unique products
+        - Average price per product
+      input_data:
+        csv_file: "sales_data.csv"
+      expected_artifacts: ["sales_summary.json"]
+    constraints:
+      max_steps: 10
+      timeout_seconds: 120
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "sales_summary.json"
+      - type: "behavior"
+        config:
+          check: "efficient_tool_use"
+      - type: "llm_eval"
+        config:
+          criteria: "completeness"
+          threshold: 0.95
+      - type: "llm_eval"
+        config:
+          criteria: "factual_accuracy"
+          threshold: 0.95
+    scoring:
+      quality_weight: 0.6
+      completeness_weight: 0.3
+      efficiency_weight: 0.1
+      cost_weight: 0.0
+
+  # Test 2: JSON transformation
+  - id: "data-002"
+    name: "JSON data transformation"
+    tags: ["regression", "data", "json"]
+    task:
+      description: >
+        Read 'users.json' (array of objects with: id, name, email, age)
+        and create 'users_filtered.json' containing only users aged 18-65,
+        sorted by name alphabetically, with only id and name fields.
+      input_data:
+        input_file: "users.json"
+      expected_artifacts: ["users_filtered.json"]
+    constraints:
+      max_steps: 8
+      timeout_seconds: 90
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "users_filtered.json"
+      - type: "llm_eval"
+        config:
+          criteria: "completeness"
+          threshold: 0.9
+      - type: "llm_eval"
+        config:
+          criteria: "factual_accuracy"
+          threshold: 0.95
+
+  # Test 3: Data merge
+  - id: "data-003"
+    name: "Multi-file data merge"
+    tags: ["regression", "data", "merge", "complex"]
+    task:
+      description: >
+        You have two CSV files:
+        1. 'customers.csv' with columns: customer_id, name, email
+        2. 'orders.csv' with columns: order_id, customer_id, product, amount
+
+        Create 'customer_orders.csv' that merges these files based on customer_id,
+        with columns: name, email, order_count, total_amount.
+        Each row should represent one customer with aggregated order data.
+      input_data:
+        customers_file: "customers.csv"
+        orders_file: "orders.csv"
+      expected_artifacts: ["customer_orders.csv"]
+    constraints:
+      max_steps: 15
+      timeout_seconds: 180
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "customer_orders.csv"
+      - type: "behavior"
+        config:
+          check: "no_repeated_actions"
+      - type: "llm_eval"
+        config:
+          criteria: "completeness"
+          threshold: 0.9
+      - type: "llm_eval"
+        config:
+          criteria: "factual_accuracy"
+          threshold: 0.85
+
+  # Test 4: Data cleaning
+  - id: "data-004"
+    name: "Data cleaning and validation"
+    tags: ["regression", "data", "cleaning"]
+    task:
+      description: >
+        Read 'messy_data.csv' which contains:
+        - Missing values (empty cells)
+        - Duplicate rows
+        - Invalid data types
+        - Inconsistent formatting
+
+        Create two files:
+        1. 'cleaned_data.csv' - cleaned version with duplicates removed,
+           missing values handled, and consistent formatting
+        2. 'cleaning_report.txt' - summary of cleaning operations performed,
+           including number of duplicates, missing values, and corrections made
+      input_data:
+        input_file: "messy_data.csv"
+      expected_artifacts: ["cleaned_data.csv", "cleaning_report.txt"]
+    constraints:
+      max_steps: 12
+      timeout_seconds: 150
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "cleaned_data.csv"
+      - type: "artifact_exists"
+        config:
+          path: "cleaning_report.txt"
+      - type: "llm_eval"
+        config:
+          criteria: "completeness"
+          threshold: 0.85
+      - type: "llm_eval"
+        config:
+          criteria: "factual_accuracy"
+          threshold: 0.8
+
+  # Test 5: Statistical analysis
+  - id: "data-005"
+    name: "Statistical analysis and visualization"
+    tags: ["regression", "data", "statistics"]
+    task:
+      description: >
+        Analyze 'time_series_data.csv' containing daily measurements (date, value).
+        Create 'statistics.json' with:
+        - Basic statistics: mean, median, std deviation, min, max
+        - Trend analysis: overall trend (increasing/decreasing/stable)
+        - Outliers: list of dates with outlier values
+        - Summary: text description of the data characteristics
+      input_data:
+        input_file: "time_series_data.csv"
+      expected_artifacts: ["statistics.json"]
+    constraints:
+      max_steps: 15
+      timeout_seconds: 200
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "statistics.json"
+      - type: "behavior"
+        config:
+          check: "efficient_tool_use"
+      - type: "llm_eval"
+        config:
+          criteria: "completeness"
+          threshold: 0.9
+      - type: "llm_eval"
+        config:
+          criteria: "factual_accuracy"
+          threshold: 0.85
+
+  # Test 6: Large dataset handling
+  - id: "data-006"
+    name: "Process large dataset efficiently"
+    tags: ["regression", "data", "performance", "large"]
+    task:
+      description: >
+        Process 'large_dataset.csv' (100,000+ rows) and create 'summary.json'
+        with aggregate statistics by category without loading entire file into memory.
+        The summary should include total count, sum, and average for each category.
+      input_data:
+        input_file: "large_dataset.csv"
+      expected_artifacts: ["summary.json"]
+    constraints:
+      max_steps: 20
+      timeout_seconds: 300
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "summary.json"
+      - type: "behavior"
+        config:
+          check: "efficient_tool_use"
+      - type: "llm_eval"
+        config:
+          criteria: "completeness"
+          threshold: 0.9
+    scoring:
+      quality_weight: 0.3
+      completeness_weight: 0.3
+      efficiency_weight: 0.3
+      cost_weight: 0.1
