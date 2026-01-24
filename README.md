@@ -50,17 +50,39 @@ uv run pytest tests/ -v
 ### Run Your First Test
 
 ```bash
-# Run tests against an agent
-uv run atp test --agent=my-agent tests/fixtures/sample_suite.yaml
+# Quick demo - run file operations agent (no API keys required)
+uv run atp test examples/test_suites/demo_file_agent.yaml \
+  --adapter=cli \
+  --adapter-config='command=python' \
+  --adapter-config='args=["examples/demo_agent.py"]' \
+  -v
+
+# Run OpenAI-powered agent (requires OPENAI_API_KEY)
+export OPENAI_API_KEY='sk-...'
+uv run atp test examples/test_suites/openai_agent.yaml \
+  --adapter=cli \
+  --adapter-config='command=python' \
+  --adapter-config='args=["examples/openai_agent.py"]' \
+  --adapter-config='inherit_environment=true' \
+  --adapter-config='allowed_env_vars=["OPENAI_API_KEY","OPENAI_MODEL"]' \
+  -v
 
 # Run with multiple iterations for statistical reliability
-uv run atp test --agent=my-agent --runs=5 suite.yaml
+uv run atp test suite.yaml --adapter=http \
+  --adapter-config='endpoint=http://localhost:8000' \
+  --runs=5
 
 # Run specific tags
-uv run atp test --agent=my-agent --tags=smoke suite.yaml
+uv run atp test suite.yaml --adapter=cli \
+  --adapter-config='command=python' \
+  --adapter-config='args=["agent.py"]' \
+  --tags=smoke
 
-# Generate HTML report
-uv run atp test --agent=my-agent --output=html --output-file=report.html suite.yaml
+# Generate JSON report
+uv run atp test suite.yaml --adapter=cli \
+  --adapter-config='command=python' \
+  --adapter-config='args=["agent.py"]' \
+  --output=json --output-file=results.json
 ```
 
 ### Your First Test Suite
@@ -196,23 +218,56 @@ atp-platform-ru/
 ## CLI Commands
 
 ```bash
-# Run tests
-uv run atp test --agent=<name> <suite.yaml>
-uv run atp test --agent=<name> --runs=5 --parallel=4 suite.yaml
-uv run atp test --agent=<name> --tags=smoke,core suite.yaml
-uv run atp test --agent=<name> --output=html --output-file=report.html suite.yaml
-uv run atp test --agent=<name> --output=junit --output-file=results.xml suite.yaml
+# Run tests with CLI adapter
+uv run atp test <suite.yaml> --adapter=cli \
+  --adapter-config='command=python' \
+  --adapter-config='args=["agent.py"]'
+
+# Run tests with HTTP adapter
+uv run atp test <suite.yaml> --adapter=http \
+  --adapter-config='endpoint=http://localhost:8000'
+
+# Run with multiple iterations and parallel execution
+uv run atp test suite.yaml --adapter=cli \
+  --adapter-config='command=python' \
+  --adapter-config='args=["agent.py"]' \
+  --runs=5 --parallel=4
+
+# Filter by tags
+uv run atp test suite.yaml --adapter=cli \
+  --adapter-config='command=python' \
+  --adapter-config='args=["agent.py"]' \
+  --tags=smoke,core
+
+# Output formats
+uv run atp test suite.yaml --adapter=cli \
+  --adapter-config='command=python' \
+  --adapter-config='args=["agent.py"]' \
+  --output=json --output-file=results.json
+
+uv run atp test suite.yaml --adapter=cli \
+  --adapter-config='command=python' \
+  --adapter-config='args=["agent.py"]' \
+  --output=junit --output-file=results.xml
+
+# Pass environment variables (for API keys)
+uv run atp test suite.yaml --adapter=cli \
+  --adapter-config='command=python' \
+  --adapter-config='args=["agent.py"]' \
+  --adapter-config='inherit_environment=true' \
+  --adapter-config='allowed_env_vars=["OPENAI_API_KEY","ANTHROPIC_API_KEY"]'
 
 # Validate test definitions
-uv run atp validate suite.yaml
+uv run atp validate --suite=suite.yaml
 
 # Baseline management
-uv run atp baseline save --name=v1.0 results.json
-uv run atp baseline compare --baseline=v1.0 results.json
+uv run atp baseline save suite.yaml -o baseline.json --runs=5
+uv run atp baseline compare suite.yaml -b baseline.json
 
 # Utilities
-uv run atp list-agents          # List configured agents
+uv run atp list-agents          # List available adapters
 uv run atp version              # Show version
+uv run atp list suite.yaml      # List tests in a suite
 ```
 
 ## Documentation
@@ -247,6 +302,10 @@ uv run atp version              # Show version
 See [examples/](examples/) for:
 - [Test Suites](examples/test_suites/) - Sample test definitions
 - [CI/CD Templates](examples/ci/) - GitHub Actions, GitLab CI, Jenkins, Azure, CircleCI
+- [Demo Agents](examples/) - Ready-to-run example agents:
+  - `demo_agent.py` - Simple file operations agent (no API keys needed)
+  - `openai_agent.py` - OpenAI-powered agent with tool calling
+  - `run_demo.sh` / `run_openai_demo.sh` - Quick start scripts
 
 ## Development
 

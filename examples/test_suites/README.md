@@ -118,9 +118,120 @@ Each example suite is designed for a specific use case and demonstrates differen
 - Budget planning
 - Performance benchmarking
 
+### 5. Demo File Agent (`demo_file_agent.yaml`)
+
+**Purpose**: End-to-end demonstration of ATP Platform with a simple CLI agent
+**Duration**: <1 minute
+**Tests**: 5
+**Use Case**: Quick validation, learning ATP, CI/CD examples
+
+**Features demonstrated**:
+- CLI adapter configuration
+- File operations (create, read, list)
+- Error handling (file not found)
+- Multi-step workflows
+- Artifact and behavior assertions
+
+**Key characteristics**:
+- No external API required
+- Fast execution (regex-based agent)
+- Simple assertions
+- Good for learning ATP
+
+**When to use**:
+- Learning ATP Platform
+- CI/CD pipeline setup
+- Quick platform validation
+- Development and testing
+
+**Run command**:
+```bash
+uv run atp test examples/test_suites/demo_file_agent.yaml \
+  --adapter=cli \
+  --adapter-config='command=python' \
+  --adapter-config='args=["examples/demo_agent.py"]' \
+  -v
+```
+
+### 6. OpenAI Agent (`openai_agent.yaml`)
+
+**Purpose**: Test LLM-powered agent with tool calling
+**Duration**: ~1-2 minutes
+**Tests**: 5
+**Use Case**: Testing OpenAI-based agents with function calling
+
+**Features demonstrated**:
+- OpenAI API integration
+- Tool calling (create_file, read_file, list_files, calculate)
+- Multi-step reasoning
+- Token metrics tracking
+- Environment variable passing (`allowed_env_vars`)
+
+**Key characteristics**:
+- Requires `OPENAI_API_KEY` environment variable
+- Uses gpt-4o-mini by default (configurable via `OPENAI_MODEL`)
+- Real LLM reasoning and tool use
+- Token and cost tracking
+
+**When to use**:
+- Testing LLM-powered agents
+- Validating tool calling behavior
+- Cost analysis for LLM agents
+- Integration testing
+
+**Run command**:
+```bash
+export OPENAI_API_KEY='sk-...'
+export OPENAI_MODEL='gpt-4o-mini'  # or gpt-5-mini
+
+uv run atp test examples/test_suites/openai_agent.yaml \
+  --adapter=cli \
+  --adapter-config='command=python' \
+  --adapter-config='args=["examples/openai_agent.py"]' \
+  --adapter-config='inherit_environment=true' \
+  --adapter-config='allowed_env_vars=["OPENAI_API_KEY","OPENAI_MODEL"]' \
+  -v
+```
+
 ## Running Examples
 
-### Load a Test Suite
+### Run Tests via CLI
+
+```bash
+# Run demo file agent (no API key required)
+uv run atp test examples/test_suites/demo_file_agent.yaml \
+  --adapter=cli \
+  --adapter-config='command=python' \
+  --adapter-config='args=["examples/demo_agent.py"]' \
+  -v
+
+# Run OpenAI agent (requires OPENAI_API_KEY)
+export OPENAI_API_KEY='sk-...'
+uv run atp test examples/test_suites/openai_agent.yaml \
+  --adapter=cli \
+  --adapter-config='command=python' \
+  --adapter-config='args=["examples/openai_agent.py"]' \
+  --adapter-config='inherit_environment=true' \
+  --adapter-config='allowed_env_vars=["OPENAI_API_KEY","OPENAI_MODEL"]' \
+  -v
+
+# Run with specific tags
+uv run atp test examples/test_suites/demo_file_agent.yaml \
+  --adapter=cli \
+  --adapter-config='command=python' \
+  --adapter-config='args=["examples/demo_agent.py"]' \
+  --tags=smoke
+
+# Run with JSON output
+uv run atp test examples/test_suites/demo_file_agent.yaml \
+  --adapter=cli \
+  --adapter-config='command=python' \
+  --adapter-config='args=["examples/demo_agent.py"]' \
+  --output=json \
+  --output-file=results.json
+```
+
+### Load a Test Suite Programmatically
 
 ```python
 from atp.loader import TestLoader
@@ -150,15 +261,6 @@ loader = TestLoader(env={
 
 # Load suite
 suite = loader.load_file("examples/test_suites/02_data_processing.yaml")
-```
-
-### Run Tests (Future Feature)
-
-```bash
-# When runner is implemented
-atp run examples/test_suites/01_smoke_tests.yaml
-atp run examples/test_suites/02_data_processing.yaml --agent=my-agent
-atp run examples/test_suites/03_web_research.yaml --verbose
 ```
 
 ## Customizing Examples

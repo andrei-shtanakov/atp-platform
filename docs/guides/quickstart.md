@@ -1,12 +1,55 @@
 # Quick Start Guide
 
-This guide will walk you through creating and loading your first ATP test suite in 10 minutes.
+This guide will walk you through running your first ATP tests in 5 minutes.
 
 ## Prerequisites
 
 - ATP Platform installed (see [Installation Guide](installation.md))
 - Basic understanding of YAML syntax
 - Python 3.12+
+
+## Quick Demo (No API Keys Required)
+
+The fastest way to see ATP in action:
+
+```bash
+# Run the demo file agent
+uv run atp test examples/test_suites/demo_file_agent.yaml \
+  --adapter=cli \
+  --adapter-config='command=python' \
+  --adapter-config='args=["examples/demo_agent.py"]' \
+  -v
+```
+
+Expected output:
+```
+Suite: demo_file_agent
+Agent: test-agent
+Tests: 5, Runs per test: 1
+
+  ✓ Create text file               [0.0s] PASSED
+  ✓ Read existing file             [0.0s] PASSED
+  ✓ List files in directory        [0.0s] PASSED
+  ✓ Handle file not found          [0.0s] PASSED
+  ✓ Multi-step: create and verify  [0.0s] PASSED
+
+Result: PASSED
+Passed: 5/5 (100.0%)
+```
+
+## With OpenAI (Requires API Key)
+
+```bash
+export OPENAI_API_KEY='sk-...'
+
+uv run atp test examples/test_suites/openai_agent.yaml \
+  --adapter=cli \
+  --adapter-config='command=python' \
+  --adapter-config='args=["examples/openai_agent.py"]' \
+  --adapter-config='inherit_environment=true' \
+  --adapter-config='allowed_env_vars=["OPENAI_API_KEY","OPENAI_MODEL"]' \
+  -v
+```
 
 ## Step 1: Understanding Test Suites
 
@@ -338,12 +381,13 @@ Common validation errors:
 
 ## Next Steps
 
-Now that you've created your first test suite:
+Now that you've run your first tests:
 
-1. **Learn more about test format**: [Test Format Reference](../reference/test-format.md)
-2. **Explore examples**: Check `examples/test_suites/` directory
-3. **Read usage guide**: [Basic Usage](usage.md)
-4. **Configure adapters**: [Adapter Configuration](../reference/adapters.md) (coming soon)
+1. **Run the demo agents**: Try `examples/demo_agent.py` and `examples/openai_agent.py`
+2. **Learn more about test format**: [Test Format Reference](../reference/test-format.md)
+3. **Explore examples**: Check `examples/test_suites/` directory
+4. **Read usage guide**: [Basic Usage](usage.md)
+5. **Configure adapters**: [Adapter Configuration](../reference/adapters.md)
 
 ## Common Patterns
 
