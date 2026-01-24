@@ -1,0 +1,156 @@
+# ATP Test Suite: OpenAI Agent
+# Purpose: Test LLM-powered agent with tool calling
+# Requires: OPENAI_API_KEY environment variable
+
+test_suite: "openai_agent"
+version: "1.0"
+description: >
+  Test suite for OpenAI-powered agent with tool calling.
+  Tests file operations and calculations using GPT models.
+
+defaults:
+  runs_per_test: 1
+  timeout_seconds: 60
+  constraints:
+    max_steps: 5
+    timeout_seconds: 60
+  scoring:
+    quality_weight: 0.3
+    completeness_weight: 0.5
+    efficiency_weight: 0.2
+    cost_weight: 0.0
+
+agents:
+  - name: "openai-agent"
+    type: "cli"
+    config:
+      command: "python"
+      args: ["examples/openai_agent.py"]
+      working_dir: "."
+      inherit_environment: true
+      allowed_env_vars: ["OPENAI_API_KEY", "OPENAI_MODEL"]
+
+tests:
+  # Test 1: Simple file creation
+  - id: "openai-001"
+    name: "Create a greeting file"
+    description: "Test that the agent can create a simple text file"
+    tags: ["file", "create", "smoke"]
+    task:
+      description: "Create a file named 'greeting.txt' containing the text 'Hello from OpenAI!'"
+      expected_artifacts: ["greeting.txt"]
+    constraints:
+      max_steps: 3
+      timeout_seconds: 30
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "greeting.txt"
+      - type: "behavior"
+        config:
+          must_use_tools: ["create_file"]
+
+  # Test 2: Mathematical calculation
+  - id: "openai-002"
+    name: "Perform calculation"
+    description: "Test that the agent can use the calculate tool"
+    tags: ["calculation", "math"]
+    task:
+      description: "Calculate 15 * 7 + 23 and save the result to 'result.txt'"
+      expected_artifacts: ["result.txt"]
+    constraints:
+      max_steps: 4
+      timeout_seconds: 30
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "result.txt"
+      - type: "contains"
+        config:
+          path: "result.txt"
+          pattern: "128"
+      - type: "behavior"
+        config:
+          must_use_tools: ["calculate", "create_file"]
+
+  # Test 3: Read and transform
+  - id: "openai-003"
+    name: "Read and transform file"
+    description: "Read a file and create a new one based on its content"
+    tags: ["file", "read", "transform"]
+    task:
+      description: >
+        First, create a file 'numbers.txt' with the content '10 20 30'.
+        Then read it and create 'sum.txt' with the sum of these numbers.
+      expected_artifacts: ["numbers.txt", "sum.txt"]
+    constraints:
+      max_steps: 6
+      timeout_seconds: 45
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "numbers.txt"
+      - type: "artifact_exists"
+        config:
+          path: "sum.txt"
+      - type: "contains"
+        config:
+          path: "sum.txt"
+          pattern: "60"
+
+  # Test 4: List directory contents
+  - id: "openai-004"
+    name: "List and report files"
+    description: "List files in directory and create a report"
+    tags: ["file", "list", "report"]
+    task:
+      description: >
+        Create two files: 'file1.txt' with 'First' and 'file2.txt' with 'Second'.
+        Then list the files in the current directory and save the count to 'count.txt'.
+      expected_artifacts: ["file1.txt", "file2.txt", "count.txt"]
+    constraints:
+      max_steps: 6
+      timeout_seconds: 45
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "file1.txt"
+      - type: "artifact_exists"
+        config:
+          path: "file2.txt"
+      - type: "artifact_exists"
+        config:
+          path: "count.txt"
+      - type: "behavior"
+        config:
+          must_use_tools: ["create_file", "list_files"]
+
+  # Test 5: Complex multi-step task
+  - id: "openai-005"
+    name: "Multi-step workflow"
+    description: "Complete a multi-step task requiring planning"
+    tags: ["workflow", "multi-step"]
+    task:
+      description: >
+        1. Calculate the area of a rectangle with width 12 and height 8.
+        2. Save the calculation to 'area.txt'.
+        3. Create a summary file 'summary.txt' that says 'Area calculation completed: [result]'.
+      expected_artifacts: ["area.txt", "summary.txt"]
+    constraints:
+      max_steps: 6
+      timeout_seconds: 45
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "area.txt"
+      - type: "contains"
+        config:
+          path: "area.txt"
+          pattern: "96"
+      - type: "artifact_exists"
+        config:
+          path: "summary.txt"
+      - type: "behavior"
+        config:
+          must_use_tools: ["calculate", "create_file"]
+          min_tool_calls: 3
