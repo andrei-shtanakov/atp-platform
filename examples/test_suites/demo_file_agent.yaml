@@ -1,0 +1,125 @@
+# ATP Test Suite: Demo File Agent
+# Purpose: End-to-end demonstration of ATP Platform
+# Agent: CLI demo agent with file operations (create, read, list)
+
+test_suite: "demo_file_agent"
+version: "1.0"
+description: >
+  Demo test suite for the ATP file operations agent.
+  Tests basic file operations: create, read, list files.
+  Used for end-to-end validation of ATP Platform.
+
+defaults:
+  runs_per_test: 1
+  timeout_seconds: 30
+  constraints:
+    max_steps: 5
+    timeout_seconds: 30
+  scoring:
+    quality_weight: 0.3
+    completeness_weight: 0.5
+    efficiency_weight: 0.2
+    cost_weight: 0.0
+
+agents:
+  - name: "file-agent"
+    type: "cli"
+    config:
+      command: "python"
+      args: ["examples/demo_agent.py"]
+      working_dir: "."
+      inherit_environment: true
+
+tests:
+  # Test 1: Create a text file
+  - id: "demo-001"
+    name: "Create text file"
+    description: "Verify agent can create a file with specified content"
+    tags: ["file", "create", "smoke"]
+    task:
+      description: "Create file 'hello.txt' with content 'Hello, ATP!'"
+      expected_artifacts: ["hello.txt"]
+    constraints:
+      max_steps: 3
+      timeout_seconds: 15
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "hello.txt"
+      - type: "contains"
+        config:
+          path: "hello.txt"
+          pattern: "Hello, ATP!"
+      - type: "behavior"
+        config:
+          check: "no_errors"
+
+  # Test 2: Read an existing file
+  - id: "demo-002"
+    name: "Read existing file"
+    description: "Verify agent can read file content"
+    tags: ["file", "read"]
+    task:
+      description: "Read file 'hello.txt'"
+    constraints:
+      max_steps: 2
+      timeout_seconds: 15
+    assertions:
+      - type: "behavior"
+        config:
+          check: "no_errors"
+          must_use_tools: ["read_file"]
+
+  # Test 3: List files in directory
+  - id: "demo-003"
+    name: "List files in directory"
+    description: "Verify agent can list directory contents"
+    tags: ["file", "list"]
+    task:
+      description: "List files in '.'"
+    constraints:
+      max_steps: 2
+      timeout_seconds: 15
+    assertions:
+      - type: "behavior"
+        config:
+          check: "no_errors"
+          must_use_tools: ["list_files"]
+
+  # Test 4: Handle file not found error
+  - id: "demo-004"
+    name: "Handle file not found"
+    description: "Verify agent handles missing file gracefully"
+    tags: ["file", "error", "edge-case"]
+    task:
+      description: "Read file 'nonexistent_file_12345.txt'"
+    constraints:
+      max_steps: 2
+      timeout_seconds: 15
+    assertions:
+      - type: "behavior"
+        config:
+          check: "no_repeated_actions"
+
+  # Test 5: Multi-step operation (create + read)
+  - id: "demo-005"
+    name: "Multi-step: create and verify"
+    description: "Create a file and read it back to verify content"
+    tags: ["file", "multi-step", "workflow"]
+    task:
+      description: "Create file 'test_data.txt' with content 'Test content 123' and read it back"
+      expected_artifacts: ["test_data.txt"]
+    constraints:
+      max_steps: 5
+      timeout_seconds: 30
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "test_data.txt"
+      - type: "contains"
+        config:
+          path: "test_data.txt"
+          pattern: "Test content 123"
+      - type: "behavior"
+        config:
+          min_tool_calls: 2
