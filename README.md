@@ -294,8 +294,10 @@ uv run atp list suite.yaml      # List tests in a suite
 - [ATP Protocol](docs/04-protocol.md) - Protocol specification
 - [Evaluation System](docs/05-evaluators.md) - Metrics and evaluation
 - [Integration Guide](docs/06-integration.md) - Agent integration
+- [Roadmap](docs/07-roadmap.md) - Project roadmap and milestones
 - [CI/CD Integration](docs/ci-cd.md) - CI/CD setup
 - [Security](docs/security.md) - Security model
+- [Architecture Decision Records](docs/adr/) - Key design decisions
 
 ### Examples
 

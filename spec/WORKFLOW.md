@@ -1,91 +1,91 @@
 # Task Management Workflow
 
-## Обзор
+## Overview
 
-Система управления задачами работает напрямую с `spec/tasks.md` файлом:
-- Статусы и чеклисты обновляются в markdown
-- История изменений логируется в `.task-history.log`
-- Зависимости отслеживаются автоматически
-- **Автоматическое выполнение через Claude CLI**
+The task management system works directly with the `spec/tasks.md` file:
+- Statuses and checklists are updated in markdown
+- Change history is logged in `.task-history.log`
+- Dependencies are tracked automatically
+- **Automatic execution via Claude CLI**
 
-## Быстрый старт
+## Quick Start
 
 ```bash
-# === Ручной режим ===
-make task-stats           # Статистика
-make task-next            # Что делать дальше
+# === Manual Mode ===
+make task-stats           # Statistics
+make task-next            # What to do next
 make task-start ID=TASK-001
 make task-done ID=TASK-001
 
-# === Автоматический режим (Claude CLI) ===
-make exec                 # Выполнить следующую задачу
-make exec-all             # Выполнить все готовые
-make exec-mvp             # Выполнить MVP задачи
-make exec-status          # Статус выполнения
+# === Automatic Mode (Claude CLI) ===
+make exec                 # Execute next task
+make exec-all             # Execute all ready tasks
+make exec-mvp             # Execute MVP tasks
+make exec-status          # Execution status
 ```
 
 ---
 
-## Автоматическое выполнение (Claude CLI)
+## Automatic Execution (Claude CLI)
 
-### Концепция
+### Concept
 
-Executor запускает Claude CLI для каждой задачи:
-1. Читает спецификацию (requirements.md, design.md)
-2. Формирует промпт с контекстом задачи
-3. Claude реализует код и тесты
-4. Проверяет результат (тесты, lint)
-5. При успехе — переходит к следующей задаче
-6. При неудаче — retry с лимитом
+Executor runs Claude CLI for each task:
+1. Reads specification (requirements.md, design.md)
+2. Forms prompt with task context
+3. Claude implements code and tests
+4. Checks result (tests, lint)
+5. On success — moves to next task
+6. On failure — retry with limit
 
-### Команды
+### Commands
 
 ```bash
-# Выполнить следующую готовую задачу
+# Execute next ready task
 python executor.py run
 
-# Выполнить конкретную задачу
+# Execute specific task
 python executor.py run --task=TASK-001
 
-# Выполнить все готовые задачи
+# Execute all ready tasks
 python executor.py run --all
 
-# Только MVP задачи
+# Only MVP tasks
 python executor.py run --all --milestone=mvp
 
-# Статус выполнения
+# Execution status
 python executor.py status
 
-# Повторить неудавшуюся
+# Retry failed task
 python executor.py retry TASK-001
 
-# Посмотреть логи
+# View logs
 python executor.py logs TASK-001
 
-# Сбросить состояние
+# Reset state
 python executor.py reset
 ```
 
-### Опции
+### Options
 
 ```bash
-# Количество попыток (default: 3)
+# Number of attempts (default: 3)
 python executor.py run --max-retries=5
 
-# Таймаут в минутах (default: 30)
+# Timeout in minutes (default: 30)
 python executor.py run --timeout=60
 
-# Без тестов после выполнения
+# Without tests after execution
 python executor.py run --no-tests
 
-# Без создания git ветки
+# Without creating git branch
 python executor.py run --no-branch
 
-# Автокоммит при успехе
+# Auto-commit on success
 python executor.py run --auto-commit
 ```
 
-### Workflow автоматического выполнения
+### Automatic Execution Workflow
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -94,36 +94,36 @@ python executor.py run --auto-commit
                       │
                       ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  1. Найти следующую задачу (по приоритету + зависимостям)   │
+│  1. Find next task (by priority + dependencies)             │
 └─────────────────────┬───────────────────────────────────────┘
                       │
                       ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  2. Pre-start hook                                          │
-│     - Создать git branch: task/TASK-XXX-name                │
-│     - Обновить статус: TODO → IN_PROGRESS                   │
+│     - Create git branch: task/TASK-XXX-name                │
+│     - Update status: TODO → IN_PROGRESS                     │
 └─────────────────────┬───────────────────────────────────────┘
                       │
                       ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  3. Сформировать промпт                                     │
-│     - Контекст из requirements.md, design.md                │
-│     - Чеклист задачи                                        │
-│     - Связанные REQ-XXX, DESIGN-XXX                         │
+│  3. Form prompt                                             │
+│     - Context from requirements.md, design.md               │
+│     - Task checklist                                        │
+│     - Related REQ-XXX, DESIGN-XXX                           │
 └─────────────────────┬───────────────────────────────────────┘
                       │
                       ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  4. Запустить Claude CLI                                    │
+│  4. Run Claude CLI                                          │
 │     claude -p "<prompt>"                                    │
 └─────────────────────┬───────────────────────────────────────┘
                       │
                       ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  5. Проверить результат                                     │
-│     - Claude вернул "TASK_COMPLETE"?                        │
-│     - Тесты проходят? (make test)                           │
-│     - Lint чистый? (make lint)                              │
+│  5. Check result                                            │
+│     - Claude returned "TASK_COMPLETE"?                      │
+│     - Tests pass? (make test)                               │
+│     - Lint clean? (make lint)                               │
 └─────────────────────┬───────────────────────────────────────┘
                       │
             ┌─────────┴─────────┐
@@ -148,18 +148,18 @@ python executor.py run --auto-commit
                └──────────┘      └──────────┘
 ```
 
-### Защитные механизмы
+### Protection Mechanisms
 
-| Механизм | Default | Описание |
-|----------|---------|----------|
-| max_retries | 3 | Макс. попыток на задачу |
-| max_consecutive_failures | 2 | Стоп после N неудач подряд |
-| task_timeout | 30 min | Таймаут на задачу |
-| post_done tests | ON | Проверка тестов |
+| Mechanism | Default | Description |
+|-----------|---------|-------------|
+| max_retries | 3 | Max attempts per task |
+| max_consecutive_failures | 2 | Stop after N consecutive failures |
+| task_timeout | 30 min | Task timeout |
+| post_done tests | ON | Test verification |
 
-### Логи
+### Logs
 
-Логи сохраняются в `spec/.executor-logs/`:
+Logs are saved in `spec/.executor-logs/`:
 
 ```
 spec/.executor-logs/
@@ -168,23 +168,23 @@ spec/.executor-logs/
 └── TASK-003-20250122-110000.log
 ```
 
-Содержимое лога:
+Log content:
 ```
 === PROMPT ===
-<полный промпт для Claude>
+<full prompt for Claude>
 
 === OUTPUT ===
-<ответ Claude>
+<Claude response>
 
 === STDERR ===
-<ошибки если есть>
+<errors if any>
 
 === RETURN CODE: 0 ===
 ```
 
-### Конфигурация
+### Configuration
 
-Файл `executor.config.yaml`:
+File `executor.config.yaml`:
 
 ```yaml
 executor:
@@ -201,185 +201,185 @@ executor:
 
 ---
 
-## CLI команды
+## CLI Commands
 
-### Просмотр
+### Viewing
 
 ```bash
-# Все задачи
+# All tasks
 python task.py list
 
-# Фильтрация
+# Filtering
 python task.py list --status=todo
 python task.py list --priority=p0
 python task.py list --milestone=mvp
 
-# Детали задачи
+# Task details
 python task.py show TASK-001
 
-# Статистика
+# Statistics
 python task.py stats
 
-# Граф зависимостей
+# Dependency graph
 python task.py graph
 ```
 
-### Управление статусом
+### Status Management
 
 ```bash
-# Начать работу
+# Start work
 python task.py start TASK-001
 
-# Начать, игнорируя зависимости
+# Start, ignoring dependencies
 python task.py start TASK-001 --force
 
-# Завершить
+# Complete
 python task.py done TASK-001
 
-# Заблокировать
+# Block
 python task.py block TASK-001
 ```
 
-### Чеклист
+### Checklist
 
 ```bash
-# Показать задачу с чеклистом
+# Show task with checklist
 python task.py show TASK-001
 
-# Отметить пункт (toggle)
-python task.py check TASK-001 0   # первый пункт
-python task.py check TASK-001 2   # третий пункт
+# Mark item (toggle)
+python task.py check TASK-001 0   # first item
+python task.py check TASK-001 2   # third item
 ```
 
 ## Workflow
 
-### 1. Выбор задачи
+### 1. Task Selection
 
 ```bash
-# Смотрим что готово к работе
+# See what's ready to work on
 python task.py next
 
-# Вывод:
-# 🚀 Следующие задачи (готовы к работе):
+# Output:
+# 🚀 Next tasks (ready to work):
 #
 # 1. 🔴 TASK-100: Test Infrastructure Setup
 #    Est: 2d | Milestone 1: MVP ✓ deps OK
 ```
 
-### 2. Начало работы
+### 2. Starting Work
 
 ```bash
-# Начинаем задачу
+# Start task
 python task.py start TASK-100
 
-# ✓ TASK-100 начата!
+# ✓ TASK-100 started!
 ```
 
-Статус в `tasks.md` обновляется: `⬜ TODO` → `🔄 IN PROGRESS`
+Status in `tasks.md` updates: `⬜ TODO` → `🔄 IN PROGRESS`
 
-### 3. Работа с чеклистом
+### 3. Working with Checklist
 
 ```bash
-# Смотрим чеклист
+# View checklist
 python task.py show TASK-100
 
-# Отмечаем выполненные пункты
+# Mark completed items
 python task.py check TASK-100 0
 python task.py check TASK-100 1
 ```
 
-### 4. Завершение
+### 4. Completion
 
 ```bash
-# Завершаем
+# Complete
 python task.py done TASK-100
 
-# ✅ TASK-100 завершена!
+# ✅ TASK-100 completed!
 #
-# 🔓 Разблокированы задачи:
+# 🔓 Unblocked tasks:
 #    TASK-001: ATP Protocol Models
 #    TASK-004: Test Loader
 ```
 
-### 5. Проверка прогресса
+### 5. Checking Progress
 
 ```bash
 python task.py stats
 
-# 📊 Статистика задач
+# 📊 Task Statistics
 # ==================
 #
-# По статусу:
+# By status:
 #   ✅ done          3 ████░░░░░░░░░░░░░░░░ 12%
 #   🔄 in_progress   1 █░░░░░░░░░░░░░░░░░░░  4%
 #   ⬜ todo         21 ████████████████████ 84%
 ```
 
-## Зависимости
+## Dependencies
 
-Система автоматически отслеживает зависимости:
+The system automatically tracks dependencies:
 
-- При `task next` — показывает только задачи с выполненными зависимостями
-- При `task start` — предупреждает о незавершённых зависимостях
-- При `task done` — показывает разблокированные задачи
+- With `task next` — shows only tasks with completed dependencies
+- With `task start` — warns about incomplete dependencies
+- With `task done` — shows unblocked tasks
 
 ```bash
-# Попытка начать задачу с незавершёнными зависимостями
+# Attempting to start task with incomplete dependencies
 python task.py start TASK-003
 
-# ⚠️  Задача зависит от незавершённых: TASK-001
-#    Используй --force чтобы начать всё равно
+# ⚠️  Task depends on incomplete: TASK-001
+#    Use --force to start anyway
 ```
 
-## Экспорт в GitHub Issues
+## Export to GitHub Issues
 
 ```bash
-# Генерирует команды для gh CLI
+# Generates commands for gh CLI
 python task.py export-gh
 
-# Выполни сгенерированные команды:
+# Execute generated commands:
 # gh issue create --title "TASK-001: ATP Protocol Models" ...
 ```
 
-## Интеграция с Git
+## Git Integration
 
-Рекомендуемый workflow с ветками:
+Recommended workflow with branches:
 
 ```bash
-# 1. Начать задачу
+# 1. Start task
 python task.py start TASK-001
 git checkout -b task/TASK-001-protocol-models
 
-# 2. Работать...
+# 2. Work...
 git commit -m "TASK-001: Add ATPRequest model"
 
-# 3. Завершить
+# 3. Complete
 python task.py done TASK-001
 git checkout main
 git merge task/TASK-001-protocol-models
 ```
 
-## Make targets
+## Make Targets
 
-Для удобства — targets в Makefile:
+For convenience — targets in Makefile:
 
-| Команда | Описание |
-|---------|----------|
-| `make task-list` | Список всех задач |
-| `make task-todo` | TODO задачи |
-| `make task-progress` | Задачи в работе |
-| `make task-stats` | Статистика |
-| `make task-next` | Следующие задачи |
-| `make task-graph` | Граф зависимостей |
-| `make task-p0` | Только P0 |
-| `make task-mvp` | Задачи MVP |
-| `make task-start ID=X` | Начать задачу |
-| `make task-done ID=X` | Завершить задачу |
-| `make task-show ID=X` | Показать детали |
+| Command | Description |
+|---------|-------------|
+| `make task-list` | List all tasks |
+| `make task-todo` | TODO tasks |
+| `make task-progress` | Tasks in progress |
+| `make task-stats` | Statistics |
+| `make task-next` | Next tasks |
+| `make task-graph` | Dependency graph |
+| `make task-p0` | Only P0 |
+| `make task-mvp` | MVP tasks |
+| `make task-start ID=X` | Start task |
+| `make task-done ID=X` | Complete task |
+| `make task-show ID=X` | Show details |
 
-## История изменений
+## Change History
 
-Все изменения логируются в `spec/.task-history.log`:
+All changes are logged in `spec/.task-history.log`:
 
 ```
 2025-01-22T10:30:00 | TASK-100 | status -> in_progress
@@ -389,8 +389,8 @@ git merge task/TASK-001-protocol-models
 
 ## Tips
 
-1. **Начинай день с `task next`** — видишь приоритетные готовые задачи
-2. **Отмечай чеклист регулярно** — прогресс виден сразу
-3. **Не форси зависимости** — они там не просто так
-4. **Коммить tasks.md** — история в Git
-5. **Используй `--force` осознанно** — только когда действительно нужно
+1. **Start your day with `task next`** — see priority ready tasks
+2. **Mark checklist regularly** — progress is immediately visible
+3. **Don't force dependencies** — they're there for a reason
+4. **Commit tasks.md** — history in Git
+5. **Use `--force` consciously** — only when really needed

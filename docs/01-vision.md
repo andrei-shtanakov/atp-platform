@@ -1,140 +1,140 @@
 # Vision & Goals
 
-## Видение
+## Vision
 
-Agent Test Platform (ATP) — это индустриальный стандарт для тестирования AI-агентов, который позволяет командам разрабатывать надёжные агентные системы с предсказуемым качеством, независимо от выбранного фреймворка.
+Agent Test Platform (ATP) is an industry standard for testing AI agents that enables teams to develop reliable agent systems with predictable quality, regardless of the chosen framework.
 
-## Контекст
+## Context
 
-### Текущее состояние индустрии
+### Current Industry State
 
-AI-агенты быстро развиваются, но инструментарий для их тестирования отстаёт:
+AI agents are rapidly evolving, but the tooling for testing them lags behind:
 
-- **Разрозненные подходы**: каждая команда изобретает своё тестирование
-- **Привязка к фреймворкам**: тесты написаны под конкретный стек и не переносимы
-- **Отсутствие стандартов**: нет общепринятых метрик качества агентов
-- **Ручная проверка**: большая часть оценки происходит "на глаз"
-- **Невоспроизводимость**: сложно сравнить два агента объективно
+- **Fragmented approaches**: each team invents their own testing
+- **Framework lock-in**: tests are written for specific stacks and not portable
+- **Lack of standards**: no commonly accepted quality metrics for agents
+- **Manual verification**: most evaluation is done "by eye"
+- **Non-reproducibility**: difficult to objectively compare two agents
 
-### Почему это важно
+### Why This Matters
 
-1. **Надёжность в продакшене** — агенты принимают решения, влияющие на бизнес
-2. **Скорость итераций** — без автотестов каждое изменение требует ручной проверки
-3. **Сравнение архитектур** — невозможно выбрать лучший подход без метрик
-4. **Регрессии** — обновление LLM или промпта может сломать работающий агент
+1. **Production reliability** — agents make decisions that impact business
+2. **Iteration speed** — without automated tests, every change requires manual verification
+3. **Architecture comparison** — impossible to choose the best approach without metrics
+4. **Regressions** — updating an LLM or prompt can break a working agent
 
-## Цели проекта
+## Project Goals
 
-### Первичные цели (Must Have)
+### Primary Goals (Must Have)
 
-1. **Унифицированный протокол (ATP)**
-   - Стандартный способ взаимодействия с любым агентом
-   - Независимость от фреймворка реализации
-   - Поддержка streaming событий для трейсинга
+1. **Unified Protocol (ATP)**
+   - Standard way to interact with any agent
+   - Independence from implementation framework
+   - Support for streaming events for tracing
 
-2. **Декларативное описание тестов**
-   - YAML/JSON формат для тест-кейсов
-   - Читаемость для не-программистов
-   - Версионирование в git
+2. **Declarative Test Descriptions**
+   - YAML/JSON format for test cases
+   - Readable by non-programmers
+   - Version control in git
 
-3. **Многоуровневая система оценки**
-   - Структурные проверки (артефакты, формат)
-   - Поведенческие проверки (использование tools, логика)
-   - Семантические проверки (качество, полнота)
+3. **Multi-Level Evaluation System**
+   - Structural checks (artifacts, format)
+   - Behavioral checks (tool usage, logic)
+   - Semantic checks (quality, completeness)
 
-4. **Статистическая надёжность**
-   - Множественные прогоны для учёта стохастичности
-   - Метрики variance и confidence intervals
+4. **Statistical Reliability**
+   - Multiple runs to account for stochasticity
+   - Variance and confidence interval metrics
    - Regression detection
 
-### Вторичные цели (Should Have)
+### Secondary Goals (Should Have)
 
-5. **Адаптеры для популярных фреймворков**
+5. **Adapters for Popular Frameworks**
    - LangGraph, CrewAI, AutoGen (legacy)
-   - Документация по созданию кастомных адаптеров
+   - Documentation for creating custom adapters
 
-6. **CI/CD интеграция**
+6. **CI/CD Integration**
    - GitHub Actions, GitLab CI
-   - Fail-fast для smoke tests
-   - Baseline comparison для регрессий
+   - Fail-fast for smoke tests
+   - Baseline comparison for regressions
 
-7. **Cost tracking**
-   - Подсчёт токенов и API-вызовов
-   - Бюджетные ограничения в тестах
-   - Оптимизация стоимости
+7. **Cost Tracking**
+   - Token and API call counting
+   - Budget constraints in tests
+   - Cost optimization
 
-### Долгосрочные цели (Could Have)
+### Long-Term Goals (Could Have)
 
 8. **Web Dashboard**
-   - Визуализация результатов
-   - Сравнение версий агентов
-   - Drill-down в traces
+   - Result visualization
+   - Agent version comparison
+   - Drill-down into traces
 
 9. **Leaderboard**
-   - Внутренний рейтинг агентов по командам
-   - Benchmark suites для типовых задач
+   - Internal agent rankings by teams
+   - Benchmark suites for common tasks
 
-10. **LLM-as-Judge calibration**
-    - Обучение оценщика на человеческих оценках
-    - Снижение bias
+10. **LLM-as-Judge Calibration**
+    - Training evaluator on human assessments
+    - Bias reduction
 
-## Не-цели (Out of Scope)
+## Non-Goals (Out of Scope)
 
-- **Разработка агентов** — ATP только тестирует, не создаёт
-- **Хостинг агентов** — агенты запускаются в инфраструктуре команд
-- **Замена unit-тестов кода** — ATP дополняет, не заменяет pytest/jest
-- **Realtime мониторинг** — ATP для тестирования, не для observability в проде
+- **Agent development** — ATP only tests, does not create
+- **Agent hosting** — agents run in team infrastructure
+- **Replacing unit tests** — ATP complements, does not replace pytest/jest
+- **Realtime monitoring** — ATP is for testing, not for production observability
 
-## Ключевые метрики успеха
+## Key Success Metrics
 
-| Метрика | Цель | Как измеряем |
-|---------|------|--------------|
-| Adoption | 3+ команды используют ATP | Количество активных test suites |
-| Time to first test | < 1 час | От знакомства до первого прогона |
-| Test coverage | 80%+ сценариев | Доля автоматизированных проверок |
-| Regression detection | 95% | Процент пойманных регрессий |
-| Framework support | 3+ фреймворка | Количество готовых адаптеров |
+| Metric | Goal | How We Measure |
+|--------|------|----------------|
+| Adoption | 3+ teams using ATP | Number of active test suites |
+| Time to first test | < 1 hour | From introduction to first run |
+| Test coverage | 80%+ scenarios | Percentage of automated checks |
+| Regression detection | 95% | Percentage of caught regressions |
+| Framework support | 3+ frameworks | Number of ready adapters |
 
-## Принципы проектирования
+## Design Principles
 
-### 1. Агент как чёрный ящик
+### 1. Agent as Black Box
 
-Платформе неважно, что внутри агента. Важен только контракт:
-- Вход: задача + контекст + ограничения
-- Выход: артефакты + метрики
-- Поток: события во время выполнения
+The platform doesn't care what's inside the agent. Only the contract matters:
+- Input: task + context + constraints
+- Output: artifacts + metrics
+- Flow: events during execution
 
-### 2. Тесты как спецификация
+### 2. Tests as Specification
 
-Тест-кейсы описывают ожидаемое поведение агента. Это документация и проверка в одном.
+Test cases describe expected agent behavior. This is documentation and verification in one.
 
-### 3. Статистика вместо детерминизма
+### 3. Statistics Over Determinism
 
-Агенты недетерминированы. Один прогон ничего не доказывает. Статистика по N прогонам — надёжная метрика.
+Agents are non-deterministic. A single run proves nothing. Statistics over N runs is a reliable metric.
 
 ### 4. Composability
 
-Оценщики, адаптеры, репортеры — модульные компоненты. Можно комбинировать и расширять.
+Evaluators, adapters, reporters are modular components. Can be combined and extended.
 
 ### 5. Developer Experience
 
-Простой CLI, понятные ошибки, быстрый feedback loop.
+Simple CLI, clear errors, fast feedback loop.
 
-## Целевая аудитория
+## Target Audience
 
-1. **ML/AI инженеры** — разрабатывают агентов, пишут тесты
-2. **QA инженеры** — создают тест-сьюты, анализируют результаты
-3. **Tech Leads** — сравнивают подходы, принимают архитектурные решения
-4. **DevOps** — интегрируют в CI/CD
+1. **ML/AI Engineers** — develop agents, write tests
+2. **QA Engineers** — create test suites, analyze results
+3. **Tech Leads** — compare approaches, make architectural decisions
+4. **DevOps** — integrate into CI/CD
 
-## Связь с существующими инструментами
+## Relationship with Existing Tools
 
-| Инструмент | Связь с ATP |
-|------------|-------------|
-| pytest | ATP может использовать pytest для code execution проверок |
-| LangSmith | Complementary: LangSmith для мониторинга, ATP для тестирования |
-| Weights & Biases | ATP может экспортировать метрики в W&B |
-| ERC3-DEV | ATP вдохновлён подходом, но более гибкий и универсальный |
+| Tool | Relationship with ATP |
+|------|----------------------|
+| pytest | ATP can use pytest for code execution checks |
+| LangSmith | Complementary: LangSmith for monitoring, ATP for testing |
+| Weights & Biases | ATP can export metrics to W&B |
+| ERC3-DEV | ATP is inspired by the approach, but more flexible and universal |
 
 ## Timeline
 

@@ -1,28 +1,28 @@
 # Integration Guide
 
-## Обзор
+## Overview
 
-Данный документ описывает, как интегрировать AI-агента с Agent Test Platform. Независимо от используемого фреймворка, агент должен реализовать ATP Protocol для взаимодействия с платформой.
+This document describes how to integrate an AI agent with Agent Test Platform. Regardless of the framework used, the agent must implement the ATP Protocol for platform interaction.
 
-## Способы интеграции
+## Integration Methods
 
-ATP поддерживает несколько способов интеграции, от простых до продвинутых:
+ATP supports several integration methods, from simple to advanced:
 
-| Способ | Сложность | Use Case |
+| Method | Complexity | Use Case |
 |--------|-----------|----------|
-| HTTP Endpoint | Низкая | Агент уже имеет HTTP API |
-| Container | Низкая | Агент упакован в Docker |
-| CLI Wrapper | Низкая | Агент — скрипт или CLI-утилита |
-| Native Adapter | Средняя | Интеграция с фреймворком |
-| Direct Integration | Высокая | Максимальный контроль |
+| HTTP Endpoint | Low | Agent already has HTTP API |
+| Container | Low | Agent packaged in Docker |
+| CLI Wrapper | Low | Agent is a script or CLI utility |
+| Native Adapter | Medium | Framework integration |
+| Direct Integration | High | Maximum control |
 
 ---
 
 ## 1. HTTP Endpoint Integration
 
-Самый простой способ — агент предоставляет HTTP endpoint, принимающий ATP Request.
+The simplest way — agent provides an HTTP endpoint accepting ATP Request.
 
-### Минимальная реализация (FastAPI)
+### Minimal Implementation (FastAPI)
 
 ```python
 # agent_server.py
@@ -126,7 +126,7 @@ if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
 ```
 
-### Регистрация в ATP
+### Registering in ATP
 
 ```yaml
 # atp.config.yaml
@@ -138,7 +138,7 @@ agents:
     health_check: "/health"  # Optional
 ```
 
-### Запуск теста
+### Running Tests
 
 ```bash
 # Start your agent
@@ -152,7 +152,7 @@ atp test --agent=my-agent --suite=smoke
 
 ## 2. Container Integration
 
-Агент упакован в Docker-образ и взаимодействует через stdin/stdout.
+Agent packaged in a Docker image, interacting via stdin/stdout.
 
 ### Dockerfile
 
@@ -280,7 +280,7 @@ agents:
 
 ## 3. Framework Adapters
 
-Для популярных фреймворков ATP предоставляет готовые адаптеры.
+ATP provides ready-made adapters for popular frameworks.
 
 ### LangGraph Adapter
 
@@ -374,7 +374,7 @@ agents:
 
 ## 4. Event Streaming
 
-Для отладки и мониторинга полезно стримить события во время выполнения.
+For debugging and monitoring, it's useful to stream events during execution.
 
 ### HTTP SSE Streaming
 
@@ -431,7 +431,7 @@ def create_event(task_id: str, seq: int, event_type: str, payload: dict) -> dict
 
 ### Container Event Streaming
 
-В container-режиме события пишутся в stderr:
+In container mode, events are written to stderr:
 
 ```python
 # agent_cli.py (with events)
@@ -488,9 +488,9 @@ emitter.llm_request("claude-sonnet-4-20250514", 2000, 500)
 
 ## 5. Mock Tools
 
-При тестировании полезно заменять реальные инструменты моками.
+When testing, it's useful to replace real tools with mocks.
 
-### Конфигурация Mock Tools
+### Mock Tools Configuration
 
 ```yaml
 # tests/mocks/web_search.yaml
@@ -514,9 +514,9 @@ responses:
       error: null
 ```
 
-### Использование Mock Endpoint
+### Using Mock Endpoint
 
-Когда ATP запускает агента, он может передать `tools_endpoint` в context:
+When ATP runs the agent, it can pass `tools_endpoint` in context:
 
 ```json
 {
@@ -526,7 +526,7 @@ responses:
 }
 ```
 
-Агент должен вызывать инструменты через этот endpoint:
+The agent should call tools via this endpoint:
 
 ```python
 async def call_tool(tool_name: str, input: dict) -> dict:
@@ -548,9 +548,9 @@ async def call_tool(tool_name: str, input: dict) -> dict:
 
 ## 6. Handling Constraints
 
-Агент должен соблюдать ограничения из ATP Request.
+The agent must respect constraints from ATP Request.
 
-### Проверка ограничений
+### Constraint Checking
 
 ```python
 class ConstraintChecker:
@@ -647,7 +647,7 @@ async def execute(request: ATPRequest) -> ATPResponse:
 
 ### Idempotency
 
-Агент должен быть идемпотентным — повторный запуск с тем же task_id должен давать аналогичный результат (с учётом стохастичности LLM).
+The agent should be idempotent — repeated execution with the same task_id should yield similar results (accounting for LLM stochasticity).
 
 ```python
 # DON'T persist state between calls
@@ -661,7 +661,7 @@ def execute(request):
 
 ### Graceful Degradation
 
-При недоступности инструментов агент должен адаптироваться:
+When tools are unavailable, the agent should adapt:
 
 ```python
 async def call_tool_with_fallback(tool: str, input: dict) -> dict:

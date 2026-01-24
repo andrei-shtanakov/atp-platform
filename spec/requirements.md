@@ -1,61 +1,61 @@
 # Requirements Specification
 
-> Agent Test Platform (ATP) — Framework-agnostic платформа для тестирования AI-агентов
+> Agent Test Platform (ATP) — Framework-agnostic platform for testing AI agents
 
-## 1. Контекст и цели
+## 1. Context and Goals
 
-### 1.1 Проблема
+### 1.1 Problem
 
-AI-агенты становятся критическими компонентами бизнес-процессов, но отсутствуют стандарты их тестирования:
-- Каждая команда изобретает собственные подходы
-- Результаты несравнимы между проектами
-- Регрессии обнаруживаются в production
-- Смена фреймворка требует переписывания тестов
+AI agents are becoming critical components of business processes, but there are no standards for testing them:
+- Each team invents their own approaches
+- Results are incomparable between projects
+- Regressions are discovered in production
+- Switching frameworks requires rewriting tests
 
-### 1.2 Цели проекта
+### 1.2 Project Goals
 
-| ID | Цель | Метрика успеха |
+| ID | Goal | Success Metric |
 |----|------|----------------|
-| G-1 | Унифицировать тестирование агентов | 3+ команды используют единый подход |
-| G-2 | Обеспечить framework-независимость | Поддержка 3+ фреймворков без изменения тестов |
-| G-3 | Автоматизировать regression detection | 95% регрессий обнаруживаются автоматически |
-| G-4 | Сократить time-to-first-test | < 1 час от установки до первого теста |
+| G-1 | Unify agent testing | 3+ teams using a unified approach |
+| G-2 | Ensure framework independence | Support for 3+ frameworks without changing tests |
+| G-3 | Automate regression detection | 95% of regressions detected automatically |
+| G-4 | Reduce time-to-first-test | < 1 hour from installation to first test |
 
-### 1.3 Стейкхолдеры
+### 1.3 Stakeholders
 
-| Роль | Интересы | Влияние |
-|------|----------|---------|
-| ML/AI инженеры | Простота интеграции, быстрый feedback | Высокое |
-| QA инженеры | Декларативные тесты, понятные отчёты | Высокое |
-| Tech Leads | Сравнение подходов, метрики качества | Среднее |
-| DevOps | CI/CD интеграция, автоматизация | Среднее |
+| Role | Interests | Influence |
+|------|-----------|-----------|
+| ML/AI Engineers | Easy integration, fast feedback | High |
+| QA Engineers | Declarative tests, clear reports | High |
+| Tech Leads | Approach comparison, quality metrics | Medium |
+| DevOps | CI/CD integration, automation | Medium |
 
 ### 1.4 Out of Scope
 
-- ❌ Разработка самих агентов (только тестирование)
-- ❌ Хостинг агентов (запуск в инфраструктуре команд)
-- ❌ Замена unit-тестов кода (дополнение, не замена pytest/jest)
-- ❌ Realtime мониторинг в production (только pre-deploy тестирование)
-- ❌ Визуальный редактор тестов (только YAML/CLI)
+- ❌ Agent development (testing only)
+- ❌ Agent hosting (runs in team infrastructure)
+- ❌ Replacing code unit tests (complement, not replace pytest/jest)
+- ❌ Realtime production monitoring (pre-deploy testing only)
+- ❌ Visual test editor (YAML/CLI only)
 
 ---
 
-## 2. Функциональные требования
+## 2. Functional Requirements
 
-### 2.1 Протокол взаимодействия
+### 2.1 Interaction Protocol
 
-#### REQ-001: Стандартный формат запроса
-**As a** разработчик агента
-**I want** отправлять задачи агенту в стандартном формате
-**So that** любой агент может быть протестирован единообразно
+#### REQ-001: Standard Request Format
+**As a** agent developer
+**I want** to send tasks to the agent in a standard format
+**So that** any agent can be tested uniformly
 
 **Acceptance Criteria:**
 ```gherkin
-GIVEN агент реализует ATP Protocol
-WHEN платформа отправляет ATP Request
-THEN агент получает JSON с полями: version, task_id, task, constraints
-AND task содержит description и опциональный input_data
-AND constraints содержит max_steps, max_tokens, timeout_seconds, allowed_tools
+GIVEN agent implements ATP Protocol
+WHEN platform sends ATP Request
+THEN agent receives JSON with fields: version, task_id, task, constraints
+AND task contains description and optional input_data
+AND constraints contains max_steps, max_tokens, timeout_seconds, allowed_tools
 ```
 
 **Priority:** P0 (Must Have)
@@ -63,19 +63,19 @@ AND constraints содержит max_steps, max_tokens, timeout_seconds, allowed
 
 ---
 
-#### REQ-002: Стандартный формат ответа
-**As a** платформа тестирования
-**I want** получать результаты в стандартном формате
-**So that** можно единообразно оценивать любых агентов
+#### REQ-002: Standard Response Format
+**As a** testing platform
+**I want** to receive results in a standard format
+**So that** any agent can be evaluated uniformly
 
 **Acceptance Criteria:**
 ```gherkin
-GIVEN агент завершил выполнение задачи
-WHEN агент возвращает ATP Response
-THEN ответ содержит: version, task_id, status, artifacts, metrics
-AND status один из: completed, failed, timeout, cancelled, partial
-AND artifacts — массив с type, path/name, content/data
-AND metrics содержит: total_tokens, total_steps, tool_calls, wall_time_seconds
+GIVEN agent completed task execution
+WHEN agent returns ATP Response
+THEN response contains: version, task_id, status, artifacts, metrics
+AND status is one of: completed, failed, timeout, cancelled, partial
+AND artifacts is an array with type, path/name, content/data
+AND metrics contains: total_tokens, total_steps, tool_calls, wall_time_seconds
 ```
 
 **Priority:** P0
@@ -83,18 +83,18 @@ AND metrics содержит: total_tokens, total_steps, tool_calls, wall_time_s
 
 ---
 
-#### REQ-003: Streaming событий
-**As a** разработчик
-**I want** получать события во время выполнения агента
-**So that** можно отлаживать и анализировать поведение
+#### REQ-003: Event Streaming
+**As a** developer
+**I want** to receive events during agent execution
+**So that** I can debug and analyze behavior
 
 **Acceptance Criteria:**
 ```gherkin
-GIVEN агент поддерживает event streaming
-WHEN агент выполняет задачу
-THEN платформа получает ATP Events с типами: tool_call, llm_request, reasoning, error, progress
-AND каждое событие имеет timestamp и sequence number
-AND события упорядочены по sequence
+GIVEN agent supports event streaming
+WHEN agent executes task
+THEN platform receives ATP Events with types: tool_call, llm_request, reasoning, error, progress
+AND each event has timestamp and sequence number
+AND events are ordered by sequence
 ```
 
 **Priority:** P1 (Should Have)
@@ -102,20 +102,20 @@ AND события упорядочены по sequence
 
 ---
 
-### 2.2 Интеграция агентов
+### 2.2 Agent Integration
 
-#### REQ-010: HTTP интеграция
-**As a** разработчик с HTTP API агентом
-**I want** интегрировать агента через HTTP endpoint
-**So that** не нужно менять архитектуру агента
+#### REQ-010: HTTP Integration
+**As a** developer with an HTTP API agent
+**I want** to integrate the agent via HTTP endpoint
+**So that** I don't need to change agent architecture
 
 **Acceptance Criteria:**
 ```gherkin
-GIVEN агент имеет HTTP endpoint
-WHEN агент зарегистрирован с type: http и endpoint URL
-THEN платформа отправляет POST запрос с ATP Request
-AND платформа получает ATP Response в теле ответа
-AND таймаут настраивается в конфигурации
+GIVEN agent has HTTP endpoint
+WHEN agent is registered with type: http and endpoint URL
+THEN platform sends POST request with ATP Request
+AND platform receives ATP Response in response body
+AND timeout is configurable
 ```
 
 **Priority:** P0
@@ -123,20 +123,20 @@ AND таймаут настраивается в конфигурации
 
 ---
 
-#### REQ-011: Container интеграция
-**As a** разработчик с Docker-упакованным агентом
-**I want** запускать агента в изолированном контейнере
-**So that** обеспечить безопасность и воспроизводимость
+#### REQ-011: Container Integration
+**As a** developer with a Docker-packaged agent
+**I want** to run the agent in an isolated container
+**So that** security and reproducibility are ensured
 
 **Acceptance Criteria:**
 ```gherkin
-GIVEN агент упакован в Docker image
-WHEN агент зарегистрирован с type: container и image name
-THEN платформа запускает контейнер с ограничениями ресурсов
-AND ATP Request передаётся через stdin
-AND ATP Response читается из stdout
-AND ATP Events читаются из stderr
-AND контейнер удаляется после выполнения
+GIVEN agent is packaged in Docker image
+WHEN agent is registered with type: container and image name
+THEN platform starts container with resource limits
+AND ATP Request is passed via stdin
+AND ATP Response is read from stdout
+AND ATP Events are read from stderr
+AND container is removed after execution
 ```
 
 **Priority:** P0
@@ -144,18 +144,18 @@ AND контейнер удаляется после выполнения
 
 ---
 
-#### REQ-012: Framework адаптеры
-**As a** разработчик на LangGraph/CrewAI
-**I want** использовать готовый адаптер для моего фреймворка
-**So that** не писать boilerplate код интеграции
+#### REQ-012: Framework Adapters
+**As a** LangGraph/CrewAI developer
+**I want** to use a ready adapter for my framework
+**So that** I don't write boilerplate integration code
 
 **Acceptance Criteria:**
 ```gherkin
-GIVEN существует адаптер для фреймворка X
-WHEN агент зарегистрирован с type: X и путём к модулю
-THEN адаптер автоматически транслирует ATP Protocol в native API
-AND события фреймворка конвертируются в ATP Events
-AND метрики собираются автоматически
+GIVEN adapter exists for framework X
+WHEN agent is registered with type: X and module path
+THEN adapter automatically translates ATP Protocol to native API
+AND framework events are converted to ATP Events
+AND metrics are collected automatically
 ```
 
 **Priority:** P1
@@ -163,20 +163,20 @@ AND метрики собираются автоматически
 
 ---
 
-### 2.3 Описание тестов
+### 2.3 Test Description
 
-#### REQ-020: Декларативный формат тестов
-**As a** QA инженер
-**I want** описывать тесты в YAML без написания кода
-**So that** тесты понятны всей команде
+#### REQ-020: Declarative Test Format
+**As a** QA engineer
+**I want** to describe tests in YAML without writing code
+**So that** tests are understandable to the whole team
 
 **Acceptance Criteria:**
 ```gherkin
-GIVEN тест описан в YAML файле
-WHEN файл содержит: id, name, task, assertions
-THEN платформа парсит и валидирует структуру
-AND выводит понятные ошибки при невалидном формате
-AND поддерживает комментарии для документации
+GIVEN test is described in YAML file
+WHEN file contains: id, name, task, assertions
+THEN platform parses and validates structure
+AND outputs clear errors for invalid format
+AND supports comments for documentation
 ```
 
 **Priority:** P0
@@ -185,17 +185,17 @@ AND поддерживает комментарии для документац�
 ---
 
 #### REQ-021: Test Suites
-**As a** разработчик
-**I want** группировать связанные тесты в suites
-**So that** запускать их вместе и переиспользовать настройки
+**As a** developer
+**I want** to group related tests into suites
+**So that** I can run them together and reuse settings
 
 **Acceptance Criteria:**
 ```gherkin
-GIVEN suite содержит defaults и список tests
-WHEN запускается suite
-THEN defaults применяются ко всем тестам
-AND тесты могут переопределять defaults
-AND можно запустить отдельный тест из suite
+GIVEN suite contains defaults and tests list
+WHEN suite is run
+THEN defaults are applied to all tests
+AND tests can override defaults
+AND individual test from suite can be run
 ```
 
 **Priority:** P0
@@ -203,18 +203,18 @@ AND можно запустить отдельный тест из suite
 
 ---
 
-#### REQ-022: Tags и фильтрация
-**As a** разработчик в CI/CD
-**I want** запускать подмножество тестов по tags
-**So that** быстро проверять smoke tests или только regression
+#### REQ-022: Tags and Filtering
+**As a** CI/CD developer
+**I want** to run a subset of tests by tags
+**So that** I can quickly run smoke tests or only regression
 
 **Acceptance Criteria:**
 ```gherkin
-GIVEN тесты имеют tags: [smoke, regression, edge_case]
-WHEN запуск с --tags=smoke
-THEN выполняются только тесты с tag "smoke"
-AND можно комбинировать tags: --tags=smoke,core
-AND можно исключать: --tags=!slow
+GIVEN tests have tags: [smoke, regression, edge_case]
+WHEN running with --tags=smoke
+THEN only tests with tag "smoke" are executed
+AND tags can be combined: --tags=smoke,core
+AND tags can be excluded: --tags=!slow
 ```
 
 **Priority:** P1
@@ -222,21 +222,21 @@ AND можно исключать: --tags=!slow
 
 ---
 
-### 2.4 Выполнение тестов
+### 2.4 Test Execution
 
 #### REQ-030: Test Runner
-**As a** разработчик
-**I want** запускать тесты через CLI
-**So that** интегрировать в локальную разработку и CI
+**As a** developer
+**I want** to run tests via CLI
+**So that** I can integrate into local development and CI
 
 **Acceptance Criteria:**
 ```gherkin
-GIVEN установлена платформа ATP
-WHEN выполняется команда: atp test --agent=X --suite=Y
-THEN загружается suite Y
-AND запускается агент X для каждого теста
-AND выводится progress и результаты
-AND возвращается exit code 0 при успехе, non-zero при failures
+GIVEN ATP platform is installed
+WHEN command is executed: atp test --agent=X --suite=Y
+THEN suite Y is loaded
+AND agent X is run for each test
+AND progress and results are displayed
+AND exit code 0 is returned on success, non-zero on failures
 ```
 
 **Priority:** P0
@@ -244,19 +244,19 @@ AND возвращается exit code 0 при успехе, non-zero при fa
 
 ---
 
-#### REQ-031: Множественные прогоны
-**As a** разработчик
-**I want** запускать тест N раз
-**So that** получить статистически значимые результаты
+#### REQ-031: Multiple Runs
+**As a** developer
+**I want** to run a test N times
+**So that** I get statistically significant results
 
 **Acceptance Criteria:**
 ```gherkin
-GIVEN тест настроен с runs: 5
-WHEN тест выполняется
-THEN агент запускается 5 раз с одинаковым input
-AND вычисляются: mean, std, min, max, median
-AND вычисляется 95% confidence interval
-AND определяется stability level по coefficient of variation
+GIVEN test is configured with runs: 5
+WHEN test is executed
+THEN agent is run 5 times with the same input
+AND calculated: mean, std, min, max, median
+AND 95% confidence interval is calculated
+AND stability level is determined by coefficient of variation
 ```
 
 **Priority:** P1
@@ -264,18 +264,18 @@ AND определяется stability level по coefficient of variation
 
 ---
 
-#### REQ-032: Timeout и ограничения
-**As a** платформа
-**I want** принудительно останавливать агента при превышении лимитов
-**So that** тесты не зависают бесконечно
+#### REQ-032: Timeout and Limits
+**As a** platform
+**I want** to forcibly stop the agent when limits are exceeded
+**So that** tests don't hang indefinitely
 
 **Acceptance Criteria:**
 ```gherkin
-GIVEN тест имеет constraints.timeout_seconds: 60
-WHEN агент выполняется дольше 60 секунд
-THEN агент принудительно останавливается
-AND возвращается response со status: timeout
-AND собранные до этого артефакты и метрики сохраняются
+GIVEN test has constraints.timeout_seconds: 60
+WHEN agent runs longer than 60 seconds
+THEN agent is forcibly stopped
+AND response with status: timeout is returned
+AND artifacts and metrics collected up to that point are saved
 ```
 
 **Priority:** P0
@@ -283,25 +283,25 @@ AND собранные до этого артефакты и метрики со
 
 ---
 
-### 2.5 Система оценки
+### 2.5 Evaluation System
 
 #### REQ-040: Artifact Evaluator
-**As a** тестировщик
-**I want** проверять наличие и содержимое артефактов
-**So that** убедиться что агент создал ожидаемые выходные данные
+**As a** tester
+**I want** to check artifact existence and content
+**So that** I can verify the agent created expected outputs
 
 **Acceptance Criteria:**
 ```gherkin
-GIVEN assertion type: artifact_exists с path: "report.md"
-WHEN агент возвращает artifacts
-THEN проверяется наличие артефакта с указанным path
-AND check passed если артефакт существует
-AND check failed с понятным сообщением если не существует
+GIVEN assertion type: artifact_exists with path: "report.md"
+WHEN agent returns artifacts
+THEN artifact with specified path is checked for existence
+AND check passed if artifact exists
+AND check failed with clear message if it doesn't exist
 
-GIVEN assertion type: contains с pattern: "competitor"
-WHEN артефакт существует
-THEN проверяется наличие pattern в содержимом
-AND поддерживается regex: true для регулярных выражений
+GIVEN assertion type: contains with pattern: "competitor"
+WHEN artifact exists
+THEN pattern presence in content is checked
+AND regex: true is supported for regular expressions
 ```
 
 **Priority:** P0
@@ -310,20 +310,20 @@ AND поддерживается regex: true для регулярных выр�
 ---
 
 #### REQ-041: Behavior Evaluator
-**As a** тестировщик
-**I want** проверять поведение агента по trace
-**So that** убедиться что агент работает эффективно и безопасно
+**As a** tester
+**I want** to verify agent behavior by trace
+**So that** I can ensure the agent works efficiently and safely
 
 **Acceptance Criteria:**
 ```gherkin
-GIVEN assertion type: behavior с must_use_tools: [web_search]
-WHEN анализируется trace выполнения
-THEN проверяется что tool web_search был вызван
-AND check failed если инструмент не использовался
+GIVEN assertion type: behavior with must_use_tools: [web_search]
+WHEN execution trace is analyzed
+THEN it is verified that tool web_search was called
+AND check failed if the tool wasn't used
 
-GIVEN assertion с max_tool_calls: 10
-WHEN количество tool calls > 10
-THEN check failed с указанием actual vs limit
+GIVEN assertion with max_tool_calls: 10
+WHEN number of tool calls > 10
+THEN check failed with actual vs limit indication
 ```
 
 **Priority:** P0
@@ -332,21 +332,21 @@ THEN check failed с указанием actual vs limit
 ---
 
 #### REQ-042: LLM-as-Judge Evaluator
-**As a** тестировщик
-**I want** использовать LLM для семантической оценки качества
-**So that** проверять смысловую корректность, а не только формат
+**As a** tester
+**I want** to use LLM for semantic quality evaluation
+**So that** I can check semantic correctness, not just format
 
 **Acceptance Criteria:**
 ```gherkin
-GIVEN assertion type: llm_eval с criteria: factual_accuracy
-WHEN артефакт передаётся на оценку LLM
-THEN LLM возвращает score 0-1 и explanation
-AND check passed если score >= threshold (default 0.7)
-AND explanation включается в отчёт
+GIVEN assertion type: llm_eval with criteria: factual_accuracy
+WHEN artifact is sent for LLM evaluation
+THEN LLM returns score 0-1 and explanation
+AND check passed if score >= threshold (default 0.7)
+AND explanation is included in report
 
-GIVEN criteria: custom с prompt: "..."
-WHEN выполняется оценка
-THEN используется custom prompt вместо стандартного
+GIVEN criteria: custom with prompt: "..."
+WHEN evaluation is performed
+THEN custom prompt is used instead of standard
 ```
 
 **Priority:** P1
@@ -355,17 +355,17 @@ THEN используется custom prompt вместо стандартног�
 ---
 
 #### REQ-043: Composite Scoring
-**As a** менеджер
-**I want** получать единый score 0-100 для каждого теста
-**So that** легко сравнивать агентов и отслеживать прогресс
+**As a** manager
+**I want** to get a single score 0-100 for each test
+**So that** I can easily compare agents and track progress
 
 **Acceptance Criteria:**
 ```gherkin
-GIVEN тест имеет scoring weights: quality: 0.4, completeness: 0.3, efficiency: 0.2, cost: 0.1
-WHEN все evaluators завершились
-THEN вычисляется weighted score по формуле
-AND score нормализуется к диапазону 0-100
-AND breakdown по компонентам включается в отчёт
+GIVEN test has scoring weights: quality: 0.4, completeness: 0.3, efficiency: 0.2, cost: 0.1
+WHEN all evaluators finish
+THEN weighted score is calculated by formula
+AND score is normalized to 0-100 range
+AND breakdown by components is included in report
 ```
 
 **Priority:** P1
@@ -376,18 +376,18 @@ AND breakdown по компонентам включается в отчёт
 ### 2.6 Reporting
 
 #### REQ-050: Console Reporter
-**As a** разработчик
-**I want** видеть результаты в терминале
-**So that** быстро понять статус тестов
+**As a** developer
+**I want** to see results in terminal
+**So that** I can quickly understand test status
 
 **Acceptance Criteria:**
 ```gherkin
-GIVEN тесты завершились
-WHEN используется console reporter (default)
-THEN выводится summary: X passed, Y failed, Z skipped
-AND для каждого теста: статус (✓/✗), score, duration
-AND failed checks выводятся с деталями
-AND поддерживается --verbose для полного вывода
+GIVEN tests finished
+WHEN console reporter is used (default)
+THEN summary is displayed: X passed, Y failed, Z skipped
+AND for each test: status (✓/✗), score, duration
+AND failed checks are displayed with details
+AND --verbose is supported for full output
 ```
 
 **Priority:** P0
@@ -396,16 +396,16 @@ AND поддерживается --verbose для полного вывода
 ---
 
 #### REQ-051: JSON Reporter
-**As a** CI/CD система
-**I want** получать результаты в machine-readable формате
-**So that** интегрировать с другими инструментами
+**As a** CI/CD system
+**I want** to receive results in machine-readable format
+**So that** I can integrate with other tools
 
 **Acceptance Criteria:**
 ```gherkin
-GIVEN запуск с --output=json --output-file=results.json
-WHEN тесты завершились
-THEN создаётся JSON файл с полной структурой результатов
-AND формат документирован и стабилен между версиями
+GIVEN run with --output=json --output-file=results.json
+WHEN tests finish
+THEN JSON file is created with full results structure
+AND format is documented and stable between versions
 ```
 
 **Priority:** P0
@@ -413,19 +413,19 @@ AND формат документирован и стабилен между в�
 
 ---
 
-#### REQ-052: Baseline и Regression
-**As a** разработчик
-**I want** сравнивать результаты с baseline
-**So that** автоматически обнаруживать регрессии
+#### REQ-052: Baseline and Regression
+**As a** developer
+**I want** to compare results with baseline
+**So that** I can automatically detect regressions
 
 **Acceptance Criteria:**
 ```gherkin
-GIVEN существует baseline файл от предыдущего запуска
-WHEN запуск с --baseline=baseline.json
-THEN текущие результаты сравниваются с baseline
-AND regression определяется как статистически значимое ухудшение (p < 0.05)
-AND improvement также отмечается
-AND diff выводится в отчёте
+GIVEN baseline file exists from previous run
+WHEN running with --baseline=baseline.json
+THEN current results are compared with baseline
+AND regression is defined as statistically significant degradation (p < 0.05)
+AND improvement is also noted
+AND diff is displayed in report
 ```
 
 **Priority:** P2 (Could Have)
@@ -433,75 +433,75 @@ AND diff выводится в отчёте
 
 ---
 
-## 3. Нефункциональные требования
+## 3. Non-Functional Requirements
 
 ### NFR-000: Testing Requirements
-| Аспект | Требование |
-|--------|------------|
-| Unit test coverage | ≥ 80% для core modules |
-| Integration tests | Каждый adapter, evaluator |
+| Aspect | Requirement |
+|--------|-------------|
+| Unit test coverage | ≥ 80% for core modules |
+| Integration tests | Each adapter, evaluator |
 | E2E tests | Critical paths (test run, reporting) |
 | Test framework | pytest + pytest-asyncio |
-| CI requirement | Все тесты проходят перед merge |
+| CI requirement | All tests pass before merge |
 
-**Definition of Done для любой задачи:**
-- [ ] Unit tests написаны и проходят
-- [ ] Coverage не упал
-- [ ] Integration test если затронуты интерфейсы
-- [ ] Документация обновлена
+**Definition of Done for any task:**
+- [ ] Unit tests written and passing
+- [ ] Coverage didn't drop
+- [ ] Integration test if interfaces affected
+- [ ] Documentation updated
 
 **Traces to:** [TASK-100], [TASK-101], [TASK-102]
 
 ---
 
 ### NFR-001: Performance
-| Метрика | Требование |
-|---------|------------|
-| Overhead платформы | < 5% от времени выполнения агента |
-| CLI startup time | < 2 секунды |
-| Параллельные агенты | До 10 одновременно |
-| Обработка событий | 10,000+ событий без деградации |
+| Metric | Requirement |
+|--------|-------------|
+| Platform overhead | < 5% of agent execution time |
+| CLI startup time | < 2 seconds |
+| Parallel agents | Up to 10 simultaneously |
+| Event processing | 10,000+ events without degradation |
 
 **Traces to:** [TASK-006]
 
 ---
 
 ### NFR-002: Reliability
-| Аспект | Требование |
-|--------|------------|
-| Timeout handling | Graceful stop без потери данных |
-| Agent crash | Продолжение остальных тестов |
-| Partial results | Сохранение при прерывании |
+| Aspect | Requirement |
+|--------|-------------|
+| Timeout handling | Graceful stop without data loss |
+| Agent crash | Continue with remaining tests |
+| Partial results | Save on interruption |
 
 **Traces to:** [TASK-006]
 
 ---
 
 ### NFR-003: Usability
-| Метрика | Требование |
-|---------|------------|
-| Time to first test | < 1 час для нового пользователя |
-| Error messages | Actionable, указывают на решение |
-| Documentation | Покрывает все use cases |
+| Metric | Requirement |
+|--------|-------------|
+| Time to first test | < 1 hour for new user |
+| Error messages | Actionable, point to solution |
+| Documentation | Covers all use cases |
 
 **Traces to:** [TASK-014]
 
 ---
 
 ### NFR-004: Security
-| Аспект | Требование |
-|--------|------------|
-| Sandbox isolation | Docker с ограничениями CPU/memory/network |
-| Secrets | Через env vars, не в тестах/логах |
-| Input validation | Все входы валидируются по схеме |
+| Aspect | Requirement |
+|--------|-------------|
+| Sandbox isolation | Docker with CPU/memory/network limits |
+| Secrets | Via env vars, not in tests/logs |
+| Input validation | All inputs validated by schema |
 
 **Traces to:** [TASK-006], [DESIGN-005]
 
 ---
 
 ### NFR-005: Compatibility
-| Платформа | Требование |
-|-----------|------------|
+| Platform | Requirement |
+|----------|-------------|
 | Python | 3.10+ |
 | OS | Linux (primary), macOS (dev), Windows (best effort) |
 | Docker | 20.10+ |
@@ -511,45 +511,45 @@ AND diff выводится в отчёте
 
 ---
 
-## 4. Ограничения и техстек
+## 4. Constraints and Tech Stack
 
-### 4.1 Технологические ограничения
+### 4.1 Technology Constraints
 
-| Аспект | Решение | Обоснование |
-|--------|---------|-------------|
-| Язык | Python 3.10+ | Экосистема ML/AI |
-| Packaging | pip + pyproject.toml | Стандарт Python |
-| Schema | JSON Schema draft-07 | Широкая поддержка |
+| Aspect | Decision | Rationale |
+|--------|----------|-----------|
+| Language | Python 3.10+ | ML/AI ecosystem |
+| Packaging | pip + pyproject.toml | Python standard |
+| Schema | JSON Schema draft-07 | Wide support |
 | Container | Docker (primary) | Industry standard |
-| Config format | YAML | Читаемость |
+| Config format | YAML | Readability |
 
-### 4.2 Интеграционные ограничения
+### 4.2 Integration Constraints
 
-- Протокол: JSON over HTTP / stdin-stdout
-- LLM для evaluation: Claude или OpenAI API
-- CI: JUnit XML для совместимости
+- Protocol: JSON over HTTP / stdin-stdout
+- LLM for evaluation: Claude or OpenAI API
+- CI: JUnit XML for compatibility
 
-### 4.3 Лицензирование
+### 4.3 Licensing
 
-- Платформа: MIT License
-- Зависимости: только MIT/Apache/BSD compatible
+- Platform: MIT License
+- Dependencies: only MIT/Apache/BSD compatible
 
 ---
 
-## 5. Критерии приёмки
+## 5. Acceptance Criteria
 
 ### Milestone 1: MVP
 - [ ] REQ-001, REQ-002 — Protocol implemented
-- [ ] REQ-010, REQ-011 — HTTP и Container adapters working
+- [ ] REQ-010, REQ-011 — HTTP and Container adapters working
 - [ ] REQ-020, REQ-021 — YAML tests loading
 - [ ] REQ-030, REQ-032 — Runner with timeout
-- [ ] REQ-040, REQ-041 — Artifact и Behavior evaluators
-- [ ] REQ-050, REQ-051 — Console и JSON reporters
+- [ ] REQ-040, REQ-041 — Artifact and Behavior evaluators
+- [ ] REQ-050, REQ-051 — Console and JSON reporters
 - [ ] NFR-003 — Documentation complete
 
 ### Milestone 2: Beta
 - [ ] REQ-003 — Event streaming
-- [ ] REQ-012 — LangGraph и CrewAI adapters
+- [ ] REQ-012 — LangGraph and CrewAI adapters
 - [ ] REQ-022 — Tags filtering
 - [ ] REQ-031 — Multiple runs with statistics
 - [ ] REQ-042 — LLM-as-Judge evaluator

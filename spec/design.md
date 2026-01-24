@@ -1,20 +1,20 @@
 # Design Specification
 
-> Архитектура, API, схемы данных и ключевые решения ATP
+> Architecture, API, data schemas, and key decisions for ATP
 
-## 1. Обзор архитектуры
+## 1. Architecture Overview
 
-### 1.1 Принципы
+### 1.1 Principles
 
-| Принцип | Описание |
-|---------|----------|
-| **Agent as Black Box** | Платформе неважна реализация агента, важен только контракт |
-| **Protocol First** | Стандартный протокол — основа всех интеграций |
-| **Plugin Architecture** | Evaluators, Adapters, Reporters — заменяемые компоненты |
+| Principle | Description |
+|-----------|-------------|
+| **Agent as Black Box** | Platform doesn't care about agent implementation, only the contract matters |
+| **Protocol First** | Standard protocol is the foundation of all integrations |
+| **Plugin Architecture** | Evaluators, Adapters, Reporters are replaceable components |
 | **Immutable Data Flow** | Test → Runner → Agent → Response → Evaluators → Report |
-| **Fail-Safe Defaults** | Минимальная конфигурация для начала работы |
+| **Fail-Safe Defaults** | Minimal configuration to get started |
 
-### 1.2 Высокоуровневая диаграмма
+### 1.2 High-Level Diagram
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -135,17 +135,17 @@
 
 | Type | Payload Fields | Description |
 |------|----------------|-------------|
-| `tool_call` | tool, input, output, duration_ms, status | Вызов инструмента |
-| `llm_request` | model, input_tokens, output_tokens, duration_ms | LLM API вызов |
-| `reasoning` | thought, plan, step | Внутреннее рассуждение |
-| `error` | error_type, message, recoverable | Ошибка |
-| `progress` | current_step, percentage, message | Прогресс выполнения |
+| `tool_call` | tool, input, output, duration_ms, status | Tool invocation |
+| `llm_request` | model, input_tokens, output_tokens, duration_ms | LLM API call |
+| `reasoning` | thought, plan, step | Internal reasoning |
+| `error` | error_type, message, recoverable | Error |
+| `progress` | current_step, percentage, message | Execution progress |
 
 **Traces to:** [REQ-003]
 
 ---
 
-## 3. Компоненты
+## 3. Components
 
 ### DESIGN-003: Adapters
 
@@ -172,10 +172,10 @@ class AgentAdapter(ABC):
 
 | Adapter | Transport | Use Case |
 |---------|-----------|----------|
-| HTTPAdapter | HTTP POST / SSE | Агенты с HTTP API |
-| ContainerAdapter | stdin/stdout/stderr | Docker-упакованные агенты |
-| CLIAdapter | subprocess | CLI-утилиты |
-| LangGraphAdapter | Python import | LangGraph графы |
+| HTTPAdapter | HTTP POST / SSE | Agents with HTTP API |
+| ContainerAdapter | stdin/stdout/stderr | Docker-packaged agents |
+| CLIAdapter | subprocess | CLI utilities |
+| LangGraphAdapter | Python import | LangGraph graphs |
 | CrewAIAdapter | Python import | CrewAI crews |
 
 #### 3.3 Configuration
@@ -267,9 +267,9 @@ tests:
 
 #### 4.2 Validation
 
-- JSON Schema validation для структуры
-- Semantic validation: уникальность id, существование ссылок
-- Warning для deprecated fields
+- JSON Schema validation for structure
+- Semantic validation: id uniqueness, reference existence
+- Warning for deprecated fields
 
 **Traces to:** [REQ-020], [REQ-021], [REQ-022]
 
@@ -462,18 +462,18 @@ Respond in JSON:
 
 | Criteria | Description |
 |----------|-------------|
-| factual_accuracy | Проверка фактов, статистики, дат |
-| completeness | Полнота ответа на все аспекты задачи |
-| relevance | Релевантность содержимого задаче |
-| coherence | Логичность и связность |
-| clarity | Ясность изложения |
-| actionability | Практическая применимость |
+| factual_accuracy | Verification of facts, statistics, dates |
+| completeness | Comprehensiveness of response to all task aspects |
+| relevance | Content relevance to the task |
+| coherence | Logic and consistency |
+| clarity | Clarity of presentation |
+| actionability | Practical applicability |
 
 #### 8.3 Calibration
 
 - Multi-run averaging (3+ LLM calls)
-- Temperature = 0 для детерминизма
-- Optional human-in-the-loop для baseline
+- Temperature = 0 for determinism
+- Optional human-in-the-loop for baseline
 
 **Traces to:** [REQ-042]
 
@@ -612,32 +612,32 @@ YAML File
 
 ---
 
-## 5. Ключевые решения
+## 5. Key Decisions
 
 ### ADR-001: Framework Agnostic Design
-**Decision:** Агент = чёрный ящик с ATP Protocol
-**Rationale:** Фреймворки устаревают, протокол стабилен
-**Consequences:** (+) Гибкость, (-) Overhead на интеграцию
+**Decision:** Agent = black box with ATP Protocol
+**Rationale:** Frameworks become obsolete, protocol remains stable
+**Consequences:** (+) Flexibility, (-) Integration overhead
 
-### ADR-002: YAML для тестов
-**Decision:** Декларативные тесты в YAML, не в коде
-**Rationale:** Читаемость, версионирование, доступность для QA
-**Consequences:** (+) Low barrier, (-) Ограниченная выразительность
+### ADR-002: YAML for Tests
+**Decision:** Declarative tests in YAML, not in code
+**Rationale:** Readability, versioning, accessibility for QA
+**Consequences:** (+) Low barrier, (-) Limited expressiveness
 
 ### ADR-003: LLM-as-Judge
-**Decision:** Использовать LLM для семантической оценки
-**Rationale:** Невозможно оценить качество текста программно
-**Consequences:** (+) Глубокая оценка, (-) Стоимость, недетерминизм
+**Decision:** Use LLM for semantic evaluation
+**Rationale:** Impossible to evaluate text quality programmatically
+**Consequences:** (+) Deep evaluation, (-) Cost, non-determinism
 
-### ADR-004: Docker для изоляции
-**Decision:** Sandbox через Docker контейнеры
+### ADR-004: Docker for Isolation
+**Decision:** Sandbox via Docker containers
 **Rationale:** Industry standard, cross-platform
-**Consequences:** (+) Безопасность, (-) Docker dependency
+**Consequences:** (+) Security, (-) Docker dependency
 
-### ADR-005: Multiple runs by default
-**Decision:** Статистика по N прогонам вместо single run
-**Rationale:** LLM недетерминированы, один прогон ничего не доказывает
-**Consequences:** (+) Надёжность, (-) Время и стоимость ×N
+### ADR-005: Multiple Runs by Default
+**Decision:** Statistics over N runs instead of single run
+**Rationale:** LLMs are non-deterministic, one run proves nothing
+**Consequences:** (+) Reliability, (-) Time and cost ×N
 
 ---
 
@@ -762,12 +762,12 @@ secrets:
 
 ### 8.4 Definition of Done
 
-**Каждая задача считается завершённой только если:**
-- [ ] Unit tests написаны (покрытие ≥80% нового кода)
-- [ ] Все тесты проходят локально
-- [ ] Integration test если изменены интерфейсы
-- [ ] CI pipeline зелёный
-- [ ] Code review пройден
+**Each task is considered complete only if:**
+- [ ] Unit tests written (coverage ≥80% for new code)
+- [ ] All tests pass locally
+- [ ] Integration test if interfaces changed
+- [ ] CI pipeline is green
+- [ ] Code review passed
 
 ### 8.5 Fixtures & Test Data
 

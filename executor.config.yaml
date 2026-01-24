@@ -1,44 +1,44 @@
 # ATP Executor Configuration
-# Настройки автоматического выполнения задач через Claude CLI
+# Settings for automatic task execution via Claude CLI
 
 executor:
   # Retry policy
-  max_retries: 3                    # Максимум попыток на задачу
-  retry_delay_seconds: 5            # Пауза между попытками
-  max_consecutive_failures: 2       # Стоп после N подряд неудач
+  max_retries: 3                    # Max attempts per task
+  retry_delay_seconds: 5            # Pause between attempts
+  max_consecutive_failures: 2       # Stop after N consecutive failures
 
   # Timeout
-  task_timeout_minutes: 30          # Таймаут на одну задачу
+  task_timeout_minutes: 30          # Timeout for one task
 
   # Claude CLI
-  claude_command: "claude"          # Команда (claude, claude-code, etc.)
-  claude_model: ""                  # Модель (пусто = default)
-  skip_permissions: true            # Пропускать запросы разрешений (--dangerously-skip-permissions)
+  claude_command: "claude"          # Command (claude, claude-code, etc.)
+  claude_model: ""                  # Model (empty = default)
+  skip_permissions: true            # Skip permission prompts (--dangerously-skip-permissions)
 
   # Hooks
   hooks:
     pre_start:
-      create_git_branch: true       # Создавать ветку task/TASK-XXX
+      create_git_branch: true       # Create branch task/TASK-XXX
 
     post_done:
-      run_tests: true               # Запускать тесты
-      run_lint: true                # Запускать lint
-      auto_commit: true             # Автокоммит изменений
+      run_tests: true               # Run tests
+      run_lint: true                # Run lint
+      auto_commit: true             # Auto-commit changes
 
   # Commands (using uv)
   commands:
-    test: "uv run pytest tests/ -v -m 'not slow'"  # Команда тестов
-    lint: "uv run ruff check ."                     # Команда lint
+    test: "uv run pytest tests/ -v -m 'not slow'"  # Test command
+    lint: "uv run ruff check ."                     # Lint command
 
   # Paths
   paths:
-    logs: "spec/.executor-logs"     # Директория логов
-    state: "spec/.executor-state.json"  # Файл состояния
+    logs: "spec/.executor-logs"     # Logs directory
+    state: "spec/.executor-state.json"  # State file
 
 # Task execution order (optional override)
-# По умолчанию используется приоритет из tasks.md + зависимости
+# By default uses priority from tasks.md + dependencies
 execution_order:
-  # Можно указать явный порядок:
+  # Can specify explicit order:
   # - TASK-100
   # - TASK-001
   # - TASK-004

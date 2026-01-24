@@ -1,8 +1,8 @@
 # Roadmap
 
-## Обзор
+## Overview
 
-Данный документ описывает план развития Agent Test Platform (ATP). Roadmap разбит на фазы с чёткими deliverables и критериями успеха.
+This document describes the development plan for Agent Test Platform (ATP). The roadmap is divided into phases with clear deliverables and success criteria.
 
 ---
 
@@ -28,8 +28,8 @@
 
 ## Phase 1: MVP (Q1 2025) ✅ COMPLETE
 
-### Цель
-Работающий прототип, который можно использовать для базового тестирования агентов.
+### Goal
+Working prototype that can be used for basic agent testing.
 
 ### Deliverables
 
@@ -49,7 +49,7 @@
 **Status**: Complete (TASK-003)
 
 #### 1.3 Test Loader (Weeks 3-4) ✅
-- [x] YAML parser для test definitions
+- [x] YAML parser for test definitions
 - [x] Test suite model
 - [x] Variable substitution
 - [x] Tag filtering
@@ -87,7 +87,7 @@
 
 ### MVP Exit Criteria ✅
 - [x] Core functionality implemented
-- [x] Документация покрывает basic use cases
+- [x] Documentation covers basic use cases
 - [x] Example test suites available
 - [x] Test coverage ≥80%
 
@@ -95,8 +95,8 @@
 
 ## Phase 2: Beta (Q2 2025) ✅ COMPLETE
 
-### Цель
-Production-ready для внутреннего использования с поддержкой основных фреймворков.
+### Goal
+Production-ready for internal use with support for major frameworks.
 
 ### Deliverables
 
@@ -157,8 +157,8 @@ Production-ready для внутреннего использования с п�
 
 ## Phase 3: GA (Q3 2025) ✅ COMPLETE
 
-### Цель
-Stable release готовый для широкого использования.
+### Goal
+Stable release ready for broad adoption.
 
 ### Deliverables
 
@@ -210,8 +210,8 @@ Stable release готовый для широкого использования
 
 ## Phase 4: Growth (Q4 2025)
 
-### Цель
-Расширение функциональности и community building.
+### Goal
+Expanding functionality and community building.
 
 ### Deliverables
 
@@ -327,10 +327,10 @@ Stable release готовый для широкого использования
 
 ## Open Questions
 
-1. **Self-hosted vs SaaS**: Приоритет self-hosted или cloud dashboard?
+1. **Self-hosted vs SaaS**: Priority on self-hosted or cloud dashboard?
 2. **Pricing model** (if external): Open source core + enterprise features?
-3. **Framework priorities**: LangGraph, CrewAI, что ещё?
-4. **Community**: Open source с первого дня или после GA?
+3. **Framework priorities**: LangGraph, CrewAI, what else?
+4. **Community**: Open source from day one or after GA?
 
 ---
 

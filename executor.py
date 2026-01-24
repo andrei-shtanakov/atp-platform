@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-ATP Task Executor — автоматическое выполнение задач через Claude CLI
+ATP Task Executor — automatic task execution via Claude CLI
 
-Использование:
-    python executor.py run                    # Выполнить следующую задачу
-    python executor.py run --task=TASK-001    # Выполнить конкретную задачу
-    python executor.py run --all              # Выполнить все готовые задачи
-    python executor.py run --milestone=mvp    # Выполнить задачи milestone
-    python executor.py status                 # Статус выполнения
-    python executor.py retry TASK-001         # Повторить неудавшуюся
-    python executor.py logs TASK-001          # Логи задачи
+Usage:
+    python executor.py run                    # Execute next task
+    python executor.py run --task=TASK-001    # Execute specific task
+    python executor.py run --all              # Execute all ready tasks
+    python executor.py run --milestone=mvp    # Execute milestone tasks
+    python executor.py status                 # Execution status
+    python executor.py retry TASK-001         # Retry failed task
+    python executor.py logs TASK-001          # Task logs
 """
 
 import argparse
@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-# Импортируем парсер задач
+# Import task parser
 from task import (
     TASKS_FILE,
     Task,
@@ -36,22 +36,22 @@ from task import (
 
 @dataclass
 class ExecutorConfig:
-    """Конфигурация исполнителя"""
+    """Executor configuration"""
 
-    max_retries: int = 3  # Максимум попыток на задачу
-    retry_delay_seconds: int = 5  # Пауза между попытками
-    task_timeout_minutes: int = 30  # Таймаут на задачу
-    max_consecutive_failures: int = 2  # Стоп после N подряд неудач
+    max_retries: int = 3  # Max attempts per task
+    retry_delay_seconds: int = 5  # Pause between attempts
+    task_timeout_minutes: int = 30  # Task timeout
+    max_consecutive_failures: int = 2  # Stop after N consecutive failures
 
     # Claude CLI
-    claude_command: str = "claude"  # Команда Claude CLI
-    claude_model: str = ""  # Модель (пусто = default)
-    skip_permissions: bool = True  # Пропускать запросы разрешений
+    claude_command: str = "claude"  # Claude CLI command
+    claude_model: str = ""  # Model (empty = default)
+    skip_permissions: bool = True  # Skip permission prompts
 
     # Hooks
-    run_tests_on_done: bool = True  # Запускать тесты при завершении
-    create_git_branch: bool = True  # Создавать ветку при старте
-    auto_commit: bool = True  # Автокоммит при успехе
+    run_tests_on_done: bool = True  # Run tests on completion
+    create_git_branch: bool = True  # Create branch on start
+    auto_commit: bool = True  # Auto-commit on success
 
     # Paths
     project_root: Path = Path(".")
@@ -68,7 +68,7 @@ class ExecutorConfig:
 
 @dataclass
 class TaskAttempt:
-    """Попытка выполнения задачи"""
+    """Task execution attempt"""
 
     timestamp: str
     success: bool
@@ -79,7 +79,7 @@ class TaskAttempt:
 
 @dataclass
 class TaskState:
-    """Состояние задачи в executor"""
+    """Task state in executor"""
 
     task_id: str
     status: str  # pending, running, success, failed, skipped
@@ -99,7 +99,7 @@ class TaskState:
 
 
 class ExecutorState:
-    """Глобальное состояние executor"""
+    """Global executor state"""
 
     def __init__(self, config: ExecutorConfig):
         self.config = config
@@ -110,7 +110,7 @@ class ExecutorState:
         self._load()
 
     def _load(self):
-        """Загрузить состояние из файла"""
+        """Load state from file"""
         if self.config.state_file.exists():
             data = json.loads(self.config.state_file.read_text())
             for task_id, task_data in data.get("tasks", {}).items():
@@ -127,7 +127,7 @@ class ExecutorState:
             self.total_failed = data.get("total_failed", 0)
 
     def _save(self):
-        """Сохранить состояние в файл"""
+        """Save state to file"""
         self.config.state_file.parent.mkdir(parents=True, exist_ok=True)
         data = {
             "tasks": {
@@ -167,7 +167,7 @@ class ExecutorState:
         error: str | None = None,
         output: str | None = None,
     ):
-        """Записать попытку выполнения"""
+        """Record execution attempt"""
         state = self.get_task_state(task_id)
         state.attempts.append(
             TaskAttempt(
@@ -199,7 +199,7 @@ class ExecutorState:
         self._save()
 
     def should_stop(self) -> bool:
-        """Проверить, нужно ли остановиться"""
+        """Check if we should stop"""
         return self.consecutive_failures >= self.config.max_consecutive_failures
 
 
@@ -207,9 +207,9 @@ class ExecutorState:
 
 
 def build_task_prompt(task: Task, config: ExecutorConfig) -> str:
-    """Создать промпт для Claude с контекстом задачи"""
+    """Build prompt for Claude with task context"""
 
-    # Читаем спецификации
+    # Read specifications
     spec_dir = config.project_root / "spec"
 
     requirements = ""
@@ -220,17 +220,17 @@ def build_task_prompt(task: Task, config: ExecutorConfig) -> str:
     if (spec_dir / "design.md").exists():
         design = (spec_dir / "design.md").read_text()
 
-    # Находим связанные требования
+    # Find related requirements
     related_reqs = []
     for ref in task.traces_to:
         if ref.startswith("REQ-"):
-            # Извлекаем требование из requirements.md
+            # Extract requirement from requirements.md
             pattern = rf"#### {ref}:.*?(?=####|\Z)"
             match = re.search(pattern, requirements, re.DOTALL)
             if match:
                 related_reqs.append(match.group(0).strip())
 
-    # Находим связанный design
+    # Find related design
     related_design = []
     for ref in task.traces_to:
         if ref.startswith("DESIGN-"):
@@ -239,7 +239,7 @@ def build_task_prompt(task: Task, config: ExecutorConfig) -> str:
             if match:
                 related_design.append(match.group(0).strip())
 
-    # Чеклист
+    # Checklist
     checklist_text = "\n".join(
         [f"- {'[x]' if done else '[ ]'} {item}" for item, done in task.checklist]
     )
@@ -304,13 +304,13 @@ Begin implementation:
 
 
 def get_task_branch_name(task: Task) -> str:
-    """Генерирует имя ветки для задачи"""
+    """Generate branch name for task"""
     safe_name = task.name.lower().replace(" ", "-").replace("/", "-")[:30]
     return f"task/{task.id.lower()}-{safe_name}"
 
 
 def get_main_branch(config: ExecutorConfig) -> str:
-    """Определяет имя основной ветки (main или master)"""
+    """Determine main branch name (main or master)"""
     result = subprocess.run(
         ["git", "symbolic-ref", "refs/remotes/origin/HEAD"],
         capture_output=True,
@@ -321,7 +321,7 @@ def get_main_branch(config: ExecutorConfig) -> str:
         # refs/remotes/origin/main -> main
         return result.stdout.strip().split("/")[-1]
 
-    # Fallback: проверяем существование main или master
+    # Fallback: check if main or master exists
     for branch in ["main", "master"]:
         result = subprocess.run(
             ["git", "rev-parse", "--verify", branch],
@@ -335,10 +335,10 @@ def get_main_branch(config: ExecutorConfig) -> str:
 
 
 def pre_start_hook(task: Task, config: ExecutorConfig) -> bool:
-    """Hook перед началом задачи"""
+    """Hook before starting task"""
     print(f"🔧 Pre-start hook for {task.id}")
 
-    # Синхронизировать зависимости
+    # Sync dependencies
     print("   Syncing dependencies...")
     result = subprocess.run(
         ["uv", "sync"], capture_output=True, text=True, cwd=config.project_root
@@ -348,20 +348,20 @@ def pre_start_hook(task: Task, config: ExecutorConfig) -> bool:
     else:
         print(f"   ⚠️  uv sync warning: {result.stderr[:200]}")
 
-    # Создать git ветку
+    # Create git branch
     if config.create_git_branch:
         branch_name = get_task_branch_name(task)
         try:
-            # Проверяем, есть ли git
+            # Check if git exists
             result = subprocess.run(
                 ["git", "rev-parse", "--git-dir"],
                 capture_output=True,
                 cwd=config.project_root,
             )
             if result.returncode != 0:
-                return True  # Нет git репозитория
+                return True  # No git repository
 
-            # Переключаемся на main
+            # Switch to main
             main_branch = get_main_branch(config)
             subprocess.run(
                 ["git", "checkout", main_branch],
@@ -369,7 +369,7 @@ def pre_start_hook(task: Task, config: ExecutorConfig) -> bool:
                 cwd=config.project_root,
             )
 
-            # Проверяем, существует ли ветка
+            # Check if branch exists
             result = subprocess.run(
                 ["git", "rev-parse", "--verify", branch_name],
                 capture_output=True,
@@ -377,7 +377,7 @@ def pre_start_hook(task: Task, config: ExecutorConfig) -> bool:
             )
 
             if result.returncode == 0:
-                # Ветка существует — переключаемся на неё
+                # Branch exists — switch to it
                 subprocess.run(
                     ["git", "checkout", branch_name],
                     capture_output=True,
@@ -385,7 +385,7 @@ def pre_start_hook(task: Task, config: ExecutorConfig) -> bool:
                 )
                 print(f"   Switched to existing branch: {branch_name}")
             else:
-                # Создаём новую ветку
+                # Create new branch
                 result = subprocess.run(
                     ["git", "checkout", "-b", branch_name],
                     capture_output=True,
@@ -397,19 +397,19 @@ def pre_start_hook(task: Task, config: ExecutorConfig) -> bool:
                     print(f"   ⚠️  Failed to create branch: {result.stderr.decode()}")
 
         except FileNotFoundError:
-            pass  # git не установлен
+            pass  # git not installed
 
     return True
 
 
 def post_done_hook(task: Task, config: ExecutorConfig, success: bool) -> bool:
-    """Hook после завершения задачи"""
+    """Hook after task completion"""
     print(f"🔧 Post-done hook for {task.id} (success={success})")
 
     if not success:
         return False
 
-    # Запустить тесты
+    # Run tests
     if config.run_tests_on_done:
         print("   Running tests...")
         result = subprocess.run(
@@ -424,7 +424,7 @@ def post_done_hook(task: Task, config: ExecutorConfig, success: bool) -> bool:
             return False
         print("   ✅ Tests passed")
 
-    # Запустить lint
+    # Run lint
     if config.lint_command:
         print("   Running lint...")
         result = subprocess.run(
@@ -524,7 +524,7 @@ def post_done_hook(task: Task, config: ExecutorConfig, success: bool) -> bool:
 
 
 def execute_task(task: Task, config: ExecutorConfig, state: ExecutorState) -> bool:
-    """Выполнить одну задачу через Claude CLI"""
+    """Execute a single task via Claude CLI"""
 
     task_id = task.id
     print(f"\n{'=' * 60}")
@@ -536,14 +536,14 @@ def execute_task(task: Task, config: ExecutorConfig, state: ExecutorState) -> bo
         print("❌ Pre-start hook failed")
         return False
 
-    # Обновляем статус
+    # Update status
     state.mark_running(task_id)
     update_task_status(TASKS_FILE, task_id, "in_progress")
 
-    # Создаём промпт
+    # Build prompt
     prompt = build_task_prompt(task, config)
 
-    # Сохраняем промпт в лог
+    # Save prompt to log
     config.logs_dir.mkdir(parents=True, exist_ok=True)
     log_file = (
         config.logs_dir / f"{task_id}-{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
@@ -552,7 +552,7 @@ def execute_task(task: Task, config: ExecutorConfig, state: ExecutorState) -> bo
     with open(log_file, "w") as f:
         f.write(f"=== PROMPT ===\n{prompt}\n\n")
 
-    # Запускаем Claude
+    # Run Claude
     start_time = datetime.now()
 
     try:
@@ -576,16 +576,16 @@ def execute_task(task: Task, config: ExecutorConfig, state: ExecutorState) -> bo
         duration = (datetime.now() - start_time).total_seconds()
         output = result.stdout
 
-        # Сохраняем output
+        # Save output
         with open(log_file, "a") as f:
             f.write(f"=== OUTPUT ===\n{output}\n\n")
             f.write(f"=== STDERR ===\n{result.stderr}\n\n")
             f.write(f"=== RETURN CODE: {result.returncode} ===\n")
 
-        # Проверяем результат
-        # Успех если:
-        # 1. Явно написано TASK_COMPLETE, или
-        # 2. Return code 0 и нет TASK_FAILED (Claude забыл написать маркер)
+        # Check result
+        # Success if:
+        # 1. Explicitly says TASK_COMPLETE, or
+        # 2. Return code 0 and no TASK_FAILED (Claude forgot the marker)
         has_complete_marker = "TASK_COMPLETE" in output
         has_failed_marker = "TASK_FAILED" in output
         implicit_success = result.returncode == 0 and not has_failed_marker
@@ -598,7 +598,7 @@ def execute_task(task: Task, config: ExecutorConfig, state: ExecutorState) -> bo
             else:
                 print("✅ Implicit success (return code 0, no TASK_FAILED)")
 
-            # Post-done hook (тесты, lint)
+            # Post-done hook (tests, lint)
             hook_success = post_done_hook(task, config, True)
 
             if hook_success:
@@ -607,7 +607,7 @@ def execute_task(task: Task, config: ExecutorConfig, state: ExecutorState) -> bo
                 print(f"✅ {task_id} completed successfully in {duration:.1f}s")
                 return True
             else:
-                # Hook failed (тесты не прошли)
+                # Hook failed (tests didn't pass)
                 error = "Post-done hook failed (tests/lint)"
                 state.record_attempt(
                     task_id, False, duration, error=error, output=output
@@ -615,7 +615,7 @@ def execute_task(task: Task, config: ExecutorConfig, state: ExecutorState) -> bo
                 print(f"❌ {task_id} failed: {error}")
                 return False
         else:
-            # Claude сообщил о неудаче
+            # Claude reported failure
             error_match = re.search(r"TASK_FAILED:\s*(.+)", output)
             error = error_match.group(1) if error_match else "Unknown error"
             state.record_attempt(task_id, False, duration, error=error, output=output)
@@ -638,7 +638,7 @@ def execute_task(task: Task, config: ExecutorConfig, state: ExecutorState) -> bo
 
 
 def run_with_retries(task: Task, config: ExecutorConfig, state: ExecutorState) -> bool:
-    """Выполнить задачу с повторами"""
+    """Execute task with retries"""
 
     task_state = state.get_task_state(task.id)
 
@@ -663,20 +663,20 @@ def run_with_retries(task: Task, config: ExecutorConfig, state: ExecutorState) -
 
 
 def cmd_run(args, config: ExecutorConfig):
-    """Выполнить задачи"""
+    """Execute tasks"""
 
     tasks = parse_tasks(TASKS_FILE)
     state = ExecutorState(config)
 
-    # Проверяем лимит неудач
+    # Check failure limit
     if state.should_stop():
         print(f"⛔ Stopped: {state.consecutive_failures} consecutive failures")
         print("   Use 'executor.py retry <TASK-ID>' to retry specific task")
         return
 
-    # Определяем какие задачи выполнять
+    # Determine which tasks to execute
     if args.task:
-        # Конкретная задача
+        # Specific task
         task = get_task_by_id(tasks, args.task.upper())
         if not task:
             print(f"❌ Task {args.task} not found")
@@ -684,7 +684,7 @@ def cmd_run(args, config: ExecutorConfig):
         tasks_to_run = [task]
 
     elif args.all:
-        # Все готовые задачи
+        # All ready tasks
         tasks_to_run = get_next_tasks(tasks)
         if args.milestone:
             tasks_to_run = [
@@ -692,14 +692,14 @@ def cmd_run(args, config: ExecutorConfig):
             ]
 
     elif args.milestone:
-        # Задачи конкретного milestone
+        # Tasks for specific milestone
         next_tasks = get_next_tasks(tasks)
         tasks_to_run = [
             t for t in next_tasks if args.milestone.lower() in t.milestone.lower()
         ]
 
     else:
-        # Следующая задача
+        # Next task
         next_tasks = get_next_tasks(tasks)
         tasks_to_run = next_tasks[:1] if next_tasks else []
 
@@ -712,7 +712,7 @@ def cmd_run(args, config: ExecutorConfig):
     for t in tasks_to_run:
         print(f"   - {t.id}: {t.name}")
 
-    # Выполняем
+    # Execute
     for task in tasks_to_run:
         success = run_with_retries(task, config, state)
 
@@ -720,8 +720,8 @@ def cmd_run(args, config: ExecutorConfig):
             print("\n⛔ Stopping: too many consecutive failures")
             break
 
-    # Итог
-    # Подсчёт статистики
+    # Summary
+    # Calculate statistics
     failed_attempts = sum(
         1 for ts in state.tasks.values() for a in ts.attempts if not a.success
     )
@@ -738,11 +738,11 @@ def cmd_run(args, config: ExecutorConfig):
 
 
 def cmd_status(args, config: ExecutorConfig):
-    """Статус выполнения"""
+    """Execution status"""
 
     state = ExecutorState(config)
 
-    # Подсчёт статистики из реального состояния задач
+    # Calculate statistics from actual task state
     completed_tasks = sum(1 for ts in state.tasks.values() if ts.status == "success")
     failed_tasks = sum(1 for ts in state.tasks.values() if ts.status == "failed")
     running_tasks = [ts for ts in state.tasks.values() if ts.status == "running"]
@@ -763,7 +763,7 @@ def cmd_status(args, config: ExecutorConfig):
         f"{state.consecutive_failures}/{config.max_consecutive_failures}"
     )
 
-    # Задачи с попытками
+    # Tasks with attempts
     attempted = [ts for ts in state.tasks.values() if ts.attempts]
     if attempted:
         print("\n📝 Task History:")
@@ -786,7 +786,7 @@ def cmd_status(args, config: ExecutorConfig):
 
 
 def cmd_retry(args, config: ExecutorConfig):
-    """Повторить неудавшуюся задачу"""
+    """Retry failed task"""
 
     tasks = parse_tasks(TASKS_FILE)
     state = ExecutorState(config)
@@ -796,7 +796,7 @@ def cmd_retry(args, config: ExecutorConfig):
         print(f"❌ Task {args.task_id} not found")
         return
 
-    # Сбрасываем состояние
+    # Reset state
     task_state = state.get_task_state(task.id)
     task_state.attempts = []
     task_state.status = "pending"
@@ -808,7 +808,7 @@ def cmd_retry(args, config: ExecutorConfig):
 
 
 def cmd_logs(args, config: ExecutorConfig):
-    """Показать логи задачи"""
+    """Show task logs"""
 
     task_id = args.task_id.upper()
     log_files = sorted(config.logs_dir.glob(f"{task_id}-*.log"))
@@ -820,11 +820,11 @@ def cmd_logs(args, config: ExecutorConfig):
     latest = log_files[-1]
     print(f"📄 Latest log: {latest}")
     print("=" * 50)
-    print(latest.read_text()[:5000])  # Ограничиваем вывод
+    print(latest.read_text()[:5000])  # Limit output
 
 
 def cmd_reset(args, config: ExecutorConfig):
-    """Сбросить состояние executor"""
+    """Reset executor state"""
 
     if config.state_file.exists():
         config.state_file.unlink()
@@ -840,7 +840,7 @@ def cmd_reset(args, config: ExecutorConfig):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="ATP Task Executor — автоматическое выполнение задач через Claude",
+        description="ATP Task Executor — automatic task execution via Claude",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 

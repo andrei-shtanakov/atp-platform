@@ -37,6 +37,15 @@ python task.py done TASK-001       # Complete a task
 python executor.py run             # Execute next task
 python executor.py run --task=TASK-001  # Execute specific task
 python executor.py status          # Check execution status
+
+# CLI commands
+uv run atp test suite.yaml --adapter=cli  # Run tests
+uv run atp list suite.yaml         # List tests in a suite
+uv run atp validate --suite=suite.yaml    # Validate test suite
+uv run atp baseline save/compare   # Baseline management
+uv run atp list-agents             # List available adapters
+uv run atp dashboard               # Start web dashboard
+uv run atp version                 # Show version info
 ```
 
 ## Architecture
@@ -65,7 +74,7 @@ Test Definition (YAML) → Loader → Runner → Adapter → Agent → Response 
 
 ```
 atp/
-├── cli/           # CLI entry point (atp test, validate, baseline)
+├── cli/           # CLI entry point (atp test, validate, baseline, dashboard)
 ├── core/          # Config, exceptions, security utilities
 ├── protocol/      # ATP Request/Response/Event models
 ├── loader/        # YAML/JSON test parsing, filtering
@@ -84,12 +93,27 @@ atp/
 spec/              # Task specifications and requirements
 ├── tasks.md       # Task definitions with dependencies
 ├── requirements.md
-└── design.md
+├── design.md
+└── WORKFLOW.md    # Development workflow guide
 
 docs/              # Architecture documentation
+├── 01-07*.md      # Vision, requirements, architecture, protocol, evaluators, integration, roadmap
+├── adr/           # Architecture Decision Records
+├── guides/        # Practical tutorials (quickstart, installation, usage, etc.)
+└── reference/     # API reference, configuration, test format
+
+tests/             # Test suite
+├── unit/          # Unit tests (~70%)
+├── integration/   # Integration tests (~20%)
+├── contract/      # Protocol contract tests
+├── e2e/           # End-to-end tests (~10%)
+└── fixtures/      # Test fixtures and sample data
+
 examples/
 ├── test_suites/   # Sample test suite YAML files
-└── ci/            # CI/CD templates (GitHub, GitLab, Jenkins, Azure, CircleCI)
+├── ci/            # CI/CD templates (GitHub, GitLab, Jenkins, Azure, CircleCI)
+├── demo_agent.py  # File operations agent (no API keys required)
+└── openai_agent.py # OpenAI-powered agent with tool calling
 ```
 
 ## Code Style

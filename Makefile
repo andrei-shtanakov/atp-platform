@@ -1,112 +1,112 @@
 # ATP Platform — Makefile
-# Команды для разработки и управления задачами
+# Commands for development and task management
 
 .PHONY: help install sync dev test lint format docs clean
 .PHONY: task-list task-stats task-next task-graph
 
 # === Setup ===
 
-help:  ## Показать справку
+help:  ## Show help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-install:  ## Установить зависимости
+install:  ## Install dependencies
 	uv sync --all-extras
 
-sync:  ## Синхронизировать зависимости
+sync:  ## Sync dependencies
 	uv sync
 
-dev:  ## Настроить dev окружение
+dev:  ## Setup dev environment
 	uv sync --all-extras
 	uv run pre-commit install
 	@echo "✅ Dev environment ready"
 
 # === Testing ===
 
-test:  ## Запустить все тесты
+test:  ## Run all tests
 	uv run pytest tests/ -v --cov=atp --cov-report=term-missing
 
-test-unit:  ## Только unit тесты
+test-unit:  ## Unit tests only
 	uv run pytest tests/unit -v
 
-test-integration:  ## Только integration тесты
+test-integration:  ## Integration tests only
 	uv run pytest tests/integration -v
 
-test-e2e:  ## Только e2e тесты
+test-e2e:  ## E2E tests only
 	uv run pytest tests/e2e -v
 
-test-fast:  ## Быстрые тесты (без slow)
+test-fast:  ## Fast tests (without slow)
 	uv run pytest tests/ -v -m "not slow"
 
-coverage:  ## Отчёт о покрытии
+coverage:  ## Coverage report
 	uv run pytest tests/ --cov=atp --cov-report=html
 	@echo "📊 Coverage report: htmlcov/index.html"
 
 # === Code Quality ===
 
-lint:  ## Проверить код (ruff + pyrefly)
+lint:  ## Check code (ruff + pyrefly)
 	uv run ruff check .
 	pyrefly check
 
-format:  ## Форматировать код
+format:  ## Format code
 	uv run ruff format .
 	uv run ruff check --fix .
 
-check: lint test  ## Полная проверка (lint + test)
+check: lint test  ## Full check (lint + test)
 
 # === Task Management ===
 
-task-list:  ## Список всех задач
+task-list:  ## List all tasks
 	@uv run python task.py list
 
-task-todo:  ## Список TODO задач
+task-todo:  ## List TODO tasks
 	@uv run python task.py list --status=todo
 
-task-progress:  ## Задачи в работе
+task-progress:  ## Tasks in progress
 	@uv run python task.py list --status=in_progress
 
-task-stats:  ## Статистика задач
+task-stats:  ## Task statistics
 	@uv run python task.py stats
 
-task-next:  ## Следующие задачи для работы
+task-next:  ## Next tasks to work on
 	@uv run python task.py next
 
-task-graph:  ## Граф зависимостей
+task-graph:  ## Dependency graph
 	@uv run python task.py graph
 
-task-p0:  ## Только P0 задачи
+task-p0:  ## P0 tasks only
 	@uv run python task.py list --priority=p0
 
-task-mvp:  ## Задачи MVP
+task-mvp:  ## MVP tasks
 	@uv run python task.py list --milestone=mvp
 
 # === Task Workflow ===
 
-# Использование: make task-start ID=TASK-001
-task-start:  ## Начать задачу (make task-start ID=TASK-001)
+# Usage: make task-start ID=TASK-001
+task-start:  ## Start task (make task-start ID=TASK-001)
 	@uv run python task.py start $(ID)
 
-task-done:  ## Завершить задачу (make task-done ID=TASK-001)
+task-done:  ## Complete task (make task-done ID=TASK-001)
 	@uv run python task.py done $(ID)
 
-task-show:  ## Показать задачу (make task-show ID=TASK-001)
+task-show:  ## Show task (make task-show ID=TASK-001)
 	@uv run python task.py show $(ID)
 
 # === Documentation ===
 
-docs:  ## Сгенерировать документацию
+docs:  ## Build documentation
 	@echo "📚 Building docs..."
-	# mkdocs build или sphinx
+	# mkdocs build or sphinx
 
-docs-serve:  ## Запустить docs сервер
+docs-serve:  ## Start docs server
 	# mkdocs serve
 
 # === Build & Release ===
 
-build:  ## Собрать пакет
+build:  ## Build package
 	uv build
 
-clean:  ## Очистить артефакты
+clean:  ## Clean artifacts
 	rm -rf build/ dist/ *.egg-info/
 	rm -rf .pytest_cache/ .coverage htmlcov/
 	rm -rf .mypy_cache/ .ruff_cache/
@@ -114,33 +114,33 @@ clean:  ## Очистить артефакты
 
 # === Auto Execution (Claude CLI) ===
 
-exec:  ## Выполнить следующую задачу через Claude
+exec:  ## Execute next task via Claude
 	@uv run python executor.py run
 
-exec-task:  ## Выполнить конкретную задачу (make exec-task ID=TASK-001)
+exec-task:  ## Execute specific task (make exec-task ID=TASK-001)
 	@uv run python executor.py run --task=$(ID)
 
-exec-all:  ## Выполнить все готовые задачи
+exec-all:  ## Execute all ready tasks
 	@uv run python executor.py run --all
 
-exec-mvp:  ## Выполнить задачи MVP
+exec-mvp:  ## Execute MVP tasks
 	@uv run python executor.py run --all --milestone=mvp
 
-exec-status:  ## Статус выполнения
+exec-status:  ## Execution status
 	@uv run python executor.py status
 
-exec-retry:  ## Повторить задачу (make exec-retry ID=TASK-001)
+exec-retry:  ## Retry task (make exec-retry ID=TASK-001)
 	@uv run python executor.py retry $(ID)
 
-exec-logs:  ## Логи задачи (make exec-logs ID=TASK-001)
+exec-logs:  ## Task logs (make exec-logs ID=TASK-001)
 	@uv run python executor.py logs $(ID)
 
-exec-reset:  ## Сбросить состояние executor
+exec-reset:  ## Reset executor state
 	@uv run python executor.py reset
 
 # === CI/CD ===
 
-ci: lint test  ## CI pipeline (для GitHub Actions)
+ci: lint test  ## CI pipeline (for GitHub Actions)
 	@echo "✅ CI passed"
 
 # === Default ===

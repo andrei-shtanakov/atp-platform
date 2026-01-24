@@ -6,82 +6,82 @@
 
 ## Context
 
-AI-агенты разрабатываются на различных фреймворках: LangGraph, CrewAI, AutoGen, LangChain, и многих других. Новые фреймворки появляются регулярно, существующие устаревают (например, AutoGen прекращает активное развитие).
+AI agents are developed using various frameworks: LangGraph, CrewAI, AutoGen, LangChain, and many others. New frameworks appear regularly, while existing ones become deprecated (for example, AutoGen is discontinuing active development).
 
-Нам нужна платформа для тестирования, которая не привязана к конкретному фреймворку.
+We need a testing platform that is not tied to a specific framework.
 
 ## Decision
 
-Мы принимаем **framework-agnostic** подход, где агент рассматривается как чёрный ящик с определённым протоколом взаимодействия (ATP Protocol).
+We adopt a **framework-agnostic** approach where the agent is treated as a black box with a defined interaction protocol (ATP Protocol).
 
-### Ключевые принципы
+### Key Principles
 
-1. **Агент = чёрный ящик**
-   - Платформе неважно, как реализован агент внутри
-   - Важен только контракт: вход (task) → выход (artifacts + metrics)
+1. **Agent = Black Box**
+   - The platform doesn't care how the agent is implemented internally
+   - Only the contract matters: input (task) → output (artifacts + metrics)
 
-2. **Протокол как контракт**
-   - JSON-based протокол, не зависящий от языка программирования
-   - Схемы для валидации
-   - Версионирование для backward compatibility
+2. **Protocol as Contract**
+   - JSON-based protocol independent of programming language
+   - Schemas for validation
+   - Versioning for backward compatibility
 
-3. **Adapters для удобства**
-   - Опциональные адаптеры для популярных фреймворков
-   - Адаптеры — syntactic sugar, не обязательны
+3. **Adapters for Convenience**
+   - Optional adapters for popular frameworks
+   - Adapters are syntactic sugar, not mandatory
 
 ## Consequences
 
 ### Positive
 
-- **Гибкость**: Команды могут использовать любой фреймворк
-- **Longevity**: Платформа не устареет вместе с фреймворком
-- **Сравнимость**: Можно сравнивать агентов на разных фреймворках
-- **Простота интеграции**: Минимальные требования к агенту
-- **Тестируемость**: Протокол можно тестировать независимо
+- **Flexibility**: Teams can use any framework
+- **Longevity**: Platform won't become obsolete with the framework
+- **Comparability**: Can compare agents across different frameworks
+- **Easy Integration**: Minimal requirements for the agent
+- **Testability**: Protocol can be tested independently
 
 ### Negative
 
-- **Overhead**: Нужно реализовать протокол для каждого агента
-- **Limited features**: Нет доступа к внутренним деталям фреймворка
-- **Maintenance**: Нужно поддерживать адаптеры для популярных фреймворков
+- **Overhead**: Need to implement the protocol for each agent
+- **Limited Features**: No access to internal framework details
+- **Maintenance**: Need to support adapters for popular frameworks
 
 ### Risks
 
-- Протокол может не покрывать все use cases → митигация: версионирование, расширяемость
-- Адаптеры могут отставать от фреймворков → митигация: community contributions
+- Protocol may not cover all use cases → mitigation: versioning, extensibility
+- Adapters may lag behind frameworks → mitigation: community contributions
 
 ## Alternatives Considered
 
-### 1. Tight integration with one framework
-Глубокая интеграция с одним фреймворком (например, LangGraph).
+### 1. Tight Integration with One Framework
+Deep integration with a single framework (e.g., LangGraph).
 
-**Pros**: Больше возможностей, меньше overhead
-**Cons**: Vendor lock-in, ограниченная аудитория
+**Pros**: More capabilities, less overhead
+**Cons**: Vendor lock-in, limited audience
 
-**Rejected**: Слишком рискованно в быстро меняющемся landscape.
+**Rejected**: Too risky in a rapidly changing landscape.
 
-### 2. Plugin-per-framework architecture
-Каждый фреймворк имеет свой плагин с полной интеграцией.
+### 2. Plugin-per-Framework Architecture
+Each framework has its own plugin with full integration.
 
-**Pros**: Максимальные возможности для каждого фреймворка
-**Cons**: Огромные затраты на поддержку, дублирование логики
+**Pros**: Maximum capabilities for each framework
+**Cons**: Huge maintenance costs, logic duplication
 
-**Rejected**: Не масштабируется.
+**Rejected**: Doesn't scale.
 
-### 3. Language-specific approach
-Только Python агенты с определённым интерфейсом.
+### 3. Language-Specific Approach
+Only Python agents with a defined interface.
 
-**Pros**: Проще реализовать
-**Cons**: Исключает non-Python агентов
+**Pros**: Easier to implement
+**Cons**: Excludes non-Python agents
 
-**Rejected**: Ограничивает adoption.
+**Rejected**: Limits adoption.
 
 ## Implementation Notes
 
-1. Протокол определяется в `docs/04-protocol.md`
-2. JSON Schema в `schemas/`
-3. Адаптеры в `atp/adapters/`
-4. Гайд по интеграции в `docs/06-integration.md`
+1. Protocol is defined in `docs/04-protocol.md`
+2. JSON Schema in `schemas/`
+3. Adapters in `atp/adapters/`
+4. Integration guide in `docs/06-integration.md`
 
 ## References
 

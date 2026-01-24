@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """
-ATP Task Manager — CLI для управления задачами из tasks.md
+ATP Task Manager — CLI for managing tasks from tasks.md
 
-Использование:
-    python task.py list                    # Список всех задач
-    python task.py list --status=todo      # Фильтр по статусу
-    python task.py list --priority=p0      # Фильтр по приоритету
-    python task.py list --milestone=mvp    # Фильтр по milestone
-    python task.py show TASK-001           # Детали задачи
-    python task.py start TASK-001          # Начать задачу
-    python task.py done TASK-001           # Завершить задачу
-    python task.py block TASK-001          # Заблокировать
-    python task.py check TASK-001 2        # Отметить checklist item
-    python task.py stats                   # Статистика
-    python task.py next                    # Следующая задача (по зависимостям)
-    python task.py graph                   # ASCII граф зависимостей
-    python task.py export-gh               # Экспорт в GitHub Issues
+Usage:
+    python task.py list                    # List all tasks
+    python task.py list --status=todo      # Filter by status
+    python task.py list --priority=p0      # Filter by priority
+    python task.py list --milestone=mvp    # Filter by milestone
+    python task.py show TASK-001           # Task details
+    python task.py start TASK-001          # Start task
+    python task.py done TASK-001           # Complete task
+    python task.py block TASK-001          # Block task
+    python task.py check TASK-001 2        # Mark checklist item
+    python task.py stats                   # Statistics
+    python task.py next                    # Next task (by dependencies)
+    python task.py graph                   # ASCII dependency graph
+    python task.py export-gh               # Export to GitHub Issues
 """
 
 import argparse
@@ -25,11 +25,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-# Конфигурация
+# Configuration
 TASKS_FILE = Path("spec/tasks.md")
 HISTORY_FILE = Path("spec/.task-history.log")
 
-# Паттерны
+# Patterns
 TASK_HEADER = re.compile(r"^### (TASK-\d+): (.+)$")
 TASK_META = re.compile(r"^(🔴|🟠|🟡|🟢) (P\d) \| (⬜|🔄|✅|⏸️) (\w+)")
 CHECKLIST_ITEM = re.compile(r"^- \[([ x])\] (.+)$")
@@ -69,14 +69,14 @@ class Task:
 
     @property
     def is_ready(self) -> bool:
-        """Задача готова к работе если все зависимости выполнены"""
+        """Task is ready to work if all dependencies are completed"""
         return self.status == "todo" and not self.depends_on
 
 
 def parse_tasks(filepath: Path) -> list[Task]:
-    """Парсит tasks.md и возвращает список задач"""
+    """Parse tasks.md and return list of tasks"""
     if not filepath.exists():
-        print(f"❌ Файл {filepath} не найден")
+        print(f"❌ File {filepath} not found")
         sys.exit(1)
 
     content = filepath.read_text()
@@ -89,12 +89,12 @@ def parse_tasks(filepath: Path) -> list[Task]:
     in_tests = False
 
     for i, line in enumerate(lines):
-        # Определяем milestone
+        # Determine milestone
         if line.startswith("## Milestone"):
             current_milestone = line.replace("## ", "").strip()
             continue
 
-        # Начало новой задачи
+        # Start of new task
         header_match = TASK_HEADER.match(line)
         if header_match:
             if current_task:
@@ -117,7 +117,7 @@ def parse_tasks(filepath: Path) -> list[Task]:
         if not current_task:
             continue
 
-        # Метаданные (приоритет, статус)
+        # Metadata (priority, status)
         meta_match = TASK_META.match(line)
         if meta_match:
             priority_emoji, priority, status_emoji, status_text = meta_match.groups()
@@ -183,7 +183,7 @@ def parse_tasks(filepath: Path) -> list[Task]:
 
 
 def update_task_status(filepath: Path, task_id: str, new_status: str) -> bool:
-    """Обновляет статус задачи в файле"""
+    """Update task status in file"""
     content = filepath.read_text()
     lines = content.split("\n")
 
@@ -194,7 +194,7 @@ def update_task_status(filepath: Path, task_id: str, new_status: str) -> bool:
             continue
 
         if found and TASK_META.match(line):
-            # Заменяем статус
+            # Replace status
             old_emoji = None
             for emoji in STATUS_EMOJI.values():
                 if emoji in line:
@@ -221,7 +221,7 @@ def update_task_status(filepath: Path, task_id: str, new_status: str) -> bool:
 def update_checklist_item(
     filepath: Path, task_id: str, item_index: int, checked: bool
 ) -> bool:
-    """Обновляет элемент чеклиста"""
+    """Update checklist item"""
     content = filepath.read_text()
     lines = content.split("\n")
 
@@ -251,7 +251,7 @@ def update_checklist_item(
 
 
 def log_change(task_id: str, change: str):
-    """Логирует изменение в историю"""
+    """Log change to history"""
     HISTORY_FILE.parent.mkdir(exist_ok=True)
     with open(HISTORY_FILE, "a") as f:
         timestamp = datetime.now().isoformat()
@@ -259,7 +259,7 @@ def log_change(task_id: str, change: str):
 
 
 def get_task_by_id(tasks: list[Task], task_id: str) -> Task | None:
-    """Находит задачу по ID"""
+    """Find task by ID"""
     for task in tasks:
         if task.id == task_id:
             return task
@@ -267,11 +267,11 @@ def get_task_by_id(tasks: list[Task], task_id: str) -> Task | None:
 
 
 def resolve_dependencies(tasks: list[Task]) -> list[Task]:
-    """Обновляет depends_on с учётом статуса зависимостей"""
+    """Update depends_on based on dependency status"""
     task_map = {t.id: t for t in tasks}
 
     for task in tasks:
-        # Убираем выполненные зависимости
+        # Remove completed dependencies
         task.depends_on = [
             dep
             for dep in task.depends_on
@@ -282,10 +282,10 @@ def resolve_dependencies(tasks: list[Task]) -> list[Task]:
 
 
 def get_next_tasks(tasks: list[Task]) -> list[Task]:
-    """Возвращает задачи, готовые к выполнению"""
+    """Return tasks ready to execute"""
     tasks = resolve_dependencies(tasks)
     ready = [t for t in tasks if t.status == "todo" and not t.depends_on]
-    # Сортируем по приоритету
+    # Sort by priority
     priority_order = {"p0": 0, "p1": 1, "p2": 2, "p3": 3}
     ready.sort(key=lambda t: priority_order.get(t.priority, 99))
     return ready
@@ -295,7 +295,7 @@ def get_next_tasks(tasks: list[Task]) -> list[Task]:
 
 
 def cmd_list(args, tasks: list[Task]):
-    """Список задач"""
+    """List tasks"""
     filtered = tasks
 
     if args.status:
@@ -309,12 +309,11 @@ def cmd_list(args, tasks: list[Task]):
         filtered = [t for t in filtered if milestone_lower in t.milestone.lower()]
 
     if not filtered:
-        print("Нет задач по заданным критериям")
+        print("No tasks matching criteria")
         return
 
     header = (
-        f"\n{'ID':<12} {'Статус':<4} {'P':<3} "
-        f"{'Название':<40} {'Прогресс':<10} {'Est':<6}"
+        f"\n{'ID':<12} {'Status':<4} {'P':<3} {'Name':<40} {'Progress':<10} {'Est':<6}"
     )
     print(header)
     print("-" * 85)
@@ -332,14 +331,14 @@ def cmd_list(args, tasks: list[Task]):
         )
         print(line)
 
-    print(f"\nВсего: {len(filtered)} задач")
+    print(f"\nTotal: {len(filtered)} tasks")
 
 
 def cmd_show(args, tasks: list[Task]):
-    """Детали задачи"""
+    """Task details"""
     task = get_task_by_id(tasks, args.task_id.upper())
     if not task:
-        print(f"❌ Задача {args.task_id} не найдена")
+        print(f"❌ Task {args.task_id} not found")
         return
 
     status_icon = STATUS_EMOJI.get(task.status, "?")
@@ -349,16 +348,16 @@ def cmd_show(args, tasks: list[Task]):
     print(f"\n{'=' * 60}")
     print(f"{priority_icon} {task.id}: {task.name}")
     print(f"{'=' * 60}")
-    print(f"Статус:     {status_icon} {task.status.upper()}")
-    print(f"Приоритет:  {task.priority.upper()}")
+    print(f"Status:     {status_icon} {task.status.upper()}")
+    print(f"Priority:   {task.priority.upper()}")
     print(f"Milestone:  {task.milestone}")
-    print(f"Оценка:     {task.estimate or '—'}")
-    print(f"Прогресс:   {done}/{total} ({done * 100 // total if total else 0}%)")
+    print(f"Estimate:   {task.estimate or '—'}")
+    print(f"Progress:   {done}/{total} ({done * 100 // total if total else 0}%)")
 
     if task.depends_on:
-        print(f"\n⬅️  Зависит от: {', '.join(task.depends_on)}")
+        print(f"\n⬅️  Depends on: {', '.join(task.depends_on)}")
     if task.blocks:
-        print(f"➡️  Блокирует:  {', '.join(task.blocks)}")
+        print(f"➡️  Blocks:     {', '.join(task.blocks)}")
     if task.traces_to:
         print(f"📋 Traces to:  {', '.join(task.traces_to)}")
 
@@ -370,81 +369,81 @@ def cmd_show(args, tasks: list[Task]):
 
 
 def cmd_start(args, tasks: list[Task]):
-    """Начать задачу"""
+    """Start task"""
     task = get_task_by_id(tasks, args.task_id.upper())
     if not task:
-        print(f"❌ Задача {args.task_id} не найдена")
+        print(f"❌ Task {args.task_id} not found")
         return
 
-    # Проверяем зависимости
+    # Check dependencies
     tasks = resolve_dependencies(tasks)
     task = get_task_by_id(tasks, args.task_id.upper())
 
     if task.depends_on:
-        print(f"⚠️  Задача зависит от незавершённых: {', '.join(task.depends_on)}")
+        print(f"⚠️  Task depends on incomplete: {', '.join(task.depends_on)}")
         if not args.force:
-            print("   Используй --force чтобы начать всё равно")
+            print("   Use --force to start anyway")
             return
 
     if update_task_status(TASKS_FILE, task.id, "in_progress"):
-        print(f"🔄 {task.id} начата!")
+        print(f"🔄 {task.id} started!")
     else:
-        print("❌ Не удалось обновить статус")
+        print("❌ Failed to update status")
 
 
 def cmd_done(args, tasks: list[Task]):
-    """Завершить задачу"""
+    """Complete task"""
     task = get_task_by_id(tasks, args.task_id.upper())
     if not task:
-        print(f"❌ Задача {args.task_id} не найдена")
+        print(f"❌ Task {args.task_id} not found")
         return
 
-    # Проверяем чеклист
+    # Check checklist
     done, total = task.checklist_progress
     if total > 0 and done < total:
-        print(f"⚠️  Чеклист не завершён: {done}/{total}")
+        print(f"⚠️  Checklist incomplete: {done}/{total}")
         if not args.force:
-            print("   Используй --force чтобы завершить всё равно")
+            print("   Use --force to complete anyway")
             return
 
     if update_task_status(TASKS_FILE, task.id, "done"):
-        print(f"✅ {task.id} завершена!")
+        print(f"✅ {task.id} completed!")
 
-        # Показываем разблокированные задачи
+        # Show unblocked tasks
         tasks = parse_tasks(TASKS_FILE)
         tasks = resolve_dependencies(tasks)
         unblocked = [t for t in tasks if t.status == "todo" and not t.depends_on]
         if unblocked:
-            print("\n🔓 Разблокированы задачи:")
+            print("\n🔓 Unblocked tasks:")
             for t in unblocked[:5]:
                 print(f"   {t.id}: {t.name}")
     else:
-        print("❌ Не удалось обновить статус")
+        print("❌ Failed to update status")
 
 
 def cmd_block(args, tasks: list[Task]):
-    """Заблокировать задачу"""
+    """Block task"""
     task = get_task_by_id(tasks, args.task_id.upper())
     if not task:
-        print(f"❌ Задача {args.task_id} не найдена")
+        print(f"❌ Task {args.task_id} not found")
         return
 
     if update_task_status(TASKS_FILE, task.id, "blocked"):
-        print(f"⏸️ {task.id} заблокирована")
+        print(f"⏸️ {task.id} blocked")
     else:
-        print("❌ Не удалось обновить статус")
+        print("❌ Failed to update status")
 
 
 def cmd_check(args, tasks: list[Task]):
-    """Отметить элемент чеклиста"""
+    """Mark checklist item"""
     task = get_task_by_id(tasks, args.task_id.upper())
     if not task:
-        print(f"❌ Задача {args.task_id} не найдена")
+        print(f"❌ Task {args.task_id} not found")
         return
 
     item_index = int(args.item_index)
     if item_index < 0 or item_index >= len(task.checklist):
-        print(f"❌ Неверный индекс. Доступно: 0-{len(task.checklist) - 1}")
+        print(f"❌ Invalid index. Available: 0-{len(task.checklist) - 1}")
         return
 
     item_text, was_checked = task.checklist[item_index]
@@ -454,11 +453,11 @@ def cmd_check(args, tasks: list[Task]):
         mark = "✅" if new_checked else "⬜"
         print(f"{mark} {item_text}")
     else:
-        print("❌ Не удалось обновить чеклист")
+        print("❌ Failed to update checklist")
 
 
 def cmd_stats(args, tasks: list[Task]):
-    """Статистика по задачам"""
+    """Task statistics"""
     tasks = resolve_dependencies(tasks)
 
     by_status = {}
@@ -471,59 +470,59 @@ def cmd_stats(args, tasks: list[Task]):
         by_priority[task.priority] = by_priority.get(task.priority, 0) + 1
         by_milestone[task.milestone] = by_milestone.get(task.milestone, 0) + 1
 
-        # Парсим оценку
+        # Parse estimate
         if task.estimate:
             match = re.match(r"(\d+)", task.estimate)
             if match:
                 total_estimate += int(match.group(1))
 
-    print("\n📊 Статистика задач")
+    print("\n📊 Task Statistics")
     print("=" * 40)
 
-    print("\nПо статусу:")
+    print("\nBy status:")
     for status, count in sorted(by_status.items()):
         icon = STATUS_EMOJI.get(status, "?")
         pct = count * 100 // len(tasks)
         bar = "█" * (pct // 5) + "░" * (20 - pct // 5)
         print(f"  {icon} {status:<12} {count:>3} {bar} {pct}%")
 
-    print("\nПо приоритету:")
+    print("\nBy priority:")
     for priority in ["p0", "p1", "p2", "p3"]:
         count = by_priority.get(priority, 0)
         icon = PRIORITY_EMOJI.get(priority, "?")
         print(f"  {icon} {priority.upper():<3} {count:>3}")
 
-    print("\nПо milestone:")
+    print("\nBy milestone:")
     for milestone, count in sorted(by_milestone.items()):
         print(f"  {milestone:<25} {count:>3}")
 
     ready = get_next_tasks(tasks)
-    print(f"\n🚀 Готовы к работе: {len(ready)}")
+    print(f"\n🚀 Ready to work: {len(ready)}")
     for t in ready[:3]:
         print(f"   {PRIORITY_EMOJI[t.priority]} {t.id}: {t.name}")
 
     done_count = by_status.get("done", 0)
     progress = done_count * 100 // len(tasks) if tasks else 0
-    print(f"\n📈 Общий прогресс: {done_count}/{len(tasks)} ({progress}%)")
-    print(f"⏱️  Общая оценка: ~{total_estimate}d")
+    print(f"\n📈 Overall progress: {done_count}/{len(tasks)} ({progress}%)")
+    print(f"⏱️  Total estimate: ~{total_estimate}d")
 
 
 def cmd_next(args, tasks: list[Task]):
-    """Следующая задача для работы"""
+    """Next task to work on"""
     ready = get_next_tasks(tasks)
 
     if not ready:
         in_progress = [t for t in tasks if t.status == "in_progress"]
         if in_progress:
-            print("🔄 Сейчас в работе:")
+            print("🔄 Currently in progress:")
             for t in in_progress:
                 done, total = t.checklist_progress
                 print(f"   {t.id}: {t.name} ({done}/{total})")
         else:
-            print("🎉 Все задачи завершены или заблокированы!")
+            print("🎉 All tasks completed or blocked!")
         return
 
-    print("🚀 Следующие задачи (готовы к работе):\n")
+    print("🚀 Next tasks (ready to work):\n")
     for i, task in enumerate(ready[:5], 1):
         icon = PRIORITY_EMOJI.get(task.priority, "?")
         deps_done = "✓ deps OK" if not task.depends_on else ""
@@ -535,10 +534,10 @@ def cmd_next(args, tasks: list[Task]):
 
 
 def cmd_graph(args, tasks: list[Task]):
-    """ASCII граф зависимостей"""
-    print("\n📊 Граф зависимостей\n")
+    """ASCII dependency graph"""
+    print("\n📊 Dependency Graph\n")
 
-    # Находим корни (без зависимостей)
+    # Find roots (no dependencies)
     roots = [t for t in tasks if not t.depends_on]
 
     def print_tree(task_id: str, indent: int = 0, visited: set = None):
@@ -558,20 +557,20 @@ def cmd_graph(args, tasks: list[Task]):
 
         print(f"{prefix}{status_icon} {task.id}: {task.name[:30]}")
 
-        # Находим задачи, которые зависят от этой
+        # Find tasks that depend on this one
         dependents = [t for t in tasks if task_id in t.depends_on]
         for dep in dependents:
             print_tree(dep.id, indent + 1, visited)
 
-    for root in roots[:10]:  # Ограничиваем вывод
+    for root in roots[:10]:  # Limit output
         print_tree(root.id)
         print()
 
 
 def cmd_export_gh(args, tasks: list[Task]):
-    """Экспорт в формат GitHub Issues"""
+    """Export to GitHub Issues format"""
     print("# GitHub Issues Export\n")
-    print("Выполни команды для создания issues:\n")
+    print("Execute commands to create issues:\n")
     print("```bash")
 
     for task in tasks:
@@ -603,59 +602,59 @@ def cmd_export_gh(args, tasks: list[Task]):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="ATP Task Manager — управление задачами из tasks.md",
+        description="ATP Task Manager — manage tasks from tasks.md",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
 
-    subparsers = parser.add_subparsers(dest="command", help="Команды")
+    subparsers = parser.add_subparsers(dest="command", help="Commands")
 
     # list
-    list_parser = subparsers.add_parser("list", aliases=["ls"], help="Список задач")
+    list_parser = subparsers.add_parser("list", aliases=["ls"], help="List tasks")
     list_parser.add_argument(
         "--status", "-s", choices=["todo", "in_progress", "done", "blocked"]
     )
     list_parser.add_argument("--priority", "-p", choices=["p0", "p1", "p2", "p3"])
-    list_parser.add_argument("--milestone", "-m", help="Фильтр по milestone")
+    list_parser.add_argument("--milestone", "-m", help="Filter by milestone")
 
     # show
-    show_parser = subparsers.add_parser("show", help="Детали задачи")
-    show_parser.add_argument("task_id", help="ID задачи (например, TASK-001)")
+    show_parser = subparsers.add_parser("show", help="Task details")
+    show_parser.add_argument("task_id", help="Task ID (e.g., TASK-001)")
 
     # start
-    start_parser = subparsers.add_parser("start", help="Начать задачу")
-    start_parser.add_argument("task_id", help="ID задачи")
+    start_parser = subparsers.add_parser("start", help="Start task")
+    start_parser.add_argument("task_id", help="Task ID")
     start_parser.add_argument(
-        "--force", "-f", action="store_true", help="Игнорировать зависимости"
+        "--force", "-f", action="store_true", help="Ignore dependencies"
     )
 
     # done
-    done_parser = subparsers.add_parser("done", help="Завершить задачу")
-    done_parser.add_argument("task_id", help="ID задачи")
+    done_parser = subparsers.add_parser("done", help="Complete task")
+    done_parser.add_argument("task_id", help="Task ID")
     done_parser.add_argument(
-        "--force", "-f", action="store_true", help="Игнорировать незавершённый чеклист"
+        "--force", "-f", action="store_true", help="Ignore incomplete checklist"
     )
 
     # block
-    block_parser = subparsers.add_parser("block", help="Заблокировать задачу")
-    block_parser.add_argument("task_id", help="ID задачи")
+    block_parser = subparsers.add_parser("block", help="Block task")
+    block_parser.add_argument("task_id", help="Task ID")
 
     # check
-    check_parser = subparsers.add_parser("check", help="Отметить элемент чеклиста")
-    check_parser.add_argument("task_id", help="ID задачи")
-    check_parser.add_argument("item_index", help="Индекс элемента (0, 1, 2...)")
+    check_parser = subparsers.add_parser("check", help="Mark checklist item")
+    check_parser.add_argument("task_id", help="Task ID")
+    check_parser.add_argument("item_index", help="Item index (0, 1, 2...)")
 
     # stats
-    subparsers.add_parser("stats", help="Статистика")
+    subparsers.add_parser("stats", help="Statistics")
 
     # next
-    subparsers.add_parser("next", help="Следующие задачи")
+    subparsers.add_parser("next", help="Next tasks")
 
     # graph
-    subparsers.add_parser("graph", help="Граф зависимостей")
+    subparsers.add_parser("graph", help="Dependency graph")
 
     # export-gh
-    subparsers.add_parser("export-gh", help="Экспорт в GitHub Issues")
+    subparsers.add_parser("export-gh", help="Export to GitHub Issues")
 
     args = parser.parse_args()
 

@@ -1,31 +1,31 @@
 # Architecture
 
-## Обзор архитектуры
+## Architecture Overview
 
-Agent Test Platform построена по модульному принципу с чётким разделением ответственности между компонентами. Ключевая идея — агент является чёрным ящиком, взаимодействующим через стандартный протокол.
+Agent Test Platform is built on a modular principle with clear separation of responsibilities between components. The key idea is that an agent is a black box interacting through a standard protocol.
 
-## Архитектурные принципы
+## Architectural Principles
 
 ### 1. Separation of Concerns
-Каждый компонент отвечает за одну задачу:
-- **Protocol** — определяет контракт
-- **Adapters** — транслируют протокол
-- **Runner** — оркестрирует выполнение
-- **Evaluators** — оценивают результаты
-- **Reporters** — форматируют вывод
+Each component is responsible for one task:
+- **Protocol** — defines the contract
+- **Adapters** — translate the protocol
+- **Runner** — orchestrates execution
+- **Evaluators** — assess results
+- **Reporters** — format output
 
 ### 2. Plugin Architecture
-Evaluators, Adapters, Reporters — плагины с общим интерфейсом.
+Evaluators, Adapters, Reporters are plugins with a common interface.
 
 ### 3. Immutable Data Flow
-Данные текут в одном направлении: Test Definition → Runner → Agent → Response → Evaluators → Report.
+Data flows in one direction: Test Definition → Runner → Agent → Response → Evaluators → Report.
 
 ### 4. Fail-Safe Defaults
-Система работает с минимальной конфигурацией, разумные defaults.
+The system works with minimal configuration, reasonable defaults.
 
 ---
 
-## Диаграмма компонентов
+## Component Diagram
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -91,11 +91,11 @@ Evaluators, Adapters, Reporters — плагины с общим интерфе�
 
 ---
 
-## Компоненты
+## Components
 
 ### 1. CLI / API Layer
 
-**Ответственность**: точка входа, parsing аргументов, вызов runner.
+**Responsibility**: entry point, argument parsing, runner invocation.
 
 ```
 atp/
@@ -104,14 +104,14 @@ atp/
 │   └── main.py          # All CLI commands (Click-based)
 ```
 
-**Команды CLI**:
-- `atp test` — запуск тестов с опциями --agent, --suite, --tags, --runs, --parallel, --output, --fail-fast
-- `atp validate` — валидация test definitions
-- `atp baseline save/compare` — управление baseline
-- `atp list-agents` — список зарегистрированных агентов
-- `atp version` — версия
+**CLI Commands**:
+- `atp test` — run tests with options --agent, --suite, --tags, --runs, --parallel, --output, --fail-fast
+- `atp validate` — validate test definitions
+- `atp baseline save/compare` — manage baselines
+- `atp list-agents` — list registered agents
+- `atp version` — version
 
-**Интерфейс**:
+**Interface**:
 ```python
 # main.py
 @click.group()
@@ -134,7 +134,7 @@ def test(suite, agent, runs, parallel, tags, output, output_file, fail_fast, ver
 
 ### 2. Test Loader
 
-**Ответственность**: загрузка и валидация test definitions из YAML/JSON.
+**Responsibility**: loading and validating test definitions from YAML/JSON.
 
 ```
 atp/
@@ -147,7 +147,7 @@ atp/
 │   └── schema.py        # JSON Schema validation
 ```
 
-**Модели данных**:
+**Data Models**:
 ```python
 # models.py
 from pydantic import BaseModel
@@ -189,7 +189,7 @@ class TestSuite(BaseModel):
 
 ### 3. Test Runner
 
-**Ответственность**: оркестрация выполнения тестов, управление lifecycle.
+**Responsibility**: orchestrating test execution, managing lifecycle.
 
 ```
 atp/
@@ -209,7 +209,7 @@ atp/
 │   └── reporter.py      # Statistics reporting
 ```
 
-**Алгоритм выполнения**:
+**Execution Algorithm**:
 ```
 1. Load test suite
 2. Resolve agent configuration
@@ -227,7 +227,7 @@ atp/
 4. Generate report
 ```
 
-**Интерфейс**:
+**Interface**:
 ```python
 # orchestrator.py
 class TestOrchestrator:
@@ -255,7 +255,7 @@ class TestOrchestrator:
 
 ### 4. ATP Protocol
 
-**Ответственность**: определение контракта взаимодействия с агентами.
+**Responsibility**: defining the contract for agent interaction.
 
 ```
 atp/
@@ -271,7 +271,7 @@ atp/
 │   └── validation.py    # Event ordering validation
 ```
 
-**Протокольные модели**:
+**Protocol Models**:
 ```python
 # protocol.py
 from pydantic import BaseModel
@@ -314,7 +314,7 @@ class ATPEvent(BaseModel):
 
 ### 5. Adapters
 
-**Ответственность**: трансляция между ATP Protocol и конкретными способами запуска агентов.
+**Responsibility**: translation between ATP Protocol and specific ways to run agents.
 
 ```
 atp/
@@ -433,7 +433,7 @@ class ContainerAdapter(AgentAdapter):
 
 ### 6. Evaluators
 
-**Ответственность**: оценка результатов выполнения агента.
+**Responsibility**: evaluating agent execution results.
 
 ```
 atp/
@@ -639,7 +639,7 @@ class LLMJudgeEvaluator(Evaluator):
 
 ### 7. Score Aggregator
 
-**Ответственность**: агрегация результатов evaluators в итоговый score.
+**Responsibility**: aggregating evaluator results into a final score.
 
 ```python
 # scoring.py
@@ -683,7 +683,7 @@ class ScoreAggregator:
 
 ### 8. Reporters
 
-**Ответственность**: форматирование и вывод результатов.
+**Responsibility**: formatting and outputting results.
 
 ```
 atp/

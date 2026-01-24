@@ -1,5 +1,5 @@
 [project]
-name = "atp-platform-ru"
+name = "atp-platform"
 version = "0.1.0"
 description = "Framework-agnostic platform for testing and evaluating AI agents"
 readme = "README.md"

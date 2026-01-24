@@ -1,19 +1,19 @@
 # Evaluation System
 
-## Обзор
+## Overview
 
-Система оценки ATP анализирует результаты выполнения агента и вычисляет метрики качества. Оценка происходит на нескольких уровнях: от простых структурных проверок до сложной семантической оценки с помощью LLM.
+The ATP evaluation system analyzes agent execution results and computes quality metrics. Evaluation happens at multiple levels: from simple structural checks to complex semantic evaluation using LLM.
 
-## Философия оценки
+## Evaluation Philosophy
 
-### Принципы
+### Principles
 
-1. **Composability** — оценщики комбинируются для комплексной оценки
-2. **Transparency** — каждая оценка объяснима
-3. **Determinism where possible** — детерминированные проверки предпочтительнее
-4. **Statistical validity** — стохастические оценки усредняются по прогонам
+1. **Composability** — evaluators combine for comprehensive assessment
+2. **Transparency** — every evaluation is explainable
+3. **Determinism where possible** — deterministic checks are preferred
+4. **Statistical validity** — stochastic evaluations are averaged across runs
 
-### Иерархия оценщиков
+### Evaluator Hierarchy
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -42,23 +42,23 @@
 
 ### 1. Artifact Evaluator
 
-Проверяет наличие, формат и содержимое артефактов.
+Checks artifact presence, format, and content.
 
-**Типы проверок**:
+**Check Types**:
 
 | Assertion Type | Description | Example |
 |----------------|-------------|---------|
-| `artifact_exists` | Артефакт с указанным путём существует | `path: "report.md"` |
-| `artifact_format` | Артефакт соответствует формату | `format: "markdown"` |
-| `artifact_schema` | Structured artifact соответствует JSON Schema | `schema: {...}` |
-| `contains` | Артефакт содержит текст/паттерн | `pattern: "Competitor"` |
-| `not_contains` | Артефакт не содержит текст | `text: "error"` |
-| `min_length` | Минимальная длина контента | `chars: 1000` |
-| `max_length` | Максимальная длина контента | `chars: 50000` |
-| `sections_exist` | Markdown содержит секции | `sections: ["Summary", "Details"]` |
-| `table_exists` | Markdown содержит таблицу | `min_rows: 3` |
+| `artifact_exists` | Artifact with specified path exists | `path: "report.md"` |
+| `artifact_format` | Artifact matches format | `format: "markdown"` |
+| `artifact_schema` | Structured artifact matches JSON Schema | `schema: {...}` |
+| `contains` | Artifact contains text/pattern | `pattern: "Competitor"` |
+| `not_contains` | Artifact does not contain text | `text: "error"` |
+| `min_length` | Minimum content length | `chars: 1000` |
+| `max_length` | Maximum content length | `chars: 50000` |
+| `sections_exist` | Markdown contains sections | `sections: ["Summary", "Details"]` |
+| `table_exists` | Markdown contains table | `min_rows: 3` |
 
-**Пример конфигурации**:
+**Configuration Example**:
 
 ```yaml
 assertions:
@@ -118,21 +118,21 @@ def score_artifact_check(check: ArtifactCheck) -> float:
 
 ### 2. Behavior Evaluator
 
-Анализирует trace выполнения: какие инструменты использовались, сколько шагов, какие ошибки.
+Analyzes execution trace: which tools were used, how many steps, what errors occurred.
 
-**Типы проверок**:
+**Check Types**:
 
 | Assertion Type | Description | Example |
 |----------------|-------------|---------|
-| `must_use_tools` | Обязательное использование инструментов | `tools: ["web_search"]` |
-| `must_not_use_tools` | Запрет на инструменты | `tools: ["dangerous_tool"]` |
-| `max_tool_calls` | Ограничение вызовов | `limit: 10` |
-| `max_steps` | Ограничение шагов | `limit: 50` |
-| `no_errors` | Отсутствие ошибок в trace | - |
-| `tool_sequence` | Порядок использования инструментов | `sequence: ["search", "write"]` |
-| `no_hallucination` | Нет выдуманных данных (требует LLM) | `check_facts: true` |
+| `must_use_tools` | Required tool usage | `tools: ["web_search"]` |
+| `must_not_use_tools` | Prohibited tools | `tools: ["dangerous_tool"]` |
+| `max_tool_calls` | Call limit | `limit: 10` |
+| `max_steps` | Step limit | `limit: 50` |
+| `no_errors` | No errors in trace | - |
+| `tool_sequence` | Tool usage order | `sequence: ["search", "write"]` |
+| `no_hallucination` | No fabricated data (requires LLM) | `check_facts: true` |
 
-**Пример конфигурации**:
+**Configuration Example**:
 
 ```yaml
 assertions:
@@ -188,21 +188,21 @@ def analyze_trace(trace: list[ATPEvent]) -> BehaviorMetrics:
 
 ### 3. LLM-as-Judge Evaluator
 
-Использует LLM для семантической оценки качества результатов.
+Uses LLM for semantic evaluation of result quality.
 
-**Критерии оценки**:
+**Evaluation Criteria**:
 
 | Criteria | Description |
 |----------|-------------|
-| `factual_accuracy` | Фактическая корректность |
-| `completeness` | Полнота ответа |
-| `relevance` | Релевантность задаче |
-| `coherence` | Логичность и связность |
-| `clarity` | Ясность изложения |
-| `actionability` | Практическая применимость |
-| `custom` | Кастомный критерий с промптом |
+| `factual_accuracy` | Factual correctness |
+| `completeness` | Response completeness |
+| `relevance` | Relevance to task |
+| `coherence` | Logic and coherence |
+| `clarity` | Clarity of presentation |
+| `actionability` | Practical applicability |
+| `custom` | Custom criterion with prompt |
 
-**Пример конфигурации**:
+**Configuration Example**:
 
 ```yaml
 assertions:
@@ -284,19 +284,19 @@ LLM judges have known biases. Calibration strategies:
 
 ### 4. Code Execution Evaluator
 
-Запускает сгенерированный агентом код и анализирует результаты.
+Runs agent-generated code and analyzes results.
 
-**Типы проверок**:
+**Check Types**:
 
 | Assertion Type | Description |
 |----------------|-------------|
-| `pytest` | Запуск pytest на коде агента |
-| `npm_test` | Запуск npm test |
-| `custom_command` | Произвольная команда |
-| `lint` | Статический анализ (ruff, eslint) |
-| `typecheck` | Проверка типов (mypy, tsc) |
+| `pytest` | Run pytest on agent code |
+| `npm_test` | Run npm test |
+| `custom_command` | Arbitrary command |
+| `lint` | Static analysis (ruff, eslint) |
+| `typecheck` | Type checking (mypy, tsc) |
 
-**Пример конфигурации**:
+**Configuration Example**:
 
 ```yaml
 assertions:
@@ -408,17 +408,17 @@ def parse_pytest_output(output: str) -> TestResults:
 
 ### Score Aggregation
 
-Итоговый скор вычисляется как взвешенная сумма компонентов:
+The final score is computed as a weighted sum of components:
 
 ```
 Score = w_Q × Quality + w_C × Completeness + w_E × Efficiency + w_$ × Cost
 ```
 
-Где:
-- **Quality** (Q): средний score от Artifact и LLM evaluators
-- **Completeness** (C): доля пройденных behavior checks
-- **Efficiency** (E): нормализованная эффективность (меньше шагов = лучше)
-- **Cost** ($): нормализованная стоимость (меньше токенов = лучше)
+Where:
+- **Quality** (Q): average score from Artifact and LLM evaluators
+- **Completeness** (C): fraction of passed behavior checks
+- **Efficiency** (E): normalized efficiency (fewer steps = better)
+- **Cost** ($): normalized cost (fewer tokens = better)
 
 **Default Weights**:
 
@@ -482,7 +482,7 @@ def normalize_cost(
 
 ### Statistical Aggregation
 
-При множественных прогонах вычисляется статистика:
+For multiple runs, statistics are computed:
 
 ```python
 @dataclass
@@ -521,7 +521,7 @@ def compute_statistics(scores: list[float], confidence: float = 0.95) -> Statist
 
 ### Variance Analysis
 
-Высокий variance указывает на нестабильность агента:
+High variance indicates agent instability:
 
 ```python
 def assess_stability(stats: StatisticalScore) -> StabilityAssessment:
