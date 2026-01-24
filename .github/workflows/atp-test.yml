@@ -1,0 +1,229 @@
+# ATP (Agent Test Platform) GitHub Action Workflow
+#
+# This workflow runs ATP agent tests as part of your CI/CD pipeline.
+# It supports multiple output formats and provides test result annotations.
+#
+# Usage:
+#   Copy this file to .github/workflows/ in your repository and customize
+#   the configuration below.
+#
+# Required secrets:
+#   - ANTHROPIC_API_KEY: For LLM-as-judge evaluations (if using llm_eval assertions)
+#
+# Optional secrets:
+#   - OPENAI_API_KEY: Alternative LLM provider
+#   - AGENT_API_KEY: If your agent requires authentication
+
+name: ATP Agent Tests
+
+on:
+  # Run on push to main/master branches
+  push:
+    branches: [main, master]
+  # Run on pull requests
+  pull_request:
+    branches: [main, master]
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: 'Test suite file path'
+        required: false
+        default: 'tests/suite.yaml'
+      tags:
+        description: 'Test tags to filter (comma-separated)'
+        required: false
+      runs:
+        description: 'Number of runs per test'
+        required: false
+        default: '1'
+      fail_on_regression:
+        description: 'Fail if regression detected'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  # Python version to use
+  PYTHON_VERSION: '3.12'
+  # Default test suite path
+  DEFAULT_SUITE: 'tests/suite.yaml'
+  # ATP configuration file
+  ATP_CONFIG: 'atp.config.yaml'
+
+jobs:
+  test:
+    name: Run ATP Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: |
+          uv sync
+          uv pip install atp-platform  # Install ATP if not in pyproject.toml
+
+      - name: Validate test suite
+        run: |
+          SUITE="${{ github.event.inputs.suite || env.DEFAULT_SUITE }}"
+          uv run atp validate --suite="$SUITE"
+
+      - name: Run ATP tests
+        id: atp-test
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          AGENT_API_KEY: ${{ secrets.AGENT_API_KEY }}
+        run: |
+          SUITE="${{ github.event.inputs.suite || env.DEFAULT_SUITE }}"
+          TAGS="${{ github.event.inputs.tags }}"
+          RUNS="${{ github.event.inputs.runs || '1' }}"
+
+          # Build command
+          CMD="uv run atp test '$SUITE' --runs=$RUNS"
+
+          # Add tags filter if specified
+          if [ -n "$TAGS" ]; then
+            CMD="$CMD --tags='$TAGS'"
+          fi
+
+          # Generate both JSON and JUnit reports
+          CMD="$CMD --output=json --output-file=results/atp-results.json"
+
+          echo "Running: $CMD"
+          eval $CMD || echo "Tests completed with failures"
+
+          # Also generate JUnit report for GitHub integration
+          uv run atp test "$SUITE" --runs=$RUNS --output=junit --output-file=results/junit.xml || true
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: atp-test-results
+          path: |
+            results/atp-results.json
+            results/junit.xml
+          retention-days: 30
+
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          files: results/junit.xml
+          check_name: ATP Test Results
+          comment_mode: always
+          compare_to_earlier_commit: true
+
+      - name: Check test status
+        run: |
+          if [ -f results/atp-results.json ]; then
+            SUCCESS=$(jq -r '.summary.success' results/atp-results.json)
+            PASSED=$(jq -r '.summary.passed_tests' results/atp-results.json)
+            FAILED=$(jq -r '.summary.failed_tests' results/atp-results.json)
+
+            echo "## ATP Test Results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Passed | $PASSED |" >> $GITHUB_STEP_SUMMARY
+            echo "| Failed | $FAILED |" >> $GITHUB_STEP_SUMMARY
+            echo "| Success | $SUCCESS |" >> $GITHUB_STEP_SUMMARY
+
+            if [ "$SUCCESS" != "true" ]; then
+              echo ""
+              echo "::error::ATP tests failed: $FAILED test(s) did not pass"
+              exit 1
+            fi
+          else
+            echo "::error::Test results file not found"
+            exit 1
+          fi
+
+  # Optional: Baseline comparison job
+  baseline-compare:
+    name: Compare with Baseline
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    needs: test
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: |
+          uv sync
+          uv pip install atp-platform
+
+      - name: Download baseline
+        continue-on-error: true
+        run: |
+          # Try to download baseline from main branch
+          # This assumes baseline.json is committed to the repo
+          if [ -f baselines/baseline.json ]; then
+            echo "Baseline found"
+            echo "BASELINE_EXISTS=true" >> $GITHUB_ENV
+          else
+            echo "No baseline found, skipping comparison"
+            echo "BASELINE_EXISTS=false" >> $GITHUB_ENV
+          fi
+
+      - name: Compare with baseline
+        if: env.BASELINE_EXISTS == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          SUITE="${{ github.event.inputs.suite || env.DEFAULT_SUITE }}"
+          FAIL_ON_REGRESSION="${{ github.event.inputs.fail_on_regression || 'false' }}"
+
+          CMD="uv run atp baseline compare '$SUITE' -b baselines/baseline.json --runs=3 --output=json --output-file=results/comparison.json"
+
+          if [ "$FAIL_ON_REGRESSION" == "true" ]; then
+            CMD="$CMD --fail-on-regression"
+          fi
+
+          eval $CMD
+
+      - name: Post comparison results
+        if: env.BASELINE_EXISTS == 'true' && always()
+        run: |
+          if [ -f results/comparison.json ]; then
+            echo "## Baseline Comparison" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            HAS_REGRESSIONS=$(jq -r '.has_regressions' results/comparison.json 2>/dev/null || echo "unknown")
+            HAS_IMPROVEMENTS=$(jq -r '.has_improvements' results/comparison.json 2>/dev/null || echo "unknown")
+
+            if [ "$HAS_REGRESSIONS" == "true" ]; then
+              echo ":warning: **Regressions detected**" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            if [ "$HAS_IMPROVEMENTS" == "true" ]; then
+              echo ":rocket: **Improvements detected**" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
