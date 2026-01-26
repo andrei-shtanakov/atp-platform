@@ -103,7 +103,7 @@ Add metrics panel showing score, tokens, duration comparison.
 ---
 
 ### TASK-004: Leaderboard Matrix API
-🔴 P0 | 🔄 IN_PROGRESS | Est: 4-5h
+🔴 P0 | ✅ DONE | Est: 4-5h
 
 **Description:**
 Implement `/leaderboard/matrix` endpoint returning test × agent matrix.
@@ -163,7 +163,7 @@ Add summary row/column with aggregated statistics.
 ---
 
 ### TASK-007: Timeline Events API
-🔴 P0 | ⬜ TODO | Est: 3-4h
+🔴 P0 | 🔄 IN_PROGRESS | Est: 3-4h
 
 **Description:**
 Implement `/timeline/events` endpoint for single agent timeline.
