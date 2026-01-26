@@ -312,13 +312,13 @@ class TestLeaderboardViewComponent:
         assert "/leaderboard/matrix" in html_content
 
     def test_leaderboard_view_has_loading_state(self, html_content: str) -> None:
-        """Test that LeaderboardView has loading state."""
-        assert "Loading leaderboard matrix" in html_content
+        """Test that LeaderboardView has loading state with skeleton loader."""
+        assert "SkeletonLeaderboardMatrix" in html_content
 
     def test_leaderboard_view_has_error_state(self, html_content: str) -> None:
         """Test that LeaderboardView has error state."""
         assert "Error loading leaderboard" in html_content
-        assert "Try again" in html_content
+        assert "Try Again" in html_content
 
 
 class TestNavigationIntegration:
@@ -487,14 +487,15 @@ class TestUIDataFlowPatterns:
 class TestLoadingAndErrorStates:
     """Tests for loading and error state handling in UI."""
 
-    def test_loading_spinner_in_leaderboard(self, html_content: str) -> None:
-        """Test that loading spinner exists in LeaderboardView."""
-        assert "Loading leaderboard" in html_content
-        assert "animate-spin" in html_content
+    def test_loading_skeleton_in_leaderboard(self, html_content: str) -> None:
+        """Test that skeleton loader exists in LeaderboardView."""
+        # LeaderboardView uses skeleton loaders instead of spinning indicators
+        assert "SkeletonLeaderboardMatrix" in html_content
+        assert "skeleton-pulse" in html_content
 
     def test_error_retry_button(self, html_content: str) -> None:
         """Test that error state has retry button."""
-        assert "Try again" in html_content
+        assert "Try Again" in html_content
 
     def test_error_message_styling(self, html_content: str) -> None:
         """Test that error messages have appropriate styling."""

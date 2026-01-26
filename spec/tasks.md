@@ -222,7 +222,7 @@ Build interactive timeline visualization using Chart.js.
 ---
 
 ### TASK-010: Event Details and Filters
-🟠 P1 | 🔄 IN_PROGRESS | Est: 3-4h
+🟠 P1 | ✅ DONE | Est: 3-4h
 
 **Description:**
 Add event detail panel and type filters to timeline.
@@ -263,17 +263,17 @@ Optimize queries and rendering for performance requirements.
 ---
 
 ### TASK-012: UX Polish
-🟠 P1 | ⬜ TODO | Est: 2-3h
+🟠 P1 | ✅ DONE | Est: 2-3h
 
 **Description:**
 Add loading states, error handling, and responsive design.
 
 **Checklist:**
-- [ ] Add skeleton loaders for all views
-- [ ] Add error boundaries with retry buttons
-- [ ] Test on 1280px, 1440px, 1920px widths
-- [ ] Add keyboard navigation for timeline
-- [ ] Verify all API errors show user-friendly messages
+- [x] Add skeleton loaders for all views
+- [x] Add error boundaries with retry buttons
+- [x] Test on 1280px, 1440px, 1920px widths
+- [x] Add keyboard navigation for timeline
+- [x] Verify all API errors show user-friendly messages
 
 **Traces to:** [NFR-002]
 **Depends on:** [TASK-002], [TASK-005], [TASK-009]
