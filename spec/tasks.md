@@ -244,7 +244,7 @@ Add event detail panel and type filters to timeline.
 ## Milestone 2: Polish
 
 ### TASK-011: Performance Optimization
-🟠 P1 | ⬜ TODO | Est: 3-4h
+🟠 P1 | 🔄 IN_PROGRESS | Est: 3-4h
 
 **Description:**
 Optimize queries and rendering for performance requirements.

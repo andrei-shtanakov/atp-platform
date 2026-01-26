@@ -1,5 +1,6 @@
 """FastAPI routes for ATP Dashboard API."""
 
+import logging
 from datetime import datetime, timedelta
 from typing import Annotated
 
@@ -26,6 +27,8 @@ from atp.dashboard.models import (
     TestExecution,
     User,
 )
+from atp.dashboard.optimized_queries import build_leaderboard_data
+from atp.dashboard.query_cache import get_leaderboard_cache
 from atp.dashboard.schemas import (
     AgentColumn,
     AgentComparisonMetrics,
@@ -62,6 +65,8 @@ from atp.dashboard.schemas import (
     UserCreate,
     UserResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 # Create API router
 router = APIRouter()
@@ -921,6 +926,8 @@ async def get_leaderboard_matrix(
     Returns a matrix of tests (rows) vs agents (columns) with scores,
     difficulty ratings, and agent rankings.
 
+    Uses optimized bulk queries and caching for performance.
+
     Args:
         session: Database session.
         user: Current user (optional auth).
@@ -952,69 +959,36 @@ async def get_leaderboard_matrix(
             offset=offset,
         )
 
-    # Collect data per agent
-    # Structure: {test_id: {agent_name: {scores: [], successes: [], ...}}}
-    test_data: dict[str, dict[str, dict]] = {}
-    test_names: dict[str, str] = {}
-    test_tags: dict[str, list[str]] = {}
-    agent_metrics: dict[str, dict] = {
-        name: {"scores": [], "successes": [], "tokens": 0, "cost": 0.0}
-        for name in agent_names
-    }
+    # Build cache key for the query
+    cache = get_leaderboard_cache()
+    sorted_agents_key = ",".join(sorted(agent_names))
+    cache_key = f"leaderboard:{suite_name}:{sorted_agents_key}:{limit_executions}"
 
-    for agent_name in agent_names:
-        # Query recent suite executions for this agent
-        stmt = (
-            select(SuiteExecution)
-            .join(Agent)
-            .where(
-                SuiteExecution.suite_name == suite_name,
-                Agent.name == agent_name,
-            )
-            .options(
-                selectinload(SuiteExecution.test_executions).selectinload(
-                    TestExecution.run_results
-                )
-            )
-            .order_by(SuiteExecution.started_at.desc())
-            .limit(limit_executions)
+    # Check cache for raw data (before pagination)
+    cached_data = cache.get(cache_key)
+
+    if cached_data is not None:
+        logger.debug("Leaderboard cache hit for %s", suite_name)
+        test_data = cached_data["test_data"]
+        test_names = cached_data["test_names"]
+        test_tags = cached_data["test_tags"]
+        agent_metrics = cached_data["agent_metrics"]
+    else:
+        logger.debug("Leaderboard cache miss for %s", suite_name)
+        # Use optimized bulk query instead of N+1 queries
+        test_data, test_names, test_tags, agent_metrics = await build_leaderboard_data(
+            session, suite_name, agent_names, limit_executions
         )
-        result = await session.execute(stmt)
-        executions = list(result.scalars().all())
-
-        for exec in executions:
-            for test in exec.test_executions:
-                test_id = test.test_id
-
-                # Initialize test data structure
-                if test_id not in test_data:
-                    test_data[test_id] = {}
-                    test_names[test_id] = test.test_name
-                    test_tags[test_id] = test.tags or []
-
-                if agent_name not in test_data[test_id]:
-                    test_data[test_id][agent_name] = {
-                        "scores": [],
-                        "successes": [],
-                    }
-
-                # Collect score and success data
-                if test.score is not None:
-                    test_data[test_id][agent_name]["scores"].append(test.score)
-                    agent_metrics[agent_name]["scores"].append(test.score)
-                test_data[test_id][agent_name]["successes"].append(
-                    1.0 if test.success else 0.0
-                )
-                agent_metrics[agent_name]["successes"].append(
-                    1.0 if test.success else 0.0
-                )
-
-                # Collect token and cost data from run results
-                for run in test.run_results:
-                    if run.total_tokens:
-                        agent_metrics[agent_name]["tokens"] += run.total_tokens
-                    if run.cost_usd:
-                        agent_metrics[agent_name]["cost"] += run.cost_usd
+        # Cache the raw data
+        cache.put(
+            cache_key,
+            {
+                "test_data": test_data,
+                "test_names": test_names,
+                "test_tags": test_tags,
+                "agent_metrics": agent_metrics,
+            },
+        )
 
     # Get total count of tests before pagination
     total_tests = len(test_data)

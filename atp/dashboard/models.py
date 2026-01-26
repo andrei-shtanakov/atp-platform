@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -68,6 +69,9 @@ class Agent(Base):
         back_populates="agent", cascade="all, delete-orphan"
     )
 
+    # Indexes for common queries
+    __table_args__ = (Index("idx_agent_name", "name"),)
+
     def __repr__(self) -> str:
         return f"Agent(id={self.id}, name={self.name!r}, type={self.agent_type!r})"
 
@@ -107,6 +111,13 @@ class SuiteExecution(Base):
     agent: Mapped["Agent"] = relationship(back_populates="suite_executions")
     test_executions: Mapped[list["TestExecution"]] = relationship(
         back_populates="suite_execution", cascade="all, delete-orphan"
+    )
+
+    # Indexes for common queries (leaderboard, comparison)
+    __table_args__ = (
+        Index("idx_suite_agent", "suite_name", "agent_id"),
+        Index("idx_suite_started", "suite_name", "started_at"),
+        Index("idx_agent_started", "agent_id", "started_at"),
     )
 
     def __repr__(self) -> str:
@@ -165,9 +176,11 @@ class TestExecution(Base):
         back_populates="test_execution", cascade="all, delete-orphan"
     )
 
-    # Unique constraint: test_id within a suite_execution
+    # Unique constraint and indexes for common queries
     __table_args__ = (
         UniqueConstraint("suite_execution_id", "test_id", name="uq_suite_test"),
+        Index("idx_test_suite_exec", "suite_execution_id", "test_id"),
+        Index("idx_test_started", "started_at"),
     )
 
     def __repr__(self) -> str:
@@ -222,9 +235,10 @@ class RunResult(Base):
         back_populates="run_result", cascade="all, delete-orphan"
     )
 
-    # Unique constraint: run_number within a test_execution
+    # Unique constraint and indexes for common queries
     __table_args__ = (
         UniqueConstraint("test_execution_id", "run_number", name="uq_test_run"),
+        Index("idx_run_test_exec", "test_execution_id"),
     )
 
     def __repr__(self) -> str:
