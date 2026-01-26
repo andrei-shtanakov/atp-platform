@@ -373,7 +373,8 @@ class TestLeaderboardMatrixEndpoint:
     def test_endpoint_requires_suite_name(self, client: TestClient) -> None:
         """Test that suite_name is required."""
         response = client.get("/api/leaderboard/matrix")
-        assert response.status_code in [404, 422, 500]
+        # Should return 422 (validation error) for missing required param
+        assert response.status_code == 422
 
     def test_endpoint_accepts_valid_params(self, client: TestClient) -> None:
         """Test endpoint with valid parameters."""
@@ -384,11 +385,11 @@ class TestLeaderboardMatrixEndpoint:
                 "limit_executions": 5,
             },
         )
-        # Should return 404 (not found) or 200 (success) when implemented
-        assert response.status_code in [200, 404, 500]
+        # Should return 200 (success) or 500 (db not configured)
+        assert response.status_code in [200, 500]
 
-    def test_endpoint_validates_limit(self, client: TestClient) -> None:
-        """Test that limit_executions has a maximum value."""
+    def test_endpoint_validates_limit_executions(self, client: TestClient) -> None:
+        """Test that limit_executions has a maximum value of 20."""
         response = client.get(
             "/api/leaderboard/matrix",
             params={
@@ -396,8 +397,8 @@ class TestLeaderboardMatrixEndpoint:
                 "limit_executions": 100,  # Exceeds max of 20
             },
         )
-        # Should fail validation or return error
-        assert response.status_code in [404, 422, 500]
+        # Should fail validation
+        assert response.status_code == 422
 
 
 class TestTimelineEventsEndpoint:
