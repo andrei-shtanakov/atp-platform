@@ -33,11 +33,13 @@ from atp.dashboard.schemas import (
     AgentCreate,
     AgentExecutionDetail,
     AgentResponse,
+    AgentTimeline,
     AgentUpdate,
     DashboardSummary,
     EvaluationResultResponse,
     EventSummary,
     LeaderboardMatrixResponse,
+    MultiTimelineResponse,
     RunResultSummary,
     ScoreComponentResponse,
     SideBySideComparisonResponse,
@@ -1336,6 +1338,155 @@ async def get_timeline_events(
         events=timeline_events,
         total_duration_ms=total_duration_ms,
         execution_id=execution.id,
+    )
+
+
+@router.get(
+    "/timeline/compare",
+    response_model=MultiTimelineResponse,
+    tags=["timeline"],
+)
+async def get_multi_timeline(
+    session: SessionDep,
+    user: CurrentUser,
+    suite_name: str,
+    test_id: str,
+    agents: list[str] = Query(..., min_length=2, max_length=3),
+    event_types: list[str] | None = Query(None),
+) -> MultiTimelineResponse:
+    """Get aligned timelines for multiple agents on the same test.
+
+    Returns timelines for 2-3 agents aligned by start time, enabling
+    visual comparison of execution strategies and timing.
+
+    Args:
+        session: Database session.
+        user: Current user (optional auth).
+        suite_name: Name of the test suite.
+        test_id: ID of the specific test.
+        agents: List of agent names to compare (2-3 agents).
+        event_types: Optional list of event types to filter by
+            (tool_call, llm_request, reasoning, error, progress).
+
+    Returns:
+        MultiTimelineResponse with aligned timelines for each agent.
+
+    Raises:
+        HTTPException: If no executions found for any agent.
+    """
+    timelines: list[AgentTimeline] = []
+    test_name: str | None = None
+
+    for agent_name in agents:
+        # Query latest test execution for this agent on this test
+        stmt = (
+            select(TestExecution)
+            .join(SuiteExecution)
+            .join(Agent)
+            .where(
+                SuiteExecution.suite_name == suite_name,
+                TestExecution.test_id == test_id,
+                Agent.name == agent_name,
+            )
+            .options(selectinload(TestExecution.run_results))
+            .order_by(TestExecution.started_at.desc())
+            .limit(1)
+        )
+        result = await session.execute(stmt)
+        execution = result.scalar_one_or_none()
+
+        if execution is None:
+            # Agent has no execution for this test - skip but don't fail
+            continue
+
+        # Get test name from first found execution
+        if test_name is None:
+            test_name = execution.test_name
+
+        # Get the latest run result
+        run_results = sorted(execution.run_results, key=lambda r: r.run_number)
+        latest_run = run_results[-1] if run_results else None
+
+        if latest_run is None or not latest_run.events_json:
+            # No events - create an empty timeline
+            timelines.append(
+                AgentTimeline(
+                    agent_name=agent_name,
+                    test_execution_id=execution.id,
+                    start_time=execution.started_at,
+                    total_duration_ms=0.0,
+                    events=[],
+                )
+            )
+            continue
+
+        # Get all events from the run
+        raw_events = latest_run.events_json
+
+        # Sort by sequence to ensure correct ordering
+        raw_events = sorted(raw_events, key=lambda e: e.get("sequence", 0))
+
+        # Apply event type filtering if specified
+        if event_types:
+            valid_types = set(event_types)
+            raw_events = [e for e in raw_events if e.get("event_type") in valid_types]
+
+        # Parse first timestamp for relative time calculation
+        first_timestamp: datetime | None = None
+        if raw_events:
+            first_ts_str = raw_events[0].get("timestamp", "")
+            if first_ts_str:
+                try:
+                    first_timestamp = datetime.fromisoformat(
+                        first_ts_str.replace("Z", "+00:00")
+                    )
+                except ValueError:
+                    pass
+
+        # Format events with relative timing
+        timeline_events: list[TimelineEvent] = []
+        for event in raw_events:
+            timeline_events.append(_format_timeline_event(event, first_timestamp))
+
+        # Calculate total duration from first to last event
+        total_duration_ms = 0.0
+        if raw_events and len(raw_events) > 1:
+            last_ts_str = raw_events[-1].get("timestamp", "")
+            if first_timestamp and last_ts_str:
+                try:
+                    last_timestamp = datetime.fromisoformat(
+                        last_ts_str.replace("Z", "+00:00")
+                    )
+                    delta = last_timestamp - first_timestamp
+                    total_duration_ms = delta.total_seconds() * 1000
+                except ValueError:
+                    pass
+
+        # Use first timestamp or execution start time
+        start_time = first_timestamp or execution.started_at
+
+        timelines.append(
+            AgentTimeline(
+                agent_name=agent_name,
+                test_execution_id=execution.id,
+                start_time=start_time,
+                total_duration_ms=total_duration_ms,
+                events=timeline_events,
+            )
+        )
+
+    if not timelines:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No executions found for test '{test_id}' in suite '{suite_name}' "
+            f"for any of the specified agents",
+        )
+
+    return MultiTimelineResponse(
+        suite_name=suite_name,
+        test_id=test_id,
+        test_name=test_name or test_id,
+        timelines=timelines,
     )
 
 
