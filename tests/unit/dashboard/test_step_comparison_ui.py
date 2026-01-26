@@ -184,10 +184,11 @@ class TestComparisonContainerComponent:
         assert "/compare/side-by-side" in html_content
 
     def test_comparison_container_has_loading_state(self, html_content: str) -> None:
-        """Test that ComparisonContainer has loading state."""
+        """Test that ComparisonContainer has loading state with skeleton."""
         assert "loading" in html_content
         assert "setLoading" in html_content
-        assert "Loading comparison data" in html_content
+        # Now uses skeleton loader instead of text
+        assert "SkeletonMetricsPanel" in html_content
 
     def test_comparison_container_has_error_state(self, html_content: str) -> None:
         """Test that ComparisonContainer has error state."""
@@ -441,10 +442,10 @@ class TestResponsiveLayout:
 class TestLoadingAndErrorStates:
     """Tests for loading and error state handling in UI."""
 
-    def test_loading_spinner_exists(self, html_content: str) -> None:
-        """Test that loading spinner animation exists."""
-        assert "animate-spin" in html_content
-        assert "border-blue-500" in html_content
+    def test_loading_skeleton_exists(self, html_content: str) -> None:
+        """Test that skeleton loading animation exists."""
+        assert "skeleton-pulse" in html_content
+        assert "SkeletonBox" in html_content
 
     def test_error_message_styling(self, html_content: str) -> None:
         """Test that error messages have appropriate styling."""

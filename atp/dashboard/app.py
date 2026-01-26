@@ -73,6 +73,22 @@ def create_index_html() -> str:
         .timeline-track { position: relative; min-height: 40px; }
         .timeline-marker { transition: all 0.15s ease; }
         .timeline-marker:hover { transform: scale(1.1); z-index: 10; }
+        /* Skeleton loader animation */
+        @keyframes skeleton-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .skeleton-pulse { animation: skeleton-pulse 1.5s ease-in-out infinite; }
+        /* Focus styles for keyboard navigation */
+        .timeline-event-focusable:focus {
+            outline: 2px solid #3B82F6;
+            outline-offset: 2px;
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
+        }
+        .timeline-event-focusable:focus:not(:focus-visible) {
+            outline: none;
+            box-shadow: none;
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -80,14 +96,35 @@ def create_index_html() -> str:
     <script type="text/babel">
         const { useState, useEffect, useCallback } = React;
 
-        // API helper
+        // API helper with user-friendly error messages
         const api = {
             async get(path) {
                 const token = localStorage.getItem('token');
                 const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-                const res = await fetch(`/api${path}`, { headers });
-                if (!res.ok) throw new Error(`API error: ${res.status}`);
-                return res.json();
+                try {
+                    const res = await fetch(`/api${path}`, { headers });
+                    if (!res.ok) {
+                        const errorMessages = {
+                            400: 'Invalid request. Please check your input and try again.',
+                            401: 'You are not authorized. Please log in and try again.',
+                            403: 'Access denied. You do not have permission to access this resource.',
+                            404: 'The requested data was not found. It may have been deleted or moved.',
+                            408: 'Request timed out. Please check your connection and try again.',
+                            429: 'Too many requests. Please wait a moment and try again.',
+                            500: 'Server error. Our team has been notified. Please try again later.',
+                            502: 'Server is temporarily unavailable. Please try again in a few moments.',
+                            503: 'Service is under maintenance. Please try again later.',
+                            504: 'Server took too long to respond. Please try again.',
+                        };
+                        throw new Error(errorMessages[res.status] || `Something went wrong (Error ${res.status}). Please try again.`);
+                    }
+                    return res.json();
+                } catch (err) {
+                    if (err.name === 'TypeError' && err.message.includes('fetch')) {
+                        throw new Error('Unable to connect to server. Please check your internet connection.');
+                    }
+                    throw err;
+                }
             },
             async post(path, data) {
                 const token = localStorage.getItem('token');
@@ -95,15 +132,362 @@ def create_index_html() -> str:
                     'Content-Type': 'application/json',
                     ...(token && { 'Authorization': `Bearer ${token}` })
                 };
-                const res = await fetch(`/api${path}`, {
-                    method: 'POST',
-                    headers,
-                    body: JSON.stringify(data)
-                });
-                if (!res.ok) throw new Error(`API error: ${res.status}`);
-                return res.json();
+                try {
+                    const res = await fetch(`/api${path}`, {
+                        method: 'POST',
+                        headers,
+                        body: JSON.stringify(data)
+                    });
+                    if (!res.ok) {
+                        const errorMessages = {
+                            400: 'Invalid request. Please check your input and try again.',
+                            401: 'You are not authorized. Please log in and try again.',
+                            403: 'Access denied. You do not have permission to perform this action.',
+                            404: 'The requested resource was not found.',
+                            422: 'Invalid data format. Please check your input.',
+                            429: 'Too many requests. Please wait a moment and try again.',
+                            500: 'Server error. Our team has been notified. Please try again later.',
+                        };
+                        throw new Error(errorMessages[res.status] || `Something went wrong (Error ${res.status}). Please try again.`);
+                    }
+                    return res.json();
+                } catch (err) {
+                    if (err.name === 'TypeError' && err.message.includes('fetch')) {
+                        throw new Error('Unable to connect to server. Please check your internet connection.');
+                    }
+                    throw err;
+                }
             }
         };
+
+        // ==================== Skeleton Loader Components ====================
+
+        // Basic skeleton element with pulse animation
+        function SkeletonBox({ className = '', width, height }) {
+            const style = {};
+            if (width) style.width = width;
+            if (height) style.height = height;
+            return (
+                <div
+                    className={`bg-gray-200 rounded skeleton-pulse ${className}`}
+                    style={style}
+                />
+            );
+        }
+
+        // Skeleton for text lines
+        function SkeletonText({ lines = 1, className = '' }) {
+            return (
+                <div className={`space-y-2 ${className}`}>
+                    {Array.from({ length: lines }).map((_, i) => (
+                        <SkeletonBox
+                            key={i}
+                            className="h-4"
+                            width={i === lines - 1 && lines > 1 ? '75%' : '100%'}
+                        />
+                    ))}
+                </div>
+            );
+        }
+
+        // Skeleton for dashboard summary cards
+        function SkeletonDashboardSummary() {
+            return (
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                    {[1, 2, 3, 4].map((i) => (
+                        <div key={i} className="bg-white p-4 rounded-lg shadow">
+                            <SkeletonBox className="h-4 w-24 mb-2" />
+                            <SkeletonBox className="h-8 w-16" />
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+
+        // Skeleton for table rows
+        function SkeletonTableRow({ columns = 5 }) {
+            return (
+                <tr>
+                    {Array.from({ length: columns }).map((_, i) => (
+                        <td key={i} className="px-4 py-3">
+                            <SkeletonBox className="h-4" width={i === 0 ? '120px' : '80px'} />
+                        </td>
+                    ))}
+                </tr>
+            );
+        }
+
+        // Skeleton for suite list table
+        function SkeletonSuiteList({ rows = 5 }) {
+            return (
+                <div className="bg-white rounded-lg shadow overflow-hidden">
+                    <table className="min-w-full">
+                        <thead className="bg-gray-50">
+                            <tr>
+                                {['Suite', 'Agent', 'Status', 'Success Rate', 'Started'].map((header) => (
+                                    <th key={header} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                                        {header}
+                                    </th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                            {Array.from({ length: rows }).map((_, i) => (
+                                <SkeletonTableRow key={i} columns={5} />
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            );
+        }
+
+        // Skeleton for metrics panel
+        function SkeletonMetricsPanel({ agents = 2 }) {
+            return (
+                <div className="bg-white rounded-lg shadow">
+                    <div className="p-4 border-b bg-gray-50 rounded-t-lg">
+                        <SkeletonBox className="h-6 w-48 mb-2" />
+                        <SkeletonBox className="h-4 w-32" />
+                    </div>
+                    <div className={`grid gap-4 p-4 ${
+                        agents === 1 ? 'grid-cols-1' :
+                        agents === 2 ? 'grid-cols-1 md:grid-cols-2' :
+                        'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'
+                    }`}>
+                        {Array.from({ length: agents }).map((_, i) => (
+                            <div key={i} className="border rounded-lg overflow-hidden">
+                                <div className="p-3 bg-gray-50 border-b">
+                                    <SkeletonBox className="h-5 w-24" />
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 p-3">
+                                    {[1, 2, 3, 4, 5, 6].map((j) => (
+                                        <div key={j} className="p-2 rounded bg-gray-50">
+                                            <SkeletonBox className="h-3 w-12 mb-2" />
+                                            <SkeletonBox className="h-5 w-16" />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        // Skeleton for leaderboard matrix
+        function SkeletonLeaderboardMatrix({ rows = 5, cols = 3 }) {
+            return (
+                <div className="bg-white rounded-lg shadow">
+                    <div className="p-4 border-b flex items-center justify-between">
+                        <div>
+                            <SkeletonBox className="h-6 w-48 mb-2" />
+                            <SkeletonBox className="h-4 w-32" />
+                        </div>
+                        <div className="flex gap-2">
+                            <SkeletonBox className="h-8 w-24 rounded" />
+                            <SkeletonBox className="h-8 w-24 rounded" />
+                        </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full">
+                            <thead>
+                                <tr>
+                                    <th className="px-3 py-3 bg-gray-100">
+                                        <SkeletonBox className="h-4 w-16" />
+                                    </th>
+                                    <th className="px-3 py-3 bg-gray-100">
+                                        <SkeletonBox className="h-4 w-12" />
+                                    </th>
+                                    {Array.from({ length: cols }).map((_, i) => (
+                                        <th key={i} className="px-3 py-3 bg-gray-100 min-w-[120px]">
+                                            <div className="flex flex-col items-center gap-1">
+                                                <SkeletonBox className="h-5 w-20" />
+                                                <SkeletonBox className="h-3 w-16" />
+                                            </div>
+                                        </th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {Array.from({ length: rows }).map((_, i) => (
+                                    <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                        <td className="px-3 py-2">
+                                            <SkeletonBox className="h-4 w-32 mb-1" />
+                                            <SkeletonBox className="h-3 w-16" />
+                                        </td>
+                                        <td className="px-3 py-2 text-center">
+                                            <SkeletonBox className="h-4 w-10 mx-auto" />
+                                        </td>
+                                        {Array.from({ length: cols }).map((_, j) => (
+                                            <td key={j} className="px-3 py-2 text-center">
+                                                <SkeletonBox className="h-5 w-10 mx-auto mb-1" />
+                                                <SkeletonBox className="h-3 w-8 mx-auto" />
+                                            </td>
+                                        ))}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        }
+
+        // Skeleton for timeline
+        function SkeletonTimeline({ rows = 2 }) {
+            return (
+                <div className="bg-white rounded-lg shadow p-4">
+                    {/* Time scale skeleton */}
+                    <div className="h-8 border-b border-gray-300 bg-gray-50 mb-4 flex items-end justify-between px-4">
+                        {[0, 1, 2, 3, 4].map((i) => (
+                            <SkeletonBox key={i} className="h-4 w-10" />
+                        ))}
+                    </div>
+                    {/* Timeline rows skeleton */}
+                    {Array.from({ length: rows }).map((_, i) => (
+                        <div key={i} className="mb-4">
+                            <div className="flex items-center justify-between mb-2 px-2">
+                                <SkeletonBox className="h-5 w-32" />
+                                <SkeletonBox className="h-4 w-20" />
+                            </div>
+                            <div className="h-10 bg-gray-100 rounded border border-gray-200 relative overflow-hidden">
+                                {/* Random event markers */}
+                                {[15, 35, 50, 70, 85].map((pos, j) => (
+                                    <SkeletonBox
+                                        key={j}
+                                        className="absolute top-1/2 -translate-y-1/2 h-6 w-8 rounded"
+                                        width="2%"
+                                        style={{ left: `${pos}%` }}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+
+        // Skeleton for chart
+        function SkeletonChart() {
+            return (
+                <div className="bg-white p-4 rounded shadow">
+                    <SkeletonBox className="h-6 w-40 mb-4" />
+                    <div className="chart-container flex items-end justify-around px-4">
+                        {[60, 80, 45, 90, 70, 55, 85].map((height, i) => (
+                            <SkeletonBox
+                                key={i}
+                                className="w-8 rounded-t"
+                                height={`${height}%`}
+                            />
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        // ==================== Error Boundary Component ====================
+
+        // Error boundary wrapper for catching render errors
+        class ErrorBoundary extends React.Component {
+            constructor(props) {
+                super(props);
+                this.state = { hasError: false, error: null, errorInfo: null };
+            }
+
+            static getDerivedStateFromError(error) {
+                return { hasError: true, error };
+            }
+
+            componentDidCatch(error, errorInfo) {
+                this.setState({ errorInfo });
+                console.error('ErrorBoundary caught an error:', error, errorInfo);
+            }
+
+            handleRetry = () => {
+                this.setState({ hasError: false, error: null, errorInfo: null });
+                if (this.props.onRetry) {
+                    this.props.onRetry();
+                }
+            };
+
+            render() {
+                if (this.state.hasError) {
+                    return (
+                        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+                            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mb-4">
+                                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
+                            </div>
+                            <h3 className="text-lg font-semibold text-red-800 mb-2">
+                                {this.props.title || 'Something went wrong'}
+                            </h3>
+                            <p className="text-red-600 mb-4">
+                                {this.props.message || 'We encountered an unexpected error. Please try again.'}
+                            </p>
+                            <button
+                                onClick={this.handleRetry}
+                                className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                Try Again
+                            </button>
+                            {this.props.showDetails && this.state.error && (
+                                <details className="mt-4 text-left">
+                                    <summary className="cursor-pointer text-sm text-red-600 hover:text-red-800">
+                                        Show error details
+                                    </summary>
+                                    <pre className="mt-2 p-3 bg-red-100 rounded text-xs overflow-x-auto text-red-800">
+                                        {this.state.error.toString()}
+                                        {this.state.errorInfo?.componentStack}
+                                    </pre>
+                                </details>
+                            )}
+                        </div>
+                    );
+                }
+
+                return this.props.children;
+            }
+        }
+
+        // Functional error display with retry (for async errors)
+        function ErrorDisplay({ error, onRetry, title = 'Error', message }) {
+            const displayMessage = message || error?.message || 'An unexpected error occurred. Please try again.';
+
+            return (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+                    <div className="flex items-start gap-4">
+                        <div className="flex-shrink-0">
+                            <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-red-100">
+                                <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
+                            </div>
+                        </div>
+                        <div className="flex-grow">
+                            <h3 className="text-lg font-semibold text-red-800 mb-1">{title}</h3>
+                            <p className="text-red-600 mb-3">{displayMessage}</p>
+                            {onRetry && (
+                                <button
+                                    onClick={onRetry}
+                                    className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white text-sm rounded-md hover:bg-red-700 transition-colors"
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                    </svg>
+                                    Try Again
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // ==================== End Skeleton & Error Components ====================
 
         // Login form component
         function LoginForm({ onLogin }) {
@@ -245,8 +629,37 @@ def create_index_html() -> str:
                     .finally(() => setLoading(false));
             }, [executionId]);
 
-            if (loading) return <p>Loading...</p>;
-            if (!execution) return <p>Execution not found</p>;
+            if (loading) {
+                return (
+                    <div>
+                        <SkeletonBox className="h-5 w-24 mb-4" />
+                        <SkeletonBox className="h-7 w-48 mb-4" />
+                        <div className="grid grid-cols-3 gap-4 mb-6">
+                            {[1, 2, 3].map((i) => (
+                                <div key={i} className="bg-white p-4 rounded shadow">
+                                    <SkeletonBox className="h-4 w-16 mb-2" />
+                                    <SkeletonBox className="h-6 w-24" />
+                                </div>
+                            ))}
+                        </div>
+                        <SkeletonBox className="h-6 w-16 mb-2" />
+                        <SkeletonSuiteList rows={4} />
+                    </div>
+                );
+            }
+            if (!execution) {
+                return (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+                        <p className="text-yellow-700">Execution not found. It may have been deleted.</p>
+                        <button
+                            onClick={onBack}
+                            className="mt-4 text-blue-500 hover:text-blue-700"
+                        >
+                            &larr; Back to list
+                        </button>
+                    </div>
+                );
+            }
 
             return (
                 <div>
@@ -820,10 +1233,24 @@ def create_index_html() -> str:
             // Loading state
             if (loading) {
                 return (
-                    <div className="flex items-center justify-center py-12">
-                        <div className="text-center">
-                            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent mb-4"></div>
-                            <p className="text-gray-600">Loading comparison data...</p>
+                    <div>
+                        <SkeletonMetricsPanel agents={selectedAgents.length || 2} />
+                        <div className="mt-4">
+                            <SkeletonBox className="h-5 w-40 mb-2" />
+                            <div className={`grid gap-4 ${
+                                selectedAgents.length === 2 ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1 lg:grid-cols-3'
+                            }`}>
+                                {Array.from({ length: selectedAgents.length || 2 }).map((_, i) => (
+                                    <div key={i} className="bg-white rounded-lg shadow p-4">
+                                        <SkeletonBox className="h-6 w-32 mb-4" />
+                                        {[1, 2, 3, 4].map((j) => (
+                                            <div key={j} className="mb-2">
+                                                <SkeletonBox className="h-16 w-full rounded" />
+                                            </div>
+                                        ))}
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     </div>
                 );
@@ -836,9 +1263,11 @@ def create_index_html() -> str:
                         <h3 className="text-lg font-bold mb-4">Step-by-Step Comparison</h3>
 
                         {error && (
-                            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
-                                {error}
-                            </div>
+                            <ErrorDisplay
+                                error={{ message: error }}
+                                onRetry={loadComparison}
+                                title="Failed to load comparison"
+                            />
                         )}
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -1218,11 +1647,13 @@ def create_index_html() -> str:
             );
         }
 
-        // TimelineRow component - single agent timeline visualization
-        function TimelineRow({ timeline, totalDurationMs, zoomLevel, eventFilter, onEventClick }) {
+        // TimelineRow component - single agent timeline visualization with keyboard navigation
+        function TimelineRow({ timeline, totalDurationMs, zoomLevel, eventFilter, onEventClick, rowIndex = 0 }) {
             const [hoveredEvent, setHoveredEvent] = useState(null);
             const [hoverPosition, setHoverPosition] = useState({ x: 0, y: 0 });
+            const [focusedIndex, setFocusedIndex] = useState(-1);
             const rowRef = React.useRef(null);
+            const eventRefs = React.useRef([]);
 
             const filteredEvents = eventFilter === 'all'
                 ? timeline.events
@@ -1237,8 +1668,44 @@ def create_index_html() -> str:
                 setHoveredEvent(event);
             };
 
+            // Keyboard navigation handler
+            const handleKeyDown = useCallback((e, idx) => {
+                switch (e.key) {
+                    case 'ArrowLeft':
+                        e.preventDefault();
+                        if (idx > 0) {
+                            setFocusedIndex(idx - 1);
+                            eventRefs.current[idx - 1]?.focus();
+                        }
+                        break;
+                    case 'ArrowRight':
+                        e.preventDefault();
+                        if (idx < filteredEvents.length - 1) {
+                            setFocusedIndex(idx + 1);
+                            eventRefs.current[idx + 1]?.focus();
+                        }
+                        break;
+                    case 'Enter':
+                    case ' ':
+                        e.preventDefault();
+                        onEventClick(filteredEvents[idx]);
+                        break;
+                    case 'Home':
+                        e.preventDefault();
+                        setFocusedIndex(0);
+                        eventRefs.current[0]?.focus();
+                        break;
+                    case 'End':
+                        e.preventDefault();
+                        const lastIdx = filteredEvents.length - 1;
+                        setFocusedIndex(lastIdx);
+                        eventRefs.current[lastIdx]?.focus();
+                        break;
+                }
+            }, [filteredEvents, onEventClick]);
+
             return (
-                <div className="mb-4 last:mb-0">
+                <div className="mb-4 last:mb-0" role="region" aria-label={`Timeline for ${timeline.agent_name}`}>
                     {/* Agent header */}
                     <div className="flex items-center justify-between mb-2 px-2">
                         <div className="flex items-center gap-2">
@@ -1252,24 +1719,68 @@ def create_index_html() -> str:
                         </span>
                     </div>
 
-                    {/* Timeline track */}
-                    <div
-                        ref={rowRef}
-                        className="relative h-10 bg-gray-100 rounded border border-gray-200 overflow-hidden"
-                    >
-                        {filteredEvents.map((event, idx) => (
-                            <EventMarker
-                                key={`${event.sequence}-${idx}`}
-                                event={event}
-                                totalDurationMs={totalDurationMs}
-                                zoomLevel={zoomLevel}
-                                onHover={handleHover}
-                                onLeave={() => setHoveredEvent(null)}
-                                onClick={onEventClick}
-                            />
-                        ))}
-                        {hoveredEvent && (
-                            <EventTooltip event={hoveredEvent} position={hoverPosition} />
+                    {/* Timeline track with keyboard nav hint */}
+                    <div className="relative">
+                        <div
+                            ref={rowRef}
+                            className="relative h-10 bg-gray-100 rounded border border-gray-200 overflow-hidden"
+                            role="listbox"
+                            aria-label={`Events for ${timeline.agent_name}`}
+                        >
+                            {filteredEvents.map((event, idx) => {
+                                const colors = EVENT_COLORS[event.event_type] || {
+                                    bg: 'bg-gray-400',
+                                    border: 'border-gray-500',
+                                    text: 'text-gray-700',
+                                    icon: '?'
+                                };
+                                const position = (event.relative_time_ms / totalDurationMs) * 100 * zoomLevel;
+                                const width = event.duration_ms
+                                    ? Math.max(8, (event.duration_ms / totalDurationMs) * 100 * zoomLevel)
+                                    : 8;
+                                if (position > 100) return null;
+
+                                return (
+                                    <button
+                                        key={`${event.sequence}-${idx}`}
+                                        ref={el => eventRefs.current[idx] = el}
+                                        type="button"
+                                        role="option"
+                                        aria-selected={focusedIndex === idx}
+                                        aria-label={`${event.event_type.replace('_', ' ')} event ${idx + 1}: ${event.summary}`}
+                                        tabIndex={idx === 0 ? 0 : -1}
+                                        className={`timeline-event-focusable absolute top-1/2 -translate-y-1/2 h-6 rounded cursor-pointer transition-all hover:ring-2 hover:ring-offset-1 ${colors.border.replace('border', 'bg').replace('400', '500')} hover:${colors.border.replace('border', 'bg').replace('400', '600')}`}
+                                        style={{
+                                            left: `${Math.min(position, 100 - (width / 10))}%`,
+                                            width: `${Math.max(width, 0.5)}%`,
+                                            minWidth: '8px',
+                                        }}
+                                        onMouseEnter={() => handleHover(event)}
+                                        onMouseLeave={() => setHoveredEvent(null)}
+                                        onFocus={() => {
+                                            setFocusedIndex(idx);
+                                            handleHover(event);
+                                        }}
+                                        onBlur={() => setHoveredEvent(null)}
+                                        onClick={() => onEventClick(event)}
+                                        onKeyDown={(e) => handleKeyDown(e, idx)}
+                                        title={event.summary}
+                                    >
+                                        <div className="flex items-center justify-center h-full text-white text-xs font-bold">
+                                            {colors.icon}
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                            {hoveredEvent && (
+                                <EventTooltip event={hoveredEvent} position={hoverPosition} />
+                            )}
+                        </div>
+                        {/* Keyboard navigation hint - only show on first row */}
+                        {rowIndex === 0 && filteredEvents.length > 0 && (
+                            <div className="absolute -bottom-5 left-0 text-xs text-gray-400">
+                                Use arrow keys to navigate events, Enter to view details
+                            </div>
                         )}
                     </div>
                 </div>
@@ -1845,14 +2356,7 @@ def create_index_html() -> str:
 
             // Loading state
             if (loading) {
-                return (
-                    <div className="flex items-center justify-center py-12">
-                        <div className="text-center">
-                            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent mb-4"></div>
-                            <p className="text-gray-600">Loading timeline data...</p>
-                        </div>
-                    </div>
-                );
+                return <SkeletonTimeline rows={selectedAgents.length || 2} />;
             }
 
             // Selection UI
@@ -1873,9 +2377,11 @@ def create_index_html() -> str:
                         <h3 className="text-lg font-bold mb-4">Event Timeline</h3>
 
                         {error && (
-                            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
-                                {error}
-                            </div>
+                            <ErrorDisplay
+                                error={{ message: error }}
+                                onRetry={loadTimeline}
+                                title="Failed to load timeline"
+                            />
                         )}
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -1999,7 +2505,7 @@ def create_index_html() -> str:
                         />
 
                         {/* Timeline rows */}
-                        <div className="mt-4 overflow-x-auto">
+                        <div className="mt-4 overflow-x-auto pb-6">
                             <div style={{ width: `${100 * zoomLevel}%`, minWidth: '100%' }}>
                                 {timelineData.timelines.map((timeline, idx) => (
                                     <TimelineRow
@@ -2009,6 +2515,7 @@ def create_index_html() -> str:
                                         zoomLevel={zoomLevel}
                                         eventFilter={eventFilter}
                                         onEventClick={setSelectedEvent}
+                                        rowIndex={idx}
                                     />
                                 ))}
                             </div>
@@ -2063,24 +2570,34 @@ def create_index_html() -> str:
 
             if (loading) {
                 return (
-                    <div className="flex items-center justify-center py-12">
-                        <div className="text-center">
-                            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent mb-4"></div>
-                            <p className="text-gray-600">Loading...</p>
+                    <div className="bg-white p-6 rounded-lg shadow">
+                        <SkeletonBox className="h-6 w-40 mb-4" />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                            <div>
+                                <SkeletonBox className="h-4 w-24 mb-2" />
+                                <SkeletonBox className="h-10 w-full rounded" />
+                            </div>
+                            <div>
+                                <SkeletonBox className="h-4 w-32 mb-2" />
+                                <SkeletonBox className="h-10 w-full rounded" />
+                            </div>
                         </div>
+                        <SkeletonBox className="h-10 w-32 rounded" />
                     </div>
                 );
             }
 
             return (
-                <TimelineContainer
-                    suiteName={suiteName}
-                    testId=""
-                    agents={[]}
-                    availableAgents={agents}
-                    onBack={onBack}
-                    tests={tests}
-                />
+                <ErrorBoundary title="Timeline Error" message="Unable to display the timeline view.">
+                    <TimelineContainer
+                        suiteName={suiteName}
+                        testId=""
+                        agents={[]}
+                        availableAgents={agents}
+                        onBack={onBack}
+                        tests={tests}
+                    />
+                </ErrorBoundary>
             );
         }
 
@@ -2551,46 +3068,36 @@ def create_index_html() -> str:
             }, [loadMatrix]);
 
             if (loading) {
-                return (
-                    <div className="flex items-center justify-center py-12">
-                        <div className="text-center">
-                            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent mb-4"></div>
-                            <p className="text-gray-600">Loading leaderboard matrix...</p>
-                        </div>
-                    </div>
-                );
+                return <SkeletonLeaderboardMatrix rows={6} cols={3} />;
             }
 
             if (error) {
                 return (
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
-                        <p className="font-semibold">Error loading leaderboard</p>
-                        <p className="text-sm">{error}</p>
-                        <button
-                            onClick={loadMatrix}
-                            className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
-                        >
-                            Try again
-                        </button>
-                    </div>
+                    <ErrorDisplay
+                        error={{ message: error }}
+                        onRetry={loadMatrix}
+                        title="Error loading leaderboard"
+                    />
                 );
             }
 
             return (
-                <div>
-                    {onBack && (
-                        <button
-                            onClick={onBack}
-                            className="mb-4 text-blue-500 hover:text-blue-700 flex items-center gap-1"
-                        >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                            </svg>
-                            Back
-                        </button>
-                    )}
-                    <MatrixGrid data={matrixData} onRefresh={loadMatrix} />
-                </div>
+                <ErrorBoundary title="Leaderboard Error" onRetry={loadMatrix}>
+                    <div>
+                        {onBack && (
+                            <button
+                                onClick={onBack}
+                                className="mb-4 text-blue-500 hover:text-blue-700 flex items-center gap-1"
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                                </svg>
+                                Back
+                            </button>
+                        )}
+                        <MatrixGrid data={matrixData} onRefresh={loadMatrix} />
+                    </div>
+                </ErrorBoundary>
             );
         }
 
@@ -2693,8 +3200,28 @@ def create_index_html() -> str:
 
             if (loading) {
                 return (
-                    <div className="flex items-center justify-center h-screen">
-                        <p className="text-xl">Loading...</p>
+                    <div className="min-h-screen">
+                        {/* Header skeleton */}
+                        <header className="bg-blue-600 text-white p-4">
+                            <div className="container mx-auto flex justify-between items-center">
+                                <SkeletonBox className="h-7 w-36 bg-blue-400" />
+                                <div className="flex items-center gap-4">
+                                    {[1, 2, 3, 4, 5].map((i) => (
+                                        <SkeletonBox key={i} className="h-5 w-20 bg-blue-400" />
+                                    ))}
+                                </div>
+                            </div>
+                        </header>
+                        <main className="container mx-auto p-4">
+                            <SkeletonDashboardSummary />
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                <div>
+                                    <SkeletonBox className="h-6 w-40 mb-2" />
+                                    <SkeletonSuiteList rows={5} />
+                                </div>
+                                <SkeletonChart />
+                            </div>
+                        </main>
                     </div>
                 );
             }
@@ -2759,7 +3286,7 @@ def create_index_html() -> str:
                         )}
 
                         {view === 'dashboard' && summary && (
-                            <>
+                            <ErrorBoundary title="Dashboard Error" message="Unable to display the dashboard.">
                                 <DashboardSummary summary={summary} />
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                     <div>
@@ -2773,28 +3300,30 @@ def create_index_html() -> str:
                                         {selectedSuite && <TrendChart suiteName={selectedSuite} />}
                                     </div>
                                 </div>
-                            </>
+                            </ErrorBoundary>
                         )}
 
                         {view === 'suites' && !selectedExecution && summary && (
-                            <>
+                            <ErrorBoundary title="Suites Error" message="Unable to display suite list.">
                                 <h2 className="text-lg font-bold mb-4">Suite Executions</h2>
                                 <SuiteList
                                     executions={summary.recent_executions}
                                     onSelect={setSelectedExecution}
                                 />
-                            </>
+                            </ErrorBoundary>
                         )}
 
                         {view === 'suites' && selectedExecution && (
-                            <SuiteDetail
-                                executionId={selectedExecution}
-                                onBack={() => setSelectedExecution(null)}
-                            />
+                            <ErrorBoundary title="Suite Details Error" message="Unable to display suite details.">
+                                <SuiteDetail
+                                    executionId={selectedExecution}
+                                    onBack={() => setSelectedExecution(null)}
+                                />
+                            </ErrorBoundary>
                         )}
 
                         {view === 'compare' && (
-                            <>
+                            <ErrorBoundary title="Comparison Error" message="Unable to display agent comparison.">
                                 <h2 className="text-lg font-bold mb-4">Agent Comparison</h2>
                                 <div className="mb-4">
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -2813,11 +3342,11 @@ def create_index_html() -> str:
                                 {selectedSuite && (
                                     <AgentComparison suiteName={selectedSuite} agents={agents} />
                                 )}
-                            </>
+                            </ErrorBoundary>
                         )}
 
                         {view === 'leaderboard' && (
-                            <>
+                            <ErrorBoundary title="Leaderboard Error" message="Unable to display the leaderboard.">
                                 <h2 className="text-lg font-bold mb-4">Leaderboard Matrix</h2>
                                 <div className="mb-4">
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -2836,11 +3365,11 @@ def create_index_html() -> str:
                                 {selectedSuite && (
                                     <LeaderboardView suiteName={selectedSuite} />
                                 )}
-                            </>
+                            </ErrorBoundary>
                         )}
 
                         {view === 'timeline' && (
-                            <>
+                            <ErrorBoundary title="Timeline Error" message="Unable to display the timeline.">
                                 <h2 className="text-lg font-bold mb-4">Event Timeline</h2>
                                 <div className="mb-4">
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -2859,7 +3388,7 @@ def create_index_html() -> str:
                                 {selectedSuite && (
                                     <TimelineView suiteName={selectedSuite} />
                                 )}
-                            </>
+                            </ErrorBoundary>
                         )}
 
                         {!summary && view !== 'login' && view !== 'leaderboard' && view !== 'timeline' && (
