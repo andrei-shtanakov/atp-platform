@@ -84,17 +84,17 @@ Build React component for side-by-side step comparison view.
 ---
 
 ### TASK-003: Metrics Comparison Panel
-🟠 P1 | ⬜ TODO | Est: 2-3h
+🟠 P1 | ✅ DONE | Est: 2-3h
 
 **Description:**
 Add metrics panel showing score, tokens, duration comparison.
 
 **Checklist:**
-- [ ] Create `MetricsPanel.tsx` component
-- [ ] Display: score, tokens, steps, duration, cost for each agent
-- [ ] Highlight best values (highest score, lowest tokens)
-- [ ] Show percentage differences
-- [ ] Add responsive styling
+- [x] Create `MetricsPanel.tsx` component
+- [x] Display: score, tokens, steps, duration, cost for each agent
+- [x] Highlight best values (highest score, lowest tokens)
+- [x] Show percentage differences
+- [x] Add responsive styling
 
 **Traces to:** [REQ-003], [DESIGN-001]
 **Depends on:** [TASK-002]
@@ -244,7 +244,7 @@ Add event detail panel and type filters to timeline.
 ## Milestone 2: Polish
 
 ### TASK-011: Performance Optimization
-🟠 P1 | 🔄 IN_PROGRESS | Est: 3-4h
+🟠 P1 | ✅ DONE | Est: 3-4h
 
 **Description:**
 Optimize queries and rendering for performance requirements.
