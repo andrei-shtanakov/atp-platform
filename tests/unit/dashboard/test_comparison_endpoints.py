@@ -10,17 +10,31 @@ These tests verify that the test infrastructure supports the new endpoints
 and provides placeholder tests for when the endpoints are implemented.
 """
 
+from datetime import datetime
+from typing import Any
+
 import pytest
 from fastapi.testclient import TestClient
 
+from atp.dashboard.api import _format_event_summary
 from atp.dashboard.app import app
+from atp.dashboard.schemas import (
+    AgentExecutionDetail,
+    EventSummary,
+    SideBySideComparisonResponse,
+)
 from tests.fixtures.comparison import (
     SAMPLE_EVENTS,
     AgentFactory,
     RunResultFactory,
     SuiteExecutionFactory,
     TestExecutionFactory,
+    create_error_event,
     create_leaderboard_scenario,
+    create_llm_request_event,
+    create_progress_event,
+    create_reasoning_event,
+    create_tool_call_event,
 )
 from tests.fixtures.comparison.factories import reset_all_factories
 
@@ -43,9 +57,8 @@ class TestSideBySideComparisonEndpoint:
     def test_endpoint_requires_suite_name(self, client: TestClient) -> None:
         """Test that suite_name is required."""
         response = client.get("/api/compare/side-by-side")
-        # Should return 404 (not found) or 422 (validation error) until implemented
-        # When implemented, should require suite_name
-        assert response.status_code in [404, 422, 500]
+        # Should return 422 (validation error) for missing required param
+        assert response.status_code == 422
 
     def test_endpoint_requires_test_id(self, client: TestClient) -> None:
         """Test that test_id is required."""
@@ -53,7 +66,7 @@ class TestSideBySideComparisonEndpoint:
             "/api/compare/side-by-side",
             params={"suite_name": "test-suite"},
         )
-        assert response.status_code in [404, 422, 500]
+        assert response.status_code == 422
 
     def test_endpoint_requires_agents(self, client: TestClient) -> None:
         """Test that agents parameter is required."""
@@ -61,7 +74,7 @@ class TestSideBySideComparisonEndpoint:
             "/api/compare/side-by-side",
             params={"suite_name": "test-suite", "test_id": "test-001"},
         )
-        assert response.status_code in [404, 422, 500]
+        assert response.status_code == 422
 
     def test_endpoint_validates_min_agents(self, client: TestClient) -> None:
         """Test that at least 2 agents are required."""
@@ -74,7 +87,7 @@ class TestSideBySideComparisonEndpoint:
             },
         )
         # Should fail validation (min 2 agents)
-        assert response.status_code in [404, 422, 500]
+        assert response.status_code == 422
 
     def test_endpoint_validates_max_agents(self, client: TestClient) -> None:
         """Test that at most 3 agents are allowed."""
@@ -87,7 +100,271 @@ class TestSideBySideComparisonEndpoint:
             },
         )
         # Should fail validation (max 3 agents)
-        assert response.status_code in [404, 422, 500]
+        assert response.status_code == 422
+
+    def test_endpoint_returns_error_when_no_executions(
+        self, client: TestClient
+    ) -> None:
+        """Test that error is returned when no executions exist.
+
+        Note: This test uses sync TestClient which doesn't have proper
+        async database setup, so we expect either 404 (proper response)
+        or 500 (database not configured). The actual logic is tested
+        in integration tests with proper database setup.
+        """
+        response = client.get(
+            "/api/compare/side-by-side",
+            params={
+                "suite_name": "nonexistent-suite",
+                "test_id": "test-001",
+                "agents": ["agent-1", "agent-2"],
+            },
+        )
+        # Should return 404 (no executions) or 500 (db not configured)
+        assert response.status_code in [404, 500]
+
+
+class TestFormatEventSummary:
+    """Tests for _format_event_summary helper function."""
+
+    def test_format_tool_call_event(self) -> None:
+        """Test formatting a tool_call event."""
+        event = create_tool_call_event(
+            tool="web_search",
+            status="success",
+            sequence=1,
+        )
+        summary = _format_event_summary(event)
+
+        assert summary.event_type == "tool_call"
+        assert summary.sequence == 1
+        assert "web_search" in summary.summary
+        assert "success" in summary.summary
+        assert summary.data["tool"] == "web_search"
+
+    def test_format_llm_request_event(self) -> None:
+        """Test formatting an llm_request event."""
+        event = create_llm_request_event(
+            model="claude-sonnet-4-20250514",
+            input_tokens=500,
+            output_tokens=200,
+            sequence=2,
+        )
+        summary = _format_event_summary(event)
+
+        assert summary.event_type == "llm_request"
+        assert summary.sequence == 2
+        assert "claude-sonnet-4-20250514" in summary.summary
+        assert "700 tokens" in summary.summary  # 500 + 200
+        assert summary.data["model"] == "claude-sonnet-4-20250514"
+
+    def test_format_reasoning_event(self) -> None:
+        """Test formatting a reasoning event."""
+        event = create_reasoning_event(
+            thought="Analyzing the problem structure",
+            step="Step 1 of 3",
+            sequence=3,
+        )
+        summary = _format_event_summary(event)
+
+        assert summary.event_type == "reasoning"
+        assert summary.sequence == 3
+        assert "Analyzing" in summary.summary
+        assert summary.data.get("thought") == "Analyzing the problem structure"
+
+    def test_format_reasoning_event_truncates_long_thought(self) -> None:
+        """Test that long thoughts are truncated in summary."""
+        long_thought = "A" * 100  # 100 characters
+        event = create_reasoning_event(thought=long_thought, sequence=0)
+        summary = _format_event_summary(event)
+
+        # Summary should be truncated to 50 chars + "..."
+        assert len(summary.summary) == 53
+
+    def test_format_progress_event_with_message(self) -> None:
+        """Test formatting a progress event with message."""
+        event = create_progress_event(
+            percentage=50.0,
+            message="Halfway done",
+            sequence=4,
+        )
+        summary = _format_event_summary(event)
+
+        assert summary.event_type == "progress"
+        assert summary.sequence == 4
+        assert "50" in summary.summary
+        assert "Halfway done" in summary.summary
+
+    def test_format_progress_event_without_message(self) -> None:
+        """Test formatting a progress event without message."""
+        event = create_progress_event(
+            percentage=75.0,
+            message=None,
+            sequence=5,
+        )
+        summary = _format_event_summary(event)
+
+        assert summary.event_type == "progress"
+        assert "75" in summary.summary
+
+    def test_format_error_event(self) -> None:
+        """Test formatting an error event."""
+        event = create_error_event(
+            error_type="RuntimeError",
+            message="Something went wrong",
+            recoverable=True,
+            sequence=5,
+        )
+        summary = _format_event_summary(event)
+
+        assert summary.event_type == "error"
+        assert summary.sequence == 5
+        assert "RuntimeError" in summary.summary
+        assert "Something went wrong" in summary.summary
+
+    def test_format_unknown_event_type(self) -> None:
+        """Test formatting an unknown event type."""
+        event: dict[str, Any] = {
+            "version": "1.0",
+            "task_id": "task-001",
+            "timestamp": datetime.now().isoformat(),
+            "sequence": 6,
+            "event_type": "custom_event",
+            "payload": {"custom": "data"},
+        }
+        summary = _format_event_summary(event)
+
+        assert summary.event_type == "custom_event"
+        assert "custom_event" in summary.summary
+
+    def test_format_event_parses_timestamp(self) -> None:
+        """Test that timestamp is properly parsed."""
+        fixed_time = datetime(2024, 6, 15, 10, 30, 0)
+        event = create_tool_call_event(timestamp=fixed_time, sequence=0)
+        summary = _format_event_summary(event)
+
+        assert summary.timestamp.year == 2024
+        assert summary.timestamp.month == 6
+        assert summary.timestamp.day == 15
+
+
+class TestEventSummarySchema:
+    """Tests for EventSummary Pydantic schema."""
+
+    def test_event_summary_creation(self) -> None:
+        """Test creating EventSummary."""
+        summary = EventSummary(
+            sequence=1,
+            timestamp=datetime.now(),
+            event_type="tool_call",
+            summary="Test summary",
+            data={"key": "value"},
+        )
+        assert summary.sequence == 1
+        assert summary.event_type == "tool_call"
+        assert summary.summary == "Test summary"
+        assert summary.data == {"key": "value"}
+
+
+class TestAgentExecutionDetailSchema:
+    """Tests for AgentExecutionDetail Pydantic schema."""
+
+    def test_agent_execution_detail_creation(self) -> None:
+        """Test creating AgentExecutionDetail."""
+        detail = AgentExecutionDetail(
+            agent_name="test-agent",
+            test_execution_id=1,
+            score=85.5,
+            success=True,
+            duration_seconds=120.5,
+            total_tokens=1500,
+            total_steps=5,
+            tool_calls=3,
+            llm_calls=5,
+            cost_usd=0.015,
+            events=[],
+        )
+        assert detail.agent_name == "test-agent"
+        assert detail.score == 85.5
+        assert detail.success is True
+        assert detail.events == []
+
+    def test_agent_execution_detail_with_none_values(self) -> None:
+        """Test creating AgentExecutionDetail with None values."""
+        detail = AgentExecutionDetail(
+            agent_name="test-agent",
+            test_execution_id=1,
+            score=None,
+            success=False,
+            duration_seconds=None,
+            total_tokens=None,
+            total_steps=None,
+            tool_calls=None,
+            llm_calls=None,
+            cost_usd=None,
+            events=[],
+        )
+        assert detail.score is None
+        assert detail.total_tokens is None
+
+
+class TestSideBySideComparisonResponseSchema:
+    """Tests for SideBySideComparisonResponse Pydantic schema."""
+
+    def test_side_by_side_response_creation(self) -> None:
+        """Test creating SideBySideComparisonResponse."""
+        agent_detail = AgentExecutionDetail(
+            agent_name="agent-1",
+            test_execution_id=1,
+            score=90.0,
+            success=True,
+            duration_seconds=100.0,
+            total_tokens=1000,
+            total_steps=4,
+            tool_calls=2,
+            llm_calls=4,
+            cost_usd=0.01,
+            events=[],
+        )
+        response = SideBySideComparisonResponse(
+            suite_name="benchmark-suite",
+            test_id="test-001",
+            test_name="Test Case 1",
+            agents=[agent_detail],
+        )
+        assert response.suite_name == "benchmark-suite"
+        assert response.test_id == "test-001"
+        assert response.test_name == "Test Case 1"
+        assert len(response.agents) == 1
+        assert response.agents[0].agent_name == "agent-1"
+
+    def test_side_by_side_response_multiple_agents(self) -> None:
+        """Test response with multiple agents."""
+        agents = [
+            AgentExecutionDetail(
+                agent_name=f"agent-{i}",
+                test_execution_id=i,
+                score=80.0 + i * 5,
+                success=True,
+                duration_seconds=100.0 + i * 10,
+                total_tokens=1000,
+                total_steps=4,
+                tool_calls=2,
+                llm_calls=4,
+                cost_usd=0.01,
+                events=[],
+            )
+            for i in range(1, 4)  # 3 agents
+        ]
+        response = SideBySideComparisonResponse(
+            suite_name="test-suite",
+            test_id="test-001",
+            test_name="Test",
+            agents=agents,
+        )
+        assert len(response.agents) == 3
+        assert response.agents[0].agent_name == "agent-1"
+        assert response.agents[2].agent_name == "agent-3"
 
 
 class TestLeaderboardMatrixEndpoint:

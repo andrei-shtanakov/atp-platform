@@ -9,6 +9,7 @@ from datetime import datetime
 import pytest
 
 from tests.fixtures.comparison import (
+    LEADERBOARD_SCENARIOS,
     SAMPLE_EVENTS,
     AgentFactory,
     ArtifactFactory,
@@ -555,6 +556,78 @@ class TestLeaderboardScenario:
         novice_avg = sum(novice_scores) / len(novice_scores)
         # With seed=42, expert should outscore novice
         assert expert_avg > novice_avg
+
+
+class TestLeaderboardScenarios:
+    """Tests for pre-built LEADERBOARD_SCENARIOS."""
+
+    def test_leaderboard_scenarios_available(self) -> None:
+        """Test that LEADERBOARD_SCENARIOS dict contains expected keys."""
+        expected_keys = {
+            "basic",
+            "large",
+            "hard_for_all",
+            "easy_suite",
+            "mixed_performance",
+        }
+        assert expected_keys == set(LEADERBOARD_SCENARIOS.keys())
+
+    def test_basic_scenario_returns_valid_data(self) -> None:
+        """Test that basic scenario creates valid leaderboard data."""
+        scenario = LEADERBOARD_SCENARIOS["basic"]()
+        assert isinstance(scenario, LeaderboardScenario)
+        assert len(scenario.agents) == 3
+        assert len(scenario.score_matrix) > 0
+
+    def test_large_scenario_returns_valid_data(self) -> None:
+        """Test that large scenario creates valid leaderboard data."""
+        scenario = LEADERBOARD_SCENARIOS["large"]()
+        assert isinstance(scenario, LeaderboardScenario)
+        assert len(scenario.agents) == 5
+        assert len(scenario.test_executions) > 0
+
+    def test_hard_for_all_scenario_has_low_scores(self) -> None:
+        """Test that hard_for_all scenario has generally lower scores."""
+        scenario = LEADERBOARD_SCENARIOS["hard_for_all"]()
+        all_scores: list[float] = []
+        for test_scores in scenario.score_matrix.values():
+            for score in test_scores.values():
+                if score is not None:
+                    all_scores.append(score)
+        # With low skills and hard difficulty, average should be below 60
+        avg_score = sum(all_scores) / len(all_scores)
+        assert avg_score < 60
+
+    def test_easy_suite_scenario_has_high_scores(self) -> None:
+        """Test that easy_suite scenario has generally higher scores."""
+        scenario = LEADERBOARD_SCENARIOS["easy_suite"]()
+        all_scores: list[float] = []
+        for test_scores in scenario.score_matrix.values():
+            for score in test_scores.values():
+                if score is not None:
+                    all_scores.append(score)
+        # With high skills and easy difficulty, average should be above 80
+        avg_score = sum(all_scores) / len(all_scores)
+        assert avg_score > 80
+
+    def test_mixed_performance_scenario_shows_variation(self) -> None:
+        """Test that mixed_performance scenario shows score variation."""
+        scenario = LEADERBOARD_SCENARIOS["mixed_performance"]()
+        # Get scores by agent
+        agent_scores: dict[str, list[float]] = {}
+        for test_scores in scenario.score_matrix.values():
+            for agent_name, score in test_scores.items():
+                if score is not None:
+                    if agent_name not in agent_scores:
+                        agent_scores[agent_name] = []
+                    agent_scores[agent_name].append(score)
+
+        # Calculate averages
+        agent_averages = {
+            name: sum(scores) / len(scores) for name, scores in agent_scores.items()
+        }
+        # Specialist should outperform beginner
+        assert agent_averages.get("specialist", 0) > agent_averages.get("beginner", 100)
 
 
 class TestEventTypeEnum:

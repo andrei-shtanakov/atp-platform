@@ -207,6 +207,44 @@ class TrendResponse(BaseModel):
     test_trends: list[TestTrend] = Field(default_factory=list)
 
 
+# ==================== Side-by-Side Comparison Schemas ====================
+
+
+class EventSummary(BaseModel):
+    """Summary of a single event for timeline/comparison views."""
+
+    sequence: int
+    timestamp: datetime
+    event_type: str  # tool_call, llm_request, reasoning, error, progress
+    summary: str  # One-line description
+    data: dict[str, Any]  # Full event data
+
+
+class AgentExecutionDetail(BaseModel):
+    """Detailed execution data for a single agent in side-by-side comparison."""
+
+    agent_name: str
+    test_execution_id: int
+    score: float | None
+    success: bool
+    duration_seconds: float | None
+    total_tokens: int | None
+    total_steps: int | None
+    tool_calls: int | None
+    llm_calls: int | None
+    cost_usd: float | None
+    events: list[EventSummary]  # Ordered list of events
+
+
+class SideBySideComparisonResponse(BaseModel):
+    """Response for side-by-side agent comparison on a specific test."""
+
+    suite_name: str
+    test_id: str
+    test_name: str
+    agents: list[AgentExecutionDetail]
+
+
 # ==================== Agent Comparison Schemas ====================
 
 

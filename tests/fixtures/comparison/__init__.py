@@ -18,8 +18,10 @@ from tests.fixtures.comparison.factories import (
     ScoreComponentFactory,
     SuiteExecutionFactory,
     TestExecutionFactory,
+    reset_all_factories,
 )
 from tests.fixtures.comparison.leaderboard import (
+    LEADERBOARD_SCENARIOS,
     LeaderboardScenario,
     create_leaderboard_scenario,
     generate_leaderboard_data,
@@ -44,7 +46,10 @@ __all__ = [
     "EvaluationResultFactory",
     "ScoreComponentFactory",
     # Leaderboard
+    "LEADERBOARD_SCENARIOS",
     "LeaderboardScenario",
     "create_leaderboard_scenario",
     "generate_leaderboard_data",
+    # Factory utilities
+    "reset_all_factories",
 ]
