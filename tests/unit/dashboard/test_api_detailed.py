@@ -167,6 +167,7 @@ class TestRouterRoutes:
         """Test that comparison routes exist."""
         paths = [r.path for r in router.routes if hasattr(r, "path")]
         assert "/compare/agents" in paths
+        assert "/compare/side-by-side" in paths
 
     def test_dashboard_routes_exist(self) -> None:
         """Test that dashboard routes exist."""

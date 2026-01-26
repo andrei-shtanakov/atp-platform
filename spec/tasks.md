@@ -7,34 +7,34 @@
 **Priority:**
 | Emoji | Code | Description |
 |-------|------|-------------|
-| :red_circle: | P0 | Critical — blocks release |
-| :orange_circle: | P1 | High — needed for full functionality |
-| :yellow_circle: | P2 | Medium — improves experience |
-| :green_circle: | P3 | Low — nice to have |
+| 🔴 | P0 | Critical — blocks release |
+| 🟠 | P1 | High — needed for full functionality |
+| 🟡 | P2 | Medium — improves experience |
+| 🟢 | P3 | Low — nice to have |
 
 **Status:**
 | Emoji | Status | Description |
 |-------|--------|-------------|
-| :white_large_square: | TODO | Not started |
-| :arrows_counterclockwise: | IN PROGRESS | In work |
-| :white_check_mark: | DONE | Completed |
-| :pause_button: | BLOCKED | Waiting on dependency |
+| ⬜ | TODO | Not started |
+| 🔄 | IN PROGRESS | In work |
+| ✅ | DONE | Completed |
+| ⏸️ | BLOCKED | Waiting on dependency |
 
 ---
 
 ## Milestone 1: Comparison Foundation
 
 ### TASK-100: Test Infrastructure
-:red_circle: P0 | :white_large_square: TODO | Est: 2-3h
+🔴 P0 | ✅ DONE | Est: 2-3h
 
 **Description:**
 Set up test infrastructure for new comparison features.
 
 **Checklist:**
-- [ ] Create test fixtures with sample events data
-- [ ] Add factory functions for TestExecution with events_json
-- [ ] Create mock data generator for leaderboard tests
-- [ ] Verify existing test infrastructure covers new endpoints
+- [x] Create test fixtures with sample events data (`tests/fixtures/comparison/events.py`)
+- [x] Add factory functions for TestExecution with events_json (`tests/fixtures/comparison/factories.py`)
+- [x] Create mock data generator for leaderboard tests (`tests/fixtures/comparison/leaderboard.py`)
+- [x] Verify existing test infrastructure covers new endpoints
 
 **Traces to:** [NFR-003]
 **Depends on:** -
@@ -43,7 +43,7 @@ Set up test infrastructure for new comparison features.
 ---
 
 ### TASK-001: Side-by-Side API Endpoint
-:red_circle: P0 | :white_large_square: TODO | Est: 3-4h
+🔴 P0 | 🔄 IN_PROGRESS | Est: 3-4h
 
 **Description:**
 Implement `/compare/side-by-side` endpoint that returns detailed comparison data for 2-3 agents on a specific test.
@@ -64,7 +64,7 @@ Implement `/compare/side-by-side` endpoint that returns detailed comparison data
 ---
 
 ### TASK-002: Step Comparison UI
-:red_circle: P0 | :white_large_square: TODO | Est: 4-5h
+🔴 P0 | ⬜ TODO | Est: 4-5h
 
 **Description:**
 Build React component for side-by-side step comparison view.
@@ -84,7 +84,7 @@ Build React component for side-by-side step comparison view.
 ---
 
 ### TASK-003: Metrics Comparison Panel
-:orange_circle: P1 | :white_large_square: TODO | Est: 2-3h
+🟠 P1 | ⬜ TODO | Est: 2-3h
 
 **Description:**
 Add metrics panel showing score, tokens, duration comparison.
@@ -103,7 +103,7 @@ Add metrics panel showing score, tokens, duration comparison.
 ---
 
 ### TASK-004: Leaderboard Matrix API
-:red_circle: P0 | :white_large_square: TODO | Est: 4-5h
+🔴 P0 | ⬜ TODO | Est: 4-5h
 
 **Description:**
 Implement `/leaderboard/matrix` endpoint returning test × agent matrix.
@@ -124,7 +124,7 @@ Implement `/leaderboard/matrix` endpoint returning test × agent matrix.
 ---
 
 ### TASK-005: Leaderboard Matrix UI
-:red_circle: P0 | :white_large_square: TODO | Est: 4-5h
+🔴 P0 | ⬜ TODO | Est: 4-5h
 
 **Description:**
 Build React component for leaderboard matrix visualization.
@@ -144,7 +144,7 @@ Build React component for leaderboard matrix visualization.
 ---
 
 ### TASK-006: Leaderboard Aggregations
-:orange_circle: P1 | :white_large_square: TODO | Est: 2-3h
+🟠 P1 | ⬜ TODO | Est: 2-3h
 
 **Description:**
 Add summary row/column with aggregated statistics.
@@ -163,7 +163,7 @@ Add summary row/column with aggregated statistics.
 ---
 
 ### TASK-007: Timeline Events API
-:red_circle: P0 | :white_large_square: TODO | Est: 3-4h
+🔴 P0 | ⬜ TODO | Est: 3-4h
 
 **Description:**
 Implement `/timeline/events` endpoint for single agent timeline.
@@ -183,7 +183,7 @@ Implement `/timeline/events` endpoint for single agent timeline.
 ---
 
 ### TASK-008: Multi-Agent Timeline API
-:red_circle: P0 | :white_large_square: TODO | Est: 2-3h
+🔴 P0 | ⬜ TODO | Est: 2-3h
 
 **Description:**
 Implement `/timeline/compare` endpoint for comparing agent timelines.
@@ -202,7 +202,7 @@ Implement `/timeline/compare` endpoint for comparing agent timelines.
 ---
 
 ### TASK-009: Timeline UI Component
-:red_circle: P0 | :white_large_square: TODO | Est: 5-6h
+🔴 P0 | ⬜ TODO | Est: 5-6h
 
 **Description:**
 Build interactive timeline visualization using Chart.js.
@@ -222,7 +222,7 @@ Build interactive timeline visualization using Chart.js.
 ---
 
 ### TASK-010: Event Details and Filters
-:orange_circle: P1 | :white_large_square: TODO | Est: 3-4h
+🟠 P1 | ⬜ TODO | Est: 3-4h
 
 **Description:**
 Add event detail panel and type filters to timeline.
@@ -244,7 +244,7 @@ Add event detail panel and type filters to timeline.
 ## Milestone 2: Polish
 
 ### TASK-011: Performance Optimization
-:orange_circle: P1 | :white_large_square: TODO | Est: 3-4h
+🟠 P1 | ⬜ TODO | Est: 3-4h
 
 **Description:**
 Optimize queries and rendering for performance requirements.
@@ -263,7 +263,7 @@ Optimize queries and rendering for performance requirements.
 ---
 
 ### TASK-012: UX Polish
-:orange_circle: P1 | :white_large_square: TODO | Est: 2-3h
+🟠 P1 | ⬜ TODO | Est: 2-3h
 
 **Description:**
 Add loading states, error handling, and responsive design.
@@ -284,7 +284,7 @@ Add loading states, error handling, and responsive design.
 ## Dependency Graph
 
 ```
-TASK-100 (Test Infrastructure)
+TASK-100 (Test Infrastructure) ✅
     │
     ├──► TASK-001 (Side-by-Side API)
     │        └──► TASK-002 (Step Comparison UI)
@@ -309,12 +309,18 @@ TASK-012 (UX Polish) depends on: TASK-002, TASK-005, TASK-009
 
 | Milestone | Tasks | Total Est. |
 |-----------|-------|------------|
-| Foundation | TASK-100 to TASK-010 | ~35-40h |
+| Foundation | TASK-001 to TASK-010 | ~32-37h |
 | Polish | TASK-011, TASK-012 | ~5-7h |
-| **Total** | 12 tasks | ~40-47h |
+| **Total** | 11 tasks remaining | ~37-44h |
+
+**Completed:** TASK-100 (Test Infrastructure)
 
 ### Ready to Start
-- [TASK-100] Test Infrastructure (no dependencies)
+- [TASK-001] Side-by-Side API (TASK-100 done)
+- [TASK-004] Leaderboard Matrix API (TASK-100 done)
+- [TASK-007] Timeline Events API (TASK-100 done)
 
 ### Critical Path
-TASK-100 → TASK-001 → TASK-002 → TASK-009 → TASK-010
+TASK-001 → TASK-002 → TASK-003 (comparison)
+TASK-004 → TASK-005 → TASK-006 (leaderboard)
+TASK-007 → TASK-008/009 → TASK-010 (timeline)
