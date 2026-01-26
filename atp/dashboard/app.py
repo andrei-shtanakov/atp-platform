@@ -68,6 +68,11 @@ def create_index_html() -> str:
         .matrix-scroll-container::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
         .matrix-scroll-container::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
         .matrix-scroll-container::-webkit-scrollbar-thumb:hover { background: #a1a1a1; }
+        /* Timeline styles */
+        .timeline-container { position: relative; overflow-x: auto; }
+        .timeline-track { position: relative; min-height: 40px; }
+        .timeline-marker { transition: all 0.15s ease; }
+        .timeline-marker:hover { transform: scale(1.1); z-index: 10; }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -807,6 +812,617 @@ def create_index_html() -> str:
             );
         }
 
+        // ==================== Timeline Components ====================
+
+        // TimeScale component - renders time axis with labels
+        function TimeScale({ totalDurationMs, zoomLevel, width }) {
+            // Calculate tick intervals based on duration and zoom
+            const effectiveDuration = totalDurationMs / zoomLevel;
+            const tickCount = Math.min(10, Math.max(4, Math.floor(width / 100)));
+            const tickInterval = effectiveDuration / tickCount;
+
+            const ticks = [];
+            for (let i = 0; i <= tickCount; i++) {
+                const timeMs = i * tickInterval;
+                const position = (i / tickCount) * 100;
+                ticks.push({ timeMs, position });
+            }
+
+            const formatTime = (ms) => {
+                if (ms >= 60000) {
+                    const mins = Math.floor(ms / 60000);
+                    const secs = Math.floor((ms % 60000) / 1000);
+                    return `${mins}m ${secs}s`;
+                } else if (ms >= 1000) {
+                    return `${(ms / 1000).toFixed(1)}s`;
+                }
+                return `${Math.round(ms)}ms`;
+            };
+
+            return (
+                <div className="relative h-8 border-b border-gray-300 bg-gray-50">
+                    {ticks.map((tick, idx) => (
+                        <div
+                            key={idx}
+                            className="absolute top-0 h-full flex flex-col items-center"
+                            style={{ left: `${tick.position}%`, transform: 'translateX(-50%)' }}
+                        >
+                            <div className="h-2 w-px bg-gray-400"></div>
+                            <span className="text-xs text-gray-500 mt-1 whitespace-nowrap">
+                                {formatTime(tick.timeMs)}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+
+        // EventMarker component - individual event on timeline with type-based colors
+        function EventMarker({ event, totalDurationMs, zoomLevel, onHover, onLeave, onClick }) {
+            const colors = EVENT_COLORS[event.event_type] || {
+                bg: 'bg-gray-400',
+                border: 'border-gray-500',
+                text: 'text-gray-700',
+                icon: '?'
+            };
+
+            // Calculate position based on relative time
+            const position = (event.relative_time_ms / totalDurationMs) * 100 * zoomLevel;
+
+            // Calculate width based on duration (if available)
+            const width = event.duration_ms
+                ? Math.max(8, (event.duration_ms / totalDurationMs) * 100 * zoomLevel)
+                : 8;
+
+            // Clamp position to visible area
+            if (position > 100) return null;
+
+            return (
+                <div
+                    className={`absolute top-1/2 -translate-y-1/2 h-6 rounded cursor-pointer transition-all hover:ring-2 hover:ring-offset-1 ${colors.border.replace('border', 'bg').replace('400', '500')} hover:${colors.border.replace('border', 'bg').replace('400', '600')}`}
+                    style={{
+                        left: `${Math.min(position, 100 - (width / 10))}%`,
+                        width: `${Math.max(width, 0.5)}%`,
+                        minWidth: '8px',
+                    }}
+                    onMouseEnter={() => onHover(event)}
+                    onMouseLeave={onLeave}
+                    onClick={() => onClick(event)}
+                    title={event.summary}
+                >
+                    <div className="flex items-center justify-center h-full text-white text-xs font-bold">
+                        {colors.icon}
+                    </div>
+                </div>
+            );
+        }
+
+        // EventTooltip component - hover tooltip with event summary
+        function EventTooltip({ event, position }) {
+            if (!event) return null;
+
+            const colors = EVENT_COLORS[event.event_type] || {
+                bg: 'bg-gray-50',
+                border: 'border-gray-400',
+                text: 'text-gray-700',
+                icon: '?'
+            };
+
+            const formatTime = (ms) => {
+                if (ms >= 60000) {
+                    const mins = Math.floor(ms / 60000);
+                    const secs = Math.floor((ms % 60000) / 1000);
+                    return `${mins}m ${secs}s`;
+                } else if (ms >= 1000) {
+                    return `${(ms / 1000).toFixed(1)}s`;
+                }
+                return `${Math.round(ms)}ms`;
+            };
+
+            return (
+                <div
+                    className="absolute z-50 bg-white border border-gray-300 rounded-lg shadow-lg p-3 max-w-xs pointer-events-none"
+                    style={{
+                        left: `${Math.min(position.x, 70)}%`,
+                        top: '100%',
+                        marginTop: '8px',
+                    }}
+                >
+                    <div className={`flex items-center gap-2 mb-2 ${colors.text}`}>
+                        <span className={`w-5 h-5 rounded-full ${colors.border.replace('border', 'bg').replace('400', '200')} flex items-center justify-center text-xs font-bold`}>
+                            {colors.icon}
+                        </span>
+                        <span className="font-semibold uppercase text-sm">
+                            {event.event_type.replace('_', ' ')}
+                        </span>
+                        <span className="text-gray-400 text-xs">#{event.sequence + 1}</span>
+                    </div>
+                    <p className="text-sm text-gray-700 mb-2">{event.summary}</p>
+                    <div className="flex gap-4 text-xs text-gray-500">
+                        <span>Start: {formatTime(event.relative_time_ms)}</span>
+                        {event.duration_ms && <span>Duration: {formatTime(event.duration_ms)}</span>}
+                    </div>
+                </div>
+            );
+        }
+
+        // TimelineRow component - single agent timeline visualization
+        function TimelineRow({ timeline, totalDurationMs, zoomLevel, eventFilter, onEventClick }) {
+            const [hoveredEvent, setHoveredEvent] = useState(null);
+            const [hoverPosition, setHoverPosition] = useState({ x: 0, y: 0 });
+            const rowRef = React.useRef(null);
+
+            const filteredEvents = eventFilter === 'all'
+                ? timeline.events
+                : timeline.events.filter(e => e.event_type === eventFilter);
+
+            const handleHover = (event) => {
+                if (rowRef.current) {
+                    const rect = rowRef.current.getBoundingClientRect();
+                    const position = (event.relative_time_ms / totalDurationMs) * 100 * zoomLevel;
+                    setHoverPosition({ x: position, y: 0 });
+                }
+                setHoveredEvent(event);
+            };
+
+            return (
+                <div className="mb-4 last:mb-0">
+                    {/* Agent header */}
+                    <div className="flex items-center justify-between mb-2 px-2">
+                        <div className="flex items-center gap-2">
+                            <span className="font-semibold text-gray-800">{timeline.agent_name}</span>
+                            <span className="text-xs text-gray-500">
+                                ({timeline.events.length} events)
+                            </span>
+                        </div>
+                        <span className="text-xs text-gray-500">
+                            Duration: {(timeline.total_duration_ms / 1000).toFixed(2)}s
+                        </span>
+                    </div>
+
+                    {/* Timeline track */}
+                    <div
+                        ref={rowRef}
+                        className="relative h-10 bg-gray-100 rounded border border-gray-200 overflow-hidden"
+                    >
+                        {filteredEvents.map((event, idx) => (
+                            <EventMarker
+                                key={`${event.sequence}-${idx}`}
+                                event={event}
+                                totalDurationMs={totalDurationMs}
+                                zoomLevel={zoomLevel}
+                                onHover={handleHover}
+                                onLeave={() => setHoveredEvent(null)}
+                                onClick={onEventClick}
+                            />
+                        ))}
+                        {hoveredEvent && (
+                            <EventTooltip event={hoveredEvent} position={hoverPosition} />
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        // EventDetailPanel component - full event details panel
+        function EventDetailPanel({ event, onClose }) {
+            if (!event) return null;
+
+            const colors = EVENT_COLORS[event.event_type] || {
+                bg: 'bg-gray-50',
+                border: 'border-gray-400',
+                text: 'text-gray-700',
+                icon: '?'
+            };
+
+            const formatTime = (ms) => {
+                if (ms >= 60000) {
+                    const mins = Math.floor(ms / 60000);
+                    const secs = Math.floor((ms % 60000) / 1000);
+                    return `${mins}m ${secs}s`;
+                } else if (ms >= 1000) {
+                    return `${(ms / 1000).toFixed(1)}s`;
+                }
+                return `${Math.round(ms)}ms`;
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
+                        {/* Header */}
+                        <div className={`p-4 border-b ${colors.bg} rounded-t-lg flex items-center justify-between`}>
+                            <div className="flex items-center gap-3">
+                                <span className={`w-8 h-8 rounded-full ${colors.border.replace('border', 'bg').replace('400', '200')} ${colors.text} flex items-center justify-center text-lg font-bold`}>
+                                    {colors.icon}
+                                </span>
+                                <div>
+                                    <h3 className={`font-bold text-lg ${colors.text}`}>
+                                        {event.event_type.replace('_', ' ').toUpperCase()}
+                                    </h3>
+                                    <p className="text-sm text-gray-500">Event #{event.sequence + 1}</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={onClose}
+                                className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+                            >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+
+                        {/* Content */}
+                        <div className="p-4 overflow-y-auto flex-1">
+                            {/* Summary */}
+                            <div className="mb-4">
+                                <h4 className="text-sm font-semibold text-gray-500 mb-1">Summary</h4>
+                                <p className="text-gray-700">{event.summary}</p>
+                            </div>
+
+                            {/* Timing */}
+                            <div className="mb-4 grid grid-cols-2 gap-4">
+                                <div>
+                                    <h4 className="text-sm font-semibold text-gray-500 mb-1">Start Time</h4>
+                                    <p className="text-gray-700">{formatTime(event.relative_time_ms)}</p>
+                                </div>
+                                {event.duration_ms && (
+                                    <div>
+                                        <h4 className="text-sm font-semibold text-gray-500 mb-1">Duration</h4>
+                                        <p className="text-gray-700">{formatTime(event.duration_ms)}</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Raw data */}
+                            <div>
+                                <h4 className="text-sm font-semibold text-gray-500 mb-1">Event Data</h4>
+                                <div className="bg-gray-50 rounded p-3 overflow-x-auto">
+                                    <pre className="text-xs font-mono whitespace-pre-wrap text-gray-700">
+                                        {JSON.stringify(event.data, null, 2)}
+                                    </pre>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // TimelineContainer component - main container with zoom controls and filtering
+        function TimelineContainer({ suiteName, testId, agents, availableAgents, onBack, tests }) {
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState(null);
+            const [timelineData, setTimelineData] = useState(null);
+            const [selectedAgents, setSelectedAgents] = useState([]);
+            const [selectedTestId, setSelectedTestId] = useState(testId || '');
+            const [zoomLevel, setZoomLevel] = useState(1);
+            const [eventFilter, setEventFilter] = useState('all');
+            const [selectedEvent, setSelectedEvent] = useState(null);
+
+            const loadTimeline = useCallback(async () => {
+                if (selectedAgents.length < 1 || !selectedTestId) {
+                    return;
+                }
+
+                setLoading(true);
+                setError(null);
+
+                try {
+                    if (selectedAgents.length === 1) {
+                        // Single agent timeline
+                        const data = await api.get(
+                            `/timeline/events?suite_name=${encodeURIComponent(suiteName)}&test_id=${encodeURIComponent(selectedTestId)}&agent_name=${encodeURIComponent(selectedAgents[0])}`
+                        );
+                        // Convert single timeline response to multi-timeline format
+                        setTimelineData({
+                            suite_name: data.suite_name,
+                            test_id: data.test_id,
+                            test_name: data.test_name,
+                            timelines: [{
+                                agent_name: data.agent_name,
+                                test_execution_id: data.execution_id,
+                                start_time: data.events[0]?.timestamp,
+                                total_duration_ms: data.total_duration_ms || 0,
+                                events: data.events,
+                            }],
+                        });
+                    } else {
+                        // Multi-agent timeline
+                        const agentParams = selectedAgents.map(a => `agents=${encodeURIComponent(a)}`).join('&');
+                        const data = await api.get(
+                            `/timeline/compare?suite_name=${encodeURIComponent(suiteName)}&test_id=${encodeURIComponent(selectedTestId)}&${agentParams}`
+                        );
+                        setTimelineData(data);
+                    }
+                } catch (err) {
+                    setError(err.message || 'Failed to load timeline data');
+                    setTimelineData(null);
+                } finally {
+                    setLoading(false);
+                }
+            }, [suiteName, selectedTestId, selectedAgents]);
+
+            // Calculate max duration for consistent scale
+            const maxDuration = timelineData
+                ? Math.max(...timelineData.timelines.map(t => t.total_duration_ms), 1)
+                : 0;
+
+            // Zoom handlers
+            const handleZoomIn = () => setZoomLevel(prev => Math.min(prev * 1.5, 10));
+            const handleZoomOut = () => setZoomLevel(prev => Math.max(prev / 1.5, 0.5));
+            const handleZoomReset = () => setZoomLevel(1);
+
+            // Event type counts
+            const eventCounts = timelineData
+                ? timelineData.timelines.reduce((acc, timeline) => {
+                    timeline.events.forEach(e => {
+                        acc[e.event_type] = (acc[e.event_type] || 0) + 1;
+                    });
+                    return acc;
+                }, {})
+                : {};
+
+            // Loading state
+            if (loading) {
+                return (
+                    <div className="flex items-center justify-center py-12">
+                        <div className="text-center">
+                            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent mb-4"></div>
+                            <p className="text-gray-600">Loading timeline data...</p>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Selection UI
+            if (!timelineData) {
+                return (
+                    <div className="bg-white p-6 rounded-lg shadow">
+                        {onBack && (
+                            <button
+                                onClick={onBack}
+                                className="mb-4 text-blue-500 hover:text-blue-700 flex items-center gap-1"
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                                </svg>
+                                Back
+                            </button>
+                        )}
+                        <h3 className="text-lg font-bold mb-4">Event Timeline</h3>
+
+                        {error && (
+                            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
+                                {error}
+                            </div>
+                        )}
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Select Test:
+                                </label>
+                                <select
+                                    value={selectedTestId}
+                                    onChange={(e) => setSelectedTestId(e.target.value)}
+                                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="">Choose a test...</option>
+                                    {tests && tests.map((test) => (
+                                        <option key={test.test_id} value={test.test_id}>
+                                            {test.test_name || test.test_id}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Select Agents (1-3):
+                                </label>
+                                <AgentSelector
+                                    agents={availableAgents}
+                                    selectedAgents={selectedAgents}
+                                    onSelectionChange={setSelectedAgents}
+                                    maxAgents={3}
+                                />
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={loadTimeline}
+                            disabled={selectedAgents.length < 1 || !selectedTestId}
+                            className="w-full md:w-auto bg-blue-500 text-white px-6 py-2 rounded-md hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                        >
+                            View Timeline
+                        </button>
+
+                        <p className="mt-4 text-sm text-gray-500">
+                            Select a test and 1-3 agents to view their event timeline. Events are displayed chronologically with color-coding by type.
+                        </p>
+                    </div>
+                );
+            }
+
+            // Timeline visualization
+            return (
+                <div>
+                    {/* Header with test info and controls */}
+                    <div className="bg-white p-4 rounded-lg shadow mb-4">
+                        <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+                            <div>
+                                <h3 className="text-lg font-bold">{timelineData.test_name}</h3>
+                                <p className="text-sm text-gray-500">
+                                    Suite: {timelineData.suite_name} | Test ID: {timelineData.test_id}
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setTimelineData(null)}
+                                className="text-blue-500 hover:text-blue-700 flex items-center gap-1"
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                                </svg>
+                                Back to selection
+                            </button>
+                        </div>
+
+                        {/* Zoom controls */}
+                        <div className="flex flex-wrap items-center gap-4">
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm text-gray-600">Zoom:</span>
+                                <button
+                                    onClick={handleZoomOut}
+                                    className="p-1 rounded border border-gray-300 hover:bg-gray-100"
+                                    title="Zoom out"
+                                >
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                                    </svg>
+                                </button>
+                                <span className="text-sm font-mono w-12 text-center">{zoomLevel.toFixed(1)}x</span>
+                                <button
+                                    onClick={handleZoomIn}
+                                    className="p-1 rounded border border-gray-300 hover:bg-gray-100"
+                                    title="Zoom in"
+                                >
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                    </svg>
+                                </button>
+                                <button
+                                    onClick={handleZoomReset}
+                                    className="px-2 py-1 text-sm rounded border border-gray-300 hover:bg-gray-100"
+                                    title="Reset zoom"
+                                >
+                                    Reset
+                                </button>
+                            </div>
+
+                            {/* Event type filters */}
+                            <div className="flex flex-wrap gap-1">
+                                <button
+                                    onClick={() => setEventFilter('all')}
+                                    className={`px-2 py-1 text-xs rounded ${eventFilter === 'all' ? 'bg-gray-800 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}
+                                >
+                                    All
+                                </button>
+                                {Object.entries(EVENT_COLORS).map(([type, colors]) => {
+                                    const count = eventCounts[type] || 0;
+                                    if (count === 0) return null;
+                                    return (
+                                        <button
+                                            key={type}
+                                            onClick={() => setEventFilter(type)}
+                                            className={`px-2 py-1 text-xs rounded ${
+                                                eventFilter === type
+                                                    ? `${colors.bg} ${colors.text} ring-2 ring-offset-1`
+                                                    : 'bg-gray-100 hover:bg-gray-200'
+                                            }`}
+                                        >
+                                            {type.replace('_', ' ')} ({count})
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Timeline visualization */}
+                    <div className="bg-white p-4 rounded-lg shadow">
+                        {/* Time scale */}
+                        <TimeScale
+                            totalDurationMs={maxDuration}
+                            zoomLevel={zoomLevel}
+                            width={800}
+                        />
+
+                        {/* Timeline rows */}
+                        <div className="mt-4 overflow-x-auto">
+                            <div style={{ width: `${100 * zoomLevel}%`, minWidth: '100%' }}>
+                                {timelineData.timelines.map((timeline, idx) => (
+                                    <TimelineRow
+                                        key={timeline.agent_name}
+                                        timeline={timeline}
+                                        totalDurationMs={maxDuration}
+                                        zoomLevel={zoomLevel}
+                                        eventFilter={eventFilter}
+                                        onEventClick={setSelectedEvent}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Legend */}
+                        <div className="mt-4 pt-4 border-t flex flex-wrap gap-4 text-xs">
+                            <span className="font-semibold text-gray-600">Event Types:</span>
+                            {Object.entries(EVENT_COLORS).map(([type, colors]) => (
+                                <div key={type} className="flex items-center gap-1">
+                                    <span className={`w-4 h-4 rounded ${colors.border.replace('border', 'bg').replace('400', '500')}`}></span>
+                                    <span className={colors.text}>{type.replace('_', ' ')}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Event detail panel */}
+                    {selectedEvent && (
+                        <EventDetailPanel
+                            event={selectedEvent}
+                            onClose={() => setSelectedEvent(null)}
+                        />
+                    )}
+                </div>
+            );
+        }
+
+        // TimelineView component - wrapper with data loading (similar to LeaderboardView)
+        function TimelineView({ suiteName, onBack }) {
+            const [agents, setAgents] = useState([]);
+            const [tests, setTests] = useState([]);
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                Promise.all([
+                    api.get('/agents'),
+                    suiteName ? api.get(`/suites?suite_name=${encodeURIComponent(suiteName)}&limit=1`) : Promise.resolve({ items: [] }),
+                ])
+                    .then(async ([agentsData, suitesData]) => {
+                        setAgents(agentsData);
+                        if (suitesData.items && suitesData.items.length > 0) {
+                            const detail = await api.get(`/suites/${suitesData.items[0].id}`);
+                            if (detail && detail.tests) {
+                                setTests(detail.tests);
+                            }
+                        }
+                    })
+                    .catch(console.error)
+                    .finally(() => setLoading(false));
+            }, [suiteName]);
+
+            if (loading) {
+                return (
+                    <div className="flex items-center justify-center py-12">
+                        <div className="text-center">
+                            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent mb-4"></div>
+                            <p className="text-gray-600">Loading...</p>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <TimelineContainer
+                    suiteName={suiteName}
+                    testId=""
+                    agents={[]}
+                    availableAgents={agents}
+                    onBack={onBack}
+                    tests={tests}
+                />
+            );
+        }
+
         // ==================== Leaderboard Matrix Components ====================
 
         // Score color coding based on score value
@@ -1313,6 +1929,12 @@ def create_index_html() -> str:
                                 >
                                     Leaderboard
                                 </button>
+                                <button
+                                    onClick={() => { setView('timeline'); setSelectedExecution(null); }}
+                                    className={`hover:underline ${view === 'timeline' ? 'font-bold' : ''}`}
+                                >
+                                    Timeline
+                                </button>
                                 {isLoggedIn ? (
                                     <button onClick={handleLogout} className="hover:underline">
                                         Logout
@@ -1416,7 +2038,30 @@ def create_index_html() -> str:
                             </>
                         )}
 
-                        {!summary && view !== 'login' && view !== 'leaderboard' && (
+                        {view === 'timeline' && (
+                            <>
+                                <h2 className="text-lg font-bold mb-4">Event Timeline</h2>
+                                <div className="mb-4">
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Select Suite:
+                                    </label>
+                                    <select
+                                        value={selectedSuite}
+                                        onChange={(e) => setSelectedSuite(e.target.value)}
+                                        className="border rounded p-2"
+                                    >
+                                        {suiteNames.map((name) => (
+                                            <option key={name} value={name}>{name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                {selectedSuite && (
+                                    <TimelineView suiteName={selectedSuite} />
+                                )}
+                            </>
+                        )}
+
+                        {!summary && view !== 'login' && view !== 'leaderboard' && view !== 'timeline' && (
                             <div className="text-center py-10">
                                 <p className="text-gray-600">
                                     No data available. Run some tests to see results here.
