@@ -484,6 +484,207 @@ class TestMultiTimelineEndpoint:
         )
         assert response.status_code in [404, 422, 500]
 
+    def test_endpoint_validates_min_agents(self, client: TestClient) -> None:
+        """Test that at least 2 agents are required."""
+        response = client.get(
+            "/api/timeline/compare",
+            params={
+                "suite_name": "test-suite",
+                "test_id": "test-001",
+                "agents": ["agent-1"],  # Only 1 agent
+            },
+        )
+        # Should fail validation (min 2 agents)
+        assert response.status_code == 422
+
+    def test_endpoint_validates_max_agents(self, client: TestClient) -> None:
+        """Test that at most 3 agents are allowed."""
+        response = client.get(
+            "/api/timeline/compare",
+            params={
+                "suite_name": "test-suite",
+                "test_id": "test-001",
+                "agents": ["agent-1", "agent-2", "agent-3", "agent-4"],  # 4 agents
+            },
+        )
+        # Should fail validation (max 3 agents)
+        assert response.status_code == 422
+
+    def test_endpoint_accepts_event_type_filter(self, client: TestClient) -> None:
+        """Test endpoint with event_types filter."""
+        response = client.get(
+            "/api/timeline/compare",
+            params={
+                "suite_name": "test-suite",
+                "test_id": "test-001",
+                "agents": ["agent-1", "agent-2"],
+                "event_types": ["tool_call", "llm_request"],
+            },
+        )
+        # Should return 404 (no data) or 500 (db not configured)
+        assert response.status_code in [404, 500]
+
+    def test_endpoint_returns_error_when_no_executions(
+        self, client: TestClient
+    ) -> None:
+        """Test that error is returned when no executions exist."""
+        response = client.get(
+            "/api/timeline/compare",
+            params={
+                "suite_name": "nonexistent-suite",
+                "test_id": "test-001",
+                "agents": ["agent-1", "agent-2"],
+            },
+        )
+        # Should return 404 (no executions) or 500 (db not configured)
+        assert response.status_code in [404, 500]
+
+
+class TestAgentTimelineSchema:
+    """Tests for AgentTimeline Pydantic schema."""
+
+    def test_agent_timeline_creation(self) -> None:
+        """Test creating AgentTimeline."""
+        from atp.dashboard.schemas import AgentTimeline
+
+        timeline = AgentTimeline(
+            agent_name="test-agent",
+            test_execution_id=1,
+            start_time=datetime.now(),
+            total_duration_ms=5000.0,
+            events=[],
+        )
+        assert timeline.agent_name == "test-agent"
+        assert timeline.test_execution_id == 1
+        assert timeline.total_duration_ms == 5000.0
+        assert timeline.events == []
+
+    def test_agent_timeline_with_events(self) -> None:
+        """Test creating AgentTimeline with events."""
+        from atp.dashboard.schemas import AgentTimeline, TimelineEvent
+
+        events = [
+            TimelineEvent(
+                sequence=0,
+                timestamp=datetime.now(),
+                event_type="tool_call",
+                summary="Tool call: test",
+                data={"tool": "test"},
+                relative_time_ms=0.0,
+                duration_ms=100.0,
+            ),
+            TimelineEvent(
+                sequence=1,
+                timestamp=datetime.now(),
+                event_type="llm_request",
+                summary="LLM request",
+                data={"model": "test"},
+                relative_time_ms=100.0,
+                duration_ms=500.0,
+            ),
+        ]
+        timeline = AgentTimeline(
+            agent_name="test-agent",
+            test_execution_id=1,
+            start_time=datetime.now(),
+            total_duration_ms=600.0,
+            events=events,
+        )
+        assert len(timeline.events) == 2
+        assert timeline.events[0].event_type == "tool_call"
+        assert timeline.events[1].event_type == "llm_request"
+
+
+class TestMultiTimelineResponseSchema:
+    """Tests for MultiTimelineResponse Pydantic schema."""
+
+    def test_multi_timeline_response_creation(self) -> None:
+        """Test creating MultiTimelineResponse."""
+        from atp.dashboard.schemas import AgentTimeline, MultiTimelineResponse
+
+        timelines = [
+            AgentTimeline(
+                agent_name="agent-1",
+                test_execution_id=1,
+                start_time=datetime.now(),
+                total_duration_ms=5000.0,
+                events=[],
+            ),
+            AgentTimeline(
+                agent_name="agent-2",
+                test_execution_id=2,
+                start_time=datetime.now(),
+                total_duration_ms=6000.0,
+                events=[],
+            ),
+        ]
+        response = MultiTimelineResponse(
+            suite_name="benchmark-suite",
+            test_id="test-001",
+            test_name="Test Case 1",
+            timelines=timelines,
+        )
+        assert response.suite_name == "benchmark-suite"
+        assert response.test_id == "test-001"
+        assert response.test_name == "Test Case 1"
+        assert len(response.timelines) == 2
+        assert response.timelines[0].agent_name == "agent-1"
+        assert response.timelines[1].agent_name == "agent-2"
+
+    def test_multi_timeline_response_three_agents(self) -> None:
+        """Test response with three agents."""
+        from atp.dashboard.schemas import AgentTimeline, MultiTimelineResponse
+
+        timelines = [
+            AgentTimeline(
+                agent_name=f"agent-{i}",
+                test_execution_id=i,
+                start_time=datetime.now(),
+                total_duration_ms=5000.0 + i * 1000,
+                events=[],
+            )
+            for i in range(1, 4)  # 3 agents
+        ]
+        response = MultiTimelineResponse(
+            suite_name="test-suite",
+            test_id="test-001",
+            test_name="Test",
+            timelines=timelines,
+        )
+        assert len(response.timelines) == 3
+        assert response.timelines[0].agent_name == "agent-1"
+        assert response.timelines[2].agent_name == "agent-3"
+
+    def test_multi_timeline_total_duration_values(self) -> None:
+        """Test that timelines have correct total duration values."""
+        from atp.dashboard.schemas import AgentTimeline, MultiTimelineResponse
+
+        timelines = [
+            AgentTimeline(
+                agent_name="fast-agent",
+                test_execution_id=1,
+                start_time=datetime.now(),
+                total_duration_ms=2000.0,
+                events=[],
+            ),
+            AgentTimeline(
+                agent_name="slow-agent",
+                test_execution_id=2,
+                start_time=datetime.now(),
+                total_duration_ms=10000.0,
+                events=[],
+            ),
+        ]
+        response = MultiTimelineResponse(
+            suite_name="test-suite",
+            test_id="test-001",
+            test_name="Test",
+            timelines=timelines,
+        )
+        # Verify duration values are preserved
+        assert response.timelines[0].total_duration_ms == 2000.0
+        assert response.timelines[1].total_duration_ms == 10000.0
+
 
 class TestFixturesIntegration:
     """Tests verifying fixtures work for endpoint testing."""

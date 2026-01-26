@@ -183,7 +183,7 @@ Implement `/timeline/events` endpoint for single agent timeline.
 ---
 
 ### TASK-008: Multi-Agent Timeline API
-🔴 P0 | ⬜ TODO | Est: 2-3h
+🔴 P0 | 🔄 IN_PROGRESS | Est: 2-3h
 
 **Description:**
 Implement `/timeline/compare` endpoint for comparing agent timelines.

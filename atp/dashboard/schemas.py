@@ -391,6 +391,36 @@ class TimelineEventsResponse(BaseModel):
     execution_id: int  # Test execution ID for reference
 
 
+# ==================== Multi-Agent Timeline Schemas ====================
+
+
+class AgentTimeline(BaseModel):
+    """Timeline data for a single agent in multi-agent comparison.
+
+    Contains all events for one agent with timing aligned to a common
+    start time for visual comparison across agents.
+    """
+
+    agent_name: str
+    test_execution_id: int
+    start_time: datetime
+    total_duration_ms: float  # Total duration from first to last event
+    events: list[TimelineEvent]  # Ordered list of events with relative timing
+
+
+class MultiTimelineResponse(BaseModel):
+    """Response for multi-agent timeline comparison API.
+
+    Returns aligned timelines for 2-3 agents on the same test,
+    enabling visual comparison of execution strategies and timing.
+    """
+
+    suite_name: str
+    test_id: str
+    test_name: str
+    timelines: list[AgentTimeline]  # Timeline for each agent (2-3)
+
+
 # ==================== Dashboard Summary Schemas ====================
 
 
