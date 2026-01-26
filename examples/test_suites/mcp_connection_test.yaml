@@ -1,0 +1,123 @@
+test_suite: "mcp_connection_tests"
+version: "1.0"
+description: "Tests for MCP server connection and data retrieval"
+
+defaults:
+  runs_per_test: 3
+  timeout_seconds: 120
+
+tests:
+  - id: "mcp-001"
+    name: "Connect to MCP server and list tools"
+    tags: ["mcp", "smoke", "connection"]
+    task:
+      description: |
+        Connect to the MCP server.
+        List all available tools provided by the server.
+        Save the complete list of tools with their descriptions to tools_list.json.
+        The output should be valid JSON with a "tools" array.
+      expected_artifacts:
+        - "tools_list.json"
+    constraints:
+      max_steps: 10
+      timeout_seconds: 60
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "tools_list.json"
+      - type: "artifact_json_valid"
+        config:
+          path: "tools_list.json"
+      - type: "artifact_contains"
+        config:
+          path: "tools_list.json"
+          pattern: "tools"
+
+  - id: "mcp-002"
+    name: "Get weather information via MCP"
+    tags: ["mcp", "tool_call", "weather"]
+    task:
+      description: |
+        Connect to the MCP server.
+        Use the "get_weather" tool to get weather information for Moscow.
+        Save the weather data to weather_moscow.json.
+        The result should include temperature and conditions.
+      input_data:
+        location: "Moscow"
+      expected_artifacts:
+        - "weather_moscow.json"
+    constraints:
+      max_steps: 15
+      timeout_seconds: 90
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "weather_moscow.json"
+      - type: "artifact_json_valid"
+        config:
+          path: "weather_moscow.json"
+      - type: "artifact_contains"
+        config:
+          path: "weather_moscow.json"
+          pattern: "temperature"
+
+  - id: "mcp-003"
+    name: "Search and summarize results"
+    tags: ["mcp", "tool_call", "search"]
+    task:
+      description: |
+        Connect to the MCP server.
+        Use the "search_web" tool to search for "Python async programming".
+        Save the search results to search_results.json.
+        Then create a brief summary of the results in summary.txt.
+      expected_artifacts:
+        - "search_results.json"
+        - "summary.txt"
+    constraints:
+      max_steps: 20
+      timeout_seconds: 120
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "search_results.json"
+      - type: "artifact_exists"
+        config:
+          path: "summary.txt"
+      - type: "artifact_contains"
+        config:
+          path: "summary.txt"
+          pattern: "Python"
+
+  - id: "mcp-004"
+    name: "Multi-tool workflow"
+    tags: ["mcp", "workflow", "advanced"]
+    task:
+      description: |
+        Perform a multi-step workflow using MCP tools:
+        1. List all available tools and save to available_tools.json
+        2. Get weather for "London" and save to london_weather.json
+        3. Get weather for "Tokyo" and save to tokyo_weather.json
+        4. Create a comparison report comparing both cities' weather in comparison.md
+
+        The comparison report should be in Markdown format and include
+        temperature and conditions for both cities.
+      expected_artifacts:
+        - "available_tools.json"
+        - "london_weather.json"
+        - "tokyo_weather.json"
+        - "comparison.md"
+    constraints:
+      max_steps: 30
+      timeout_seconds: 180
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "comparison.md"
+      - type: "artifact_contains"
+        config:
+          path: "comparison.md"
+          pattern: "London"
+      - type: "artifact_contains"
+        config:
+          path: "comparison.md"
+          pattern: "Tokyo"
