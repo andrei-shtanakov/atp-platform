@@ -682,8 +682,10 @@ def create_index_html() -> str:
         // ==================== End Metrics Panel Component ====================
 
         // Step Comparison component - displays event list for a single agent
+        // StepComparison component - displays event list for a single agent with clickable events
         function StepComparison({ agentDetail }) {
             const [eventFilter, setEventFilter] = useState('all');
+            const [selectedEvent, setSelectedEvent] = useState(null);
 
             if (!agentDetail) {
                 return (
@@ -692,6 +694,13 @@ def create_index_html() -> str:
                     </div>
                 );
             }
+
+            // Calculate event counts for filter buttons
+            const eventCounts = (agentDetail.events || []).reduce((acc, e) => {
+                acc[e.event_type] = (acc[e.event_type] || 0) + 1;
+                acc.all = (acc.all || 0) + 1;
+                return acc;
+            }, { all: 0 });
 
             const filteredEvents = eventFilter === 'all'
                 ? agentDetail.events
@@ -738,43 +747,44 @@ def create_index_html() -> str:
                         </div>
                     </div>
 
-                    {/* Event filters */}
-                    <div className="p-2 border-b flex flex-wrap gap-1">
-                        <button
-                            onClick={() => setEventFilter('all')}
-                            className={`px-2 py-1 text-xs rounded ${eventFilter === 'all' ? 'bg-gray-800 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}
-                        >
-                            All ({agentDetail.events?.length || 0})
-                        </button>
-                        {Object.entries(EVENT_COLORS).map(([type, colors]) => {
-                            const count = agentDetail.events?.filter(e => e.event_type === type).length || 0;
-                            if (count === 0) return null;
-                            return (
-                                <button
-                                    key={type}
-                                    onClick={() => setEventFilter(type)}
-                                    className={`px-2 py-1 text-xs rounded ${
-                                        eventFilter === type
-                                            ? `${colors.bg} ${colors.text} ring-2 ring-offset-1`
-                                            : 'bg-gray-100 hover:bg-gray-200'
-                                    }`}
-                                >
-                                    {type.replace('_', ' ')} ({count})
-                                </button>
-                            );
-                        })}
+                    {/* Event filters using EventFilters component */}
+                    <div className="p-2 border-b">
+                        <EventFilters
+                            eventFilter={eventFilter}
+                            onFilterChange={setEventFilter}
+                            eventCounts={eventCounts}
+                            showCounts={true}
+                        />
                     </div>
 
-                    {/* Event list */}
+                    {/* Event list with click to open detail panel */}
                     <div className="p-4 max-h-96 overflow-y-auto">
                         {filteredEvents && filteredEvents.length > 0 ? (
                             filteredEvents.map((event, idx) => (
-                                <EventItem key={idx} event={event} sequence={event.sequence} />
+                                <div
+                                    key={idx}
+                                    onClick={() => setSelectedEvent({
+                                        ...event,
+                                        relative_time_ms: 0,
+                                        duration_ms: null
+                                    })}
+                                    className="cursor-pointer"
+                                >
+                                    <EventItem event={event} sequence={event.sequence} />
+                                </div>
                             ))
                         ) : (
                             <p className="text-gray-500 text-center py-4">No events to display</p>
                         )}
                     </div>
+
+                    {/* Event detail panel */}
+                    {selectedEvent && (
+                        <EventDetailPanel
+                            event={selectedEvent}
+                            onClose={() => setSelectedEvent(null)}
+                        />
+                    )}
                 </div>
             );
         }
@@ -1266,9 +1276,322 @@ def create_index_html() -> str:
             );
         }
 
-        // EventDetailPanel component - full event details panel
+        // ==================== EventFilters Component ====================
+        // Toggle buttons for filtering events by type
+        function EventFilters({ eventFilter, onFilterChange, eventCounts, showCounts = true }) {
+            return (
+                <div className="flex flex-wrap gap-1 items-center">
+                    <span className="text-sm text-gray-600 mr-2">Filter:</span>
+                    <button
+                        onClick={() => onFilterChange('all')}
+                        className={`px-3 py-1.5 text-xs rounded-full transition-all ${
+                            eventFilter === 'all'
+                                ? 'bg-gray-800 text-white shadow-sm'
+                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                    >
+                        All {showCounts && eventCounts.all > 0 && `(${eventCounts.all})`}
+                    </button>
+                    {Object.entries(EVENT_COLORS).map(([type, colors]) => {
+                        const count = eventCounts[type] || 0;
+                        if (count === 0 && showCounts) return null;
+                        return (
+                            <button
+                                key={type}
+                                onClick={() => onFilterChange(type)}
+                                className={`px-3 py-1.5 text-xs rounded-full transition-all flex items-center gap-1 ${
+                                    eventFilter === type
+                                        ? `${colors.bg} ${colors.text} ring-2 ring-offset-1 shadow-sm`
+                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                }`}
+                            >
+                                <span className={`w-4 h-4 rounded-full ${colors.border.replace('border', 'bg').replace('400', '400')} flex items-center justify-center text-white text-xs font-bold`}>
+                                    {colors.icon}
+                                </span>
+                                <span>{type.replace('_', ' ')}</span>
+                                {showCounts && count > 0 && <span>({count})</span>}
+                            </button>
+                        );
+                    })}
+                </div>
+            );
+        }
+
+        // ==================== EventDetailPanel Component ====================
+        // Full event details panel with type-specific displays
+
+        // Helper component for tool_call details
+        function ToolCallDetails({ data }) {
+            const toolName = data.tool || data.tool_name || data.name || 'Unknown Tool';
+            const args = data.arguments || data.args || data.input || data.parameters || {};
+            const result = data.result || data.output || data.response || null;
+            const status = data.status || (data.error ? 'error' : 'success');
+
+            return (
+                <div className="space-y-4">
+                    {/* Tool Name */}
+                    <div>
+                        <h4 className="text-sm font-semibold text-gray-500 mb-2">Tool Name</h4>
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                            <code className="text-blue-800 font-mono text-sm font-semibold">{toolName}</code>
+                            <span className={`ml-3 px-2 py-0.5 text-xs rounded-full ${
+                                status === 'success' ? 'bg-green-100 text-green-700' :
+                                status === 'error' ? 'bg-red-100 text-red-700' :
+                                'bg-gray-100 text-gray-700'
+                            }`}>
+                                {status}
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Arguments */}
+                    <div>
+                        <h4 className="text-sm font-semibold text-gray-500 mb-2">Arguments</h4>
+                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 overflow-x-auto">
+                            <pre className="text-xs font-mono whitespace-pre-wrap text-gray-700">
+                                {typeof args === 'object' ? JSON.stringify(args, null, 2) : String(args)}
+                            </pre>
+                        </div>
+                    </div>
+
+                    {/* Result */}
+                    {result !== null && (
+                        <div>
+                            <h4 className="text-sm font-semibold text-gray-500 mb-2">Result</h4>
+                            <div className={`border rounded-lg p-3 overflow-x-auto ${
+                                status === 'error' ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'
+                            }`}>
+                                <pre className={`text-xs font-mono whitespace-pre-wrap ${
+                                    status === 'error' ? 'text-red-700' : 'text-green-700'
+                                }`}>
+                                    {typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result)}
+                                </pre>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // Helper component for llm_request details
+        function LLMRequestDetails({ data }) {
+            const model = data.model || data.model_name || 'Unknown Model';
+            const prompt = data.prompt || data.input || data.messages || data.request || '';
+            const response = data.response || data.output || data.completion || data.content || '';
+            const inputTokens = data.input_tokens || data.prompt_tokens || data.tokens?.input || null;
+            const outputTokens = data.output_tokens || data.completion_tokens || data.tokens?.output || null;
+            const totalTokens = data.total_tokens || data.tokens?.total || (inputTokens && outputTokens ? inputTokens + outputTokens : null);
+            const cost = data.cost || data.cost_usd || null;
+
+            // Truncate long text with show more/less
+            const [showFullPrompt, setShowFullPrompt] = useState(false);
+            const [showFullResponse, setShowFullResponse] = useState(false);
+
+            const truncateText = (text, maxLength = 500) => {
+                const textStr = typeof text === 'object' ? JSON.stringify(text, null, 2) : String(text);
+                if (textStr.length <= maxLength) return { text: textStr, truncated: false };
+                return { text: textStr.slice(0, maxLength) + '...', truncated: true, full: textStr };
+            };
+
+            const promptData = truncateText(prompt);
+            const responseData = truncateText(response);
+
+            return (
+                <div className="space-y-4">
+                    {/* Model and Token Info */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                            <div className="text-xs text-green-600 font-semibold mb-1">Model</div>
+                            <div className="text-sm font-mono text-green-800">{model}</div>
+                        </div>
+                        {inputTokens !== null && (
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                                <div className="text-xs text-blue-600 font-semibold mb-1">Input Tokens</div>
+                                <div className="text-sm font-mono text-blue-800">{inputTokens.toLocaleString()}</div>
+                            </div>
+                        )}
+                        {outputTokens !== null && (
+                            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                                <div className="text-xs text-purple-600 font-semibold mb-1">Output Tokens</div>
+                                <div className="text-sm font-mono text-purple-800">{outputTokens.toLocaleString()}</div>
+                            </div>
+                        )}
+                        {totalTokens !== null && (
+                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                                <div className="text-xs text-amber-600 font-semibold mb-1">Total Tokens</div>
+                                <div className="text-sm font-mono text-amber-800">{totalTokens.toLocaleString()}</div>
+                            </div>
+                        )}
+                        {cost !== null && (
+                            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                                <div className="text-xs text-gray-600 font-semibold mb-1">Cost</div>
+                                <div className="text-sm font-mono text-gray-800">${cost.toFixed(4)}</div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Prompt */}
+                    {prompt && (
+                        <div>
+                            <div className="flex items-center justify-between mb-2">
+                                <h4 className="text-sm font-semibold text-gray-500">Prompt</h4>
+                                {promptData.truncated && (
+                                    <button
+                                        onClick={() => setShowFullPrompt(!showFullPrompt)}
+                                        className="text-xs text-blue-600 hover:text-blue-800"
+                                    >
+                                        {showFullPrompt ? 'Show less' : 'Show full'}
+                                    </button>
+                                )}
+                            </div>
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 overflow-x-auto max-h-60 overflow-y-auto">
+                                <pre className="text-xs font-mono whitespace-pre-wrap text-blue-800">
+                                    {showFullPrompt ? promptData.full || promptData.text : promptData.text}
+                                </pre>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Response */}
+                    {response && (
+                        <div>
+                            <div className="flex items-center justify-between mb-2">
+                                <h4 className="text-sm font-semibold text-gray-500">Response</h4>
+                                {responseData.truncated && (
+                                    <button
+                                        onClick={() => setShowFullResponse(!showFullResponse)}
+                                        className="text-xs text-green-600 hover:text-green-800"
+                                    >
+                                        {showFullResponse ? 'Show less' : 'Show full'}
+                                    </button>
+                                )}
+                            </div>
+                            <div className="bg-green-50 border border-green-200 rounded-lg p-3 overflow-x-auto max-h-60 overflow-y-auto">
+                                <pre className="text-xs font-mono whitespace-pre-wrap text-green-800">
+                                    {showFullResponse ? responseData.full || responseData.text : responseData.text}
+                                </pre>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // Helper component for error details
+        function ErrorDetails({ data }) {
+            const errorType = data.error_type || data.type || data.name || 'Error';
+            const message = data.message || data.error || data.error_message || data.description || 'Unknown error';
+            const stackTrace = data.stack_trace || data.stacktrace || data.stack || data.traceback || null;
+            const code = data.code || data.error_code || null;
+
+            return (
+                <div className="space-y-4">
+                    {/* Error Type and Code */}
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                        <div className="flex items-center gap-3 mb-2">
+                            <span className="w-8 h-8 bg-red-200 rounded-full flex items-center justify-center">
+                                <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
+                            </span>
+                            <div>
+                                <span className="font-semibold text-red-800">{errorType}</span>
+                                {code && <span className="ml-2 text-xs bg-red-200 text-red-800 px-2 py-0.5 rounded">Code: {code}</span>}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Error Message */}
+                    <div>
+                        <h4 className="text-sm font-semibold text-gray-500 mb-2">Error Message</h4>
+                        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                            <p className="text-sm text-red-700 font-mono">{message}</p>
+                        </div>
+                    </div>
+
+                    {/* Stack Trace */}
+                    {stackTrace && (
+                        <div>
+                            <h4 className="text-sm font-semibold text-gray-500 mb-2">Stack Trace</h4>
+                            <div className="bg-gray-900 border border-gray-700 rounded-lg p-3 overflow-x-auto max-h-80 overflow-y-auto">
+                                <pre className="text-xs font-mono whitespace-pre-wrap text-gray-300">
+                                    {typeof stackTrace === 'object' ? JSON.stringify(stackTrace, null, 2) : String(stackTrace)}
+                                </pre>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // Helper component for reasoning details
+        function ReasoningDetails({ data }) {
+            const thought = data.thought || data.reasoning || data.thinking || data.content || '';
+            const step = data.step || data.step_number || null;
+
+            return (
+                <div className="space-y-4">
+                    {step !== null && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                            <span className="text-xs text-amber-600 font-semibold">Step {step}</span>
+                        </div>
+                    )}
+                    <div>
+                        <h4 className="text-sm font-semibold text-gray-500 mb-2">Reasoning</h4>
+                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 overflow-x-auto">
+                            <pre className="text-xs font-mono whitespace-pre-wrap text-amber-800">
+                                {typeof thought === 'object' ? JSON.stringify(thought, null, 2) : String(thought)}
+                            </pre>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Helper component for progress details
+        function ProgressDetails({ data }) {
+            const percentage = data.percentage || data.progress || data.percent || 0;
+            const message = data.message || data.status || data.description || '';
+            const current = data.current || null;
+            const total = data.total || null;
+
+            return (
+                <div className="space-y-4">
+                    {/* Progress Bar */}
+                    <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-semibold text-purple-700">Progress</span>
+                            <span className="text-sm font-mono text-purple-800">{percentage}%</span>
+                        </div>
+                        <div className="w-full bg-purple-200 rounded-full h-3">
+                            <div
+                                className="bg-purple-600 h-3 rounded-full transition-all"
+                                style={{ width: `${Math.min(100, Math.max(0, percentage))}%` }}
+                            ></div>
+                        </div>
+                        {current !== null && total !== null && (
+                            <div className="text-xs text-purple-600 mt-1">{current} / {total}</div>
+                        )}
+                    </div>
+
+                    {/* Message */}
+                    {message && (
+                        <div>
+                            <h4 className="text-sm font-semibold text-gray-500 mb-2">Status Message</h4>
+                            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                                <p className="text-sm text-gray-700">{message}</p>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // EventDetailPanel component - full event details panel with type-specific displays
         function EventDetailPanel({ event, onClose }) {
             if (!event) return null;
+
+            const [copySuccess, setCopySuccess] = useState(false);
 
             const colors = EVENT_COLORS[event.event_type] || {
                 bg: 'bg-gray-50',
@@ -1288,13 +1611,64 @@ def create_index_html() -> str:
                 return `${Math.round(ms)}ms`;
             };
 
+            const handleCopyJSON = async () => {
+                try {
+                    const jsonStr = JSON.stringify(event, null, 2);
+                    await navigator.clipboard.writeText(jsonStr);
+                    setCopySuccess(true);
+                    setTimeout(() => setCopySuccess(false), 2000);
+                } catch (err) {
+                    console.error('Failed to copy:', err);
+                    // Fallback for older browsers
+                    const textArea = document.createElement('textarea');
+                    textArea.value = JSON.stringify(event, null, 2);
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    try {
+                        document.execCommand('copy');
+                        setCopySuccess(true);
+                        setTimeout(() => setCopySuccess(false), 2000);
+                    } catch (e) {
+                        console.error('Fallback copy failed:', e);
+                    }
+                    document.body.removeChild(textArea);
+                }
+            };
+
+            // Render type-specific details
+            const renderTypeSpecificDetails = () => {
+                switch (event.event_type) {
+                    case 'tool_call':
+                        return <ToolCallDetails data={event.data} />;
+                    case 'llm_request':
+                        return <LLMRequestDetails data={event.data} />;
+                    case 'error':
+                        return <ErrorDetails data={event.data} />;
+                    case 'reasoning':
+                        return <ReasoningDetails data={event.data} />;
+                    case 'progress':
+                        return <ProgressDetails data={event.data} />;
+                    default:
+                        return (
+                            <div>
+                                <h4 className="text-sm font-semibold text-gray-500 mb-2">Event Data</h4>
+                                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 overflow-x-auto">
+                                    <pre className="text-xs font-mono whitespace-pre-wrap text-gray-700">
+                                        {JSON.stringify(event.data, null, 2)}
+                                    </pre>
+                                </div>
+                            </div>
+                        );
+                }
+            };
+
             return (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
+                    <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[85vh] flex flex-col">
                         {/* Header */}
                         <div className={`p-4 border-b ${colors.bg} rounded-t-lg flex items-center justify-between`}>
                             <div className="flex items-center gap-3">
-                                <span className={`w-8 h-8 rounded-full ${colors.border.replace('border', 'bg').replace('400', '200')} ${colors.text} flex items-center justify-center text-lg font-bold`}>
+                                <span className={`w-10 h-10 rounded-full ${colors.border.replace('border', 'bg').replace('400', '200')} ${colors.text} flex items-center justify-center text-xl font-bold`}>
                                     {colors.icon}
                                 </span>
                                 <div>
@@ -1304,14 +1678,44 @@ def create_index_html() -> str:
                                     <p className="text-sm text-gray-500">Event #{event.sequence + 1}</p>
                                 </div>
                             </div>
-                            <button
-                                onClick={onClose}
-                                className="p-2 hover:bg-gray-200 rounded-full transition-colors"
-                            >
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
+                            <div className="flex items-center gap-2">
+                                {/* Copy as JSON button */}
+                                <button
+                                    onClick={handleCopyJSON}
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all ${
+                                        copySuccess
+                                            ? 'bg-green-100 text-green-700'
+                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                    }`}
+                                    title="Copy event data as JSON"
+                                >
+                                    {copySuccess ? (
+                                        <>
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                            </svg>
+                                            Copied!
+                                        </>
+                                    ) : (
+                                        <>
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                            </svg>
+                                            Copy JSON
+                                        </>
+                                    )}
+                                </button>
+                                {/* Close button */}
+                                <button
+                                    onClick={onClose}
+                                    className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+                                    title="Close"
+                                >
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
 
                         {/* Content */}
@@ -1319,32 +1723,45 @@ def create_index_html() -> str:
                             {/* Summary */}
                             <div className="mb-4">
                                 <h4 className="text-sm font-semibold text-gray-500 mb-1">Summary</h4>
-                                <p className="text-gray-700">{event.summary}</p>
+                                <p className="text-gray-700 bg-gray-50 p-2 rounded">{event.summary}</p>
                             </div>
 
                             {/* Timing */}
-                            <div className="mb-4 grid grid-cols-2 gap-4">
-                                <div>
-                                    <h4 className="text-sm font-semibold text-gray-500 mb-1">Start Time</h4>
-                                    <p className="text-gray-700">{formatTime(event.relative_time_ms)}</p>
+                            <div className="mb-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+                                <div className="bg-gray-50 border border-gray-200 rounded-lg p-2">
+                                    <div className="text-xs text-gray-500 font-semibold mb-1">Start Time</div>
+                                    <div className="text-sm font-mono text-gray-700">{formatTime(event.relative_time_ms)}</div>
                                 </div>
                                 {event.duration_ms && (
-                                    <div>
-                                        <h4 className="text-sm font-semibold text-gray-500 mb-1">Duration</h4>
-                                        <p className="text-gray-700">{formatTime(event.duration_ms)}</p>
+                                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-2">
+                                        <div className="text-xs text-gray-500 font-semibold mb-1">Duration</div>
+                                        <div className="text-sm font-mono text-gray-700">{formatTime(event.duration_ms)}</div>
+                                    </div>
+                                )}
+                                {event.timestamp && (
+                                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-2 md:col-span-2">
+                                        <div className="text-xs text-gray-500 font-semibold mb-1">Timestamp</div>
+                                        <div className="text-xs font-mono text-gray-700">{new Date(event.timestamp).toLocaleString()}</div>
                                     </div>
                                 )}
                             </div>
 
-                            {/* Raw data */}
-                            <div>
-                                <h4 className="text-sm font-semibold text-gray-500 mb-1">Event Data</h4>
-                                <div className="bg-gray-50 rounded p-3 overflow-x-auto">
-                                    <pre className="text-xs font-mono whitespace-pre-wrap text-gray-700">
-                                        {JSON.stringify(event.data, null, 2)}
+                            {/* Type-specific details */}
+                            <div className="mb-4">
+                                {renderTypeSpecificDetails()}
+                            </div>
+
+                            {/* Raw JSON (collapsible) */}
+                            <details className="mt-4">
+                                <summary className="cursor-pointer text-sm font-semibold text-gray-500 hover:text-gray-700 mb-2">
+                                    Raw Event Data
+                                </summary>
+                                <div className="bg-gray-900 rounded-lg p-3 overflow-x-auto">
+                                    <pre className="text-xs font-mono whitespace-pre-wrap text-gray-300">
+                                        {JSON.stringify(event, null, 2)}
                                     </pre>
                                 </div>
-                            </div>
+                            </details>
                         </div>
                     </div>
                 </div>
@@ -1415,15 +1832,16 @@ def create_index_html() -> str:
             const handleZoomOut = () => setZoomLevel(prev => Math.max(prev / 1.5, 0.5));
             const handleZoomReset = () => setZoomLevel(1);
 
-            // Event type counts
+            // Event type counts (including total for 'all')
             const eventCounts = timelineData
                 ? timelineData.timelines.reduce((acc, timeline) => {
                     timeline.events.forEach(e => {
                         acc[e.event_type] = (acc[e.event_type] || 0) + 1;
+                        acc.all = (acc.all || 0) + 1;
                     });
                     return acc;
-                }, {})
-                : {};
+                }, { all: 0 })
+                : { all: 0 };
 
             // Loading state
             if (loading) {
@@ -1562,31 +1980,12 @@ def create_index_html() -> str:
                             </div>
 
                             {/* Event type filters */}
-                            <div className="flex flex-wrap gap-1">
-                                <button
-                                    onClick={() => setEventFilter('all')}
-                                    className={`px-2 py-1 text-xs rounded ${eventFilter === 'all' ? 'bg-gray-800 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}
-                                >
-                                    All
-                                </button>
-                                {Object.entries(EVENT_COLORS).map(([type, colors]) => {
-                                    const count = eventCounts[type] || 0;
-                                    if (count === 0) return null;
-                                    return (
-                                        <button
-                                            key={type}
-                                            onClick={() => setEventFilter(type)}
-                                            className={`px-2 py-1 text-xs rounded ${
-                                                eventFilter === type
-                                                    ? `${colors.bg} ${colors.text} ring-2 ring-offset-1`
-                                                    : 'bg-gray-100 hover:bg-gray-200'
-                                            }`}
-                                        >
-                                            {type.replace('_', ' ')} ({count})
-                                        </button>
-                                    );
-                                })}
-                            </div>
+                            <EventFilters
+                                eventFilter={eventFilter}
+                                onFilterChange={setEventFilter}
+                                eventCounts={eventCounts}
+                                showCounts={true}
+                            />
                         </div>
                     </div>
 
