@@ -21,7 +21,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-# Import task parser
+import yaml
+
 from task import (
     TASKS_FILE,
     Task,
@@ -31,7 +32,8 @@ from task import (
     update_task_status,
 )
 
-# === Configuration ===
+# Configuration file path
+CONFIG_FILE = Path("executor.config.yaml")
 
 
 @dataclass
@@ -61,6 +63,87 @@ class ExecutorConfig:
     # Test command (using uv)
     test_command: str = "uv run pytest tests/ -v -m 'not slow'"
     lint_command: str = "uv run ruff check ."
+    run_lint_on_done: bool = True  # Run lint on completion
+
+
+def load_config_from_yaml(config_path: Path = CONFIG_FILE) -> dict:
+    """Load configuration from YAML file.
+
+    Args:
+        config_path: Path to the configuration file.
+
+    Returns:
+        Dictionary with configuration values.
+    """
+    if not config_path.exists():
+        return {}
+
+    try:
+        with open(config_path) as f:
+            data = yaml.safe_load(f) or {}
+
+        executor_config = data.get("executor", {})
+        hooks = executor_config.get("hooks", {})
+        pre_start = hooks.get("pre_start", {})
+        post_done = hooks.get("post_done", {})
+        commands = executor_config.get("commands", {})
+        paths = executor_config.get("paths", {})
+
+        return {
+            "max_retries": executor_config.get("max_retries"),
+            "retry_delay_seconds": executor_config.get("retry_delay_seconds"),
+            "task_timeout_minutes": executor_config.get("task_timeout_minutes"),
+            "max_consecutive_failures": executor_config.get("max_consecutive_failures"),
+            "claude_command": executor_config.get("claude_command"),
+            "claude_model": executor_config.get("claude_model"),
+            "skip_permissions": executor_config.get("skip_permissions"),
+            "create_git_branch": pre_start.get("create_git_branch"),
+            "run_tests_on_done": post_done.get("run_tests"),
+            "run_lint_on_done": post_done.get("run_lint"),
+            "auto_commit": post_done.get("auto_commit"),
+            "test_command": commands.get("test"),
+            "lint_command": commands.get("lint"),
+            "logs_dir": Path(paths["logs"]) if paths.get("logs") else None,
+            "state_file": Path(paths["state"]) if paths.get("state") else None,
+        }
+    except Exception as e:
+        print(f"⚠️  Warning: Failed to load config from {config_path}: {e}")
+        return {}
+
+
+def build_config(yaml_config: dict, args: argparse.Namespace) -> ExecutorConfig:
+    """Build ExecutorConfig from YAML and CLI arguments.
+
+    CLI arguments override YAML config.
+
+    Args:
+        yaml_config: Configuration loaded from YAML file.
+        args: Parsed CLI arguments.
+
+    Returns:
+        ExecutorConfig instance.
+    """
+    # Start with defaults
+    config_kwargs = {}
+
+    # Apply YAML config (only non-None values)
+    for key, value in yaml_config.items():
+        if value is not None:
+            config_kwargs[key] = value
+
+    # Override with CLI arguments
+    if hasattr(args, "max_retries") and args.max_retries != 3:
+        config_kwargs["max_retries"] = args.max_retries
+    if hasattr(args, "timeout") and args.timeout != 30:
+        config_kwargs["task_timeout_minutes"] = args.timeout
+    if hasattr(args, "no_tests") and args.no_tests:
+        config_kwargs["run_tests_on_done"] = False
+    if hasattr(args, "no_branch") and args.no_branch:
+        config_kwargs["create_git_branch"] = False
+    if hasattr(args, "no_commit") and args.no_commit:
+        config_kwargs["auto_commit"] = False
+
+    return ExecutorConfig(**config_kwargs)
 
 
 # === State Management ===
@@ -425,7 +508,7 @@ def post_done_hook(task: Task, config: ExecutorConfig, success: bool) -> bool:
         print("   ✅ Tests passed")
 
     # Run lint
-    if config.lint_command:
+    if config.run_lint_on_done and config.lint_command:
         print("   Running lint...")
         result = subprocess.run(
             config.lint_command,
@@ -721,6 +804,9 @@ def cmd_run(args, config: ExecutorConfig):
             break
 
     # Summary
+    # Re-read tasks to get updated statuses after execution
+    tasks = parse_tasks(TASKS_FILE)
+
     # Calculate statistics
     failed_attempts = sum(
         1 for ts in state.tasks.values() for a in ts.attempts if not a.success
@@ -892,14 +978,9 @@ def main():
         parser.print_help()
         return
 
-    # Build config
-    config = ExecutorConfig(
-        max_retries=args.max_retries,
-        task_timeout_minutes=args.timeout,
-        run_tests_on_done=not args.no_tests,
-        create_git_branch=not args.no_branch,
-        auto_commit=not args.no_commit,
-    )
+    # Load config from YAML file, then override with CLI args
+    yaml_config = load_config_from_yaml()
+    config = build_config(yaml_config, args)
 
     # Dispatch
     commands = {

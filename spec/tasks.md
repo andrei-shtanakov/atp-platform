@@ -64,7 +64,7 @@ Implement `/compare/side-by-side` endpoint that returns detailed comparison data
 ---
 
 ### TASK-002: Step Comparison UI
-🔴 P0 | ⬜ TODO | Est: 4-5h
+🔴 P0 | ✅ DONE | Est: 4-5h
 
 **Description:**
 Build React component for side-by-side step comparison view.
@@ -124,18 +124,18 @@ Implement `/leaderboard/matrix` endpoint returning test × agent matrix.
 ---
 
 ### TASK-005: Leaderboard Matrix UI
-🔴 P0 | ⬜ TODO | Est: 4-5h
+🔴 P0 | ✅ DONE | Est: 4-5h
 
 **Description:**
 Build React component for leaderboard matrix visualization.
 
 **Checklist:**
-- [ ] Create `MatrixGrid.tsx` table component
-- [ ] Create `ScoreCell.tsx` with color coding
-- [ ] Create `AgentHeader.tsx` with stats
-- [ ] Create `TestRow.tsx` with test info
-- [ ] Add sorting by columns
-- [ ] Add responsive horizontal scroll
+- [x] Create `MatrixGrid.tsx` table component
+- [x] Create `ScoreCell.tsx` with color coding
+- [x] Create `AgentHeader.tsx` with stats
+- [x] Create `TestRow.tsx` with test info
+- [x] Add sorting by columns
+- [x] Add responsive horizontal scroll
 
 **Traces to:** [REQ-010], [DESIGN-002]
 **Depends on:** [TASK-004]
@@ -163,7 +163,7 @@ Add summary row/column with aggregated statistics.
 ---
 
 ### TASK-007: Timeline Events API
-🔴 P0 | 🔄 IN_PROGRESS | Est: 3-4h
+🔴 P0 | ✅ DONE | Est: 3-4h
 
 **Description:**
 Implement `/timeline/events` endpoint for single agent timeline.

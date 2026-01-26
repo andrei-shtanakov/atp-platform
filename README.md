@@ -208,10 +208,11 @@ atp-platform-ru/
 │   ├── unit/                 # Unit tests
 │   ├── e2e/                  # End-to-end tests
 │   └── fixtures/             # Test fixtures
-├── spec/                     # Requirements and design
-│   ├── requirements.md
-│   ├── design.md
-│   └── tasks.md
+├── spec/                     # Working directory for specifications (managed by /spec-generator-skill)
+│   ├── requirements.md       # Current feature requirements (REQ-XXX)
+│   ├── design.md             # Technical design (DESIGN-XXX)
+│   ├── tasks.md              # Implementation tasks (TASK-XXX)
+│   └── WORKFLOW.md           # Task management workflow guide
 └── pyproject.toml            # Project configuration
 ```
 
@@ -365,11 +366,19 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Status
 
-**Current Status**: GA (General Availability) - All milestones complete
+**Current Status**: GA (General Availability)
 
 All core features implemented:
 - ✅ MVP: Protocol, Adapters, Runner, Evaluators, Reporters, CLI
 - ✅ Beta: Framework adapters, Statistics, LLM-Judge, Baseline, HTML reports, CI/CD
 - ✅ GA: Dashboard, Security hardening, Performance optimization
 
-See [spec/tasks.md](spec/tasks.md) for detailed task status.
+### Specifications Directory
+
+The `spec/` directory is a **working directory** for current development specifications, managed by the `/spec-generator-skill` Claude skill. It contains:
+- `requirements.md` — Feature requirements in Kiro-style format (REQ-XXX)
+- `design.md` — Technical design and architecture (DESIGN-XXX)
+- `tasks.md` — Implementation tasks with dependencies (TASK-XXX)
+- `WORKFLOW.md` — Task management and executor workflow guide
+
+Specifications evolve with the project. See [spec/tasks.md](spec/tasks.md) for current task status.

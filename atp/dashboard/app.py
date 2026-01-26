@@ -63,6 +63,11 @@ def create_index_html() -> str:
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         .chart-container { position: relative; height: 300px; }
+        .matrix-scroll-container { max-width: 100%; overflow-x: auto; }
+        .matrix-scroll-container::-webkit-scrollbar { height: 8px; }
+        .matrix-scroll-container::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        .matrix-scroll-container::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+        .matrix-scroll-container::-webkit-scrollbar-thumb:hover { background: #a1a1a1; }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -300,11 +305,389 @@ def create_index_html() -> str:
             );
         }
 
-        // Agent comparison component
+        // Event type colors for styling
+        const EVENT_COLORS = {
+            tool_call: { bg: 'bg-blue-50', border: 'border-blue-400', text: 'text-blue-700', icon: 'T' },
+            llm_request: { bg: 'bg-green-50', border: 'border-green-400', text: 'text-green-700', icon: 'L' },
+            reasoning: { bg: 'bg-amber-50', border: 'border-amber-400', text: 'text-amber-700', icon: 'R' },
+            error: { bg: 'bg-red-50', border: 'border-red-400', text: 'text-red-700', icon: 'E' },
+            progress: { bg: 'bg-purple-50', border: 'border-purple-400', text: 'text-purple-700', icon: 'P' },
+        };
+
+        // Agent Selector component - multi-select dropdown for selecting agents
+        function AgentSelector({ agents, selectedAgents, onSelectionChange, maxAgents = 3 }) {
+            const [isOpen, setIsOpen] = useState(false);
+
+            const toggleAgent = (agentName) => {
+                if (selectedAgents.includes(agentName)) {
+                    onSelectionChange(selectedAgents.filter(a => a !== agentName));
+                } else if (selectedAgents.length < maxAgents) {
+                    onSelectionChange([...selectedAgents, agentName]);
+                }
+            };
+
+            return (
+                <div className="relative">
+                    <button
+                        type="button"
+                        onClick={() => setIsOpen(!isOpen)}
+                        className="w-full bg-white border border-gray-300 rounded-md px-4 py-2 text-left flex justify-between items-center hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                        <span className="truncate">
+                            {selectedAgents.length === 0
+                                ? 'Select agents to compare...'
+                                : selectedAgents.join(', ')}
+                        </span>
+                        <svg className={`w-5 h-5 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </button>
+                    {isOpen && (
+                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+                            {agents.length === 0 ? (
+                                <div className="px-4 py-2 text-gray-500">No agents available</div>
+                            ) : (
+                                agents.map((agent) => {
+                                    const isSelected = selectedAgents.includes(agent.name);
+                                    const isDisabled = !isSelected && selectedAgents.length >= maxAgents;
+                                    return (
+                                        <div
+                                            key={agent.name}
+                                            onClick={() => !isDisabled && toggleAgent(agent.name)}
+                                            className={`px-4 py-2 cursor-pointer flex items-center ${
+                                                isSelected ? 'bg-blue-50' : ''
+                                            } ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}`}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={isSelected}
+                                                onChange={() => {}}
+                                                disabled={isDisabled}
+                                                className="mr-3"
+                                            />
+                                            <div>
+                                                <div className="font-medium">{agent.name}</div>
+                                                {agent.agent_type && (
+                                                    <div className="text-sm text-gray-500">{agent.agent_type}</div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+                    )}
+                    <div className="mt-1 text-xs text-gray-500">
+                        {selectedAgents.length}/2-{maxAgents} agents selected
+                    </div>
+                </div>
+            );
+        }
+
+        // Event Item component - displays a single event with type-specific styling
+        function EventItem({ event, sequence }) {
+            const [expanded, setExpanded] = useState(false);
+            const colors = EVENT_COLORS[event.event_type] || {
+                bg: 'bg-gray-50',
+                border: 'border-gray-400',
+                text: 'text-gray-700',
+                icon: '?'
+            };
+
+            return (
+                <div
+                    className={`${colors.bg} border-l-4 ${colors.border} p-3 rounded-r mb-2 cursor-pointer hover:shadow-sm transition-shadow`}
+                    onClick={() => setExpanded(!expanded)}
+                >
+                    <div className="flex items-start">
+                        <div className={`w-6 h-6 rounded-full ${colors.border.replace('border', 'bg').replace('400', '200')} ${colors.text} flex items-center justify-center text-xs font-bold mr-3 flex-shrink-0`}>
+                            {colors.icon}
+                        </div>
+                        <div className="flex-grow min-w-0">
+                            <div className="flex items-center justify-between">
+                                <span className={`text-xs font-semibold uppercase ${colors.text}`}>
+                                    {event.event_type.replace('_', ' ')}
+                                </span>
+                                <span className="text-xs text-gray-400">#{sequence + 1}</span>
+                            </div>
+                            <p className="text-sm text-gray-700 mt-1 break-words">{event.summary}</p>
+                            {expanded && event.data && (
+                                <div className="mt-2 p-2 bg-white rounded text-xs font-mono overflow-x-auto">
+                                    <pre className="whitespace-pre-wrap">{JSON.stringify(event.data, null, 2)}</pre>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Step Comparison component - displays event list for a single agent
+        function StepComparison({ agentDetail }) {
+            const [eventFilter, setEventFilter] = useState('all');
+
+            if (!agentDetail) {
+                return (
+                    <div className="bg-gray-50 p-4 rounded text-center text-gray-500">
+                        No execution data available
+                    </div>
+                );
+            }
+
+            const filteredEvents = eventFilter === 'all'
+                ? agentDetail.events
+                : agentDetail.events.filter(e => e.event_type === eventFilter);
+
+            return (
+                <div className="bg-white rounded-lg shadow">
+                    {/* Agent header with metrics */}
+                    <div className="p-4 border-b bg-gray-50 rounded-t-lg">
+                        <h4 className="font-bold text-lg mb-2">{agentDetail.agent_name}</h4>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                            <div>
+                                <span className="text-gray-500">Score:</span>
+                                <span className={`ml-2 font-semibold ${agentDetail.success ? 'text-green-600' : 'text-red-600'}`}>
+                                    {agentDetail.score?.toFixed(1) || '-'}/100
+                                </span>
+                            </div>
+                            <div>
+                                <span className="text-gray-500">Status:</span>
+                                <span className={`ml-2 px-2 py-0.5 text-xs rounded ${
+                                    agentDetail.success
+                                        ? 'bg-green-100 text-green-800'
+                                        : 'bg-red-100 text-red-800'
+                                }`}>
+                                    {agentDetail.success ? 'Passed' : 'Failed'}
+                                </span>
+                            </div>
+                            <div>
+                                <span className="text-gray-500">Duration:</span>
+                                <span className="ml-2">{agentDetail.duration_seconds?.toFixed(2) || '-'}s</span>
+                            </div>
+                            <div>
+                                <span className="text-gray-500">Tokens:</span>
+                                <span className="ml-2">{agentDetail.total_tokens?.toLocaleString() || '-'}</span>
+                            </div>
+                            <div>
+                                <span className="text-gray-500">Steps:</span>
+                                <span className="ml-2">{agentDetail.total_steps || '-'}</span>
+                            </div>
+                            <div>
+                                <span className="text-gray-500">Cost:</span>
+                                <span className="ml-2">${agentDetail.cost_usd?.toFixed(4) || '-'}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Event filters */}
+                    <div className="p-2 border-b flex flex-wrap gap-1">
+                        <button
+                            onClick={() => setEventFilter('all')}
+                            className={`px-2 py-1 text-xs rounded ${eventFilter === 'all' ? 'bg-gray-800 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}
+                        >
+                            All ({agentDetail.events?.length || 0})
+                        </button>
+                        {Object.entries(EVENT_COLORS).map(([type, colors]) => {
+                            const count = agentDetail.events?.filter(e => e.event_type === type).length || 0;
+                            if (count === 0) return null;
+                            return (
+                                <button
+                                    key={type}
+                                    onClick={() => setEventFilter(type)}
+                                    className={`px-2 py-1 text-xs rounded ${
+                                        eventFilter === type
+                                            ? `${colors.bg} ${colors.text} ring-2 ring-offset-1`
+                                            : 'bg-gray-100 hover:bg-gray-200'
+                                    }`}
+                                >
+                                    {type.replace('_', ' ')} ({count})
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {/* Event list */}
+                    <div className="p-4 max-h-96 overflow-y-auto">
+                        {filteredEvents && filteredEvents.length > 0 ? (
+                            filteredEvents.map((event, idx) => (
+                                <EventItem key={idx} event={event} sequence={event.sequence} />
+                            ))
+                        ) : (
+                            <p className="text-gray-500 text-center py-4">No events to display</p>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        // Comparison Container component - main layout with columns for side-by-side comparison
+        function ComparisonContainer({ suiteName, testId, agents, availableAgents, onTestSelect, tests }) {
+            const [comparison, setComparison] = useState(null);
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState(null);
+            const [selectedAgents, setSelectedAgents] = useState([]);
+
+            const loadComparison = useCallback(async () => {
+                if (selectedAgents.length < 2 || !testId) {
+                    setError('Please select a test and at least 2 agents');
+                    return;
+                }
+                setLoading(true);
+                setError(null);
+                try {
+                    const agentParams = selectedAgents.map(a => `agents=${encodeURIComponent(a)}`).join('&');
+                    const data = await api.get(
+                        `/compare/side-by-side?suite_name=${encodeURIComponent(suiteName)}&test_id=${encodeURIComponent(testId)}&${agentParams}`
+                    );
+                    setComparison(data);
+                } catch (err) {
+                    setError(err.message || 'Failed to load comparison data');
+                    setComparison(null);
+                } finally {
+                    setLoading(false);
+                }
+            }, [suiteName, testId, selectedAgents]);
+
+            // Loading state
+            if (loading) {
+                return (
+                    <div className="flex items-center justify-center py-12">
+                        <div className="text-center">
+                            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent mb-4"></div>
+                            <p className="text-gray-600">Loading comparison data...</p>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Selection UI
+            if (!comparison) {
+                return (
+                    <div className="bg-white p-6 rounded-lg shadow">
+                        <h3 className="text-lg font-bold mb-4">Step-by-Step Comparison</h3>
+
+                        {error && (
+                            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
+                                {error}
+                            </div>
+                        )}
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Select Test:
+                                </label>
+                                <select
+                                    value={testId || ''}
+                                    onChange={(e) => onTestSelect(e.target.value)}
+                                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="">Choose a test...</option>
+                                    {tests && tests.map((test) => (
+                                        <option key={test.test_id} value={test.test_id}>
+                                            {test.test_name || test.test_id}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Select Agents (2-3):
+                                </label>
+                                <AgentSelector
+                                    agents={availableAgents}
+                                    selectedAgents={selectedAgents}
+                                    onSelectionChange={setSelectedAgents}
+                                    maxAgents={3}
+                                />
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={loadComparison}
+                            disabled={selectedAgents.length < 2 || !testId}
+                            className="w-full md:w-auto bg-blue-500 text-white px-6 py-2 rounded-md hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                        >
+                            Compare Agents
+                        </button>
+
+                        <p className="mt-4 text-sm text-gray-500">
+                            Select a test and 2-3 agents to view their step-by-step execution comparison.
+                        </p>
+                    </div>
+                );
+            }
+
+            // Comparison results view
+            return (
+                <div>
+                    {/* Header with test info and reset button */}
+                    <div className="bg-white p-4 rounded-lg shadow mb-4 flex flex-wrap items-center justify-between gap-4">
+                        <div>
+                            <h3 className="text-lg font-bold">{comparison.test_name}</h3>
+                            <p className="text-sm text-gray-500">
+                                Suite: {comparison.suite_name} | Test ID: {comparison.test_id}
+                            </p>
+                        </div>
+                        <button
+                            onClick={() => setComparison(null)}
+                            className="text-blue-500 hover:text-blue-700 flex items-center gap-1"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                            </svg>
+                            Back to selection
+                        </button>
+                    </div>
+
+                    {/* Side-by-side comparison columns */}
+                    <div className={`grid gap-4 ${
+                        comparison.agents.length === 2
+                            ? 'grid-cols-1 lg:grid-cols-2'
+                            : 'grid-cols-1 lg:grid-cols-3'
+                    }`}>
+                        {comparison.agents.map((agent) => (
+                            <StepComparison key={agent.agent_name} agentDetail={agent} />
+                        ))}
+                    </div>
+
+                    {comparison.agents.length === 0 && (
+                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-yellow-700">
+                            No execution data found for the selected agents on this test.
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // Agent comparison component (original - for high-level metrics)
         function AgentComparison({ suiteName, agents }) {
             const [comparison, setComparison] = useState(null);
             const [selectedAgents, setSelectedAgents] = useState([]);
             const [loading, setLoading] = useState(false);
+            const [tests, setTests] = useState([]);
+            const [selectedTestId, setSelectedTestId] = useState('');
+            const [viewMode, setViewMode] = useState('metrics'); // 'metrics' or 'steps'
+
+            // Load tests for the suite
+            useEffect(() => {
+                if (suiteName) {
+                    api.get(`/suites?suite_name=${encodeURIComponent(suiteName)}&limit=1`)
+                        .then((data) => {
+                            if (data.items && data.items.length > 0) {
+                                const executionId = data.items[0].id;
+                                return api.get(`/suites/${executionId}`);
+                            }
+                            return null;
+                        })
+                        .then((detail) => {
+                            if (detail && detail.tests) {
+                                setTests(detail.tests);
+                            }
+                        })
+                        .catch(console.error);
+                }
+            }, [suiteName]);
 
             const loadComparison = useCallback(async () => {
                 if (selectedAgents.length < 2) return;
@@ -318,6 +701,34 @@ def create_index_html() -> str:
                 }
             }, [suiteName, selectedAgents]);
 
+            // Step comparison view
+            if (viewMode === 'steps') {
+                return (
+                    <div>
+                        <div className="mb-4 flex items-center gap-4">
+                            <button
+                                onClick={() => setViewMode('metrics')}
+                                className="text-blue-500 hover:text-blue-700 flex items-center gap-1"
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                                </svg>
+                                Back to metrics
+                            </button>
+                        </div>
+                        <ComparisonContainer
+                            suiteName={suiteName}
+                            testId={selectedTestId}
+                            agents={selectedAgents}
+                            availableAgents={agents}
+                            onTestSelect={setSelectedTestId}
+                            tests={tests}
+                        />
+                    </div>
+                );
+            }
+
+            // Metrics comparison view (original)
             if (!comparison) {
                 return (
                     <div className="bg-white p-4 rounded shadow">
@@ -357,7 +768,15 @@ def create_index_html() -> str:
 
             return (
                 <div className="bg-white p-4 rounded shadow">
-                    <h3 className="font-bold mb-4">Agent Comparison: {comparison.suite_name}</h3>
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="font-bold">Agent Comparison: {comparison.suite_name}</h3>
+                        <button
+                            onClick={() => setViewMode('steps')}
+                            className="bg-green-500 text-white px-4 py-2 rounded text-sm hover:bg-green-600"
+                        >
+                            View Step-by-Step
+                        </button>
+                    </div>
                     <table className="min-w-full mb-4">
                         <thead>
                             <tr>
@@ -387,6 +806,378 @@ def create_index_html() -> str:
                 </div>
             );
         }
+
+        // ==================== Leaderboard Matrix Components ====================
+
+        // Score color coding based on score value
+        const SCORE_COLORS = {
+            excellent: { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-300' },
+            good: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
+            medium: { bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200' },
+            poor: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
+            none: { bg: 'bg-gray-50', text: 'text-gray-400', border: 'border-gray-200' },
+        };
+
+        // Get color based on score value
+        function getScoreColor(score) {
+            if (score === null || score === undefined) return SCORE_COLORS.none;
+            if (score >= 80) return SCORE_COLORS.excellent;
+            if (score >= 60) return SCORE_COLORS.good;
+            if (score >= 40) return SCORE_COLORS.medium;
+            return SCORE_COLORS.poor;
+        }
+
+        // Difficulty badge colors
+        const DIFFICULTY_COLORS = {
+            easy: { bg: 'bg-green-100', text: 'text-green-700' },
+            medium: { bg: 'bg-yellow-100', text: 'text-yellow-700' },
+            hard: { bg: 'bg-orange-100', text: 'text-orange-700' },
+            very_hard: { bg: 'bg-red-100', text: 'text-red-700' },
+            unknown: { bg: 'bg-gray-100', text: 'text-gray-500' },
+        };
+
+        // ScoreCell component - displays a single score with color coding
+        function ScoreCell({ testScore, agentName }) {
+            if (!testScore) {
+                return (
+                    <td className="px-3 py-2 text-center">
+                        <span className="text-gray-400">-</span>
+                    </td>
+                );
+            }
+
+            const { score, success, execution_count } = testScore;
+            const colors = getScoreColor(score);
+
+            return (
+                <td className={`px-3 py-2 text-center ${colors.bg}`}>
+                    <div className="flex flex-col items-center">
+                        <span className={`font-semibold ${colors.text}`}>
+                            {score !== null ? score.toFixed(0) : '-'}
+                        </span>
+                        <span className={`text-xs ${success ? 'text-green-600' : 'text-red-600'}`}>
+                            {success ? 'Pass' : 'Fail'}
+                        </span>
+                        {execution_count > 1 && (
+                            <span className="text-xs text-gray-400">
+                                ({execution_count} runs)
+                            </span>
+                        )}
+                    </div>
+                </td>
+            );
+        }
+
+        // AgentHeader component - column header showing agent stats
+        function AgentHeader({ agent, onSort, sortConfig }) {
+            const isActive = sortConfig.key === agent.agent_name;
+            const rankBadge = agent.rank <= 3 ? ['bg-yellow-400', 'bg-gray-300', 'bg-amber-600'][agent.rank - 1] : 'bg-gray-200';
+
+            return (
+                <th
+                    className="px-3 py-3 text-center bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors min-w-[120px]"
+                    onClick={() => onSort(agent.agent_name)}
+                >
+                    <div className="flex flex-col items-center gap-1">
+                        <div className="flex items-center gap-2">
+                            <span className={`w-6 h-6 rounded-full ${rankBadge} flex items-center justify-center text-xs font-bold text-white`}>
+                                {agent.rank}
+                            </span>
+                            <span className="font-semibold text-gray-700 truncate max-w-[100px]" title={agent.agent_name}>
+                                {agent.agent_name}
+                            </span>
+                            {isActive && (
+                                <svg className={`w-4 h-4 text-blue-500 ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                            )}
+                        </div>
+                        <div className="text-xs text-gray-500 space-y-0.5">
+                            <div>Avg: {agent.avg_score !== null ? agent.avg_score.toFixed(1) : '-'}</div>
+                            <div>Pass: {(agent.pass_rate * 100).toFixed(0)}%</div>
+                            {agent.total_cost !== null && (
+                                <div>${agent.total_cost.toFixed(2)}</div>
+                            )}
+                        </div>
+                    </div>
+                </th>
+            );
+        }
+
+        // TestRow component - row showing test info and scores per agent
+        function TestRow({ test, agents, rowIndex }) {
+            const difficultyColors = DIFFICULTY_COLORS[test.difficulty] || DIFFICULTY_COLORS.unknown;
+
+            return (
+                <tr className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                    <td className="px-3 py-2 sticky left-0 bg-inherit border-r border-gray-200 min-w-[200px]">
+                        <div className="flex flex-col gap-1">
+                            <span className="font-medium text-gray-800 truncate" title={test.test_name}>
+                                {test.test_name}
+                            </span>
+                            <div className="flex flex-wrap gap-1">
+                                <span className={`px-2 py-0.5 text-xs rounded ${difficultyColors.bg} ${difficultyColors.text}`}>
+                                    {test.difficulty.replace('_', ' ')}
+                                </span>
+                                {test.pattern && (
+                                    <span className="px-2 py-0.5 text-xs rounded bg-purple-100 text-purple-700">
+                                        {test.pattern.replace('_', ' ')}
+                                    </span>
+                                )}
+                            </div>
+                            {test.tags && test.tags.length > 0 && (
+                                <div className="flex flex-wrap gap-1">
+                                    {test.tags.slice(0, 3).map((tag, idx) => (
+                                        <span key={idx} className="px-1.5 py-0.5 text-xs rounded bg-blue-50 text-blue-600">
+                                            {tag}
+                                        </span>
+                                    ))}
+                                    {test.tags.length > 3 && (
+                                        <span className="text-xs text-gray-400">+{test.tags.length - 3}</span>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </td>
+                    <td className="px-3 py-2 text-center border-r border-gray-200">
+                        <span className={`font-semibold ${getScoreColor(test.avg_score).text}`}>
+                            {test.avg_score !== null ? test.avg_score.toFixed(1) : '-'}
+                        </span>
+                    </td>
+                    {agents.map((agent) => (
+                        <ScoreCell
+                            key={agent.agent_name}
+                            testScore={test.scores_by_agent[agent.agent_name]}
+                            agentName={agent.agent_name}
+                        />
+                    ))}
+                </tr>
+            );
+        }
+
+        // MatrixGrid component - main table showing tests vs agents
+        function MatrixGrid({ data, onRefresh }) {
+            const [sortConfig, setSortConfig] = useState({ key: null, direction: 'desc' });
+
+            if (!data || !data.tests || data.tests.length === 0) {
+                return (
+                    <div className="bg-white p-8 rounded-lg shadow text-center">
+                        <p className="text-gray-500">No test data available for this suite.</p>
+                        <button
+                            onClick={onRefresh}
+                            className="mt-4 text-blue-500 hover:text-blue-700"
+                        >
+                            Refresh Data
+                        </button>
+                    </div>
+                );
+            }
+
+            const handleSort = (key) => {
+                setSortConfig((prev) => ({
+                    key,
+                    direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc',
+                }));
+            };
+
+            // Sort tests based on sortConfig
+            const sortedTests = [...data.tests].sort((a, b) => {
+                if (!sortConfig.key) {
+                    // Default sort by test_name
+                    return a.test_name.localeCompare(b.test_name);
+                }
+
+                if (sortConfig.key === 'test_name') {
+                    const cmp = a.test_name.localeCompare(b.test_name);
+                    return sortConfig.direction === 'asc' ? cmp : -cmp;
+                }
+
+                if (sortConfig.key === 'avg_score') {
+                    const aVal = a.avg_score ?? -1;
+                    const bVal = b.avg_score ?? -1;
+                    const cmp = aVal - bVal;
+                    return sortConfig.direction === 'asc' ? cmp : -cmp;
+                }
+
+                if (sortConfig.key === 'difficulty') {
+                    const order = { easy: 1, medium: 2, hard: 3, very_hard: 4, unknown: 5 };
+                    const cmp = (order[a.difficulty] || 5) - (order[b.difficulty] || 5);
+                    return sortConfig.direction === 'asc' ? cmp : -cmp;
+                }
+
+                // Sort by agent score
+                const aScore = a.scores_by_agent[sortConfig.key]?.score ?? -1;
+                const bScore = b.scores_by_agent[sortConfig.key]?.score ?? -1;
+                const cmp = aScore - bScore;
+                return sortConfig.direction === 'asc' ? cmp : -cmp;
+            });
+
+            return (
+                <div className="bg-white rounded-lg shadow">
+                    {/* Matrix header with summary */}
+                    <div className="p-4 border-b flex flex-wrap items-center justify-between gap-4">
+                        <div>
+                            <h3 className="text-lg font-bold text-gray-800">Leaderboard Matrix</h3>
+                            <p className="text-sm text-gray-500">
+                                {data.total_tests} tests × {data.total_agents} agents
+                            </p>
+                        </div>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => handleSort('test_name')}
+                                className={`px-3 py-1 text-sm rounded ${sortConfig.key === 'test_name' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                            >
+                                Sort by Name
+                            </button>
+                            <button
+                                onClick={() => handleSort('avg_score')}
+                                className={`px-3 py-1 text-sm rounded ${sortConfig.key === 'avg_score' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                            >
+                                Sort by Avg Score
+                            </button>
+                            <button
+                                onClick={() => handleSort('difficulty')}
+                                className={`px-3 py-1 text-sm rounded ${sortConfig.key === 'difficulty' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                            >
+                                Sort by Difficulty
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Scrollable table container */}
+                    <div className="overflow-x-auto matrix-scroll-container">
+                        <table className="min-w-full border-collapse">
+                            <thead>
+                                <tr>
+                                    <th className="px-3 py-3 text-left bg-gray-100 sticky left-0 z-10 border-r border-gray-200 min-w-[200px]">
+                                        <span className="font-semibold text-gray-700">Test</span>
+                                    </th>
+                                    <th
+                                        className="px-3 py-3 text-center bg-gray-100 cursor-pointer hover:bg-gray-200 min-w-[80px] border-r border-gray-200"
+                                        onClick={() => handleSort('avg_score')}
+                                    >
+                                        <div className="flex items-center justify-center gap-1">
+                                            <span className="font-semibold text-gray-700">Avg</span>
+                                            {sortConfig.key === 'avg_score' && (
+                                                <svg className={`w-4 h-4 text-blue-500 ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                                </svg>
+                                            )}
+                                        </div>
+                                    </th>
+                                    {data.agents.map((agent) => (
+                                        <AgentHeader
+                                            key={agent.agent_name}
+                                            agent={agent}
+                                            onSort={handleSort}
+                                            sortConfig={sortConfig}
+                                        />
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {sortedTests.map((test, idx) => (
+                                    <TestRow
+                                        key={test.test_id}
+                                        test={test}
+                                        agents={data.agents}
+                                        rowIndex={idx}
+                                    />
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {/* Legend */}
+                    <div className="p-4 border-t bg-gray-50 flex flex-wrap gap-4 text-xs">
+                        <div className="flex items-center gap-2">
+                            <span className="font-semibold text-gray-600">Score:</span>
+                            <span className="px-2 py-0.5 rounded bg-green-100 text-green-800">80+</span>
+                            <span className="px-2 py-0.5 rounded bg-green-50 text-green-700">60-79</span>
+                            <span className="px-2 py-0.5 rounded bg-yellow-50 text-yellow-700">40-59</span>
+                            <span className="px-2 py-0.5 rounded bg-red-50 text-red-700">&lt;40</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="font-semibold text-gray-600">Rank:</span>
+                            <span className="w-5 h-5 rounded-full bg-yellow-400 flex items-center justify-center text-white text-xs font-bold">1</span>
+                            <span className="w-5 h-5 rounded-full bg-gray-300 flex items-center justify-center text-white text-xs font-bold">2</span>
+                            <span className="w-5 h-5 rounded-full bg-amber-600 flex items-center justify-center text-white text-xs font-bold">3</span>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Leaderboard view component - wrapper with data loading
+        function LeaderboardView({ suiteName, onBack }) {
+            const [matrixData, setMatrixData] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [error, setError] = useState(null);
+
+            const loadMatrix = useCallback(async () => {
+                if (!suiteName) return;
+                setLoading(true);
+                setError(null);
+                try {
+                    const data = await api.get(`/leaderboard/matrix?suite_name=${encodeURIComponent(suiteName)}`);
+                    setMatrixData(data);
+                } catch (err) {
+                    setError(err.message || 'Failed to load leaderboard data');
+                    setMatrixData(null);
+                } finally {
+                    setLoading(false);
+                }
+            }, [suiteName]);
+
+            useEffect(() => {
+                loadMatrix();
+            }, [loadMatrix]);
+
+            if (loading) {
+                return (
+                    <div className="flex items-center justify-center py-12">
+                        <div className="text-center">
+                            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent mb-4"></div>
+                            <p className="text-gray-600">Loading leaderboard matrix...</p>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (error) {
+                return (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+                        <p className="font-semibold">Error loading leaderboard</p>
+                        <p className="text-sm">{error}</p>
+                        <button
+                            onClick={loadMatrix}
+                            className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
+                        >
+                            Try again
+                        </button>
+                    </div>
+                );
+            }
+
+            return (
+                <div>
+                    {onBack && (
+                        <button
+                            onClick={onBack}
+                            className="mb-4 text-blue-500 hover:text-blue-700 flex items-center gap-1"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                            </svg>
+                            Back
+                        </button>
+                    )}
+                    <MatrixGrid data={matrixData} onRefresh={loadMatrix} />
+                </div>
+            );
+        }
+
+        // ==================== End Leaderboard Matrix Components ====================
 
         // Trend chart component
         function TrendChart({ suiteName }) {
@@ -516,6 +1307,12 @@ def create_index_html() -> str:
                                 >
                                     Compare
                                 </button>
+                                <button
+                                    onClick={() => { setView('leaderboard'); setSelectedExecution(null); }}
+                                    className={`hover:underline ${view === 'leaderboard' ? 'font-bold' : ''}`}
+                                >
+                                    Leaderboard
+                                </button>
                                 {isLoggedIn ? (
                                     <button onClick={handleLogout} className="hover:underline">
                                         Logout
@@ -596,7 +1393,30 @@ def create_index_html() -> str:
                             </>
                         )}
 
-                        {!summary && view !== 'login' && (
+                        {view === 'leaderboard' && (
+                            <>
+                                <h2 className="text-lg font-bold mb-4">Leaderboard Matrix</h2>
+                                <div className="mb-4">
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Select Suite:
+                                    </label>
+                                    <select
+                                        value={selectedSuite}
+                                        onChange={(e) => setSelectedSuite(e.target.value)}
+                                        className="border rounded p-2"
+                                    >
+                                        {suiteNames.map((name) => (
+                                            <option key={name} value={name}>{name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                {selectedSuite && (
+                                    <LeaderboardView suiteName={selectedSuite} />
+                                )}
+                            </>
+                        )}
+
+                        {!summary && view !== 'login' && view !== 'leaderboard' && (
                             <div className="text-center py-10">
                                 <p className="text-gray-600">
                                     No data available. Run some tests to see results here.

@@ -81,8 +81,8 @@ python executor.py run --no-tests
 # Without creating git branch
 python executor.py run --no-branch
 
-# Auto-commit on success
-python executor.py run --auto-commit
+# Without auto-commit (auto-commit is ON by default)
+python executor.py run --no-commit
 ```
 
 ### Automatic Execution Workflow
@@ -184,6 +184,8 @@ Log content:
 
 ### Configuration
 
+Configuration is loaded from `executor.config.yaml` (if exists). CLI arguments override YAML config.
+
 File `executor.config.yaml`:
 
 ```yaml
@@ -196,7 +198,12 @@ executor:
       create_git_branch: true
     post_done:
       run_tests: true
-      auto_commit: false
+      run_lint: true
+      auto_commit: true  # Use --no-commit to disable
+
+  commands:
+    test: "uv run pytest tests/ -v -m 'not slow'"
+    lint: "uv run ruff check ."
 ```
 
 ---
