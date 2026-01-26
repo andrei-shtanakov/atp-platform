@@ -172,6 +172,7 @@ class TestRouterConfiguration:
         assert "/trends/suite" in route_paths
         assert "/compare/agents" in route_paths
         assert "/dashboard/summary" in route_paths
+        assert "/leaderboard/matrix" in route_paths
 
     def test_router_has_multiple_routes(self) -> None:
         """Test that router has multiple routes."""

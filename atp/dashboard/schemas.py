@@ -314,6 +314,52 @@ class TokenData(BaseModel):
     user_id: int | None = None
 
 
+# ==================== Leaderboard Matrix Schemas ====================
+
+
+class TestScore(BaseModel):
+    """Score data for a single test by a single agent."""
+
+    score: float | None
+    success: bool
+    execution_count: int
+
+
+class TestRow(BaseModel):
+    """Row in the leaderboard matrix representing a test."""
+
+    test_id: str
+    test_name: str
+    tags: list[str]
+    scores_by_agent: dict[str, TestScore]
+    avg_score: float | None
+    difficulty: str  # easy, medium, hard, very_hard, unknown
+    pattern: str | None  # hard_for_all, easy, etc.
+
+
+class AgentColumn(BaseModel):
+    """Column in the leaderboard matrix representing an agent."""
+
+    agent_name: str
+    avg_score: float | None
+    pass_rate: float
+    total_tokens: int
+    total_cost: float | None
+    rank: int
+
+
+class LeaderboardMatrixResponse(BaseModel):
+    """Response for leaderboard matrix view."""
+
+    suite_name: str
+    tests: list[TestRow]
+    agents: list[AgentColumn]
+    total_tests: int
+    total_agents: int
+    limit: int
+    offset: int
+
+
 # ==================== Dashboard Summary Schemas ====================
 
 

@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from atp.dashboard.schemas import (
+    AgentColumn,
     AgentComparisonMetrics,
     AgentComparisonResponse,
     AgentCreate,
@@ -13,6 +14,7 @@ from atp.dashboard.schemas import (
     AgentUpdate,
     DashboardSummary,
     EvaluationResultResponse,
+    LeaderboardMatrixResponse,
     RunResultSummary,
     ScoreComponentResponse,
     SuiteExecutionDetail,
@@ -22,6 +24,8 @@ from atp.dashboard.schemas import (
     TestComparisonMetrics,
     TestExecutionDetail,
     TestExecutionSummary,
+    TestRow,
+    TestScore,
     TestTrend,
     Token,
     TokenData,
@@ -431,3 +435,139 @@ class TestDashboardSummary:
             recent_executions=[],
         )
         assert summary.recent_avg_score is None
+
+
+class TestLeaderboardSchemas:
+    """Tests for leaderboard matrix schemas."""
+
+    def test_test_score(self) -> None:
+        """Test TestScore schema."""
+        score = TestScore(
+            score=85.5,
+            success=True,
+            execution_count=3,
+        )
+        assert score.score == 85.5
+        assert score.success is True
+        assert score.execution_count == 3
+
+    def test_test_score_with_none(self) -> None:
+        """Test TestScore schema with None score."""
+        score = TestScore(
+            score=None,
+            success=False,
+            execution_count=0,
+        )
+        assert score.score is None
+        assert score.success is False
+
+    def test_test_row(self) -> None:
+        """Test TestRow schema."""
+        row = TestRow(
+            test_id="test-001",
+            test_name="Test One",
+            tags=["smoke", "regression"],
+            scores_by_agent={
+                "agent-1": TestScore(score=85.0, success=True, execution_count=2),
+                "agent-2": TestScore(score=75.0, success=True, execution_count=2),
+            },
+            avg_score=80.0,
+            difficulty="easy",
+            pattern=None,
+        )
+        assert row.test_id == "test-001"
+        assert row.difficulty == "easy"
+        assert len(row.scores_by_agent) == 2
+
+    def test_test_row_with_pattern(self) -> None:
+        """Test TestRow schema with pattern detected."""
+        row = TestRow(
+            test_id="test-002",
+            test_name="Hard Test",
+            tags=[],
+            scores_by_agent={
+                "agent-1": TestScore(score=30.0, success=False, execution_count=3),
+                "agent-2": TestScore(score=25.0, success=False, execution_count=3),
+            },
+            avg_score=27.5,
+            difficulty="very_hard",
+            pattern="hard_for_all",
+        )
+        assert row.pattern == "hard_for_all"
+        assert row.difficulty == "very_hard"
+
+    def test_agent_column(self) -> None:
+        """Test AgentColumn schema."""
+        column = AgentColumn(
+            agent_name="agent-alpha",
+            avg_score=82.5,
+            pass_rate=0.9,
+            total_tokens=15000,
+            total_cost=0.15,
+            rank=1,
+        )
+        assert column.agent_name == "agent-alpha"
+        assert column.rank == 1
+        assert column.total_tokens == 15000
+
+    def test_agent_column_with_none_cost(self) -> None:
+        """Test AgentColumn schema with None cost."""
+        column = AgentColumn(
+            agent_name="agent-beta",
+            avg_score=None,
+            pass_rate=0.5,
+            total_tokens=0,
+            total_cost=None,
+            rank=2,
+        )
+        assert column.avg_score is None
+        assert column.total_cost is None
+
+    def test_leaderboard_matrix_response(self) -> None:
+        """Test LeaderboardMatrixResponse schema."""
+        response = LeaderboardMatrixResponse(
+            suite_name="benchmark-suite",
+            tests=[
+                TestRow(
+                    test_id="test-001",
+                    test_name="Test One",
+                    tags=[],
+                    scores_by_agent={},
+                    avg_score=80.0,
+                    difficulty="easy",
+                    pattern=None,
+                )
+            ],
+            agents=[
+                AgentColumn(
+                    agent_name="agent-1",
+                    avg_score=80.0,
+                    pass_rate=0.9,
+                    total_tokens=10000,
+                    total_cost=0.1,
+                    rank=1,
+                )
+            ],
+            total_tests=10,
+            total_agents=3,
+            limit=50,
+            offset=0,
+        )
+        assert response.suite_name == "benchmark-suite"
+        assert len(response.tests) == 1
+        assert len(response.agents) == 1
+        assert response.total_tests == 10
+
+    def test_leaderboard_matrix_response_empty(self) -> None:
+        """Test LeaderboardMatrixResponse with empty data."""
+        response = LeaderboardMatrixResponse(
+            suite_name="empty-suite",
+            tests=[],
+            agents=[],
+            total_tests=0,
+            total_agents=0,
+            limit=50,
+            offset=0,
+        )
+        assert len(response.tests) == 0
+        assert len(response.agents) == 0
