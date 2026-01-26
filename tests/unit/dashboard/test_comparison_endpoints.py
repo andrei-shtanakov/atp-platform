@@ -404,28 +404,40 @@ class TestLeaderboardMatrixEndpoint:
 class TestTimelineEventsEndpoint:
     """Tests for /timeline/events endpoint."""
 
-    def test_endpoint_requires_test_execution_id(self, client: TestClient) -> None:
-        """Test that test_execution_id is required."""
+    def test_endpoint_requires_suite_name(self, client: TestClient) -> None:
+        """Test that suite_name is required."""
         response = client.get("/api/timeline/events")
-        assert response.status_code in [404, 422, 500]
+        assert response.status_code == 422
 
-    def test_endpoint_accepts_run_number(self, client: TestClient) -> None:
-        """Test endpoint with run_number parameter."""
+    def test_endpoint_requires_test_id(self, client: TestClient) -> None:
+        """Test that test_id is required."""
         response = client.get(
             "/api/timeline/events",
             params={
-                "test_execution_id": 1,
-                "run_number": 1,
+                "suite_name": "test-suite",
             },
         )
-        assert response.status_code in [200, 404, 500]
+        assert response.status_code == 422
+
+    def test_endpoint_requires_agent_name(self, client: TestClient) -> None:
+        """Test that agent_name is required."""
+        response = client.get(
+            "/api/timeline/events",
+            params={
+                "suite_name": "test-suite",
+                "test_id": "test-001",
+            },
+        )
+        assert response.status_code == 422
 
     def test_endpoint_accepts_event_type_filter(self, client: TestClient) -> None:
         """Test endpoint with event_types filter."""
         response = client.get(
             "/api/timeline/events",
             params={
-                "test_execution_id": 1,
+                "suite_name": "test-suite",
+                "test_id": "test-001",
+                "agent_name": "agent-1",
                 "event_types": ["tool_call", "llm_request"],
             },
         )
@@ -436,11 +448,13 @@ class TestTimelineEventsEndpoint:
         response = client.get(
             "/api/timeline/events",
             params={
-                "test_execution_id": 1,
+                "suite_name": "test-suite",
+                "test_id": "test-001",
+                "agent_name": "agent-1",
                 "limit": 2000,  # Exceeds max of 1000
             },
         )
-        assert response.status_code in [404, 422, 500]
+        assert response.status_code == 422
 
 
 class TestMultiTimelineEndpoint:

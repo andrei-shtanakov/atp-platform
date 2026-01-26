@@ -360,6 +360,37 @@ class LeaderboardMatrixResponse(BaseModel):
     offset: int
 
 
+# ==================== Timeline Events Schemas ====================
+
+
+class TimelineEvent(BaseModel):
+    """Event data for timeline visualization.
+
+    Extends EventSummary with relative timing information for timeline rendering.
+    """
+
+    sequence: int
+    timestamp: datetime
+    event_type: str  # tool_call, llm_request, reasoning, error, progress
+    summary: str  # One-line description
+    data: dict[str, Any]  # Full event payload
+    relative_time_ms: float  # Time since first event in milliseconds
+    duration_ms: float | None  # Event duration if applicable (from payload)
+
+
+class TimelineEventsResponse(BaseModel):
+    """Response for timeline events API."""
+
+    suite_name: str
+    test_id: str
+    test_name: str
+    agent_name: str
+    total_events: int  # Total count before limiting
+    events: list[TimelineEvent]  # List of timeline events (max 1000)
+    total_duration_ms: float | None  # Total duration from first to last event
+    execution_id: int  # Test execution ID for reference
+
+
 # ==================== Dashboard Summary Schemas ====================
 
 
