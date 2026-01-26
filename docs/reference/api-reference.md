@@ -6,7 +6,9 @@ Complete reference for ATP's Python API.
 
 This document provides detailed API documentation for all public classes, functions, and modules in ATP. The platform is designed to be extensible and framework-agnostic.
 
-**Current Status**: MVP Phase - Test Loader implementation complete.
+**Current Status**: GA (General Availability) - All core features implemented.
+
+> **Looking for Dashboard REST API?** See [Dashboard API Reference](dashboard-api.md) for the complete REST API documentation including agent comparison, leaderboard, and timeline endpoints.
 
 ## Installation
 
@@ -691,6 +693,7 @@ def validate_all_suites(suite_dir: Path) -> list[str]:
 
 ## See Also
 
+- [Dashboard API Reference](dashboard-api.md) - REST API for dashboard, comparison, leaderboard, timeline
 - [Test Format Reference](test-format.md) - YAML structure specification
 - [Adapter Configuration](adapters.md) - Configure agent adapters
 - [Usage Guide](../guides/usage.md) - Common workflows

@@ -104,14 +104,22 @@ Complete reference for ATP features:
    - Complete Python API
    - Usage examples
 
-2. **[Configuration Reference](reference/configuration.md)**
+2. **[Dashboard API Reference](reference/dashboard-api.md)**
+   - REST API endpoints
+   - Agent comparison (side-by-side, general)
+   - Leaderboard matrix
+   - Timeline events and comparison
+   - Authentication
+   - Python client examples
+
+3. **[Configuration Reference](reference/configuration.md)**
    - YAML structure
    - Configuration options
    - Environment variables
    - Default values
    - Complete examples
 
-3. **[Test Format Reference](reference/test-format.md)**
+4. **[Test Format Reference](reference/test-format.md)**
    - Test suite structure
    - Task definition
    - Constraints
@@ -119,7 +127,7 @@ Complete reference for ATP features:
    - Scoring weights
    - Validation rules
 
-4. **[Adapter Configuration](reference/adapters.md)**
+5. **[Adapter Configuration](reference/adapters.md)**
    - HTTP adapter
    - Docker adapter
    - CLI adapter
@@ -127,14 +135,14 @@ Complete reference for ATP features:
    - CrewAI adapter
    - Custom adapters
 
-5. **[Troubleshooting Guide](reference/troubleshooting.md)**
+6. **[Troubleshooting Guide](reference/troubleshooting.md)**
    - Common errors
    - Debugging techniques
    - Performance issues
    - Known limitations
    - Solutions and workarounds
 
-6. **[FAQ](reference/faq.md)**
+7. **[FAQ](reference/faq.md)**
    - General questions
    - Installation and setup
    - Test suite creation

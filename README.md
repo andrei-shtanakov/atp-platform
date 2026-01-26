@@ -285,6 +285,7 @@ uv run atp list suite.yaml      # List tests in a suite
 - [Adapter Configuration](docs/reference/adapters.md) - Configure agent adapters
 - [Configuration Reference](docs/reference/configuration.md) - All config options
 - [API Reference](docs/reference/api-reference.md) - Python API
+- [Dashboard API Reference](docs/reference/dashboard-api.md) - REST API for comparison, leaderboard, timeline
 - [Troubleshooting](docs/reference/troubleshooting.md) - Common issues and solutions
 
 ### Architecture
