@@ -16,7 +16,7 @@ Environment:
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 
 import httpx
 
@@ -42,12 +42,14 @@ class MCPAgent:
         self,
         mcp_url: str = "http://localhost:9000",
         model: str = "gpt-4o-mini",
+        task_id: str = "test-task",
     ):
         self.mcp_url = mcp_url
         self.model = model
+        self.task_id = task_id
         self.client = OpenAI()
         self.http_client = httpx.Client(timeout=30)
-        self.artifacts: list[str] = []
+        self.artifacts: list[dict] = []
         self.events: list[dict] = []
         self.sequence = 0
 
@@ -61,7 +63,7 @@ class MCPAgent:
         self.events.append(
             {
                 "sequence": self.sequence,
-                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "timestamp": datetime.now(UTC).isoformat() + "Z",
                 "event_type": event_type,
                 "payload": payload,
             }
@@ -95,7 +97,18 @@ class MCPAgent:
         try:
             with open(path, "w") as f:
                 f.write(content)
-            self.artifacts.append(path)
+            # Add as proper Artifact object
+            content_type = (
+                "application/json" if path.endswith(".json") else "text/plain"
+            )
+            self.artifacts.append(
+                {
+                    "type": "file",
+                    "path": path,
+                    "content": content,
+                    "content_type": content_type,
+                }
+            )
             return {"success": True, "path": path, "size": len(content)}
         except Exception as e:
             return {"error": str(e)}
@@ -166,7 +179,7 @@ class MCPAgent:
 
     def execute_tool(self, name: str, arguments: dict) -> dict:
         """Execute a tool call."""
-        start_time = datetime.utcnow()
+        start_time = datetime.now(UTC)
 
         if name == "write_file":
             result = self.write_file(arguments["path"], arguments["content"])
@@ -179,7 +192,7 @@ class MCPAgent:
         else:
             result = {"error": f"Unknown tool: {name}"}
 
-        duration_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+        duration_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
 
         self.log_event(
             "tool_call",
@@ -202,10 +215,11 @@ class MCPAgent:
 
         if not mcp_tools:
             return {
+                "version": "1.0",
+                "task_id": self.task_id,
                 "status": "error",
                 "error": "Failed to connect to MCP server or no tools available",
                 "artifacts": [],
-                "events": self.events,
             }
 
         # Build OpenAI tools
@@ -243,7 +257,7 @@ Always save your final results to the files specified in the task."""
 
         for step in range(max_steps):
             # Call OpenAI
-            start_time = datetime.utcnow()
+            start_time = datetime.now(UTC)
             try:
                 response = self.client.chat.completions.create(
                     model=self.model,
@@ -254,13 +268,14 @@ Always save your final results to the files specified in the task."""
             except Exception as e:
                 self.log_event("error", {"message": f"OpenAI API error: {e}"})
                 return {
+                    "version": "1.0",
+                    "task_id": self.task_id,
                     "status": "error",
                     "error": str(e),
                     "artifacts": self.artifacts,
-                    "events": self.events,
                 }
 
-            duration_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+            duration_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
             llm_calls += 1
 
             # Track tokens
@@ -317,10 +332,10 @@ Always save your final results to the files specified in the task."""
                 )
 
                 return {
+                    "version": "1.0",
+                    "task_id": self.task_id,
                     "status": "completed",
-                    "message": message.content or "Task completed successfully",
                     "artifacts": self.artifacts,
-                    "events": self.events,
                     "metrics": {
                         "total_tokens": total_tokens,
                         "llm_calls": llm_calls,
@@ -332,10 +347,11 @@ Always save your final results to the files specified in the task."""
         # Max steps reached
         self.log_event("error", {"message": "Max steps reached"})
         return {
+            "version": "1.0",
+            "task_id": self.task_id,
             "status": "error",
             "error": "Max steps reached without completing the task",
             "artifacts": self.artifacts,
-            "events": self.events,
             "metrics": {
                 "total_tokens": total_tokens,
                 "llm_calls": llm_calls,
@@ -347,13 +363,18 @@ Always save your final results to the files specified in the task."""
 
 def main() -> None:
     """Main entry point."""
+    task_id = "unknown"
+
     # Check for API key
     if not os.environ.get("OPENAI_API_KEY"):
         print(
             json.dumps(
                 {
+                    "version": "1.0",
+                    "task_id": task_id,
                     "status": "error",
                     "error": "OPENAI_API_KEY environment variable not set",
+                    "artifacts": [],
                 }
             )
         )
@@ -367,14 +388,18 @@ def main() -> None:
         print(
             json.dumps(
                 {
+                    "version": "1.0",
+                    "task_id": task_id,
                     "status": "error",
                     "error": f"Invalid JSON input: {e}",
+                    "artifacts": [],
                 }
             )
         )
         sys.exit(1)
 
-    # Extract task description
+    # Extract task_id and task description
+    task_id = request.get("task_id", "test-task")
     task = request.get("task", {})
     task_description = task.get("description", "")
 
@@ -382,8 +407,11 @@ def main() -> None:
         print(
             json.dumps(
                 {
+                    "version": "1.0",
+                    "task_id": task_id,
                     "status": "error",
                     "error": "No task description provided",
+                    "artifacts": [],
                 }
             )
         )
@@ -398,7 +426,7 @@ def main() -> None:
     max_steps = constraints.get("max_steps", 20)
 
     # Create and run agent
-    agent = MCPAgent(mcp_url=mcp_url, model=model)
+    agent = MCPAgent(mcp_url=mcp_url, model=model, task_id=task_id)
 
     # Include any input data in the task description
     input_data_dict = task.get("input_data", {})
