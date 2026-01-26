@@ -96,6 +96,48 @@ class TestHTMLContent:
         html = create_index_html()
         assert "chart.js" in html.lower()
 
+    def test_html_content_has_timeline_components(self) -> None:
+        """Test that HTML includes timeline UI components."""
+        html = create_index_html()
+        assert "TimelineContainer" in html
+        assert "TimelineRow" in html
+        assert "TimeScale" in html
+        assert "EventMarker" in html
+
+    def test_html_content_has_timeline_view(self) -> None:
+        """Test that HTML includes TimelineView component."""
+        html = create_index_html()
+        assert "TimelineView" in html
+        assert "view === 'timeline'" in html
+
+    def test_html_content_has_timeline_navigation(self) -> None:
+        """Test that HTML includes Timeline navigation button."""
+        html = create_index_html()
+        assert "setView('timeline')" in html
+
+    def test_html_content_has_event_detail_panel(self) -> None:
+        """Test that HTML includes EventDetailPanel component."""
+        html = create_index_html()
+        assert "EventDetailPanel" in html
+
+    def test_html_content_has_event_tooltip(self) -> None:
+        """Test that HTML includes EventTooltip component."""
+        html = create_index_html()
+        assert "EventTooltip" in html
+
+    def test_html_content_has_zoom_controls(self) -> None:
+        """Test that HTML includes zoom controls for timeline."""
+        html = create_index_html()
+        assert "handleZoomIn" in html
+        assert "handleZoomOut" in html
+        assert "handleZoomReset" in html
+        assert "zoomLevel" in html
+
+    def test_html_content_has_timeline_styles(self) -> None:
+        """Test that HTML includes timeline CSS styles."""
+        html = create_index_html()
+        assert "timeline-container" in html or "timeline" in html.lower()
+
 
 class TestAppRoutes:
     """Tests for app routes."""

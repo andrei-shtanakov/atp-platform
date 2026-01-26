@@ -183,7 +183,7 @@ Implement `/timeline/events` endpoint for single agent timeline.
 ---
 
 ### TASK-008: Multi-Agent Timeline API
-🔴 P0 | 🔄 IN_PROGRESS | Est: 2-3h
+🔴 P0 | ✅ DONE | Est: 2-3h
 
 **Description:**
 Implement `/timeline/compare` endpoint for comparing agent timelines.
@@ -202,18 +202,18 @@ Implement `/timeline/compare` endpoint for comparing agent timelines.
 ---
 
 ### TASK-009: Timeline UI Component
-🔴 P0 | ⬜ TODO | Est: 5-6h
+🔴 P0 | ✅ DONE | Est: 5-6h
 
 **Description:**
 Build interactive timeline visualization using Chart.js.
 
 **Checklist:**
-- [ ] Create `TimelineContainer.tsx` with zoom controls
-- [ ] Create `TimelineRow.tsx` for single agent
-- [ ] Create `EventMarker.tsx` with type-based colors
-- [ ] Create `TimeScale.tsx` with time labels
-- [ ] Implement zoom in/out functionality
-- [ ] Add hover tooltips with event summary
+- [x] Create `TimelineContainer.tsx` with zoom controls
+- [x] Create `TimelineRow.tsx` for single agent
+- [x] Create `EventMarker.tsx` with type-based colors
+- [x] Create `TimeScale.tsx` with time labels
+- [x] Implement zoom in/out functionality
+- [x] Add hover tooltips with event summary
 
 **Traces to:** [REQ-020], [DESIGN-003]
 **Depends on:** [TASK-007]
