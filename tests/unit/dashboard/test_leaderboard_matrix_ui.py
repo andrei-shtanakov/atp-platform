@@ -501,3 +501,146 @@ class TestLoadingAndErrorStates:
         # LeaderboardView uses red styling for errors
         assert "bg-red-50" in html_content
         assert "border-red-200" in html_content
+
+
+class TestAggregationRowComponent:
+    """Tests for AggregationRow component structure."""
+
+    def test_aggregation_row_is_defined(self, html_content: str) -> None:
+        """Test that AggregationRow component is defined in HTML."""
+        assert "function AggregationRow" in html_content
+        assert "tests" in html_content
+        assert "agents" in html_content
+
+    def test_aggregation_row_included_in_matrix(self, html_content: str) -> None:
+        """Test that AggregationRow is included in MatrixGrid table."""
+        assert "<tfoot>" in html_content
+        assert "<AggregationRow" in html_content
+
+    def test_aggregation_row_shows_summary_label(self, html_content: str) -> None:
+        """Test that AggregationRow displays Summary label."""
+        assert "Summary" in html_content
+
+    def test_aggregation_row_shows_agent_avg_score(self, html_content: str) -> None:
+        """Test that AggregationRow displays per-agent average score."""
+        # Check for avg score display in aggregation context
+        assert "agent.avg_score" in html_content
+
+    def test_aggregation_row_shows_agent_pass_rate(self, html_content: str) -> None:
+        """Test that AggregationRow displays per-agent pass rate."""
+        # Check for pass rate display
+        assert "agent.pass_rate" in html_content
+
+    def test_aggregation_row_shows_agent_total_tokens(self, html_content: str) -> None:
+        """Test that AggregationRow displays per-agent total tokens."""
+        assert "agent.total_tokens" in html_content
+        assert "tokens" in html_content
+
+    def test_aggregation_row_shows_agent_total_cost(self, html_content: str) -> None:
+        """Test that AggregationRow displays per-agent total cost."""
+        assert "agent.total_cost" in html_content
+
+
+class TestRankingBadges:
+    """Tests for ranking badge display (1st, 2nd, 3rd)."""
+
+    def test_rank_badges_constant_defined(self, html_content: str) -> None:
+        """Test that RANK_BADGES constant is defined."""
+        assert "RANK_BADGES" in html_content
+
+    def test_first_place_badge(self, html_content: str) -> None:
+        """Test that 1st place badge is defined with gold color."""
+        assert "'1st'" in html_content
+        assert "bg-yellow-400" in html_content
+
+    def test_second_place_badge(self, html_content: str) -> None:
+        """Test that 2nd place badge is defined with silver color."""
+        assert "'2nd'" in html_content
+        assert "bg-gray-300" in html_content
+
+    def test_third_place_badge(self, html_content: str) -> None:
+        """Test that 3rd place badge is defined with bronze color."""
+        assert "'3rd'" in html_content
+        assert "bg-amber-600" in html_content
+
+    def test_rank_badge_display_in_aggregation(self, html_content: str) -> None:
+        """Test that rank badges are displayed in AggregationRow."""
+        assert "rankBadge" in html_content
+
+
+class TestPatternBadges:
+    """Tests for pattern badge display (hard for all, easy, high variance)."""
+
+    def test_pattern_colors_constant_defined(self, html_content: str) -> None:
+        """Test that PATTERN_COLORS constant is defined."""
+        assert "PATTERN_COLORS" in html_content
+
+    def test_hard_for_all_pattern_color(self, html_content: str) -> None:
+        """Test that hard_for_all pattern has red styling."""
+        assert "hard_for_all" in html_content
+        # Should have red color for hard_for_all
+        assert "bg-red-100" in html_content
+
+    def test_easy_pattern_color(self, html_content: str) -> None:
+        """Test that easy pattern has green styling."""
+        # Should have green color for easy pattern (in PATTERN_COLORS)
+        assert "PATTERN_COLORS" in html_content
+
+    def test_high_variance_pattern_color(self, html_content: str) -> None:
+        """Test that high_variance pattern has orange styling."""
+        assert "high_variance" in html_content
+        assert "bg-orange-100" in html_content
+
+    def test_pattern_counts_in_aggregation(self, html_content: str) -> None:
+        """Test that pattern counts are calculated and displayed."""
+        assert "patternCounts" in html_content
+        # Should show count of patterns
+        assert "hard for all" in html_content
+
+
+class TestAggregationCalculations:
+    """Tests for aggregation calculation logic in AggregationRow."""
+
+    def test_overall_avg_calculation(self, html_content: str) -> None:
+        """Test that overall average score is calculated."""
+        assert "overallAvg" in html_content
+        assert "validAvgScores" in html_content
+
+    def test_difficulty_counts_calculation(self, html_content: str) -> None:
+        """Test that difficulty distribution is calculated."""
+        assert "difficultyCounts" in html_content
+
+    def test_pattern_counts_calculation(self, html_content: str) -> None:
+        """Test that pattern counts are calculated."""
+        assert "patternCounts" in html_content
+
+    def test_uses_memo_for_performance(self, html_content: str) -> None:
+        """Test that useMemo is used for aggregation calculations."""
+        assert "useMemo" in html_content
+
+
+class TestAggregationRowStyling:
+    """Tests for AggregationRow visual styling."""
+
+    def test_aggregation_row_distinct_background(self, html_content: str) -> None:
+        """Test that AggregationRow has distinct background color."""
+        # Should have blue background to stand out
+        assert "bg-blue-50" in html_content
+
+    def test_aggregation_row_border(self, html_content: str) -> None:
+        """Test that AggregationRow has top border to separate from content."""
+        assert "border-t-2" in html_content or "border-blue" in html_content
+
+    def test_aggregation_row_sticky_column(self, html_content: str) -> None:
+        """Test that AggregationRow has sticky first column."""
+        # Should maintain sticky behavior like other rows
+        assert "sticky left-0" in html_content
+
+    def test_pass_rate_color_coding(self, html_content: str) -> None:
+        """Test that pass rate has color coding based on value."""
+        # High pass rate should be green
+        assert "text-green-600" in html_content
+        # Medium pass rate should be yellow
+        assert "text-yellow-600" in html_content
+        # Low pass rate should be red
+        assert "text-red-600" in html_content

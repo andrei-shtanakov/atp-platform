@@ -1833,6 +1833,140 @@ def create_index_html() -> str:
             );
         }
 
+        // Pattern colors for test patterns
+        const PATTERN_COLORS = {
+            hard_for_all: { bg: 'bg-red-100', text: 'text-red-700' },
+            easy: { bg: 'bg-green-100', text: 'text-green-700' },
+            high_variance: { bg: 'bg-orange-100', text: 'text-orange-700' },
+        };
+
+        // Rank badge colors (1st, 2nd, 3rd)
+        const RANK_BADGES = {
+            1: { bg: 'bg-yellow-400', label: '1st' },
+            2: { bg: 'bg-gray-300', label: '2nd' },
+            3: { bg: 'bg-amber-600', label: '3rd' },
+        };
+
+        // AggregationRow component - summary row showing per-agent aggregations
+        function AggregationRow({ tests, agents }) {
+            // Calculate aggregated statistics
+            const aggregations = useMemo(() => {
+                // Per-test pattern counts
+                const patternCounts = {
+                    hard_for_all: 0,
+                    easy: 0,
+                    high_variance: 0,
+                };
+                tests.forEach((test) => {
+                    if (test.pattern && patternCounts[test.pattern] !== undefined) {
+                        patternCounts[test.pattern]++;
+                    }
+                });
+
+                // Difficulty distribution
+                const difficultyCounts = {
+                    easy: 0,
+                    medium: 0,
+                    hard: 0,
+                    very_hard: 0,
+                    unknown: 0,
+                };
+                tests.forEach((test) => {
+                    if (difficultyCounts[test.difficulty] !== undefined) {
+                        difficultyCounts[test.difficulty]++;
+                    }
+                });
+
+                // Overall average score across all tests
+                const validAvgScores = tests
+                    .map((t) => t.avg_score)
+                    .filter((s) => s !== null && s !== undefined);
+                const overallAvg = validAvgScores.length > 0
+                    ? validAvgScores.reduce((a, b) => a + b, 0) / validAvgScores.length
+                    : null;
+
+                return {
+                    patternCounts,
+                    difficultyCounts,
+                    overallAvg,
+                };
+            }, [tests]);
+
+            return (
+                <tr className="bg-blue-50 border-t-2 border-blue-200 font-semibold">
+                    <td className="px-3 py-3 sticky left-0 bg-blue-50 border-r border-gray-200 min-w-[200px]">
+                        <div className="flex flex-col gap-2">
+                            <span className="font-bold text-gray-800">Summary</span>
+                            <div className="flex flex-wrap gap-1 text-xs">
+                                {aggregations.patternCounts.hard_for_all > 0 && (
+                                    <span className={`px-2 py-0.5 rounded ${PATTERN_COLORS.hard_for_all.bg} ${PATTERN_COLORS.hard_for_all.text}`}>
+                                        {aggregations.patternCounts.hard_for_all} hard for all
+                                    </span>
+                                )}
+                                {aggregations.patternCounts.easy > 0 && (
+                                    <span className={`px-2 py-0.5 rounded ${PATTERN_COLORS.easy.bg} ${PATTERN_COLORS.easy.text}`}>
+                                        {aggregations.patternCounts.easy} easy
+                                    </span>
+                                )}
+                                {aggregations.patternCounts.high_variance > 0 && (
+                                    <span className={`px-2 py-0.5 rounded ${PATTERN_COLORS.high_variance.bg} ${PATTERN_COLORS.high_variance.text}`}>
+                                        {aggregations.patternCounts.high_variance} high variance
+                                    </span>
+                                )}
+                            </div>
+                            <div className="flex flex-wrap gap-1 text-xs text-gray-500">
+                                {Object.entries(aggregations.difficultyCounts)
+                                    .filter(([_, count]) => count > 0)
+                                    .map(([level, count]) => (
+                                        <span key={level} className={`px-1.5 py-0.5 rounded ${(DIFFICULTY_COLORS[level] || DIFFICULTY_COLORS.unknown).bg} ${(DIFFICULTY_COLORS[level] || DIFFICULTY_COLORS.unknown).text}`}>
+                                            {count} {level.replace('_', ' ')}
+                                        </span>
+                                    ))}
+                            </div>
+                        </div>
+                    </td>
+                    <td className="px-3 py-3 text-center border-r border-gray-200">
+                        <span className={`font-bold ${getScoreColor(aggregations.overallAvg).text}`}>
+                            {aggregations.overallAvg !== null ? aggregations.overallAvg.toFixed(1) : '-'}
+                        </span>
+                    </td>
+                    {agents.map((agent) => {
+                        const rankBadge = RANK_BADGES[agent.rank];
+                        return (
+                            <td key={agent.agent_name} className="px-3 py-3 text-center bg-blue-50">
+                                <div className="flex flex-col items-center gap-1">
+                                    {/* Rank badge */}
+                                    {rankBadge && (
+                                        <span className={`px-2 py-0.5 text-xs rounded-full ${rankBadge.bg} text-white font-bold`}>
+                                            {rankBadge.label}
+                                        </span>
+                                    )}
+                                    {/* Avg score */}
+                                    <div className={`font-bold ${getScoreColor(agent.avg_score).text}`}>
+                                        Avg: {agent.avg_score !== null ? agent.avg_score.toFixed(1) : '-'}
+                                    </div>
+                                    {/* Pass rate */}
+                                    <div className={`text-xs ${agent.pass_rate >= 0.8 ? 'text-green-600' : agent.pass_rate >= 0.5 ? 'text-yellow-600' : 'text-red-600'}`}>
+                                        Pass: {(agent.pass_rate * 100).toFixed(0)}%
+                                    </div>
+                                    {/* Tokens */}
+                                    <div className="text-xs text-gray-500">
+                                        {agent.total_tokens.toLocaleString()} tokens
+                                    </div>
+                                    {/* Cost */}
+                                    {agent.total_cost !== null && (
+                                        <div className="text-xs text-gray-500">
+                                            ${agent.total_cost.toFixed(2)}
+                                        </div>
+                                    )}
+                                </div>
+                            </td>
+                        );
+                    })}
+                </tr>
+            );
+        }
+
         // MatrixGrid component - main table showing tests vs agents
         function MatrixGrid({ data, onRefresh }) {
             const [sortConfig, setSortConfig] = useState({ key: null, direction: 'desc' });
@@ -1963,6 +2097,12 @@ def create_index_html() -> str:
                                     />
                                 ))}
                             </tbody>
+                            <tfoot>
+                                <AggregationRow
+                                    tests={data.tests}
+                                    agents={data.agents}
+                                />
+                            </tfoot>
                         </table>
                     </div>
 

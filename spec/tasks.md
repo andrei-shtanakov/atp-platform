@@ -144,17 +144,17 @@ Build React component for leaderboard matrix visualization.
 ---
 
 ### TASK-006: Leaderboard Aggregations
-🟠 P1 | ⬜ TODO | Est: 2-3h
+🟠 P1 | ✅ DONE | Est: 2-3h
 
 **Description:**
 Add summary row/column with aggregated statistics.
 
 **Checklist:**
-- [ ] Create `AggregationRow.tsx` component
-- [ ] Calculate per-agent: avg score, pass rate, total tokens, total cost
-- [ ] Calculate per-test: avg score, difficulty
-- [ ] Show ranking badges (1st, 2nd, 3rd)
-- [ ] Add pattern badges ("hard for all", "easy")
+- [x] Create `AggregationRow.tsx` component
+- [x] Calculate per-agent: avg score, pass rate, total tokens, total cost
+- [x] Calculate per-test: avg score, difficulty
+- [x] Show ranking badges (1st, 2nd, 3rd)
+- [x] Add pattern badges ("hard for all", "easy")
 
 **Traces to:** [REQ-011], [REQ-012], [DESIGN-002]
 **Depends on:** [TASK-005]
