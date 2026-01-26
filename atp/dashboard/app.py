@@ -427,6 +427,260 @@ def create_index_html() -> str:
             );
         }
 
+        // ==================== Metrics Panel Component ====================
+
+        // Helper function to find best values across agents
+        function findBestMetrics(agents) {
+            if (!agents || agents.length === 0) return {};
+
+            const metrics = {
+                score: { best: -Infinity, isBest: (a, b) => a > b },
+                total_tokens: { best: Infinity, isBest: (a, b) => a < b },
+                total_steps: { best: Infinity, isBest: (a, b) => a < b },
+                duration_seconds: { best: Infinity, isBest: (a, b) => a < b },
+                cost_usd: { best: Infinity, isBest: (a, b) => a < b },
+            };
+
+            agents.forEach(agent => {
+                Object.keys(metrics).forEach(key => {
+                    const value = agent[key];
+                    if (value !== null && value !== undefined) {
+                        if (metrics[key].isBest(value, metrics[key].best)) {
+                            metrics[key].best = value;
+                        }
+                    }
+                });
+            });
+
+            return metrics;
+        }
+
+        // Helper function to calculate percentage difference
+        function calculatePercentDiff(value, baseline) {
+            if (baseline === null || baseline === undefined || baseline === 0) return null;
+            if (value === null || value === undefined) return null;
+            return ((value - baseline) / Math.abs(baseline)) * 100;
+        }
+
+        // MetricValue component - displays a single metric with optional highlighting
+        function MetricValue({ label, value, unit, isBest, isWorst, percentDiff, format }) {
+            const formatValue = (val) => {
+                if (val === null || val === undefined) return '-';
+                if (format === 'number') return val.toLocaleString();
+                if (format === 'decimal') return val.toFixed(2);
+                if (format === 'score') return val.toFixed(1);
+                if (format === 'cost') return val.toFixed(4);
+                return val;
+            };
+
+            const getBgColor = () => {
+                if (isBest) return 'bg-green-50';
+                if (isWorst) return 'bg-red-50';
+                return 'bg-white';
+            };
+
+            const getTextColor = () => {
+                if (isBest) return 'text-green-700 font-semibold';
+                if (isWorst) return 'text-red-700';
+                return 'text-gray-700';
+            };
+
+            const getDiffColor = () => {
+                if (percentDiff === null) return 'text-gray-400';
+                if (percentDiff > 0) return label === 'Score' ? 'text-green-600' : 'text-red-600';
+                if (percentDiff < 0) return label === 'Score' ? 'text-red-600' : 'text-green-600';
+                return 'text-gray-500';
+            };
+
+            return (
+                <div className={`p-2 rounded ${getBgColor()} border border-gray-100`}>
+                    <div className="text-xs text-gray-500 mb-1">{label}</div>
+                    <div className={`text-sm ${getTextColor()}`}>
+                        {formatValue(value)}{unit && <span className="text-gray-400 ml-0.5">{unit}</span>}
+                        {isBest && <span className="ml-1 text-green-600 text-xs">★</span>}
+                    </div>
+                    {percentDiff !== null && (
+                        <div className={`text-xs ${getDiffColor()}`}>
+                            {percentDiff > 0 ? '+' : ''}{percentDiff.toFixed(1)}%
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // MetricsPanel component - displays metrics comparison for multiple agents
+        function MetricsPanel({ agents, showPercentDiff = true, baselineIndex = 0 }) {
+            if (!agents || agents.length === 0) {
+                return (
+                    <div className="bg-gray-50 p-4 rounded text-center text-gray-500">
+                        No agent data available for comparison
+                    </div>
+                );
+            }
+
+            const bestMetrics = findBestMetrics(agents);
+            const baseline = agents[baselineIndex];
+
+            // Determine worst values for highlighting
+            const worstMetrics = {};
+            if (agents.length > 1) {
+                const metricKeys = ['score', 'total_tokens', 'total_steps', 'duration_seconds', 'cost_usd'];
+                metricKeys.forEach(key => {
+                    let worst = key === 'score' ? Infinity : -Infinity;
+                    agents.forEach(agent => {
+                        const value = agent[key];
+                        if (value !== null && value !== undefined) {
+                            if (key === 'score') {
+                                if (value < worst) worst = value;
+                            } else {
+                                if (value > worst) worst = value;
+                            }
+                        }
+                    });
+                    worstMetrics[key] = worst;
+                });
+            }
+
+            const isBest = (agent, key) => {
+                const value = agent[key];
+                if (value === null || value === undefined) return false;
+                return value === bestMetrics[key]?.best;
+            };
+
+            const isWorst = (agent, key) => {
+                if (agents.length <= 1) return false;
+                const value = agent[key];
+                if (value === null || value === undefined) return false;
+                return value === worstMetrics[key] && !isBest(agent, key);
+            };
+
+            return (
+                <div className="bg-white rounded-lg shadow">
+                    <div className="p-4 border-b bg-gray-50 rounded-t-lg">
+                        <h3 className="text-lg font-bold text-gray-800">Metrics Comparison</h3>
+                        <p className="text-sm text-gray-500 mt-1">
+                            {agents.length} agent{agents.length > 1 ? 's' : ''} compared
+                            {showPercentDiff && agents.length > 1 && (
+                                <span> • % diff vs {baseline.agent_name}</span>
+                            )}
+                        </p>
+                    </div>
+
+                    {/* Responsive grid layout */}
+                    <div className={`grid gap-4 p-4 ${
+                        agents.length === 1 ? 'grid-cols-1' :
+                        agents.length === 2 ? 'grid-cols-1 md:grid-cols-2' :
+                        'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'
+                    }`}>
+                        {agents.map((agent, idx) => (
+                            <div key={agent.agent_name} className="border rounded-lg overflow-hidden">
+                                {/* Agent header */}
+                                <div className={`p-3 ${
+                                    agent.success ? 'bg-green-50 border-b border-green-200' : 'bg-red-50 border-b border-red-200'
+                                }`}>
+                                    <div className="flex items-center justify-between">
+                                        <h4 className="font-semibold text-gray-800">{agent.agent_name}</h4>
+                                        <span className={`px-2 py-0.5 text-xs rounded-full ${
+                                            agent.success
+                                                ? 'bg-green-100 text-green-800'
+                                                : 'bg-red-100 text-red-800'
+                                        }`}>
+                                            {agent.success ? 'Passed' : 'Failed'}
+                                        </span>
+                                    </div>
+                                    {idx === baselineIndex && agents.length > 1 && (
+                                        <span className="text-xs text-gray-500">Baseline</span>
+                                    )}
+                                </div>
+
+                                {/* Metrics grid */}
+                                <div className="grid grid-cols-2 gap-2 p-3">
+                                    <MetricValue
+                                        label="Score"
+                                        value={agent.score}
+                                        unit="/100"
+                                        format="score"
+                                        isBest={isBest(agent, 'score')}
+                                        isWorst={isWorst(agent, 'score')}
+                                        percentDiff={showPercentDiff && idx !== baselineIndex
+                                            ? calculatePercentDiff(agent.score, baseline.score)
+                                            : null}
+                                    />
+                                    <MetricValue
+                                        label="Tokens"
+                                        value={agent.total_tokens}
+                                        format="number"
+                                        isBest={isBest(agent, 'total_tokens')}
+                                        isWorst={isWorst(agent, 'total_tokens')}
+                                        percentDiff={showPercentDiff && idx !== baselineIndex
+                                            ? calculatePercentDiff(agent.total_tokens, baseline.total_tokens)
+                                            : null}
+                                    />
+                                    <MetricValue
+                                        label="Steps"
+                                        value={agent.total_steps}
+                                        format="number"
+                                        isBest={isBest(agent, 'total_steps')}
+                                        isWorst={isWorst(agent, 'total_steps')}
+                                        percentDiff={showPercentDiff && idx !== baselineIndex
+                                            ? calculatePercentDiff(agent.total_steps, baseline.total_steps)
+                                            : null}
+                                    />
+                                    <MetricValue
+                                        label="Duration"
+                                        value={agent.duration_seconds}
+                                        unit="s"
+                                        format="decimal"
+                                        isBest={isBest(agent, 'duration_seconds')}
+                                        isWorst={isWorst(agent, 'duration_seconds')}
+                                        percentDiff={showPercentDiff && idx !== baselineIndex
+                                            ? calculatePercentDiff(agent.duration_seconds, baseline.duration_seconds)
+                                            : null}
+                                    />
+                                    <MetricValue
+                                        label="Cost"
+                                        value={agent.cost_usd}
+                                        unit="$"
+                                        format="cost"
+                                        isBest={isBest(agent, 'cost_usd')}
+                                        isWorst={isWorst(agent, 'cost_usd')}
+                                        percentDiff={showPercentDiff && idx !== baselineIndex
+                                            ? calculatePercentDiff(agent.cost_usd, baseline.cost_usd)
+                                            : null}
+                                    />
+                                    <MetricValue
+                                        label="Tool Calls"
+                                        value={agent.tool_calls}
+                                        format="number"
+                                    />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Legend */}
+                    <div className="p-3 border-t bg-gray-50 rounded-b-lg flex flex-wrap gap-4 text-xs">
+                        <div className="flex items-center gap-1">
+                            <span className="w-3 h-3 rounded bg-green-50 border border-green-200"></span>
+                            <span className="text-gray-600">Best value</span>
+                            <span className="text-green-600 ml-0.5">★</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                            <span className="w-3 h-3 rounded bg-red-50 border border-red-200"></span>
+                            <span className="text-gray-600">Worst value</span>
+                        </div>
+                        {showPercentDiff && agents.length > 1 && (
+                            <div className="flex items-center gap-1">
+                                <span className="text-gray-600">% shown relative to baseline</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        // ==================== End Metrics Panel Component ====================
+
         // Step Comparison component - displays event list for a single agent
         function StepComparison({ agentDetail }) {
             const [eventFilter, setEventFilter] = useState('all');
@@ -645,7 +899,15 @@ def create_index_html() -> str:
                         </button>
                     </div>
 
-                    {/* Side-by-side comparison columns */}
+                    {/* Metrics Comparison Panel */}
+                    {comparison.agents.length > 0 && (
+                        <div className="mb-4">
+                            <MetricsPanel agents={comparison.agents} showPercentDiff={true} baselineIndex={0} />
+                        </div>
+                    )}
+
+                    {/* Side-by-side step comparison columns */}
+                    <h4 className="text-md font-semibold text-gray-700 mb-2">Step-by-Step Events</h4>
                     <div className={`grid gap-4 ${
                         comparison.agents.length === 2
                             ? 'grid-cols-1 lg:grid-cols-2'
