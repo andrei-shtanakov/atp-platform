@@ -222,7 +222,7 @@ Build interactive timeline visualization using Chart.js.
 ---
 
 ### TASK-010: Event Details and Filters
-🟠 P1 | ⬜ TODO | Est: 3-4h
+🟠 P1 | 🔄 IN_PROGRESS | Est: 3-4h
 
 **Description:**
 Add event detail panel and type filters to timeline.

@@ -120,6 +120,56 @@ class TestHTMLContent:
         html = create_index_html()
         assert "EventDetailPanel" in html
 
+    def test_html_content_has_event_detail_panel_with_type_specific_displays(
+        self,
+    ) -> None:
+        """Test that EventDetailPanel has type-specific display components."""
+        html = create_index_html()
+        # Check for type-specific helper components
+        assert "ToolCallDetails" in html
+        assert "LLMRequestDetails" in html
+        assert "ErrorDetails" in html
+        assert "ReasoningDetails" in html
+        assert "ProgressDetails" in html
+
+    def test_html_content_has_event_filters_component(self) -> None:
+        """Test that HTML includes EventFilters component."""
+        html = create_index_html()
+        assert "EventFilters" in html
+        assert "onFilterChange" in html
+
+    def test_html_content_has_copy_json_functionality(self) -> None:
+        """Test that HTML includes copy JSON functionality."""
+        html = create_index_html()
+        assert "handleCopyJSON" in html
+        assert "Copy JSON" in html
+        assert "navigator.clipboard" in html
+
+    def test_html_content_has_tool_call_details(self) -> None:
+        """Test that ToolCallDetails shows tool name, args, result."""
+        html = create_index_html()
+        # Check for tool_call specific labels/elements
+        assert "Tool Name" in html
+        assert "Arguments" in html
+        assert "Result" in html
+
+    def test_html_content_has_llm_request_details(self) -> None:
+        """Test that LLMRequestDetails shows prompt, response, tokens."""
+        html = create_index_html()
+        # Check for llm_request specific labels/elements
+        assert "Prompt" in html
+        assert "Response" in html
+        assert "Input Tokens" in html
+        assert "Output Tokens" in html
+        assert "Total Tokens" in html
+
+    def test_html_content_has_error_details(self) -> None:
+        """Test that ErrorDetails shows error message and stack trace."""
+        html = create_index_html()
+        # Check for error specific labels/elements
+        assert "Error Message" in html
+        assert "Stack Trace" in html
+
     def test_html_content_has_event_tooltip(self) -> None:
         """Test that HTML includes EventTooltip component."""
         html = create_index_html()
