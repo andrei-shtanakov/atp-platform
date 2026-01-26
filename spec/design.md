@@ -1,797 +1,437 @@
 # Design Specification
 
-> Architecture, API, data schemas, and key decisions for ATP
+> Agent Comparison Dashboard — Technical Design
 
 ## 1. Architecture Overview
 
-### 1.1 Principles
-
-| Principle | Description |
-|-----------|-------------|
-| **Agent as Black Box** | Platform doesn't care about agent implementation, only the contract matters |
-| **Protocol First** | Standard protocol is the foundation of all integrations |
-| **Plugin Architecture** | Evaluators, Adapters, Reporters are replaceable components |
-| **Immutable Data Flow** | Test → Runner → Agent → Response → Evaluators → Report |
-| **Fail-Safe Defaults** | Minimal configuration to get started |
-
-### 1.2 High-Level Diagram
-
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                           ATP Platform                               │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                      │
-│   ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐         │
-│   │  CLI    │───►│ Loader  │───►│ Runner  │───►│Evaluator│         │
-│   └─────────┘    └─────────┘    └────┬────┘    └────┬────┘         │
-│                                      │              │               │
-│                                      ▼              ▼               │
-│                               ┌─────────┐    ┌─────────┐           │
-│                               │ Gateway │    │ Scoring │           │
-│                               └────┬────┘    └────┬────┘           │
-│                                    │              │                 │
-│                    ┌───────────────┼───────────────┘                │
-│                    ▼               ▼                                │
-│               ┌─────────┐    ┌─────────┐                           │
-│               │ Adapter │    │Reporter │                           │
-│               └────┬────┘    └─────────┘                           │
-│                    │                                                │
-└────────────────────┼────────────────────────────────────────────────┘
-                     ▼
-              ┌─────────────┐
-              │    Agent    │
-              │ (Black Box) │
-              └─────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                         React Frontend                          │
+├─────────────────┬─────────────────┬─────────────────────────────┤
+│  Comparison     │   Leaderboard   │       Event Timeline        │
+│  View           │   Matrix        │       Visualization         │
+└────────┬────────┴────────┬────────┴──────────────┬──────────────┘
+         │                 │                       │
+         ▼                 ▼                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                     FastAPI REST API                            │
+├─────────────────┬─────────────────┬─────────────────────────────┤
+│ /compare/       │ /leaderboard/   │      /timeline/             │
+│ side-by-side    │ matrix          │      events                 │
+└────────┬────────┴────────┬────────┴──────────────┬──────────────┘
+         │                 │                       │
+         ▼                 ▼                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                     SQLAlchemy ORM                              │
+│  SuiteExecution → TestExecution → RunResult (events_json)       │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-**Traces to:** [REQ-001], [REQ-010], [REQ-011]
+## 2. Components
 
----
+### DESIGN-001: Side-by-Side Comparison Component
 
-## 2. ATP Protocol
+#### Description
+React component for comparing 2-3 agents on a single test. Shows step-by-step execution with metrics panel.
 
-### DESIGN-001: Message Formats
-
-#### 2.1 ATP Request
-
-```json
-{
-  "version": "1.0",
-  "task_id": "uuid",
-  "task": {
-    "description": "string (required)",
-    "input_data": "object (optional)",
-    "expected_artifacts": "array (optional)"
-  },
-  "constraints": {
-    "max_steps": "integer",
-    "max_tokens": "integer",
-    "timeout_seconds": "integer (default: 300)",
-    "allowed_tools": "array<string> | null",
-    "budget_usd": "number"
-  },
-  "context": {
-    "tools_endpoint": "string (URL)",
-    "workspace_path": "string",
-    "environment": "object<string, string>"
-  },
-  "metadata": "object (pass-through)"
-}
+#### Frontend Structure
+```
+ComparisonView/
+├── AgentSelector.tsx      # Multi-select dropdown for agents
+├── StepComparison.tsx     # Side-by-side step list
+├── MetricsPanel.tsx       # Score, tokens, duration comparison
+└── ComparisonContainer.tsx # Main layout with columns
 ```
 
-#### 2.2 ATP Response
-
-```json
-{
-  "version": "1.0",
-  "task_id": "uuid",
-  "status": "completed | failed | timeout | cancelled | partial",
-  "artifacts": [
-    {
-      "type": "file | structured | reference",
-      "path": "string",
-      "content_type": "string",
-      "size_bytes": "integer",
-      "content_hash": "string",
-      "content": "string (inline, optional)",
-      "data": "object (for structured)"
-    }
-  ],
-  "metrics": {
-    "total_tokens": "integer",
-    "input_tokens": "integer",
-    "output_tokens": "integer",
-    "total_steps": "integer",
-    "tool_calls": "integer",
-    "llm_calls": "integer",
-    "wall_time_seconds": "number",
-    "cost_usd": "number"
-  },
-  "error": "string | null",
-  "trace_id": "string (optional)"
-}
+#### API Endpoint
+```python
+@router.get("/compare/side-by-side", response_model=SideBySideComparisonResponse)
+async def get_side_by_side_comparison(
+    session: SessionDep,
+    suite_name: str,
+    test_id: str,
+    agents: list[str] = Query(..., min_length=2, max_length=3),
+) -> SideBySideComparisonResponse:
+    """Get detailed comparison of agents on a specific test."""
+    pass
 ```
 
-#### 2.3 ATP Event
+#### Response Schema
+```python
+class AgentExecutionDetail(BaseModel):
+    agent_name: str
+    score: float | None
+    success: bool
+    duration_seconds: float | None
+    total_tokens: int | None
+    total_steps: int | None
+    cost_usd: float | None
+    events: list[EventSummary]  # Ordered list of events
 
-```json
-{
-  "version": "1.0",
-  "task_id": "uuid",
-  "timestamp": "ISO 8601",
-  "sequence": "integer (monotonic)",
-  "event_type": "tool_call | llm_request | reasoning | error | progress",
-  "payload": {
-    // type-specific fields
-  }
-}
+class EventSummary(BaseModel):
+    sequence: int
+    timestamp: datetime
+    event_type: str  # tool_call, llm_request, reasoning, error
+    summary: str     # One-line description
+    data: dict[str, Any]  # Full event data
+
+class SideBySideComparisonResponse(BaseModel):
+    suite_name: str
+    test_id: str
+    test_name: str
+    agents: list[AgentExecutionDetail]
 ```
 
 **Traces to:** [REQ-001], [REQ-002], [REQ-003]
 
 ---
 
-### DESIGN-002: Event Types
+### DESIGN-002: Leaderboard Matrix Component
 
-| Type | Payload Fields | Description |
-|------|----------------|-------------|
-| `tool_call` | tool, input, output, duration_ms, status | Tool invocation |
-| `llm_request` | model, input_tokens, output_tokens, duration_ms | LLM API call |
-| `reasoning` | thought, plan, step | Internal reasoning |
-| `error` | error_type, message, recoverable | Error |
-| `progress` | current_step, percentage, message | Execution progress |
+#### Description
+Matrix visualization showing tests (rows) vs agents (columns) with scores and aggregations.
 
-**Traces to:** [REQ-003]
-
----
-
-## 3. Components
-
-### DESIGN-003: Adapters
-
-#### 3.1 Base Interface
-
-```python
-class AgentAdapter(ABC):
-    @abstractmethod
-    async def execute(self, request: ATPRequest) -> ATPResponse:
-        """Execute task synchronously."""
-
-    @abstractmethod
-    async def stream_events(self, request: ATPRequest) -> AsyncIterator[ATPEvent]:
-        """Execute with event streaming."""
-
-    async def health_check(self) -> bool:
-        """Check agent availability."""
-
-    async def cleanup(self) -> None:
-        """Release resources."""
+#### Frontend Structure
+```
+Leaderboard/
+├── MatrixGrid.tsx         # Main table component
+├── ScoreCell.tsx          # Color-coded score cell
+├── AgentHeader.tsx        # Column header with agent stats
+├── TestRow.tsx            # Row with test info
+├── AggregationRow.tsx     # Summary row with totals
+└── PatternBadge.tsx       # "Hard for all", "Easy" badges
 ```
 
-#### 3.2 Adapter Types
+#### API Endpoint
+```python
+@router.get("/leaderboard/matrix", response_model=LeaderboardMatrixResponse)
+async def get_leaderboard_matrix(
+    session: SessionDep,
+    suite_name: str,
+    agents: list[str] | None = Query(None),  # Filter to specific agents
+    limit_executions: int = Query(default=5, le=20),  # Last N executions per agent
+) -> LeaderboardMatrixResponse:
+    """Get leaderboard matrix for a suite."""
+    pass
+```
 
-| Adapter | Transport | Use Case |
-|---------|-----------|----------|
-| HTTPAdapter | HTTP POST / SSE | Agents with HTTP API |
-| ContainerAdapter | stdin/stdout/stderr | Docker-packaged agents |
-| CLIAdapter | subprocess | CLI utilities |
-| LangGraphAdapter | Python import | LangGraph graphs |
-| CrewAIAdapter | Python import | CrewAI crews |
+#### Response Schema
+```python
+class TestScore(BaseModel):
+    score: float | None
+    success: bool
+    execution_count: int
 
-#### 3.3 Configuration
+class TestRow(BaseModel):
+    test_id: str
+    test_name: str
+    tags: list[str]
+    scores_by_agent: dict[str, TestScore]
+    avg_score: float | None
+    difficulty: str  # easy, medium, hard, very_hard
+    pattern: str | None  # "hard_for_all", "easy", etc.
 
-```yaml
-agents:
-  my-http-agent:
-    type: http
-    endpoint: "http://localhost:8000"
-    timeout: 300
-    headers:
-      Authorization: "Bearer ${API_KEY}"
+class AgentColumn(BaseModel):
+    agent_name: str
+    avg_score: float | None
+    pass_rate: float
+    total_tokens: int
+    total_cost: float | None
+    rank: int
 
-  my-container-agent:
-    type: container
-    image: "registry/agent:v1"
-    resources:
-      memory: "2Gi"
-      cpu: "1"
-    network: "none"  # isolated
+class LeaderboardMatrixResponse(BaseModel):
+    suite_name: str
+    tests: list[TestRow]
+    agents: list[AgentColumn]
+    total_tests: int
+```
 
-  my-langgraph-agent:
-    type: langgraph
-    module: "agents.research"
-    graph: "agent_graph"
-    config:
-      recursion_limit: 50
+#### Difficulty Calculation
+```python
+def calculate_difficulty(avg_score: float | None) -> str:
+    if avg_score is None:
+        return "unknown"
+    if avg_score >= 80:
+        return "easy"
+    if avg_score >= 60:
+        return "medium"
+    if avg_score >= 40:
+        return "hard"
+    return "very_hard"
 ```
 
 **Traces to:** [REQ-010], [REQ-011], [REQ-012]
 
 ---
 
-### DESIGN-004: Test Loader
+### DESIGN-003: Event Timeline Component
 
-#### 4.1 Test Definition Schema
+#### Description
+Interactive timeline visualization of agent events. Supports single agent view and multi-agent comparison.
 
-```yaml
-# test_suite.yaml
-test_suite: "string (name)"
-version: "1.0"
-description: "string (optional)"
-
-defaults:
-  runs_per_test: 1
-  timeout_seconds: 300
-  scoring:
-    quality_weight: 0.4
-    completeness_weight: 0.3
-    efficiency_weight: 0.2
-    cost_weight: 0.1
-
-agents:
-  - name: "string"
-    # ... agent config or reference
-
-tests:
-  - id: "string (unique)"
-    name: "string"
-    description: "string (optional)"
-    tags: ["smoke", "regression"]
-
-    task:
-      description: "string (required)"
-      input_data: {}
-      expected_artifacts: []
-
-    constraints:
-      max_steps: 50
-      max_tokens: 100000
-      timeout_seconds: 180
-      allowed_tools: ["web_search", "file_write"]
-
-    assertions:
-      - type: "artifact_exists"
-        config:
-          path: "report.md"
-      - type: "behavior"
-        config:
-          must_use_tools: ["web_search"]
-      - type: "llm_eval"
-        config:
-          criteria: "factual_accuracy"
-          threshold: 0.8
-
-    scoring:
-      quality_weight: 0.5
+#### Frontend Structure
+```
+Timeline/
+├── TimelineContainer.tsx  # Main container with zoom controls
+├── TimelineRow.tsx        # Single agent timeline
+├── EventMarker.tsx        # Individual event on timeline
+├── EventTooltip.tsx       # Hover tooltip with summary
+├── EventDetailPanel.tsx   # Full event details panel
+├── EventFilters.tsx       # Toggle buttons for event types
+└── TimeScale.tsx          # Time axis with labels
 ```
 
-#### 4.2 Validation
+#### API Endpoints
+```python
+@router.get("/timeline/events", response_model=TimelineEventsResponse)
+async def get_timeline_events(
+    session: SessionDep,
+    test_execution_id: int,
+    run_number: int = 1,
+    event_types: list[str] | None = Query(None),  # Filter by type
+    limit: int = Query(default=500, le=1000),
+) -> TimelineEventsResponse:
+    """Get events for timeline visualization."""
+    pass
 
-- JSON Schema validation for structure
-- Semantic validation: id uniqueness, reference existence
-- Warning for deprecated fields
+@router.get("/timeline/compare", response_model=MultiTimelineResponse)
+async def get_multi_timeline(
+    session: SessionDep,
+    suite_name: str,
+    test_id: str,
+    agents: list[str] = Query(..., min_length=2, max_length=3),
+    event_types: list[str] | None = Query(None),
+) -> MultiTimelineResponse:
+    """Get aligned timelines for multiple agents."""
+    pass
+```
 
-**Traces to:** [REQ-020], [REQ-021], [REQ-022]
+#### Response Schemas
+```python
+class TimelineEvent(BaseModel):
+    id: str  # Unique event ID
+    sequence: int
+    timestamp: datetime
+    relative_time_ms: int  # Milliseconds from start
+    event_type: str
+    duration_ms: int | None  # For tool calls with response
+    summary: str
+    data: dict[str, Any]
+
+class TimelineEventsResponse(BaseModel):
+    test_execution_id: int
+    run_number: int
+    agent_name: str
+    start_time: datetime
+    end_time: datetime
+    total_duration_ms: int
+    events: list[TimelineEvent]
+    event_counts: dict[str, int]  # Count by type
+
+class AgentTimeline(BaseModel):
+    agent_name: str
+    start_time: datetime
+    total_duration_ms: int
+    events: list[TimelineEvent]
+
+class MultiTimelineResponse(BaseModel):
+    suite_name: str
+    test_id: str
+    test_name: str
+    timelines: list[AgentTimeline]
+```
+
+#### Event Type Colors
+```typescript
+const EVENT_COLORS = {
+  tool_call: '#3B82F6',    // Blue
+  llm_request: '#10B981',  // Green
+  reasoning: '#F59E0B',    // Yellow/Amber
+  error: '#EF4444',        // Red
+  progress: '#8B5CF6',     // Purple
+};
+```
+
+**Traces to:** [REQ-020], [REQ-021], [REQ-022], [REQ-023]
 
 ---
 
-### DESIGN-005: Test Runner
+## 3. Database Queries
 
-#### 5.1 Execution Flow
+### DESIGN-004: Comparison Queries
 
-```
-1. Load test suite
-2. Validate configuration
-3. Initialize adapters
-4. For each test (parallel if enabled):
-   a. Create sandbox
-   b. For each run (1..N):
-      i.   Build ATP Request
-      ii.  Execute via adapter
-      iii. Collect response + events
-      iv.  Run evaluators
-      v.   Store results
-   c. Aggregate statistics
-   d. Cleanup sandbox
-5. Aggregate suite results
-6. Generate reports
-```
-
-#### 5.2 Sandbox Configuration
-
+#### Side-by-Side Query
 ```python
-@dataclass
-class SandboxConfig:
-    # Resource limits
-    memory_limit: str = "2Gi"
-    cpu_limit: str = "2"
-
-    # Network
-    network_mode: str = "none"  # none | host | custom
-    allowed_hosts: list[str] = field(default_factory=list)
-
-    # Filesystem
-    workspace_path: Path = Path("/workspace")
-    readonly_mounts: list[tuple[Path, Path]] = field(default_factory=list)
-
-    # Timeout
-    hard_timeout: int = 600  # seconds, kills container
+async def get_agent_test_executions(
+    session: AsyncSession,
+    suite_name: str,
+    test_id: str,
+    agent_names: list[str],
+) -> dict[str, TestExecution]:
+    """Get latest test execution for each agent."""
+    results = {}
+    for agent_name in agent_names:
+        stmt = (
+            select(TestExecution)
+            .join(SuiteExecution)
+            .join(Agent)
+            .where(
+                SuiteExecution.suite_name == suite_name,
+                TestExecution.test_id == test_id,
+                Agent.name == agent_name,
+            )
+            .options(selectinload(TestExecution.run_results))
+            .order_by(TestExecution.started_at.desc())
+            .limit(1)
+        )
+        result = await session.execute(stmt)
+        execution = result.scalar_one_or_none()
+        if execution:
+            results[agent_name] = execution
+    return results
 ```
 
-#### 5.3 Parallel Execution
-
+#### Leaderboard Query
 ```python
-class ParallelExecutor:
-    def __init__(self, max_workers: int = 4):
-        self.semaphore = asyncio.Semaphore(max_workers)
+async def get_leaderboard_data(
+    session: AsyncSession,
+    suite_name: str,
+    agent_names: list[str] | None,
+    limit_per_agent: int,
+) -> LeaderboardMatrixResponse:
+    """Build leaderboard matrix from recent executions."""
+    # Get all agents if not specified
+    if agent_names is None:
+        stmt = select(Agent.name).order_by(Agent.name)
+        agent_names = list((await session.execute(stmt)).scalars().all())
 
-    async def run_tests(self, tests: list[Test]) -> list[Result]:
-        tasks = [self._run_with_semaphore(t) for t in tests]
-        return await asyncio.gather(*tasks, return_exceptions=True)
+    # Get recent executions for each agent
+    # ... aggregate scores per test
+    pass
 ```
 
-**Traces to:** [REQ-030], [REQ-031], [REQ-032]
+**Traces to:** [DESIGN-001], [DESIGN-002]
 
 ---
 
-### DESIGN-006: Statistics Engine
+## 4. Frontend Integration
 
-#### 6.1 Metrics
+### DESIGN-005: React Component Integration
 
-```python
-@dataclass
-class StatisticalResult:
-    mean: float
-    std: float
-    min: float
-    max: float
-    median: float
-    confidence_interval: tuple[float, float]  # 95% CI
-    n_runs: int
-    coefficient_of_variation: float  # std / mean
-
-@dataclass
-class StabilityAssessment:
-    level: str  # stable | moderate | unstable | critical
-    cv: float
-    message: str
+#### New Routes
+```typescript
+// Add to dashboard routes
+const routes = [
+  // ... existing routes
+  {
+    path: '/compare/:suiteId/:testId',
+    component: SideBySideComparison,
+  },
+  {
+    path: '/leaderboard/:suiteId',
+    component: LeaderboardMatrix,
+  },
+  {
+    path: '/timeline/:testExecutionId',
+    component: EventTimeline,
+  },
+];
 ```
 
-#### 6.2 Stability Thresholds
-
-| Level | CV Range | Interpretation |
-|-------|----------|----------------|
-| stable | < 0.05 | Consistent results |
-| moderate | 0.05 - 0.15 | Acceptable variance |
-| unstable | 0.15 - 0.30 | Results may be unreliable |
-| critical | > 0.30 | Unpredictable behavior |
-
-**Traces to:** [REQ-031]
-
----
-
-### DESIGN-007: Evaluators
-
-#### 7.1 Base Interface
-
-```python
-class Evaluator(ABC):
-    name: str
-
-    @abstractmethod
-    async def evaluate(
-        self,
-        task: TestDefinition,
-        response: ATPResponse,
-        trace: list[ATPEvent],
-        assertion: Assertion,
-    ) -> EvalResult:
-        pass
-
-@dataclass
-class EvalCheck:
-    name: str
-    passed: bool
-    score: float  # 0.0 - 1.0
-    message: str | None
-    details: dict | None
-
-@dataclass
-class EvalResult:
-    evaluator: str
-    checks: list[EvalCheck]
-
-    @property
-    def passed(self) -> bool:
-        return all(c.passed for c in self.checks)
-```
-
-#### 7.2 Evaluator Registry
-
-| Evaluator | Assertion Types | Deterministic |
-|-----------|-----------------|---------------|
-| ArtifactEvaluator | artifact_exists, contains, schema, sections | Yes |
-| BehaviorEvaluator | must_use_tools, max_tool_calls, no_errors | Yes |
-| LLMJudgeEvaluator | llm_eval, custom | No |
-| CodeExecEvaluator | pytest, lint, custom_command | Yes |
-
-#### 7.3 Scoring Formula
-
-```
-Score = Σ(weight_i × component_i) × 100
-
-where:
-- quality = mean(artifact_scores, llm_scores)
-- completeness = passed_checks / total_checks
-- efficiency = normalize(steps, max_steps, optimal_steps)
-- cost = 1 - log(1 + tokens/max_tokens) / log(2)
-```
-
-**Traces to:** [REQ-040], [REQ-041], [REQ-042], [REQ-043]
-
----
-
-### DESIGN-008: LLM-as-Judge
-
-#### 8.1 Prompt Template
-
-```
-You are evaluating AI agent output.
-
-TASK:
-{task_description}
-
-ARTIFACT:
-{artifact_content}
-
-CRITERION: {criteria}
-{criteria_description}
-
-{custom_prompt}
-
-Respond in JSON:
-{
-  "score": <0.0-1.0>,
-  "explanation": "<reasoning>",
-  "issues": ["<list>"],
-  "strengths": ["<list>"]
+#### State Management
+```typescript
+interface ComparisonState {
+  selectedAgents: string[];
+  selectedSuite: string | null;
+  selectedTest: string | null;
+  eventFilters: Set<EventType>;
+  timelineZoom: number;
 }
 ```
 
-#### 8.2 Built-in Criteria
+#### API Hooks
+```typescript
+// Custom hooks for data fetching
+function useComparison(suite: string, test: string, agents: string[]) {
+  return useQuery(['comparison', suite, test, agents], () =>
+    api.get('/compare/side-by-side', { params: { suite_name: suite, test_id: test, agents } })
+  );
+}
 
-| Criteria | Description |
-|----------|-------------|
-| factual_accuracy | Verification of facts, statistics, dates |
-| completeness | Comprehensiveness of response to all task aspects |
-| relevance | Content relevance to the task |
-| coherence | Logic and consistency |
-| clarity | Clarity of presentation |
-| actionability | Practical applicability |
+function useLeaderboard(suite: string) {
+  return useQuery(['leaderboard', suite], () =>
+    api.get('/leaderboard/matrix', { params: { suite_name: suite } })
+  );
+}
 
-#### 8.3 Calibration
-
-- Multi-run averaging (3+ LLM calls)
-- Temperature = 0 for determinism
-- Optional human-in-the-loop for baseline
-
-**Traces to:** [REQ-042]
-
----
-
-### DESIGN-009: Reporters
-
-#### 9.1 Reporter Interface
-
-```python
-class Reporter(ABC):
-    @abstractmethod
-    def report(self, results: SuiteResults) -> None:
-        pass
-
-    @abstractmethod
-    def supports_streaming(self) -> bool:
-        pass
-```
-
-#### 9.2 Output Formats
-
-| Reporter | Format | Use Case |
-|----------|--------|----------|
-| ConsoleReporter | Terminal (colored) | Development |
-| JSONReporter | JSON file | CI/CD, automation |
-| HTMLReporter | Self-contained HTML | Sharing, review |
-| JUnitReporter | JUnit XML | CI systems |
-
-#### 9.3 Console Output Structure
-
-```
-ATP Test Results
-================
-
-Suite: competitor_analysis
-Agent: langgraph-research
-Runs per test: 5
-
-Tests:
-  ✓ basic_competitor_search     85.2/100  (σ=3.1)  [1.2s]
-  ✗ unknown_company_handling    45.0/100  (σ=12.5) [0.8s]
-    - llm_eval:factual_accuracy: 0.4 < 0.8 threshold
-  ✓ performance_large_market    78.5/100  (σ=5.2)  [5.4s]
-
-Summary: 2 passed, 1 failed (66.7%)
-Total time: 7.4s
-```
-
-**Traces to:** [REQ-050], [REQ-051]
-
----
-
-### DESIGN-010: Baseline & Regression
-
-#### 10.1 Baseline Format
-
-```json
-{
-  "version": "1.0",
-  "created_at": "ISO8601",
-  "suite": "competitor_analysis",
-  "agent": "langgraph-research",
-  "tests": {
-    "basic_competitor_search": {
-      "mean_score": 85.2,
-      "std": 3.1,
-      "n_runs": 5,
-      "ci_95": [82.1, 88.3]
-    }
-  }
+function useTimeline(testExecutionId: number, runNumber: number) {
+  return useQuery(['timeline', testExecutionId, runNumber], () =>
+    api.get('/timeline/events', { params: { test_execution_id: testExecutionId, run_number: runNumber } })
+  );
 }
 ```
 
-#### 10.2 Regression Detection
-
-```python
-def detect_regression(current: Stats, baseline: Stats) -> RegressionResult:
-    # Welch's t-test for unequal variances
-    t_stat, p_value = scipy.stats.ttest_ind(
-        current.scores,
-        baseline.scores,
-        equal_var=False
-    )
-
-    is_regression = (
-        p_value < 0.05 and
-        current.mean < baseline.mean
-    )
-
-    return RegressionResult(
-        is_regression=is_regression,
-        p_value=p_value,
-        delta=current.mean - baseline.mean,
-        delta_percent=(current.mean - baseline.mean) / baseline.mean * 100
-    )
-```
-
-**Traces to:** [REQ-052]
+**Traces to:** [REQ-001], [REQ-010], [REQ-020]
 
 ---
 
-## 4. Data Flow
+## 5. Key Design Decisions
 
-### 4.1 Test Execution
+### ADR-001: Event Data Structure
+**Decision:** Use existing `events_json` column in RunResult model.
 
-```
-YAML File
-    │
-    ▼
-┌─────────┐     ┌─────────┐     ┌─────────┐
-│ Parser  │────►│Validator│────►│ Models  │
-└─────────┘     └─────────┘     └─────────┘
-                                     │
-                                     ▼
-┌─────────┐     ┌─────────┐     ┌─────────┐
-│ATP Req  │◄────│ Builder │◄────│ Config  │
-└─────────┘     └─────────┘     └─────────┘
-    │
-    ▼
-┌─────────┐     ┌─────────┐     ┌─────────┐
-│ Adapter │────►│  Agent  │────►│ATP Resp │
-└─────────┘     └─────────┘     └─────────┘
-                                     │
-    ┌────────────────────────────────┘
-    ▼
-┌─────────┐     ┌─────────┐     ┌─────────┐
-│Evaluator│────►│ Checks  │────►│ Scoring │
-└─────────┘     └─────────┘     └─────────┘
-                                     │
-                                     ▼
-                                ┌─────────┐
-                                │ Report  │
-                                └─────────┘
-```
+**Context:** Events are already stored as JSON array in RunResult.
+
+**Rationale:**
+- No database migration needed
+- JSON allows flexible event structure
+- Query performance acceptable for typical event counts (<1000)
+
+**Trade-offs:**
+- Cannot query individual events efficiently
+- JSON parsing overhead on large event sets
 
 ---
 
-## 5. Key Decisions
+### ADR-002: Comparison Limit
+**Decision:** Limit comparison to 3 agents maximum.
 
-### ADR-001: Framework Agnostic Design
-**Decision:** Agent = black box with ATP Protocol
-**Rationale:** Frameworks become obsolete, protocol remains stable
-**Consequences:** (+) Flexibility, (-) Integration overhead
+**Context:** UI layout becomes unwieldy with more agents.
 
-### ADR-002: YAML for Tests
-**Decision:** Declarative tests in YAML, not in code
-**Rationale:** Readability, versioning, accessibility for QA
-**Consequences:** (+) Low barrier, (-) Limited expressiveness
-
-### ADR-003: LLM-as-Judge
-**Decision:** Use LLM for semantic evaluation
-**Rationale:** Impossible to evaluate text quality programmatically
-**Consequences:** (+) Deep evaluation, (-) Cost, non-determinism
-
-### ADR-004: Docker for Isolation
-**Decision:** Sandbox via Docker containers
-**Rationale:** Industry standard, cross-platform
-**Consequences:** (+) Security, (-) Docker dependency
-
-### ADR-005: Multiple Runs by Default
-**Decision:** Statistics over N runs instead of single run
-**Rationale:** LLMs are non-deterministic, one run proves nothing
-**Consequences:** (+) Reliability, (-) Time and cost ×N
+**Rationale:**
+- 3 columns fit well on standard screens (1920px)
+- Side-by-side comparison most useful for 2-3 options
+- Users can run multiple comparisons if needed
 
 ---
 
-## 6. API Reference
+### ADR-003: Timeline Rendering
+**Decision:** Use Canvas-based timeline with Chart.js.
 
-### 6.1 CLI Commands
+**Context:** Need smooth rendering for 500+ events.
 
-```bash
-# Run tests
-atp test --agent=NAME --suite=FILE [--tags=TAGS] [--runs=N] [--parallel=N]
+**Rationale:**
+- Chart.js already in project
+- Canvas performs better than SVG for many elements
+- Built-in zoom/pan support
 
-# Validate agent integration
-atp validate --agent=NAME
-
-# Compare agents
-atp compare --agents=A,B --suite=FILE
-
-# Manage baselines
-atp baseline save --agent=NAME --suite=FILE --output=FILE
-atp baseline compare --agent=NAME --suite=FILE --baseline=FILE
-
-# Info
-atp version
-atp list-agents
-atp list-evaluators
-```
-
-### 6.2 Configuration File
-
-```yaml
-# atp.config.yaml
-version: "1.0"
-
-defaults:
-  timeout_seconds: 300
-  runs_per_test: 3
-  parallel_workers: 4
-
-agents:
-  # ... agent definitions
-
-evaluators:
-  llm_judge:
-    model: "claude-sonnet-4-20250514"
-    temperature: 0
-
-reporting:
-  default: console
-  verbose: false
-
-secrets:
-  # Reference environment variables
-  anthropic_api_key: ${ANTHROPIC_API_KEY}
-```
+**Trade-offs:**
+- Less flexibility than custom D3.js solution
+- Accessibility limitations with Canvas
 
 ---
 
-## 7. Directory Structure
+## 6. Directory Structure
 
 ```
-{{project_name}}/
-├── atp/                     # Source code
-│   ├── cli/
-│   ├── core/
-│   ├── protocol/
-│   ├── loader/
-│   ├── runner/
-│   ├── adapters/
-│   ├── evaluators/
-│   ├── scoring/
-│   └── reporters/
-├── tests/                   # Test suite
-│   ├── unit/                # Unit tests (~70%)
-│   ├── integration/         # Integration tests (~20%)
-│   ├── e2e/                 # End-to-end tests (~10%)
-│   ├── contract/            # Protocol contract tests
-│   ├── fixtures/            # Test data
-│   └── conftest.py          # Shared fixtures
-├── docs/
-├── examples/
-└── pyproject.toml
+atp/dashboard/
+├── api.py                    # Add new endpoints
+├── schemas.py                # Add new response models
+├── comparison/               # New module
+│   ├── __init__.py
+│   ├── queries.py            # Database queries
+│   ├── services.py           # Business logic
+│   └── models.py             # Internal data models
+└── templates/
+    └── dashboard.html        # Update with new components
 ```
-
----
-
-## 8. Testing Strategy
-
-### 8.1 Test Pyramid
-
-```
-        ┌───────────┐
-        │   E2E     │  ~10% - Critical user journeys
-        │   Tests   │
-        ├───────────┤
-        │Integration│  ~20% - Component interactions
-        │   Tests   │
-        ├───────────┤
-        │   Unit    │  ~70% - Business logic, utils
-        │   Tests   │
-        └───────────┘
-```
-
-### 8.2 Test Types
-
-| Type | Scope | Tools | Location |
-|------|-------|-------|----------|
-| Unit | Functions, classes | pytest, pytest-mock | `tests/unit/` |
-| Integration | Adapters, Evaluators | pytest, Docker | `tests/integration/` |
-| E2E | Full test run | pytest, subprocess | `tests/e2e/` |
-| Contract | ATP Protocol | jsonschema, pydantic | `tests/contract/` |
-
-### 8.3 Test Requirements by Component
-
-| Component | Unit Tests | Integration Tests |
-|-----------|------------|-------------------|
-| Protocol models | Serialization, validation | — |
-| Adapters | Mock responses | Real agent (Docker) |
-| Evaluators | Check logic | Full evaluation pipeline |
-| Runner | Orchestration logic | Suite execution |
-| Reporters | Output formatting | File generation |
-| CLI | Argument parsing | Full commands |
-
-### 8.4 Definition of Done
-
-**Each task is considered complete only if:**
-- [ ] Unit tests written (coverage ≥80% for new code)
-- [ ] All tests pass locally
-- [ ] Integration test if interfaces changed
-- [ ] CI pipeline is green
-- [ ] Code review passed
-
-### 8.5 Fixtures & Test Data
-
-```
-tests/
-├── fixtures/
-│   ├── requests/           # Sample ATP Requests (valid, invalid)
-│   ├── responses/          # Sample ATP Responses
-│   ├── test_suites/        # Sample YAML test suites
-│   ├── traces/             # Sample event traces
-│   └── artifacts/          # Sample agent outputs
-└── conftest.py             # Shared pytest fixtures
-```
-
-### 8.6 CI Pipeline
-
-```yaml
-test:
-  steps:
-    - pytest tests/unit -v --cov=atp --cov-fail-under=80
-    - pytest tests/integration -v
-    - pytest tests/e2e -v
-    - ruff check atp/
-    - mypy atp/
-```
-
-**Traces to:** [NFR-000], [TASK-100], [TASK-101], [TASK-102]

@@ -1,61 +1,59 @@
 # Requirements Specification
 
-> Agent Test Platform (ATP) — Framework-agnostic platform for testing AI agents
+> Agent Comparison Dashboard — Visual comparison of AI agents performance
 
 ## 1. Context and Goals
 
 ### 1.1 Problem
 
-AI agents are becoming critical components of business processes, but there are no standards for testing them:
-- Each team invents their own approaches
-- Results are incomparable between projects
-- Regressions are discovered in production
-- Switching frameworks requires rewriting tests
+ATP platform stores test results but lacks comprehensive visualization for comparing agents:
+- No side-by-side comparison of agent execution steps
+- No leaderboard to see which agents perform best on which tests
+- No event timeline to analyze agent strategies
+- Difficult to understand why one agent outperforms another
 
 ### 1.2 Project Goals
 
 | ID | Goal | Success Metric |
 |----|------|----------------|
-| G-1 | Unify agent testing | 3+ teams using a unified approach |
-| G-2 | Ensure framework independence | Support for 3+ frameworks without changing tests |
-| G-3 | Automate regression detection | 95% of regressions detected automatically |
-| G-4 | Reduce time-to-first-test | < 1 hour from installation to first test |
+| G-1 | Enable visual agent comparison | Compare 2-3 agents on single test with step details |
+| G-2 | Provide leaderboard overview | Matrix of test × agent with scores visible at glance |
+| G-3 | Visualize agent strategies | Event timeline shows tool calls, LLM requests, reasoning |
 
 ### 1.3 Stakeholders
 
 | Role | Interests | Influence |
 |------|-----------|-----------|
-| ML/AI Engineers | Easy integration, fast feedback | High |
-| QA Engineers | Declarative tests, clear reports | High |
-| Tech Leads | Approach comparison, quality metrics | Medium |
-| DevOps | CI/CD integration, automation | Medium |
+| ML/AI Engineers | Understand why agents differ in performance | High |
+| Tech Leads | Compare agent implementations, choose best | High |
+| QA Engineers | Identify patterns in failures | Medium |
 
 ### 1.4 Out of Scope
 
-- ❌ Agent development (testing only)
-- ❌ Agent hosting (runs in team infrastructure)
-- ❌ Replacing code unit tests (complement, not replace pytest/jest)
-- ❌ Realtime production monitoring (pre-deploy testing only)
-- ❌ Visual test editor (YAML/CLI only)
+- Agent development or debugging tools
+- Real-time monitoring during test execution
+- Custom visualization plugins
+- Export to external BI tools
+- Mobile-optimized interface
 
 ---
 
 ## 2. Functional Requirements
 
-### 2.1 Interaction Protocol
+### 2.1 Side-by-Side Agent Comparison
 
-#### REQ-001: Standard Request Format
-**As a** agent developer
-**I want** to send tasks to the agent in a standard format
-**So that** any agent can be tested uniformly
+#### REQ-001: Select Agents for Comparison
+**As a** developer
+**I want** to select 2-3 agents to compare on a specific test
+**So that** I can understand differences in their behavior
 
 **Acceptance Criteria:**
 ```gherkin
-GIVEN agent implements ATP Protocol
-WHEN platform sends ATP Request
-THEN agent receives JSON with fields: version, task_id, task, constraints
-AND task contains description and optional input_data
-AND constraints contains max_steps, max_tokens, timeout_seconds, allowed_tools
+GIVEN I'm on the test detail page
+WHEN I select 2-3 agents from the comparison selector
+THEN agents are loaded with their execution data for this test
+AND comparison view is displayed side-by-side
+AND I can change agent selection without page reload
 ```
 
 **Priority:** P0 (Must Have)
@@ -63,99 +61,180 @@ AND constraints contains max_steps, max_tokens, timeout_seconds, allowed_tools
 
 ---
 
-#### REQ-002: Standard Response Format
-**As a** testing platform
-**I want** to receive results in a standard format
-**So that** any agent can be evaluated uniformly
-
-**Acceptance Criteria:**
-```gherkin
-GIVEN agent completed task execution
-WHEN agent returns ATP Response
-THEN response contains: version, task_id, status, artifacts, metrics
-AND status is one of: completed, failed, timeout, cancelled, partial
-AND artifacts is an array with type, path/name, content/data
-AND metrics contains: total_tokens, total_steps, tool_calls, wall_time_seconds
-```
-
-**Priority:** P0
-**Traces to:** [TASK-001], [DESIGN-001]
-
----
-
-#### REQ-003: Event Streaming
+#### REQ-002: Step-by-Step Execution Comparison
 **As a** developer
-**I want** to receive events during agent execution
-**So that** I can debug and analyze behavior
+**I want** to see step-by-step execution for each agent
+**So that** I can identify where agents diverge in their approach
 
 **Acceptance Criteria:**
 ```gherkin
-GIVEN agent supports event streaming
-WHEN agent executes task
-THEN platform receives ATP Events with types: tool_call, llm_request, reasoning, error, progress
-AND each event has timestamp and sequence number
-AND events are ordered by sequence
-```
-
-**Priority:** P1 (Should Have)
-**Traces to:** [TASK-002], [DESIGN-002]
-
----
-
-### 2.2 Agent Integration
-
-#### REQ-010: HTTP Integration
-**As a** developer with an HTTP API agent
-**I want** to integrate the agent via HTTP endpoint
-**So that** I don't need to change agent architecture
-
-**Acceptance Criteria:**
-```gherkin
-GIVEN agent has HTTP endpoint
-WHEN agent is registered with type: http and endpoint URL
-THEN platform sends POST request with ATP Request
-AND platform receives ATP Response in response body
-AND timeout is configurable
+GIVEN agents are selected for comparison
+WHEN comparison view is displayed
+THEN each agent column shows sequence of steps
+AND steps include: tool calls, LLM requests, reasoning
+AND steps are aligned by sequence number or timestamp
+AND differences are highlighted visually
 ```
 
 **Priority:** P0
-**Traces to:** [TASK-003], [DESIGN-003]
+**Traces to:** [TASK-002], [DESIGN-001]
 
 ---
 
-#### REQ-011: Container Integration
-**As a** developer with a Docker-packaged agent
-**I want** to run the agent in an isolated container
-**So that** security and reproducibility are ensured
+#### REQ-003: Metrics Comparison Panel
+**As a** developer
+**I want** to see key metrics side-by-side
+**So that** I can quickly compare agent efficiency
 
 **Acceptance Criteria:**
 ```gherkin
-GIVEN agent is packaged in Docker image
-WHEN agent is registered with type: container and image name
-THEN platform starts container with resource limits
-AND ATP Request is passed via stdin
-AND ATP Response is read from stdout
-AND ATP Events are read from stderr
-AND container is removed after execution
+GIVEN agents are displayed in comparison view
+WHEN I look at the metrics panel
+THEN I see for each agent: score, tokens used, steps count, duration, cost
+AND best values are highlighted (highest score, lowest tokens, etc.)
+AND percentage difference is shown between agents
+```
+
+**Priority:** P1
+**Traces to:** [TASK-003], [DESIGN-001]
+
+---
+
+### 2.2 Leaderboard Matrix
+
+#### REQ-010: Test × Agent Matrix View
+**As a** tech lead
+**I want** to see a matrix of tests vs agents with scores
+**So that** I can identify patterns across the suite
+
+**Acceptance Criteria:**
+```gherkin
+GIVEN I select a test suite
+WHEN leaderboard view is displayed
+THEN I see a table with tests as rows and agents as columns
+AND each cell shows: score (0-100), pass/fail status
+AND cells are color-coded: green (>80), yellow (50-80), red (<50)
+AND I can sort by any column (agent scores, test difficulty)
 ```
 
 **Priority:** P0
-**Traces to:** [TASK-003], [DESIGN-003]
+**Traces to:** [TASK-004], [DESIGN-002]
 
 ---
 
-#### REQ-012: Framework Adapters
-**As a** LangGraph/CrewAI developer
-**I want** to use a ready adapter for my framework
-**So that** I don't write boilerplate integration code
+#### REQ-011: Pattern Detection
+**As a** tech lead
+**I want** to see patterns in the leaderboard
+**So that** I can identify which tests are hard for all agents
 
 **Acceptance Criteria:**
 ```gherkin
-GIVEN adapter exists for framework X
-WHEN agent is registered with type: X and module path
-THEN adapter automatically translates ATP Protocol to native API
-AND framework events are converted to ATP Events
-AND metrics are collected automatically
+GIVEN leaderboard is displayed
+WHEN pattern analysis runs
+THEN rows are annotated: "hard for all" (all agents < 50), "easy" (all > 80)
+AND columns are annotated: "best overall", "most consistent"
+AND I can filter to show only problematic tests
+```
+
+**Priority:** P2
+**Traces to:** [TASK-005], [DESIGN-002]
+
+---
+
+#### REQ-012: Leaderboard Aggregations
+**As a** tech lead
+**I want** to see aggregate statistics
+**So that** I can compare agents overall performance
+
+**Acceptance Criteria:**
+```gherkin
+GIVEN leaderboard is displayed
+WHEN I look at summary row/column
+THEN I see for each agent: avg score, pass rate, total tokens, total cost
+AND I see for each test: avg score across agents, difficulty rating
+AND ranking is shown (1st, 2nd, 3rd place)
+```
+
+**Priority:** P1
+**Traces to:** [TASK-006], [DESIGN-002]
+
+---
+
+### 2.3 Event Timeline
+
+#### REQ-020: Timeline Visualization
+**As a** developer
+**I want** to see agent events on a timeline
+**So that** I can understand agent strategy and timing
+
+**Acceptance Criteria:**
+```gherkin
+GIVEN test execution with events is selected
+WHEN event timeline is displayed
+THEN events are shown chronologically on horizontal axis
+AND event types are color-coded: tool_call (blue), llm_request (green), reasoning (yellow), error (red)
+AND I can zoom in/out on timeline
+AND hovering shows event details
+```
+
+**Priority:** P0
+**Traces to:** [TASK-007], [DESIGN-003]
+
+---
+
+#### REQ-021: Multi-Agent Timeline Comparison
+**As a** developer
+**I want** to see timelines of multiple agents aligned
+**So that** I can compare their strategies visually
+
+**Acceptance Criteria:**
+```gherkin
+GIVEN 2-3 agents selected for comparison
+WHEN multi-timeline view is displayed
+THEN each agent has its own timeline row
+AND timelines are aligned by start time
+AND I can see parallel activity clearly
+AND total duration is visible for each agent
+```
+
+**Priority:** P0
+**Traces to:** [TASK-008], [DESIGN-003]
+
+---
+
+#### REQ-022: Event Filtering
+**As a** developer
+**I want** to filter events by type
+**So that** I can focus on specific behavior
+
+**Acceptance Criteria:**
+```gherkin
+GIVEN timeline is displayed
+WHEN I toggle event type filters
+THEN only selected event types are shown
+AND filter state is preserved during navigation
+AND I can filter by: tool_call, llm_request, reasoning, error, progress
+```
+
+**Priority:** P1
+**Traces to:** [TASK-009], [DESIGN-003]
+
+---
+
+#### REQ-023: Event Details Panel
+**As a** developer
+**I want** to see full event details
+**So that** I can debug agent behavior
+
+**Acceptance Criteria:**
+```gherkin
+GIVEN timeline is displayed
+WHEN I click on an event
+THEN detail panel opens with full event data
+AND for tool_call: tool name, arguments, result
+AND for llm_request: prompt (truncated), response (truncated), tokens
+AND for error: error message, stack trace if available
+AND I can copy event data as JSON
 ```
 
 **Priority:** P1
@@ -163,401 +242,70 @@ AND metrics are collected automatically
 
 ---
 
-### 2.3 Test Description
-
-#### REQ-020: Declarative Test Format
-**As a** QA engineer
-**I want** to describe tests in YAML without writing code
-**So that** tests are understandable to the whole team
-
-**Acceptance Criteria:**
-```gherkin
-GIVEN test is described in YAML file
-WHEN file contains: id, name, task, assertions
-THEN platform parses and validates structure
-AND outputs clear errors for invalid format
-AND supports comments for documentation
-```
-
-**Priority:** P0
-**Traces to:** [TASK-004], [DESIGN-004]
-
----
-
-#### REQ-021: Test Suites
-**As a** developer
-**I want** to group related tests into suites
-**So that** I can run them together and reuse settings
-
-**Acceptance Criteria:**
-```gherkin
-GIVEN suite contains defaults and tests list
-WHEN suite is run
-THEN defaults are applied to all tests
-AND tests can override defaults
-AND individual test from suite can be run
-```
-
-**Priority:** P0
-**Traces to:** [TASK-004], [DESIGN-004]
-
----
-
-#### REQ-022: Tags and Filtering
-**As a** CI/CD developer
-**I want** to run a subset of tests by tags
-**So that** I can quickly run smoke tests or only regression
-
-**Acceptance Criteria:**
-```gherkin
-GIVEN tests have tags: [smoke, regression, edge_case]
-WHEN running with --tags=smoke
-THEN only tests with tag "smoke" are executed
-AND tags can be combined: --tags=smoke,core
-AND tags can be excluded: --tags=!slow
-```
-
-**Priority:** P1
-**Traces to:** [TASK-005], [DESIGN-004]
-
----
-
-### 2.4 Test Execution
-
-#### REQ-030: Test Runner
-**As a** developer
-**I want** to run tests via CLI
-**So that** I can integrate into local development and CI
-
-**Acceptance Criteria:**
-```gherkin
-GIVEN ATP platform is installed
-WHEN command is executed: atp test --agent=X --suite=Y
-THEN suite Y is loaded
-AND agent X is run for each test
-AND progress and results are displayed
-AND exit code 0 is returned on success, non-zero on failures
-```
-
-**Priority:** P0
-**Traces to:** [TASK-006], [DESIGN-005]
-
----
-
-#### REQ-031: Multiple Runs
-**As a** developer
-**I want** to run a test N times
-**So that** I get statistically significant results
-
-**Acceptance Criteria:**
-```gherkin
-GIVEN test is configured with runs: 5
-WHEN test is executed
-THEN agent is run 5 times with the same input
-AND calculated: mean, std, min, max, median
-AND 95% confidence interval is calculated
-AND stability level is determined by coefficient of variation
-```
-
-**Priority:** P1
-**Traces to:** [TASK-011], [DESIGN-006]
-
----
-
-#### REQ-032: Timeout and Limits
-**As a** platform
-**I want** to forcibly stop the agent when limits are exceeded
-**So that** tests don't hang indefinitely
-
-**Acceptance Criteria:**
-```gherkin
-GIVEN test has constraints.timeout_seconds: 60
-WHEN agent runs longer than 60 seconds
-THEN agent is forcibly stopped
-AND response with status: timeout is returned
-AND artifacts and metrics collected up to that point are saved
-```
-
-**Priority:** P0
-**Traces to:** [TASK-006], [DESIGN-005]
-
----
-
-### 2.5 Evaluation System
-
-#### REQ-040: Artifact Evaluator
-**As a** tester
-**I want** to check artifact existence and content
-**So that** I can verify the agent created expected outputs
-
-**Acceptance Criteria:**
-```gherkin
-GIVEN assertion type: artifact_exists with path: "report.md"
-WHEN agent returns artifacts
-THEN artifact with specified path is checked for existence
-AND check passed if artifact exists
-AND check failed with clear message if it doesn't exist
-
-GIVEN assertion type: contains with pattern: "competitor"
-WHEN artifact exists
-THEN pattern presence in content is checked
-AND regex: true is supported for regular expressions
-```
-
-**Priority:** P0
-**Traces to:** [TASK-007], [DESIGN-007]
-
----
-
-#### REQ-041: Behavior Evaluator
-**As a** tester
-**I want** to verify agent behavior by trace
-**So that** I can ensure the agent works efficiently and safely
-
-**Acceptance Criteria:**
-```gherkin
-GIVEN assertion type: behavior with must_use_tools: [web_search]
-WHEN execution trace is analyzed
-THEN it is verified that tool web_search was called
-AND check failed if the tool wasn't used
-
-GIVEN assertion with max_tool_calls: 10
-WHEN number of tool calls > 10
-THEN check failed with actual vs limit indication
-```
-
-**Priority:** P0
-**Traces to:** [TASK-007], [DESIGN-007]
-
----
-
-#### REQ-042: LLM-as-Judge Evaluator
-**As a** tester
-**I want** to use LLM for semantic quality evaluation
-**So that** I can check semantic correctness, not just format
-
-**Acceptance Criteria:**
-```gherkin
-GIVEN assertion type: llm_eval with criteria: factual_accuracy
-WHEN artifact is sent for LLM evaluation
-THEN LLM returns score 0-1 and explanation
-AND check passed if score >= threshold (default 0.7)
-AND explanation is included in report
-
-GIVEN criteria: custom with prompt: "..."
-WHEN evaluation is performed
-THEN custom prompt is used instead of standard
-```
-
-**Priority:** P1
-**Traces to:** [TASK-012], [DESIGN-008]
-
----
-
-#### REQ-043: Composite Scoring
-**As a** manager
-**I want** to get a single score 0-100 for each test
-**So that** I can easily compare agents and track progress
-
-**Acceptance Criteria:**
-```gherkin
-GIVEN test has scoring weights: quality: 0.4, completeness: 0.3, efficiency: 0.2, cost: 0.1
-WHEN all evaluators finish
-THEN weighted score is calculated by formula
-AND score is normalized to 0-100 range
-AND breakdown by components is included in report
-```
-
-**Priority:** P1
-**Traces to:** [TASK-008], [DESIGN-007]
-
----
-
-### 2.6 Reporting
-
-#### REQ-050: Console Reporter
-**As a** developer
-**I want** to see results in terminal
-**So that** I can quickly understand test status
-
-**Acceptance Criteria:**
-```gherkin
-GIVEN tests finished
-WHEN console reporter is used (default)
-THEN summary is displayed: X passed, Y failed, Z skipped
-AND for each test: status (✓/✗), score, duration
-AND failed checks are displayed with details
-AND --verbose is supported for full output
-```
-
-**Priority:** P0
-**Traces to:** [TASK-009], [DESIGN-009]
-
----
-
-#### REQ-051: JSON Reporter
-**As a** CI/CD system
-**I want** to receive results in machine-readable format
-**So that** I can integrate with other tools
-
-**Acceptance Criteria:**
-```gherkin
-GIVEN run with --output=json --output-file=results.json
-WHEN tests finish
-THEN JSON file is created with full results structure
-AND format is documented and stable between versions
-```
-
-**Priority:** P0
-**Traces to:** [TASK-009], [DESIGN-009]
-
----
-
-#### REQ-052: Baseline and Regression
-**As a** developer
-**I want** to compare results with baseline
-**So that** I can automatically detect regressions
-
-**Acceptance Criteria:**
-```gherkin
-GIVEN baseline file exists from previous run
-WHEN running with --baseline=baseline.json
-THEN current results are compared with baseline
-AND regression is defined as statistically significant degradation (p < 0.05)
-AND improvement is also noted
-AND diff is displayed in report
-```
-
-**Priority:** P2 (Could Have)
-**Traces to:** [TASK-013], [DESIGN-010]
-
----
-
 ## 3. Non-Functional Requirements
-
-### NFR-000: Testing Requirements
-| Aspect | Requirement |
-|--------|-------------|
-| Unit test coverage | ≥ 80% for core modules |
-| Integration tests | Each adapter, evaluator |
-| E2E tests | Critical paths (test run, reporting) |
-| Test framework | pytest + pytest-asyncio |
-| CI requirement | All tests pass before merge |
-
-**Definition of Done for any task:**
-- [ ] Unit tests written and passing
-- [ ] Coverage didn't drop
-- [ ] Integration test if interfaces affected
-- [ ] Documentation updated
-
-**Traces to:** [TASK-100], [TASK-101], [TASK-102]
-
----
 
 ### NFR-001: Performance
 | Metric | Requirement |
 |--------|-------------|
-| Platform overhead | < 5% of agent execution time |
-| CLI startup time | < 2 seconds |
-| Parallel agents | Up to 10 simultaneously |
-| Event processing | 10,000+ events without degradation |
+| Page load time | < 2 seconds for comparison view |
+| Timeline rendering | < 500ms for 1000 events |
+| Leaderboard rendering | < 1 second for 50 tests × 10 agents |
+| API response time | < 500ms for comparison queries |
 
-**Traces to:** [TASK-006]
+**Traces to:** [TASK-011]
 
 ---
 
-### NFR-002: Reliability
+### NFR-002: Usability
 | Aspect | Requirement |
 |--------|-------------|
-| Timeout handling | Graceful stop without data loss |
-| Agent crash | Continue with remaining tests |
-| Partial results | Save on interruption |
+| Responsive design | Works on 1280px+ width screens |
+| Keyboard navigation | Basic navigation with arrow keys |
+| Loading states | Skeleton/spinner during data fetch |
+| Error handling | Clear error messages, retry option |
 
-**Traces to:** [TASK-006]
-
----
-
-### NFR-003: Usability
-| Metric | Requirement |
-|--------|-------------|
-| Time to first test | < 1 hour for new user |
-| Error messages | Actionable, point to solution |
-| Documentation | Covers all use cases |
-
-**Traces to:** [TASK-014]
+**Traces to:** [TASK-012]
 
 ---
 
-### NFR-004: Security
+### NFR-003: Testing
 | Aspect | Requirement |
 |--------|-------------|
-| Sandbox isolation | Docker with CPU/memory/network limits |
-| Secrets | Via env vars, not in tests/logs |
-| Input validation | All inputs validated by schema |
+| Unit test coverage | ≥ 80% for new API endpoints |
+| Integration tests | All new endpoints tested |
+| Frontend tests | Key user flows tested |
 
-**Traces to:** [TASK-006], [DESIGN-005]
-
----
-
-### NFR-005: Compatibility
-| Platform | Requirement |
-|----------|-------------|
-| Python | 3.10+ |
-| OS | Linux (primary), macOS (dev), Windows (best effort) |
-| Docker | 20.10+ |
-| CI systems | GitHub Actions, GitLab CI |
-
-**Traces to:** [TASK-003]
+**Traces to:** [TASK-100]
 
 ---
 
-## 4. Constraints and Tech Stack
+## 4. Constraints
 
-### 4.1 Technology Constraints
-
+### 4.1 Technology Stack
 | Aspect | Decision | Rationale |
 |--------|----------|-----------|
-| Language | Python 3.10+ | ML/AI ecosystem |
-| Packaging | pip + pyproject.toml | Python standard |
-| Schema | JSON Schema draft-07 | Wide support |
-| Container | Docker (primary) | Industry standard |
-| Config format | YAML | Readability |
+| Backend | FastAPI (existing) | Extend current dashboard |
+| Frontend | React (embedded) | Matches existing dashboard |
+| Charts | Chart.js | Already used in dashboard |
+| Database | SQLAlchemy (existing) | Use existing models |
 
-### 4.2 Integration Constraints
-
-- Protocol: JSON over HTTP / stdin-stdout
-- LLM for evaluation: Claude or OpenAI API
-- CI: JUnit XML for compatibility
-
-### 4.3 Licensing
-
-- Platform: MIT License
-- Dependencies: only MIT/Apache/BSD compatible
+### 4.2 Data Constraints
+- Events are stored in `events_json` column (RunResult model)
+- Maximum 1000 events per timeline for performance
+- Comparison limited to 3 agents to keep UI manageable
 
 ---
 
 ## 5. Acceptance Criteria
 
-### Milestone 1: MVP
-- [ ] REQ-001, REQ-002 — Protocol implemented
-- [ ] REQ-010, REQ-011 — HTTP and Container adapters working
-- [ ] REQ-020, REQ-021 — YAML tests loading
-- [ ] REQ-030, REQ-032 — Runner with timeout
-- [ ] REQ-040, REQ-041 — Artifact and Behavior evaluators
-- [ ] REQ-050, REQ-051 — Console and JSON reporters
-- [ ] NFR-003 — Documentation complete
+### Milestone 1: Comparison Foundation
+- [ ] REQ-001 — Agent selection for comparison
+- [ ] REQ-002 — Step-by-step comparison view
+- [ ] REQ-010 — Basic leaderboard matrix
+- [ ] REQ-020 — Single agent timeline
 
-### Milestone 2: Beta
-- [ ] REQ-003 — Event streaming
-- [ ] REQ-012 — LangGraph and CrewAI adapters
-- [ ] REQ-022 — Tags filtering
-- [ ] REQ-031 — Multiple runs with statistics
-- [ ] REQ-042 — LLM-as-Judge evaluator
-- [ ] REQ-043 — Composite scoring
-- [ ] NFR-001 — Performance targets met
-
-### Milestone 3: GA
-- [ ] REQ-052 — Baseline comparison
-- [ ] NFR-002 — Reliability hardened
-- [ ] NFR-004 — Security audit passed
-- [ ] All P0 and P1 requirements implemented
+### Milestone 2: Full Comparison
+- [ ] REQ-003 — Metrics comparison panel
+- [ ] REQ-021 — Multi-agent timeline
+- [ ] REQ-022, REQ-023 — Event filtering and details
+- [ ] REQ-011, REQ-012 — Leaderboard patterns and aggregations
