@@ -110,6 +110,13 @@ cleanup() {
 # Set trap for cleanup
 trap cleanup EXIT
 
+# Check if port is already in use and kill existing process
+if lsof -i :"$MCP_PORT" > /dev/null 2>&1; then
+    echo -e "${YELLOW}Port $MCP_PORT is in use, stopping existing process...${NC}"
+    lsof -ti :"$MCP_PORT" | xargs kill -9 2>/dev/null || true
+    sleep 1
+fi
+
 # Start MCP server
 echo -e "${GREEN}Starting mock MCP server on port $MCP_PORT...${NC}"
 python examples/mock_mcp_server.py --port "$MCP_PORT" &
