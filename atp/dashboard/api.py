@@ -1490,7 +1490,10 @@ async def get_dashboard_summary(
     # Get recent executions (last 10)
     stmt = (
         select(SuiteExecution)
-        .options(selectinload(SuiteExecution.agent))
+        .options(
+            selectinload(SuiteExecution.agent),
+            selectinload(SuiteExecution.test_executions),
+        )
         .order_by(SuiteExecution.started_at.desc())
         .limit(10)
     )
