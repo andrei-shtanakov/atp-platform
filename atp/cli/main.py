@@ -228,6 +228,11 @@ def version_cmd() -> None:
     type=click.Path(path_type=Path),
     help="Output file path (for json output)",
 )
+@click.option(
+    "--no-save",
+    is_flag=True,
+    help="Don't save results to dashboard database",
+)
 @pass_config
 def test_cmd(
     config_ctx: ConfigContext,
@@ -244,6 +249,7 @@ def test_cmd(
     verbose: bool,
     output: str,
     output_file: Path | None,
+    no_save: bool,
 ) -> None:
     """Run tests from a test suite file.
 
@@ -348,6 +354,7 @@ def test_cmd(
                 verbose=verbose,
                 output_format=output,
                 output_file=output_file,
+                save_to_db=not no_save,
             )
         )
 
@@ -438,6 +445,11 @@ def test_cmd(
     type=click.Path(path_type=Path),
     help="Output file path (for json output)",
 )
+@click.option(
+    "--no-save",
+    is_flag=True,
+    help="Don't save results to dashboard database",
+)
 @pass_config
 def run(
     config_ctx: ConfigContext,
@@ -454,6 +466,7 @@ def run(
     verbose: bool,
     output: str,
     output_file: Path | None,
+    no_save: bool,
 ) -> None:
     """Run tests from a test suite file (alias for 'test' command).
 
@@ -532,6 +545,7 @@ def run(
                 verbose=verbose,
                 output_format=output,
                 output_file=output_file,
+                save_to_db=not no_save,
             )
         )
 
@@ -555,6 +569,7 @@ async def _run_suite(
     verbose: bool,
     output_format: str,
     output_file: Path | None,
+    save_to_db: bool = True,
 ) -> bool:
     """Run a test suite asynchronously.
 
@@ -570,10 +585,12 @@ async def _run_suite(
         verbose: Enable verbose output
         output_format: Output format (console or json)
         output_file: Output file path (for json output)
+        save_to_db: Whether to save results to dashboard database
 
     Returns:
         True if all tests passed, False otherwise
     """
+
     from atp.adapters import create_adapter
     from atp.reporters import SuiteReport, create_reporter
     from atp.runner import (
@@ -627,7 +644,107 @@ async def _run_suite(
     report = SuiteReport.from_suite_result(result)
     reporter.report(report)
 
+    # Save results to dashboard database
+    if save_to_db:
+        await _save_results_to_db(
+            result=result,
+            suite_name=suite.test_suite,
+            agent_name=agent_name,
+            adapter_type=adapter_type,
+            adapter_config=adapter_config,
+            runs_per_test=runs_per_test,
+        )
+
     return result.success
+
+
+async def _save_results_to_db(
+    result: Any,
+    suite_name: str,
+    agent_name: str,
+    adapter_type: str,
+    adapter_config: dict[str, Any],
+    runs_per_test: int,
+) -> None:
+    """Save test results to the dashboard database.
+
+    Args:
+        result: SuiteResult from test execution
+        suite_name: Name of the test suite
+        agent_name: Name of the agent
+        adapter_type: Type of adapter used
+        adapter_config: Adapter configuration
+        runs_per_test: Number of runs per test
+    """
+    from datetime import datetime
+
+    from atp.dashboard import ResultStorage, init_database
+
+    try:
+        # Initialize database (creates tables if needed)
+        db = await init_database()
+
+        async with db.session() as session:
+            storage = ResultStorage(session)
+
+            # Get or create agent
+            agent = await storage.get_or_create_agent(
+                name=agent_name,
+                agent_type=adapter_type,
+                config=adapter_config,
+            )
+
+            # Create suite execution
+            suite_exec = await storage.create_suite_execution(
+                suite_name=suite_name,
+                agent=agent,
+                runs_per_test=runs_per_test,
+                started_at=result.start_time,
+            )
+
+            # Save each test result
+            for test_result in result.tests:
+                test_exec = await storage.create_test_execution(
+                    suite_execution=suite_exec,
+                    test_id=test_result.test.id,
+                    test_name=test_result.test.name,
+                    tags=test_result.test.tags if test_result.test.tags else None,
+                    total_runs=len(test_result.runs),
+                )
+
+                # Save run results
+                for run_result in test_result.runs:
+                    if run_result.response:
+                        await storage.create_run_result(
+                            test_execution=test_exec,
+                            run_number=run_result.run_number,
+                            response=run_result.response,
+                            events=run_result.events,
+                        )
+
+                # Update test execution with results
+                await storage.update_test_execution(
+                    test_exec,
+                    completed_at=datetime.now(),
+                    successful_runs=sum(1 for r in test_result.runs if r.success),
+                    success=test_result.success,
+                    status="completed" if test_result.success else "failed",
+                )
+
+            # Update suite execution
+            await storage.update_suite_execution(
+                suite_exec,
+                completed_at=datetime.now(),
+                total_tests=len(result.tests),
+                passed_tests=sum(1 for t in result.tests if t.success),
+                failed_tests=sum(1 for t in result.tests if not t.success),
+                success_rate=result.success_rate,
+                status="completed" if result.success else "failed",
+            )
+
+    except Exception as e:
+        # Don't fail the test run if saving fails
+        click.echo(f"Warning: Failed to save results to database: {e}", err=True)
 
 
 @cli.command(name="validate")
