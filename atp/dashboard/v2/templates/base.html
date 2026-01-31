@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}ATP Dashboard{% endblock %}</title>
+
+    <!-- External CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- External JS libraries -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static_v2', path='css/dashboard.css') }}">
+    {% block head %}{% endblock %}
+</head>
+<body class="bg-gray-100 min-h-screen">
+    {% block body %}
+    <div id="root">
+        {% block content %}{% endblock %}
+    </div>
+    {% endblock %}
+
+    <!-- Custom JS -->
+    <script src="{{ url_for('static_v2', path='js/api.js') }}"></script>
+    <script src="{{ url_for('static_v2', path='js/components.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

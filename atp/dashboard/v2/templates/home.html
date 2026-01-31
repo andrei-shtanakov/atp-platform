@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block title %}ATP Dashboard - Home{% endblock %}
+
+{% block content %}
+<!-- Home page content rendered by React -->
+<div id="home-root"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static_v2', path='js/pages/home.js') }}"></script>
+<script type="text/babel">
+    // Dashboard Summary Component
+    function DashboardSummary({ summary }) {
+        if (!summary) {
+            return React.createElement(SkeletonDashboardSummary);
+        }
+
+        const cards = [
+            { label: 'Total Agents', value: summary.total_agents },
+            { label: 'Test Suites', value: summary.total_suites },
+            { label: 'Total Executions', value: summary.total_executions },
+            { label: 'Recent Success Rate', value: `${(summary.recent_success_rate * 100).toFixed(1)}%` }
+        ];
+
+        return (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                {cards.map((card, idx) => (
+                    <div key={idx} className="bg-white p-4 rounded-lg shadow">
+                        <h3 className="text-gray-500 text-sm">{card.label}</h3>
+                        <p className="text-2xl font-bold">{card.value}</p>
+                    </div>
+                ))}
+            </div>
+        );
+    }
+
+    // Suite List Component
+    function SuiteList({ executions, onSelect }) {
+        if (!executions || executions.length === 0) {
+            return (
+                <div className="bg-white rounded-lg shadow p-6 text-center text-gray-500">
+                    No executions found. Run some tests to see results here.
+                </div>
+            );
+        }
+
+        return (
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+                <table className="min-w-full">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Suite</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Agent</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Success Rate</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Started</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                        {executions.map((exec) => (
+                            <tr
+                                key={exec.id}
+                                className="hover:bg-gray-50 cursor-pointer"
+                                onClick={() => onSelect(exec.id)}
+                            >
+                                <td className="px-4 py-3">{exec.suite_name}</td>
+                                <td className="px-4 py-3">{exec.agent_name || '-'}</td>
+                                <td className="px-4 py-3">
+                                    <StatusBadge status={exec.status} />
+                                </td>
+                                <td className="px-4 py-3">{(exec.success_rate * 100).toFixed(1)}%</td>
+                                <td className="px-4 py-3">
+                                    {new Date(exec.started_at).toLocaleString()}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        );
+    }
+
+    // Home Page Component
+    function HomePage() {
+        const [summary, setSummary] = React.useState(null);
+        const [loading, setLoading] = React.useState(true);
+        const [error, setError] = React.useState(null);
+
+        const loadSummary = React.useCallback(async () => {
+            setLoading(true);
+            setError(null);
+            try {
+                const data = await api.get('/summary');
+                setSummary(data);
+            } catch (err) {
+                setError(err.message);
+            } finally {
+                setLoading(false);
+            }
+        }, []);
+
+        React.useEffect(() => {
+            loadSummary();
+        }, [loadSummary]);
+
+        if (loading) {
+            return (
+                <div>
+                    <SkeletonDashboardSummary />
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <div>
+                            <SkeletonBox className="h-6 w-40 mb-2" />
+                            <SkeletonSuiteList rows={5} />
+                        </div>
+                        <div>
+                            <SkeletonChart />
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        if (error) {
+            return (
+                <ErrorDisplay
+                    error={{ message: error }}
+                    onRetry={loadSummary}
+                    title="Failed to load dashboard"
+                />
+            );
+        }
+
+        const handleSelectExecution = (id) => {
+            // Navigate to suite detail - this would be handled by parent/router
+            window.location.href = `/suites/${id}`;
+        };
+
+        return (
+            <ErrorBoundary title="Dashboard Error" message="Unable to display the dashboard.">
+                <DashboardSummary summary={summary} />
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div>
+                        <h2 className="text-lg font-bold mb-2">Recent Executions</h2>
+                        <SuiteList
+                            executions={summary?.recent_executions || []}
+                            onSelect={handleSelectExecution}
+                        />
+                    </div>
+                    <div>
+                        <h2 className="text-lg font-bold mb-2">Quick Stats</h2>
+                        <div className="bg-white rounded-lg shadow p-4">
+                            <p className="text-gray-600">
+                                Run tests and comparisons to see trends and insights here.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </ErrorBoundary>
+        );
+    }
+
+    // Render the home page
+    const homeRoot = document.getElementById('home-root');
+    if (homeRoot) {
+        const root = ReactDOM.createRoot(homeRoot);
+        root.render(<HomePage />);
+    }
+</script>
+{% endblock %}

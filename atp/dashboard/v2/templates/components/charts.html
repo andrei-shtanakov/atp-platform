@@ -1,0 +1,240 @@
+{# Charts Component Template - Reusable chart components for the dashboard #}
+
+{# Macro for rendering a trend chart container #}
+{% macro trend_chart(chart_id, title="", height="300px") %}
+<div class="bg-white p-4 rounded-lg shadow">
+    {% if title %}
+    <h3 class="text-lg font-semibold text-gray-800 mb-4">{{ title }}</h3>
+    {% endif %}
+    <div class="chart-container" style="height: {{ height }};">
+        <canvas id="{{ chart_id }}"></canvas>
+    </div>
+</div>
+{% endmacro %}
+
+{# Macro for rendering a bar chart container #}
+{% macro bar_chart(chart_id, title="", height="300px") %}
+<div class="bg-white p-4 rounded-lg shadow">
+    {% if title %}
+    <h3 class="text-lg font-semibold text-gray-800 mb-4">{{ title }}</h3>
+    {% endif %}
+    <div class="chart-container" style="height: {{ height }};">
+        <canvas id="{{ chart_id }}"></canvas>
+    </div>
+</div>
+{% endmacro %}
+
+{# Macro for rendering a doughnut/pie chart container #}
+{% macro pie_chart(chart_id, title="", size="200px") %}
+<div class="bg-white p-4 rounded-lg shadow">
+    {% if title %}
+    <h3 class="text-lg font-semibold text-gray-800 mb-4">{{ title }}</h3>
+    {% endif %}
+    <div class="flex justify-center">
+        <div style="width: {{ size }}; height: {{ size }};">
+            <canvas id="{{ chart_id }}"></canvas>
+        </div>
+    </div>
+</div>
+{% endmacro %}
+
+{# Macro for rendering a metric card with optional mini chart #}
+{% macro metric_card(label, value, change=None, change_type="neutral", chart_id=None) %}
+<div class="bg-white p-4 rounded-lg shadow">
+    <div class="flex items-center justify-between">
+        <div>
+            <p class="text-sm text-gray-500">{{ label }}</p>
+            <p class="text-2xl font-bold text-gray-800">{{ value }}</p>
+            {% if change is not none %}
+            <p class="text-sm mt-1 {% if change_type == 'positive' %}text-green-600{% elif change_type == 'negative' %}text-red-600{% else %}text-gray-500{% endif %}">
+                {% if change > 0 %}+{% endif %}{{ change }}%
+            </p>
+            {% endif %}
+        </div>
+        {% if chart_id %}
+        <div class="w-20 h-12">
+            <canvas id="{{ chart_id }}"></canvas>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endmacro %}
+
+{# JavaScript for chart initialization #}
+{% macro chart_scripts() %}
+<script>
+    // Chart.js default configuration
+    Chart.defaults.font.family = 'system-ui, -apple-system, sans-serif';
+    Chart.defaults.color = '#6B7280';
+
+    /**
+     * Create a line chart for trend visualization
+     * @param {string} canvasId - Canvas element ID
+     * @param {Object} data - Chart data with labels and datasets
+     * @param {Object} options - Additional chart options
+     * @returns {Chart} Chart instance
+     */
+    function createTrendChart(canvasId, data, options = {}) {
+        const ctx = document.getElementById(canvasId);
+        if (!ctx) return null;
+
+        const defaultOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                },
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: {
+                        color: '#E5E7EB',
+                    },
+                },
+                x: {
+                    grid: {
+                        display: false,
+                    },
+                },
+            },
+        };
+
+        return new Chart(ctx, {
+            type: 'line',
+            data: data,
+            options: { ...defaultOptions, ...options },
+        });
+    }
+
+    /**
+     * Create a bar chart
+     * @param {string} canvasId - Canvas element ID
+     * @param {Object} data - Chart data with labels and datasets
+     * @param {Object} options - Additional chart options
+     * @returns {Chart} Chart instance
+     */
+    function createBarChart(canvasId, data, options = {}) {
+        const ctx = document.getElementById(canvasId);
+        if (!ctx) return null;
+
+        const defaultOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false,
+                },
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: {
+                        color: '#E5E7EB',
+                    },
+                },
+                x: {
+                    grid: {
+                        display: false,
+                    },
+                },
+            },
+        };
+
+        return new Chart(ctx, {
+            type: 'bar',
+            data: data,
+            options: { ...defaultOptions, ...options },
+        });
+    }
+
+    /**
+     * Create a doughnut/pie chart
+     * @param {string} canvasId - Canvas element ID
+     * @param {Object} data - Chart data with labels and datasets
+     * @param {Object} options - Additional chart options
+     * @returns {Chart} Chart instance
+     */
+    function createPieChart(canvasId, data, options = {}) {
+        const ctx = document.getElementById(canvasId);
+        if (!ctx) return null;
+
+        const defaultOptions = {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                },
+            },
+        };
+
+        return new Chart(ctx, {
+            type: 'doughnut',
+            data: data,
+            options: { ...defaultOptions, ...options },
+        });
+    }
+
+    /**
+     * Create a mini sparkline chart
+     * @param {string} canvasId - Canvas element ID
+     * @param {Array} values - Array of numeric values
+     * @param {string} color - Line color
+     * @returns {Chart} Chart instance
+     */
+    function createSparkline(canvasId, values, color = '#3B82F6') {
+        const ctx = document.getElementById(canvasId);
+        if (!ctx) return null;
+
+        return new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: values.map((_, i) => i),
+                datasets: [{
+                    data: values,
+                    borderColor: color,
+                    borderWidth: 2,
+                    fill: false,
+                    tension: 0.4,
+                    pointRadius: 0,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { enabled: false },
+                },
+                scales: {
+                    x: { display: false },
+                    y: { display: false },
+                },
+            },
+        });
+    }
+
+    // Color palette for charts
+    const chartColors = {
+        primary: '#3B82F6',
+        success: '#10B981',
+        warning: '#F59E0B',
+        danger: '#EF4444',
+        info: '#6366F1',
+        gray: '#6B7280',
+        palette: [
+            '#3B82F6', '#10B981', '#F59E0B', '#EF4444',
+            '#6366F1', '#EC4899', '#14B8A6', '#F97316'
+        ],
+    };
+
+    // Export functions globally
+    window.createTrendChart = createTrendChart;
+    window.createBarChart = createBarChart;
+    window.createPieChart = createPieChart;
+    window.createSparkline = createSparkline;
+    window.chartColors = chartColors;
+</script>
+{% endmacro %}

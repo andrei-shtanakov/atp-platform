@@ -1,0 +1,299 @@
+{# Tables Component Template - Reusable table components for the dashboard #}
+
+{# Macro for rendering a data table wrapper #}
+{% macro data_table(table_id="", class="") %}
+<div class="bg-white rounded-lg shadow overflow-hidden {{ class }}">
+    <div class="overflow-x-auto">
+        <table id="{{ table_id }}" class="min-w-full data-table">
+            {{ caller() }}
+        </table>
+    </div>
+</div>
+{% endmacro %}
+
+{# Macro for table header #}
+{% macro table_header(columns) %}
+<thead class="bg-gray-50">
+    <tr>
+        {% for col in columns %}
+        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider {% if col.class %}{{ col.class }}{% endif %}">
+            {{ col.label }}
+        </th>
+        {% endfor %}
+    </tr>
+</thead>
+{% endmacro %}
+
+{# Macro for sortable table header #}
+{% macro sortable_header(columns, sort_by=None, sort_dir="asc") %}
+<thead class="bg-gray-50">
+    <tr>
+        {% for col in columns %}
+        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 {% if col.class %}{{ col.class }}{% endif %}"
+            {% if col.sortable %}data-sort="{{ col.key }}"{% endif %}>
+            <div class="flex items-center gap-1">
+                {{ col.label }}
+                {% if col.sortable %}
+                <span class="text-gray-400">
+                    {% if sort_by == col.key %}
+                        {% if sort_dir == "asc" %}
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+                        </svg>
+                        {% else %}
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                        {% endif %}
+                    {% else %}
+                    <svg class="w-4 h-4 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                    </svg>
+                    {% endif %}
+                </span>
+                {% endif %}
+            </div>
+        </th>
+        {% endfor %}
+    </tr>
+</thead>
+{% endmacro %}
+
+{# Macro for status badge cell #}
+{% macro status_cell(status) %}
+<td class="px-4 py-3">
+    <span class="px-2 py-1 text-xs rounded-full
+        {% if status == 'completed' or status == 'passed' or status == 'success' %}
+            bg-green-100 text-green-800
+        {% elif status == 'failed' or status == 'error' %}
+            bg-red-100 text-red-800
+        {% elif status == 'running' or status == 'in_progress' %}
+            bg-yellow-100 text-yellow-800
+        {% else %}
+            bg-gray-100 text-gray-800
+        {% endif %}">
+        {{ status }}
+    </span>
+</td>
+{% endmacro %}
+
+{# Macro for progress bar cell #}
+{% macro progress_cell(value, max=100, color="blue") %}
+<td class="px-4 py-3">
+    <div class="flex items-center gap-2">
+        <div class="flex-grow bg-gray-200 rounded-full h-2">
+            <div class="bg-{{ color }}-500 h-2 rounded-full" style="width: {{ (value / max * 100)|round }}%"></div>
+        </div>
+        <span class="text-sm text-gray-600 w-12 text-right">{{ value }}%</span>
+    </div>
+</td>
+{% endmacro %}
+
+{# Macro for action buttons cell #}
+{% macro actions_cell(actions) %}
+<td class="px-4 py-3">
+    <div class="flex items-center gap-2">
+        {% for action in actions %}
+        <button
+            class="p-1 rounded hover:bg-gray-100 text-gray-500 hover:text-gray-700"
+            title="{{ action.title }}"
+            {% if action.onclick %}onclick="{{ action.onclick }}"{% endif %}
+            {% if action.data %}{% for key, val in action.data.items() %}data-{{ key }}="{{ val }}"{% endfor %}{% endif %}>
+            {% if action.icon == 'view' %}
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+            {% elif action.icon == 'edit' %}
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+            {% elif action.icon == 'delete' %}
+            <svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            {% elif action.icon == 'compare' %}
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+            {% endif %}
+        </button>
+        {% endfor %}
+    </div>
+</td>
+{% endmacro %}
+
+{# Macro for empty state #}
+{% macro empty_state(message="No data available", icon="table") %}
+<tr>
+    <td colspan="100%" class="px-4 py-12 text-center">
+        <div class="flex flex-col items-center text-gray-400">
+            {% if icon == 'table' %}
+            <svg class="w-12 h-12 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            {% elif icon == 'search' %}
+            <svg class="w-12 h-12 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            {% endif %}
+            <p class="text-sm">{{ message }}</p>
+        </div>
+    </td>
+</tr>
+{% endmacro %}
+
+{# Macro for loading skeleton rows #}
+{% macro skeleton_rows(columns=5, rows=5) %}
+{% for _ in range(rows) %}
+<tr>
+    {% for col in range(columns) %}
+    <td class="px-4 py-3">
+        <div class="h-4 bg-gray-200 rounded skeleton-pulse" style="width: {% if loop.first %}120px{% else %}80px{% endif %};"></div>
+    </td>
+    {% endfor %}
+</tr>
+{% endfor %}
+{% endmacro %}
+
+{# Macro for pagination #}
+{% macro pagination(current_page, total_pages, base_url) %}
+<div class="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
+    <div class="flex-1 flex justify-between sm:hidden">
+        {% if current_page > 1 %}
+        <a href="{{ base_url }}?page={{ current_page - 1 }}" class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+            Previous
+        </a>
+        {% endif %}
+        {% if current_page < total_pages %}
+        <a href="{{ base_url }}?page={{ current_page + 1 }}" class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+            Next
+        </a>
+        {% endif %}
+    </div>
+    <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+        <div>
+            <p class="text-sm text-gray-700">
+                Page <span class="font-medium">{{ current_page }}</span> of <span class="font-medium">{{ total_pages }}</span>
+            </p>
+        </div>
+        <div>
+            <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                {% if current_page > 1 %}
+                <a href="{{ base_url }}?page={{ current_page - 1 }}" class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                    <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" />
+                    </svg>
+                </a>
+                {% endif %}
+
+                {% for page in range(1, total_pages + 1) %}
+                    {% if page == current_page %}
+                    <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-blue-50 text-sm font-medium text-blue-600">
+                        {{ page }}
+                    </span>
+                    {% elif page == 1 or page == total_pages or (page >= current_page - 2 and page <= current_page + 2) %}
+                    <a href="{{ base_url }}?page={{ page }}" class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50">
+                        {{ page }}
+                    </a>
+                    {% elif page == current_page - 3 or page == current_page + 3 %}
+                    <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
+                        ...
+                    </span>
+                    {% endif %}
+                {% endfor %}
+
+                {% if current_page < total_pages %}
+                <a href="{{ base_url }}?page={{ current_page + 1 }}" class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                    <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                    </svg>
+                </a>
+                {% endif %}
+            </nav>
+        </div>
+    </div>
+</div>
+{% endmacro %}
+
+{# JavaScript for table interactions #}
+{% macro table_scripts() %}
+<script>
+    /**
+     * Initialize sortable table headers
+     * @param {string} tableId - Table element ID
+     * @param {Function} onSort - Callback when sort changes (column, direction)
+     */
+    function initSortableTable(tableId, onSort) {
+        const table = document.getElementById(tableId);
+        if (!table) return;
+
+        const headers = table.querySelectorAll('th[data-sort]');
+        let currentSort = { column: null, direction: 'asc' };
+
+        headers.forEach(header => {
+            header.addEventListener('click', () => {
+                const column = header.dataset.sort;
+                let direction = 'asc';
+
+                if (currentSort.column === column) {
+                    direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+                }
+
+                currentSort = { column, direction };
+
+                // Update header icons
+                headers.forEach(h => {
+                    const icon = h.querySelector('svg');
+                    if (icon) {
+                        icon.classList.add('opacity-30');
+                    }
+                });
+
+                const currentIcon = header.querySelector('svg');
+                if (currentIcon) {
+                    currentIcon.classList.remove('opacity-30');
+                }
+
+                if (onSort) {
+                    onSort(column, direction);
+                }
+            });
+        });
+    }
+
+    /**
+     * Filter table rows based on search input
+     * @param {string} tableId - Table element ID
+     * @param {string} searchValue - Search string
+     * @param {number[]} searchColumns - Column indices to search (0-based)
+     */
+    function filterTableRows(tableId, searchValue, searchColumns = null) {
+        const table = document.getElementById(tableId);
+        if (!table) return;
+
+        const tbody = table.querySelector('tbody');
+        const rows = tbody.querySelectorAll('tr');
+        const searchLower = searchValue.toLowerCase();
+
+        rows.forEach(row => {
+            const cells = row.querySelectorAll('td');
+            let match = false;
+
+            cells.forEach((cell, index) => {
+                if (searchColumns === null || searchColumns.includes(index)) {
+                    if (cell.textContent.toLowerCase().includes(searchLower)) {
+                        match = true;
+                    }
+                }
+            });
+
+            row.style.display = match ? '' : 'none';
+        });
+    }
+
+    // Export functions globally
+    window.initSortableTable = initSortableTable;
+    window.filterTableRows = filterTableRows;
+</script>
+{% endmacro %}
