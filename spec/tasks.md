@@ -25,20 +25,20 @@
 ## Milestone 1: Foundation & Refactoring
 
 ### TASK-101: Dashboard Module Structure
-🔴 P0 | 🔄 IN_PROGRESS | Est: 3-4h
+🔴 P0 | ✅ DONE | Est: 3-4h
 
 **Description:**
 Create the new modular dashboard package structure without breaking existing functionality.
 
 **Checklist:**
-- [ ] Create `atp/dashboard/v2/` directory structure
-- [ ] Create `atp/dashboard/v2/__init__.py`
-- [ ] Create `atp/dashboard/v2/factory.py` with app factory pattern
-- [ ] Create `atp/dashboard/v2/config.py` for dashboard configuration
-- [ ] Create `atp/dashboard/v2/dependencies.py` for FastAPI dependency injection
-- [ ] Implement feature flag `ATP_DASHBOARD_V2` for switching versions
-- [ ] Update `atp/dashboard/__init__.py` to route based on feature flag
-- [ ] Write unit tests for app factory
+- [x] Create `atp/dashboard/v2/` directory structure
+- [x] Create `atp/dashboard/v2/__init__.py`
+- [x] Create `atp/dashboard/v2/factory.py` with app factory pattern
+- [x] Create `atp/dashboard/v2/config.py` for dashboard configuration
+- [x] Create `atp/dashboard/v2/dependencies.py` for FastAPI dependency injection
+- [x] Implement feature flag `ATP_DASHBOARD_V2` for switching versions
+- [x] Update `atp/dashboard/__init__.py` to route based on feature flag
+- [x] Write unit tests for app factory
 
 **Traces to:** [REQ-101]
 **Depends on:** -
@@ -47,21 +47,21 @@ Create the new modular dashboard package structure without breaking existing fun
 ---
 
 ### TASK-102: Dashboard Routes Extraction
-🔴 P0 | ⬜ TODO | Est: 4-5h
+🔴 P0 | ✅ DONE | Est: 4-5h
 
 **Description:**
 Extract route handlers from monolithic `app.py` into separate route modules.
 
 **Checklist:**
-- [ ] Create `atp/dashboard/v2/routes/__init__.py`
-- [ ] Extract home page routes to `routes/home.py`
-- [ ] Extract test results routes to `routes/tests.py`
-- [ ] Extract agent management routes to `routes/agents.py`
-- [ ] Extract comparison routes to `routes/comparison.py`
-- [ ] Extract suite management routes to `routes/suites.py`
-- [ ] Create router registration in factory.py
-- [ ] Ensure all routes work with both v1 and v2
-- [ ] Write integration tests for each route module
+- [x] Create `atp/dashboard/v2/routes/__init__.py`
+- [x] Extract home page routes to `routes/home.py`
+- [x] Extract test results routes to `routes/tests.py`
+- [x] Extract agent management routes to `routes/agents.py`
+- [x] Extract comparison routes to `routes/comparison.py`
+- [x] Extract suite management routes to `routes/suites.py`
+- [x] Create router registration in factory.py
+- [x] Ensure all routes work with both v1 and v2
+- [x] Write integration tests for each route module
 
 **Traces to:** [REQ-101]
 **Depends on:** [TASK-101]
