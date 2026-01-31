@@ -205,7 +205,7 @@ Implement suite and test editor screens.
 ## Milestone 4: Dashboard Extension
 
 ### TASK-009: Dashboard API Endpoints
-🟠 P1 | ⬜ TODO | Est: 3-4h
+🟠 P1 | 🔄 IN_PROGRESS | Est: 3-4h
 
 **Description:**
 Add API endpoints for test suite management in the dashboard.

@@ -357,3 +357,51 @@ class ScoreComponent(Base):
             f"ScoreComponent(id={self.id}, name={self.component_name!r}, "
             f"weighted={self.weighted_value:.3f})"
         )
+
+
+class SuiteDefinition(Base):
+    """Stored test suite definition for dashboard management.
+
+    This model stores test suite definitions that can be created/edited
+    via the dashboard, including all tests, agents, and configuration.
+    """
+
+    __tablename__ = "suite_definitions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    version: Mapped[str] = mapped_column(String(20), default="1.0")
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Suite configuration stored as JSON
+    defaults_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    agents_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    tests_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+
+    # Metadata
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.now, onupdate=datetime.now
+    )
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=True
+    )
+
+    # Relationships
+    created_by: Mapped["User | None"] = relationship()
+
+    # Indexes
+    __table_args__ = (Index("idx_suite_def_name", "name"),)
+
+    def __repr__(self) -> str:
+        return f"SuiteDefinition(id={self.id}, name={self.name!r})"
+
+    @property
+    def test_count(self) -> int:
+        """Return the number of tests in this suite."""
+        return len(self.tests_json) if self.tests_json else 0
+
+    @property
+    def agent_count(self) -> int:
+        """Return the number of agents in this suite."""
+        return len(self.agents_json) if self.agents_json else 0

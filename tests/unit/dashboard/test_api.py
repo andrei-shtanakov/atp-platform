@@ -177,3 +177,16 @@ class TestRouterConfiguration:
     def test_router_has_multiple_routes(self) -> None:
         """Test that router has multiple routes."""
         assert len(router.routes) > 10
+
+    def test_suite_definition_routes_exist(self) -> None:
+        """Test that suite definition routes exist."""
+        route_paths = [r.path for r in router.routes if hasattr(r, "path")]
+        assert "/suite-definitions" in route_paths
+        assert "/suite-definitions/{suite_id}" in route_paths
+        assert "/suite-definitions/{suite_id}/tests" in route_paths
+        assert "/suite-definitions/{suite_id}/yaml" in route_paths
+
+    def test_template_routes_exist(self) -> None:
+        """Test that template routes exist."""
+        route_paths = [r.path for r in router.routes if hasattr(r, "path")]
+        assert "/templates" in route_paths
