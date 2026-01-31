@@ -1,6 +1,6 @@
 # Tasks Specification
 
-> Agent Comparison Dashboard — Implementation Tasks
+> TestGenerator — Implementation Tasks for Test Suite Generation
 
 ## Legend
 
@@ -22,261 +22,229 @@
 
 ---
 
-## Milestone 1: Comparison Foundation
+## Milestone 1: Core Engine
 
-### TASK-100: Test Infrastructure
-🔴 P0 | ✅ DONE | Est: 2-3h
-
-**Description:**
-Set up test infrastructure for new comparison features.
-
-**Checklist:**
-- [x] Create test fixtures with sample events data (`tests/fixtures/comparison/events.py`)
-- [x] Add factory functions for TestExecution with events_json (`tests/fixtures/comparison/factories.py`)
-- [x] Create mock data generator for leaderboard tests (`tests/fixtures/comparison/leaderboard.py`)
-- [x] Verify existing test infrastructure covers new endpoints
-
-**Traces to:** [NFR-003]
-**Depends on:** -
-**Blocks:** [TASK-001], [TASK-004], [TASK-007]
-
----
-
-### TASK-001: Side-by-Side API Endpoint
+### TASK-001: TestGenerator Core Class
 🔴 P0 | ✅ DONE | Est: 3-4h
 
 **Description:**
-Implement `/compare/side-by-side` endpoint that returns detailed comparison data for 2-3 agents on a specific test.
+Implement the core TestGenerator class that provides the foundation for all test generation interfaces.
 
 **Checklist:**
-- [ ] Add Pydantic schemas: `EventSummary`, `AgentExecutionDetail`, `SideBySideComparisonResponse`
-- [ ] Implement query to get latest test execution per agent
-- [ ] Extract and format events from `events_json`
-- [ ] Calculate metrics summary for each agent
-- [ ] Add endpoint to api.py with validation
-- [ ] Write unit tests for endpoint
-- [ ] Write integration test
+- [x] Create `atp/generator/__init__.py`
+- [x] Create `atp/generator/core.py` with `TestGenerator` class
+- [x] Implement `create_suite()` method
+- [x] Implement `add_agent()` method
+- [x] Implement `create_custom_test()` method
+- [x] Implement `add_test()` method with duplicate ID validation
+- [x] Implement `generate_test_id()` method
+- [x] Write unit tests in `tests/unit/generator/test_core.py`
 
-**Traces to:** [REQ-001], [DESIGN-001]
-**Depends on:** [TASK-100]
-**Blocks:** [TASK-002]
+**Traces to:** [ARCH-001]
+**Depends on:** -
+**Blocks:** [TASK-002], [TASK-003], [TASK-004]
 
 ---
 
-### TASK-002: Step Comparison UI
-🔴 P0 | ✅ DONE | Est: 4-5h
+### TASK-002: Test Templates System
+🔴 P0 | 🔄 IN_PROGRESS | Est: 2-3h
 
 **Description:**
-Build React component for side-by-side step comparison view.
+Implement the template system for predefined test patterns.
 
 **Checklist:**
-- [ ] Create `ComparisonContainer.tsx` with column layout
-- [ ] Create `AgentSelector.tsx` multi-select dropdown
-- [ ] Create `StepComparison.tsx` with event list
-- [ ] Style events by type (tool_call, llm_request, etc.)
-- [ ] Add loading and error states
-- [ ] Integrate with API endpoint
+- [ ] Create `atp/generator/templates.py`
+- [ ] Define `TestTemplate` dataclass with fields: name, description, category, task_template, default_constraints, default_assertions, tags
+- [ ] Create built-in templates: `file_creation`, `data_processing`, `web_research`, `code_generation`
+- [ ] Implement `create_test_from_template()` method in TestGenerator
+- [ ] Implement variable substitution in task_template and assertions
+- [ ] Add `register_template()` method for custom templates
+- [ ] Write unit tests for template creation and substitution
 
-**Traces to:** [REQ-002], [DESIGN-001]
+**Traces to:** [ARCH-001]
 **Depends on:** [TASK-001]
-**Blocks:** [TASK-003]
+**Blocks:** [TASK-004], [TASK-005]
 
 ---
 
-### TASK-003: Metrics Comparison Panel
-🟠 P1 | ✅ DONE | Est: 2-3h
+### TASK-003: YAML Writer
+🔴 P0 | ⬜ TODO | Est: 2h
 
 **Description:**
-Add metrics panel showing score, tokens, duration comparison.
+Implement serialization of test suites to YAML format.
 
 **Checklist:**
-- [x] Create `MetricsPanel.tsx` component
-- [x] Display: score, tokens, steps, duration, cost for each agent
-- [x] Highlight best values (highest score, lowest tokens)
-- [x] Show percentage differences
-- [x] Add responsive styling
+- [ ] Create `atp/generator/writer.py`
+- [ ] Use `ruamel.yaml` for YAML generation with proper formatting
+- [ ] Implement `to_yaml()` method in TestGenerator
+- [ ] Implement `save()` method to write to file
+- [ ] Preserve proper indentation (mapping=2, sequence=4, offset=2)
+- [ ] Exclude None and unset values from output
+- [ ] Write unit tests for YAML output format
 
-**Traces to:** [REQ-003], [DESIGN-001]
-**Depends on:** [TASK-002]
-**Blocks:** -
+**Traces to:** [ARCH-001]
+**Depends on:** [TASK-001]
+**Blocks:** [TASK-004]
 
 ---
 
-### TASK-004: Leaderboard Matrix API
-🔴 P0 | ✅ DONE | Est: 4-5h
+## Milestone 2: CLI Wizard
+
+### TASK-004: CLI Init Command
+🔴 P0 | ⬜ TODO | Est: 3-4h
 
 **Description:**
-Implement `/leaderboard/matrix` endpoint returning test × agent matrix.
+Implement `atp init` command for interactive test suite creation.
 
 **Checklist:**
-- [ ] Add schemas: `TestScore`, `TestRow`, `AgentColumn`, `LeaderboardMatrixResponse`
-- [ ] Implement aggregation query for scores by test and agent
-- [ ] Calculate difficulty rating per test
-- [ ] Calculate rankings for agents
-- [ ] Add pagination support
-- [ ] Write unit tests
-- [ ] Write integration test
+- [ ] Create `atp/cli/commands/init.py`
+- [ ] Implement `init_command` with Click decorators
+- [ ] Add interactive prompts for: suite name, description, runs_per_test, timeout
+- [ ] Add agent configuration wizard (http, cli, container types)
+- [ ] Add test creation wizard with template/custom choice
+- [ ] Implement `--interactive/--no-interactive` flag
+- [ ] Register command in `atp/cli/main.py`
+- [ ] Write integration tests for init command
 
-**Traces to:** [REQ-010], [DESIGN-002]
-**Depends on:** [TASK-100]
-**Blocks:** [TASK-005], [TASK-006]
+**Traces to:** [ARCH-002]
+**Depends on:** [TASK-001], [TASK-002], [TASK-003]
+**Blocks:** [TASK-005]
 
 ---
 
-### TASK-005: Leaderboard Matrix UI
-🔴 P0 | ✅ DONE | Est: 4-5h
+### TASK-005: CLI Generate Command
+🟠 P1 | ⬜ TODO | Est: 2-3h
 
 **Description:**
-Build React component for leaderboard matrix visualization.
+Implement `atp generate` command for adding tests to existing suites.
 
 **Checklist:**
-- [x] Create `MatrixGrid.tsx` table component
-- [x] Create `ScoreCell.tsx` with color coding
-- [x] Create `AgentHeader.tsx` with stats
-- [x] Create `TestRow.tsx` with test info
-- [x] Add sorting by columns
-- [x] Add responsive horizontal scroll
+- [ ] Create `atp/cli/commands/generate.py`
+- [ ] Implement `generate_command` with Click decorators
+- [ ] Add `--suite` option to specify existing suite file
+- [ ] Add `--template` option for template-based generation
+- [ ] Load existing suite, add test, save back
+- [ ] Implement `atp generate test` subcommand
+- [ ] Implement `atp generate suite` subcommand for batch creation
+- [ ] Register command in `atp/cli/main.py`
+- [ ] Write integration tests
 
-**Traces to:** [REQ-010], [DESIGN-002]
+**Traces to:** [ARCH-002]
 **Depends on:** [TASK-004]
 **Blocks:** -
 
 ---
 
-### TASK-006: Leaderboard Aggregations
-🟠 P1 | ✅ DONE | Est: 2-3h
+## Milestone 3: TUI Interface (Optional)
+
+### TASK-006: TUI Application Setup
+🟡 P2 | ⬜ TODO | Est: 2-3h
 
 **Description:**
-Add summary row/column with aggregated statistics.
+Set up the TUI application using Textual framework.
 
 **Checklist:**
-- [x] Create `AggregationRow.tsx` component
-- [x] Calculate per-agent: avg score, pass rate, total tokens, total cost
-- [x] Calculate per-test: avg score, difficulty
-- [x] Show ranking badges (1st, 2nd, 3rd)
-- [x] Add pattern badges ("hard for all", "easy")
+- [ ] Add optional dependencies: `textual>=0.47.0`, `rich>=13.0` to pyproject.toml
+- [ ] Create `atp/tui/__init__.py`
+- [ ] Create `atp/tui/app.py` with `ATPTUI` class
+- [ ] Define CSS styles for panels layout
+- [ ] Create basic screen navigation structure
+- [ ] Add `atp tui` command to CLI
+- [ ] Test TUI launch and exit
 
-**Traces to:** [REQ-011], [REQ-012], [DESIGN-002]
-**Depends on:** [TASK-005]
+**Traces to:** [ARCH-003]
+**Depends on:** [TASK-001]
+**Blocks:** [TASK-007], [TASK-008]
+
+---
+
+### TASK-007: TUI Main Screen
+🟡 P2 | ⬜ TODO | Est: 3-4h
+
+**Description:**
+Implement the main TUI screen with tree view and YAML preview.
+
+**Checklist:**
+- [ ] Create `atp/tui/screens/main_menu.py` with `MainScreen` class
+- [ ] Create `atp/tui/widgets/test_tree.py` with `TestTreeWidget`
+- [ ] Create `atp/tui/widgets/yaml_preview.py` with `YAMLPreviewWidget`
+- [ ] Implement left panel (40%) with test tree
+- [ ] Implement right panel (60%) with YAML preview
+- [ ] Add keyboard bindings: n=new, o=open, s=save, a=add test, q=quit
+- [ ] Update display when suite changes
+- [ ] Write tests for widget behavior
+
+**Traces to:** [ARCH-003]
+**Depends on:** [TASK-006]
+**Blocks:** [TASK-008]
+
+---
+
+### TASK-008: TUI Editor Screens
+🟡 P2 | ⬜ TODO | Est: 3-4h
+
+**Description:**
+Implement suite and test editor screens.
+
+**Checklist:**
+- [ ] Create `atp/tui/screens/suite_editor.py` with `NewSuiteScreen`
+- [ ] Create `atp/tui/screens/test_editor.py` with `AddTestScreen`
+- [ ] Add input fields for all suite properties
+- [ ] Add input fields for all test properties
+- [ ] Implement form validation
+- [ ] Add Create/Cancel buttons with proper navigation
+- [ ] Wire up callbacks to update main screen
+- [ ] Write tests for form submission
+
+**Traces to:** [ARCH-003]
+**Depends on:** [TASK-007]
 **Blocks:** -
 
 ---
 
-### TASK-007: Timeline Events API
-🔴 P0 | ✅ DONE | Est: 3-4h
+## Milestone 4: Dashboard Extension
+
+### TASK-009: Dashboard API Endpoints
+🟠 P1 | ⬜ TODO | Est: 3-4h
 
 **Description:**
-Implement `/timeline/events` endpoint for single agent timeline.
+Add API endpoints for test suite management in the dashboard.
 
 **Checklist:**
-- [ ] Add schemas: `TimelineEvent`, `TimelineEventsResponse`
-- [ ] Extract events from `events_json` with relative timing
-- [ ] Calculate event durations where applicable
-- [ ] Add event type filtering
-- [ ] Limit to 1000 events for performance
-- [ ] Write unit tests
+- [ ] Add Pydantic schemas: `SuiteCreateRequest`, `TestCreateRequest`, `TemplateResponse`
+- [ ] Implement `POST /suites` endpoint for suite creation
+- [ ] Implement `POST /suites/{suite_id}/tests` endpoint for adding tests
+- [ ] Implement `GET /templates` endpoint for listing templates
+- [ ] Implement `GET /suites/{suite_id}/yaml` endpoint for YAML export
+- [ ] Add authentication requirements
+- [ ] Write unit tests for endpoints
+- [ ] Write integration tests
 
-**Traces to:** [REQ-020], [DESIGN-003]
-**Depends on:** [TASK-100]
-**Blocks:** [TASK-008], [TASK-009]
-
----
-
-### TASK-008: Multi-Agent Timeline API
-🔴 P0 | ✅ DONE | Est: 2-3h
-
-**Description:**
-Implement `/timeline/compare` endpoint for comparing agent timelines.
-
-**Checklist:**
-- [ ] Add schemas: `AgentTimeline`, `MultiTimelineResponse`
-- [ ] Get timelines for 2-3 agents
-- [ ] Align timelines by start time
-- [ ] Include total duration for each
-- [ ] Write unit tests
-
-**Traces to:** [REQ-021], [DESIGN-003]
-**Depends on:** [TASK-007]
+**Traces to:** [ARCH-004]
+**Depends on:** [TASK-001], [TASK-002]
 **Blocks:** [TASK-010]
 
 ---
 
-### TASK-009: Timeline UI Component
-🔴 P0 | ✅ DONE | Est: 5-6h
+### TASK-010: Dashboard UI Components
+🟠 P1 | ⬜ TODO | Est: 4-5h
 
 **Description:**
-Build interactive timeline visualization using Chart.js.
+Add React components for test suite creation in the dashboard.
 
 **Checklist:**
-- [x] Create `TimelineContainer.tsx` with zoom controls
-- [x] Create `TimelineRow.tsx` for single agent
-- [x] Create `EventMarker.tsx` with type-based colors
-- [x] Create `TimeScale.tsx` with time labels
-- [x] Implement zoom in/out functionality
-- [x] Add hover tooltips with event summary
+- [ ] Create `TestCreatorForm` component with multi-step wizard
+- [ ] Step 1: Suite details (name, description, defaults)
+- [ ] Step 2: Template selection and test list
+- [ ] Step 3: YAML preview and save
+- [ ] Add template cards with category badges
+- [ ] Add test list management (add/remove)
+- [ ] Wire up API calls for creation
+- [ ] Add loading and error states
+- [ ] Test responsive layout
 
-**Traces to:** [REQ-020], [DESIGN-003]
-**Depends on:** [TASK-007]
-**Blocks:** [TASK-010]
-
----
-
-### TASK-010: Event Details and Filters
-🟠 P1 | ✅ DONE | Est: 3-4h
-
-**Description:**
-Add event detail panel and type filters to timeline.
-
-**Checklist:**
-- [ ] Create `EventDetailPanel.tsx` with full event data
-- [ ] Create `EventFilters.tsx` toggle buttons
-- [ ] Show tool_call: name, args, result
-- [ ] Show llm_request: prompt, response, tokens
-- [ ] Show error: message, stack trace
-- [ ] Add "copy as JSON" button
-
-**Traces to:** [REQ-022], [REQ-023], [DESIGN-003]
-**Depends on:** [TASK-008], [TASK-009]
-**Blocks:** -
-
----
-
-## Milestone 2: Polish
-
-### TASK-011: Performance Optimization
-🟠 P1 | ✅ DONE | Est: 3-4h
-
-**Description:**
-Optimize queries and rendering for performance requirements.
-
-**Checklist:**
-- [ ] Add database indexes for common queries
-- [ ] Implement query result caching
-- [ ] Optimize leaderboard query with proper JOINs
-- [ ] Test with 50 tests × 10 agents
-- [ ] Verify page load < 2 seconds
-
-**Traces to:** [NFR-001]
-**Depends on:** [TASK-004], [TASK-007]
-**Blocks:** -
-
----
-
-### TASK-012: UX Polish
-🟠 P1 | ✅ DONE | Est: 2-3h
-
-**Description:**
-Add loading states, error handling, and responsive design.
-
-**Checklist:**
-- [x] Add skeleton loaders for all views
-- [x] Add error boundaries with retry buttons
-- [x] Test on 1280px, 1440px, 1920px widths
-- [x] Add keyboard navigation for timeline
-- [x] Verify all API errors show user-friendly messages
-
-**Traces to:** [NFR-002]
-**Depends on:** [TASK-002], [TASK-005], [TASK-009]
+**Traces to:** [ARCH-004]
+**Depends on:** [TASK-009]
 **Blocks:** -
 
 ---
@@ -284,23 +252,27 @@ Add loading states, error handling, and responsive design.
 ## Dependency Graph
 
 ```
-TASK-100 (Test Infrastructure) ✅
+TASK-001 (Core Class) ✅
     │
-    ├──► TASK-001 (Side-by-Side API)
-    │        └──► TASK-002 (Step Comparison UI)
-    │                 └──► TASK-003 (Metrics Panel)
+    ├──► TASK-002 (Templates)
+    │        │
+    │        └──► TASK-004 (CLI Init)
+    │                 │
+    │                 └──► TASK-005 (CLI Generate)
     │
-    ├──► TASK-004 (Leaderboard API)
-    │        └──► TASK-005 (Leaderboard UI)
-    │                 └──► TASK-006 (Aggregations)
+    ├──► TASK-003 (YAML Writer)
+    │        │
+    │        └──► TASK-004 (CLI Init)
     │
-    └──► TASK-007 (Timeline Events API)
-             ├──► TASK-008 (Multi-Timeline API)
-             └──► TASK-009 (Timeline UI)
-                      └──► TASK-010 (Event Details)
-
-TASK-011 (Performance) depends on: TASK-004, TASK-007
-TASK-012 (UX Polish) depends on: TASK-002, TASK-005, TASK-009
+    ├──► TASK-006 (TUI Setup)
+    │        │
+    │        └──► TASK-007 (TUI Main)
+    │                 │
+    │                 └──► TASK-008 (TUI Editors)
+    │
+    └──► TASK-009 (Dashboard API)
+             │
+             └──► TASK-010 (Dashboard UI)
 ```
 
 ---
@@ -309,18 +281,25 @@ TASK-012 (UX Polish) depends on: TASK-002, TASK-005, TASK-009
 
 | Milestone | Tasks | Total Est. |
 |-----------|-------|------------|
-| Foundation | TASK-001 to TASK-010 | ~32-37h |
-| Polish | TASK-011, TASK-012 | ~5-7h |
-| **Total** | 11 tasks remaining | ~37-44h |
-
-**Completed:** TASK-100 (Test Infrastructure)
+| Core Engine | TASK-001 to TASK-003 | ~7-9h |
+| CLI Wizard | TASK-004 to TASK-005 | ~5-7h |
+| TUI Interface | TASK-006 to TASK-008 | ~8-11h |
+| Dashboard | TASK-009 to TASK-010 | ~7-9h |
+| **Total** | 10 tasks | ~27-36h |
 
 ### Ready to Start
-- [TASK-001] Side-by-Side API (TASK-100 done)
-- [TASK-004] Leaderboard Matrix API (TASK-100 done)
-- [TASK-007] Timeline Events API (TASK-100 done)
+- [TASK-002] Test Templates System (TASK-001 done)
+- [TASK-003] YAML Writer (TASK-001 done)
+- [TASK-006] TUI Application Setup (TASK-001 done)
 
 ### Critical Path
-TASK-001 → TASK-002 → TASK-003 (comparison)
-TASK-004 → TASK-005 → TASK-006 (leaderboard)
-TASK-007 → TASK-008/009 → TASK-010 (timeline)
+TASK-001 ✅ → TASK-002 → TASK-004 → TASK-005 (CLI)
+TASK-001 ✅ → TASK-003 → TASK-004 (YAML)
+
+### Recommended Order
+1. ✅ TASK-001 (Core) — foundation for everything
+2. TASK-002 (Templates) + TASK-003 (Writer) — can be parallel
+3. TASK-004 (CLI Init) — first user-facing feature
+4. TASK-005 (CLI Generate) — extends CLI
+5. TASK-009 + TASK-010 (Dashboard) — web interface
+6. TASK-006 → TASK-008 (TUI) — optional, lower priority

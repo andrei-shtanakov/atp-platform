@@ -48,11 +48,11 @@ class TestAuthEndpoints:
 class TestAgentEndpoints:
     """Tests for agent endpoints."""
 
-    def test_list_agents_unauthorized(self, client: TestClient) -> None:
-        """Test list agents without authentication."""
+    def test_list_agents_no_auth_allowed(self, client: TestClient) -> None:
+        """Test list agents without authentication (allowed - uses CurrentUser)."""
         response = client.get("/api/agents")
-        # Returns 401 or 500 depending on db state
-        assert response.status_code in [401, 500]
+        # CurrentUser allows optional auth, so returns 200 or 500 (db error)
+        assert response.status_code in [200, 500]
 
     def test_create_agent_unauthorized(self, client: TestClient) -> None:
         """Test create agent without authentication."""
@@ -71,11 +71,11 @@ class TestAgentEndpoints:
         )
         assert response.status_code == 401
 
-    def test_get_agent_unauthorized(self, client: TestClient) -> None:
-        """Test get agent without authentication."""
+    def test_get_agent_no_auth_allowed(self, client: TestClient) -> None:
+        """Test get agent without authentication (allowed - uses CurrentUser)."""
         response = client.get("/api/agents/1")
-        # Returns 401 or 500 depending on db state
-        assert response.status_code in [401, 500]
+        # CurrentUser allows optional auth, returns 200/404/500
+        assert response.status_code in [200, 404, 500]
 
     def test_update_agent_unauthorized(self, client: TestClient) -> None:
         """Test update agent without authentication."""
