@@ -5,6 +5,8 @@ Main application class for the ATP Terminal User Interface.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
@@ -13,6 +15,11 @@ from textual.widgets import Footer, Header, Static
 
 from atp import __version__
 from atp.tui.screens.main_menu import MainScreen
+from atp.tui.screens.suite_editor import NewSuiteScreen
+from atp.tui.screens.test_editor import AddTestScreen
+
+if TYPE_CHECKING:
+    pass
 
 
 class WelcomePanel(Static):
@@ -304,6 +311,8 @@ class ATPTUI(App):
 
     A Textual-based TUI for interacting with ATP test results,
     test suites, and agent configurations.
+
+    Handles messages from editor screens to create/modify suites and tests.
     """
 
     TITLE = "ATP - Agent Test Platform"
@@ -471,6 +480,53 @@ class ATPTUI(App):
     def on_mount(self) -> None:
         """Handle application mount event."""
         self.push_screen("home")
+
+    def on_main_screen_request_new_suite(
+        self,
+        event: MainScreen.RequestNewSuite,
+    ) -> None:
+        """Handle request to create a new suite."""
+        self.push_screen(NewSuiteScreen())
+
+    def on_main_screen_request_add_test(
+        self,
+        event: MainScreen.RequestAddTest,
+    ) -> None:
+        """Handle request to add a new test."""
+        screen = self.screen
+        if isinstance(screen, MainScreen) and screen.suite is not None:
+            self.push_screen(AddTestScreen(suite=screen.suite))
+
+    def on_new_suite_screen_suite_created(
+        self,
+        event: NewSuiteScreen.SuiteCreated,
+    ) -> None:
+        """Handle suite creation from the new suite screen."""
+        # Switch to main screen and set the new suite
+        self.switch_screen("main")
+        screen = self.screen
+        if isinstance(screen, MainScreen):
+            screen.set_suite(event.suite)
+            screen.mark_modified()
+
+    def on_add_test_screen_test_created(
+        self,
+        event: AddTestScreen.TestCreated,
+    ) -> None:
+        """Handle test creation from the add test screen."""
+        # Get the main screen (should be below the modal)
+        main_screen = None
+        for screen in self.screen_stack:
+            if isinstance(screen, MainScreen):
+                main_screen = screen
+                break
+
+        if main_screen is not None and main_screen.suite is not None:
+            # Add the test to the suite
+            main_screen.suite.tests.append(event.test)
+            # Update the UI
+            main_screen.set_suite(main_screen.suite, main_screen.suite_path)
+            main_screen.mark_modified()
 
 
 def run_tui() -> None:
