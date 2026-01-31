@@ -53,13 +53,13 @@ Implement the core TestGenerator class that provides the foundation for all test
 Implement the template system for predefined test patterns.
 
 **Checklist:**
-- [ ] Create `atp/generator/templates.py`
-- [ ] Define `TestTemplate` dataclass with fields: name, description, category, task_template, default_constraints, default_assertions, tags
-- [ ] Create built-in templates: `file_creation`, `data_processing`, `web_research`, `code_generation`
-- [ ] Implement `create_test_from_template()` method in TestGenerator
-- [ ] Implement variable substitution in task_template and assertions
-- [ ] Add `register_template()` method for custom templates
-- [ ] Write unit tests for template creation and substitution
+- [x] Create `atp/generator/templates.py`
+- [x] Define `TestTemplate` dataclass with fields: name, description, category, task_template, default_constraints, default_assertions, tags
+- [x] Create built-in templates: `file_creation`, `data_processing`, `web_research`, `code_generation`
+- [x] Implement `create_test_from_template()` method in TestGenerator
+- [x] Implement variable substitution in task_template and assertions
+- [x] Add `register_template()` method for custom templates
+- [x] Write unit tests for template creation and substitution
 
 **Traces to:** [ARCH-001]
 **Depends on:** [TASK-001]
@@ -74,13 +74,13 @@ Implement the template system for predefined test patterns.
 Implement serialization of test suites to YAML format.
 
 **Checklist:**
-- [ ] Create `atp/generator/writer.py`
-- [ ] Use `ruamel.yaml` for YAML generation with proper formatting
-- [ ] Implement `to_yaml()` method in TestGenerator
-- [ ] Implement `save()` method to write to file
-- [ ] Preserve proper indentation (mapping=2, sequence=4, offset=2)
-- [ ] Exclude None and unset values from output
-- [ ] Write unit tests for YAML output format
+- [x] Create `atp/generator/writer.py`
+- [x] Use `ruamel.yaml` for YAML generation with proper formatting
+- [x] Implement `to_yaml()` method in TestGenerator
+- [x] Implement `save()` method to write to file
+- [x] Preserve proper indentation (mapping=2, sequence=4, offset=2)
+- [x] Exclude None and unset values from output
+- [x] Write unit tests for YAML output format
 
 **Traces to:** [ARCH-001]
 **Depends on:** [TASK-001]
@@ -91,20 +91,20 @@ Implement serialization of test suites to YAML format.
 ## Milestone 2: CLI Wizard
 
 ### TASK-004: CLI Init Command
-🔴 P0 | ⬜ TODO | Est: 3-4h
+🔴 P0 | ✅ DONE | Est: 3-4h
 
 **Description:**
 Implement `atp init` command for interactive test suite creation.
 
 **Checklist:**
-- [ ] Create `atp/cli/commands/init.py`
-- [ ] Implement `init_command` with Click decorators
-- [ ] Add interactive prompts for: suite name, description, runs_per_test, timeout
-- [ ] Add agent configuration wizard (http, cli, container types)
-- [ ] Add test creation wizard with template/custom choice
-- [ ] Implement `--interactive/--no-interactive` flag
-- [ ] Register command in `atp/cli/main.py`
-- [ ] Write integration tests for init command
+- [x] Create `atp/cli/commands/init.py`
+- [x] Implement `init_command` with Click decorators
+- [x] Add interactive prompts for: suite name, description, runs_per_test, timeout
+- [x] Add agent configuration wizard (http, cli, container types)
+- [x] Add test creation wizard with template/custom choice
+- [x] Implement `--interactive/--no-interactive` flag
+- [x] Register command in `atp/cli/main.py`
+- [x] Write integration tests for init command
 
 **Traces to:** [ARCH-002]
 **Depends on:** [TASK-001], [TASK-002], [TASK-003]
@@ -138,19 +138,19 @@ Implement `atp generate` command for adding tests to existing suites.
 ## Milestone 3: TUI Interface (Optional)
 
 ### TASK-006: TUI Application Setup
-🟡 P2 | 🔄 IN_PROGRESS | Est: 2-3h
+🟡 P2 | ✅ DONE | Est: 2-3h
 
 **Description:**
 Set up the TUI application using Textual framework.
 
 **Checklist:**
-- [ ] Add optional dependencies: `textual>=0.47.0`, `rich>=13.0` to pyproject.toml
-- [ ] Create `atp/tui/__init__.py`
-- [ ] Create `atp/tui/app.py` with `ATPTUI` class
-- [ ] Define CSS styles for panels layout
-- [ ] Create basic screen navigation structure
-- [ ] Add `atp tui` command to CLI
-- [ ] Test TUI launch and exit
+- [x] Add optional dependencies: `textual>=0.47.0`, `rich>=13.0` to pyproject.toml
+- [x] Create `atp/tui/__init__.py`
+- [x] Create `atp/tui/app.py` with `ATPTUI` class
+- [x] Define CSS styles for panels layout
+- [x] Create basic screen navigation structure
+- [x] Add `atp tui` command to CLI
+- [x] Test TUI launch and exit
 
 **Traces to:** [ARCH-003]
 **Depends on:** [TASK-001]
@@ -254,17 +254,17 @@ Add React components for test suite creation in the dashboard.
 ```
 TASK-001 (Core Class) ✅
     │
-    ├──► TASK-002 (Templates)
+    ├──► TASK-002 (Templates) ✅
     │        │
-    │        └──► TASK-004 (CLI Init)
+    │        └──► TASK-004 (CLI Init) ✅
     │                 │
     │                 └──► TASK-005 (CLI Generate)
     │
-    ├──► TASK-003 (YAML Writer)
+    ├──► TASK-003 (YAML Writer) ✅
     │        │
-    │        └──► TASK-004 (CLI Init)
+    │        └──► TASK-004 (CLI Init) ✅
     │
-    ├──► TASK-006 (TUI Setup)
+    ├──► TASK-006 (TUI Setup) ✅
     │        │
     │        └──► TASK-007 (TUI Main)
     │                 │
@@ -288,18 +288,18 @@ TASK-001 (Core Class) ✅
 | **Total** | 10 tasks | ~27-36h |
 
 ### Ready to Start
-- [TASK-002] Test Templates System (TASK-001 done)
-- [TASK-003] YAML Writer (TASK-001 done)
-- [TASK-006] TUI Application Setup (TASK-001 done)
+- [TASK-005] CLI Generate Command (TASK-004 done)
+- [TASK-007] TUI Main Screen (TASK-006 done)
+- [TASK-009] Dashboard API Endpoints (TASK-001, TASK-002 done)
 
 ### Critical Path
-TASK-001 ✅ → TASK-002 → TASK-004 → TASK-005 (CLI)
-TASK-001 ✅ → TASK-003 → TASK-004 (YAML)
+TASK-001 ✅ → TASK-002 ✅ → TASK-004 ✅ → TASK-005 (CLI)
+TASK-001 ✅ → TASK-003 ✅ → TASK-004 ✅ (YAML)
 
 ### Recommended Order
 1. ✅ TASK-001 (Core) — foundation for everything
-2. TASK-002 (Templates) + TASK-003 (Writer) — can be parallel
-3. TASK-004 (CLI Init) — first user-facing feature
+2. ✅ TASK-002 (Templates) + ✅ TASK-003 (Writer) — can be parallel
+3. ✅ TASK-004 (CLI Init) — first user-facing feature
 4. TASK-005 (CLI Generate) — extends CLI
 5. TASK-009 + TASK-010 (Dashboard) — web interface
-6. TASK-006 → TASK-008 (TUI) — optional, lower priority
+6. ✅ TASK-006 → TASK-007 → TASK-008 (TUI) — optional, lower priority
