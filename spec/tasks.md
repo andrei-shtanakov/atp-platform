@@ -159,20 +159,20 @@ Set up the TUI application using Textual framework.
 ---
 
 ### TASK-007: TUI Main Screen
-🟡 P2 | ⬜ TODO | Est: 3-4h
+🟡 P2 | ✅ DONE | Est: 3-4h
 
 **Description:**
 Implement the main TUI screen with tree view and YAML preview.
 
 **Checklist:**
-- [ ] Create `atp/tui/screens/main_menu.py` with `MainScreen` class
-- [ ] Create `atp/tui/widgets/test_tree.py` with `TestTreeWidget`
-- [ ] Create `atp/tui/widgets/yaml_preview.py` with `YAMLPreviewWidget`
-- [ ] Implement left panel (40%) with test tree
-- [ ] Implement right panel (60%) with YAML preview
-- [ ] Add keyboard bindings: n=new, o=open, s=save, a=add test, q=quit
-- [ ] Update display when suite changes
-- [ ] Write tests for widget behavior
+- [x] Create `atp/tui/screens/main_menu.py` with `MainScreen` class
+- [x] Create `atp/tui/widgets/test_tree.py` with `TestTreeWidget`
+- [x] Create `atp/tui/widgets/yaml_preview.py` with `YAMLPreviewWidget`
+- [x] Implement left panel (40%) with test tree
+- [x] Implement right panel (60%) with YAML preview
+- [x] Add keyboard bindings: n=new, o=open, s=save, a=add test, q=quit
+- [x] Update display when suite changes
+- [x] Write tests for widget behavior
 
 **Traces to:** [ARCH-003]
 **Depends on:** [TASK-006]
@@ -205,20 +205,20 @@ Implement suite and test editor screens.
 ## Milestone 4: Dashboard Extension
 
 ### TASK-009: Dashboard API Endpoints
-🟠 P1 | 🔄 IN_PROGRESS | Est: 3-4h
+🟠 P1 | ✅ DONE | Est: 3-4h
 
 **Description:**
 Add API endpoints for test suite management in the dashboard.
 
 **Checklist:**
-- [ ] Add Pydantic schemas: `SuiteCreateRequest`, `TestCreateRequest`, `TemplateResponse`
-- [ ] Implement `POST /suites` endpoint for suite creation
-- [ ] Implement `POST /suites/{suite_id}/tests` endpoint for adding tests
-- [ ] Implement `GET /templates` endpoint for listing templates
-- [ ] Implement `GET /suites/{suite_id}/yaml` endpoint for YAML export
-- [ ] Add authentication requirements
-- [ ] Write unit tests for endpoints
-- [ ] Write integration tests
+- [x] Add Pydantic schemas: `SuiteCreateRequest`, `TestCreateRequest`, `TemplateResponse`
+- [x] Implement `POST /suites` endpoint for suite creation
+- [x] Implement `POST /suites/{suite_id}/tests` endpoint for adding tests
+- [x] Implement `GET /templates` endpoint for listing templates
+- [x] Implement `GET /suites/{suite_id}/yaml` endpoint for YAML export
+- [x] Add authentication requirements
+- [x] Write unit tests for endpoints
+- [x] Write integration tests
 
 **Traces to:** [ARCH-004]
 **Depends on:** [TASK-001], [TASK-002]

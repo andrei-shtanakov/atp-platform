@@ -146,7 +146,9 @@ dev = [
     { name = "pytest-anyio" },
     { name = "pytest-cov" },
     { name = "pytest-mock" },
+    { name = "rich" },
     { name = "ruff" },
+    { name = "textual" },
 ]
 
 [package.metadata]
@@ -186,7 +188,9 @@ dev = [
     { name = "pytest-anyio", specifier = ">=0.0.0" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
     { name = "pytest-mock", specifier = ">=3.15.1" },
+    { name = "rich", specifier = ">=14.3.1" },
     { name = "ruff", specifier = ">=0.14.14" },
+    { name = "textual", specifier = ">=7.5.0" },
 ]
 
 [[package]]
