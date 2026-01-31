@@ -10,6 +10,7 @@ import click
 import yaml
 
 from atp import __version__
+from atp.cli.commands.generate import generate_command
 from atp.cli.commands.init import init_command
 from atp.loader import TestLoader
 
@@ -1649,8 +1650,9 @@ def list_tests(suite_file: Path, tags: str | None) -> None:
         sys.exit(EXIT_ERROR)
 
 
-# Register the init command
+# Register commands
 cli.add_command(init_command)
+cli.add_command(generate_command)
 
 
 def main() -> None:

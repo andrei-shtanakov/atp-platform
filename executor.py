@@ -818,6 +818,16 @@ def cmd_run(args, config: ExecutorConfig):
             ready_tasks = [t for t in ready_tasks if t.id not in executed_ids]
 
             if not ready_tasks:
+                # Show why we're stopping
+                all_tasks = parse_tasks(TASKS_FILE)
+                todo_tasks = [t for t in all_tasks if t.status == "todo"]
+                if todo_tasks:
+                    print(f"\n⏸️  No more ready tasks. {len(todo_tasks)} tasks blocked:")
+                    for t in todo_tasks:
+                        deps = ", ".join(t.depends_on) if t.depends_on else "none"
+                        print(f"   - {t.id}: waiting on [{deps}]")
+                else:
+                    print("\n✅ All tasks completed!")
                 break
 
             task = ready_tasks[0]
