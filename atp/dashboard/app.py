@@ -3167,6 +3167,1118 @@ def create_index_html() -> str:
             );
         }
 
+        // ==================== Test Creator Form Components ====================
+
+        // Category badge colors for templates
+        const CATEGORY_COLORS = {
+            code: { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-200' },
+            file: { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-200' },
+            data: { bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-200' },
+            web: { bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-200' },
+            api: { bg: 'bg-pink-100', text: 'text-pink-700', border: 'border-pink-200' },
+            default: { bg: 'bg-gray-100', text: 'text-gray-700', border: 'border-gray-200' },
+        };
+
+        // Get category color
+        function getCategoryColor(category) {
+            const normalizedCategory = category?.toLowerCase() || 'default';
+            return CATEGORY_COLORS[normalizedCategory] || CATEGORY_COLORS.default;
+        }
+
+        // Skeleton for test creator
+        function SkeletonTestCreator() {
+            return (
+                <div className="bg-white rounded-lg shadow p-6">
+                    {/* Progress indicator skeleton */}
+                    <div className="flex items-center justify-center gap-4 mb-8">
+                        {[1, 2, 3].map((i) => (
+                            <div key={i} className="flex items-center">
+                                <SkeletonBox className="w-8 h-8 rounded-full" />
+                                <SkeletonBox className="h-4 w-24 ml-2" />
+                                {i < 3 && <SkeletonBox className="w-12 h-0.5 mx-4" />}
+                            </div>
+                        ))}
+                    </div>
+                    {/* Form skeleton */}
+                    <div className="space-y-4">
+                        <SkeletonBox className="h-10 w-full rounded" />
+                        <SkeletonBox className="h-24 w-full rounded" />
+                        <div className="grid grid-cols-2 gap-4">
+                            <SkeletonBox className="h-10 w-full rounded" />
+                            <SkeletonBox className="h-10 w-full rounded" />
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Step indicator component
+        function StepIndicator({ currentStep, steps }) {
+            return (
+                <div className="flex items-center justify-center gap-2 mb-8">
+                    {steps.map((step, index) => (
+                        <React.Fragment key={step.id}>
+                            <div className="flex items-center">
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm transition-all ${
+                                    currentStep === index
+                                        ? 'bg-blue-600 text-white ring-4 ring-blue-100'
+                                        : currentStep > index
+                                            ? 'bg-green-500 text-white'
+                                            : 'bg-gray-200 text-gray-500'
+                                }`}>
+                                    {currentStep > index ? (
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                        </svg>
+                                    ) : (
+                                        index + 1
+                                    )}
+                                </div>
+                                <span className={`ml-2 text-sm font-medium hidden sm:inline ${
+                                    currentStep === index ? 'text-blue-600' : 'text-gray-500'
+                                }`}>
+                                    {step.label}
+                                </span>
+                            </div>
+                            {index < steps.length - 1 && (
+                                <div className={`w-8 md:w-16 h-0.5 ${
+                                    currentStep > index ? 'bg-green-500' : 'bg-gray-200'
+                                }`} />
+                            )}
+                        </React.Fragment>
+                    ))}
+                </div>
+            );
+        }
+
+        // Template card component
+        function TemplateCard({ template, isSelected, onSelect }) {
+            const colors = getCategoryColor(template.category);
+
+            return (
+                <div
+                    onClick={() => onSelect(template)}
+                    className={`cursor-pointer border-2 rounded-lg p-4 transition-all hover:shadow-md ${
+                        isSelected
+                            ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
+                            : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                >
+                    <div className="flex items-start justify-between mb-2">
+                        <h4 className="font-semibold text-gray-800">{template.name}</h4>
+                        <span className={`px-2 py-0.5 text-xs rounded-full ${colors.bg} ${colors.text}`}>
+                            {template.category}
+                        </span>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-3 line-clamp-2">{template.description}</p>
+                    {template.tags && template.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                            {template.tags.slice(0, 3).map((tag, idx) => (
+                                <span key={idx} className="px-2 py-0.5 text-xs rounded bg-gray-100 text-gray-600">
+                                    {tag}
+                                </span>
+                            ))}
+                            {template.tags.length > 3 && (
+                                <span className="text-xs text-gray-400">+{template.tags.length - 3}</span>
+                            )}
+                        </div>
+                    )}
+                    {template.variables && template.variables.length > 0 && (
+                        <div className="mt-2 text-xs text-gray-500">
+                            Variables: {template.variables.join(', ')}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // Test item component for the test list
+        function TestItem({ test, onRemove, onEdit }) {
+            return (
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors">
+                    <div className="flex-grow min-w-0">
+                        <div className="flex items-center gap-2">
+                            <span className="font-medium text-gray-800 truncate">{test.name}</span>
+                            <span className="text-xs text-gray-500 bg-gray-200 px-2 py-0.5 rounded">
+                                {test.id}
+                            </span>
+                        </div>
+                        {test.description && (
+                            <p className="text-sm text-gray-600 truncate mt-1">{test.description}</p>
+                        )}
+                        {test.tags && test.tags.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                                {test.tags.slice(0, 3).map((tag, idx) => (
+                                    <span key={idx} className="px-1.5 py-0.5 text-xs rounded bg-blue-50 text-blue-600">
+                                        {tag}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-2 ml-4">
+                        <button
+                            onClick={() => onEdit(test)}
+                            className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                            title="Edit test"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                        </button>
+                        <button
+                            onClick={() => onRemove(test.id)}
+                            className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                            title="Remove test"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        // Step 1: Suite Details Form
+        function SuiteDetailsStep({ suiteData, onChange, errors }) {
+            const handleChange = (field, value) => {
+                onChange({ ...suiteData, [field]: value });
+            };
+
+            const handleDefaultsChange = (field, value) => {
+                onChange({
+                    ...suiteData,
+                    defaults: { ...suiteData.defaults, [field]: value }
+                });
+            };
+
+            const handleScoringChange = (field, value) => {
+                onChange({
+                    ...suiteData,
+                    defaults: {
+                        ...suiteData.defaults,
+                        scoring: { ...suiteData.defaults.scoring, [field]: value }
+                    }
+                });
+            };
+
+            return (
+                <div className="space-y-6">
+                    {/* Basic Info */}
+                    <div className="bg-gray-50 rounded-lg p-4">
+                        <h4 className="font-semibold text-gray-700 mb-4">Basic Information</h4>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Suite Name <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    value={suiteData.name}
+                                    onChange={(e) => handleChange('name', e.target.value)}
+                                    placeholder="e.g., My Agent Test Suite"
+                                    className={`w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                                        errors.name ? 'border-red-500' : 'border-gray-300'
+                                    }`}
+                                />
+                                {errors.name && (
+                                    <p className="text-red-500 text-xs mt-1">{errors.name}</p>
+                                )}
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Description
+                                </label>
+                                <textarea
+                                    value={suiteData.description || ''}
+                                    onChange={(e) => handleChange('description', e.target.value)}
+                                    placeholder="Describe what this test suite evaluates..."
+                                    rows={3}
+                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Version
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={suiteData.version}
+                                        onChange={(e) => handleChange('version', e.target.value)}
+                                        placeholder="1.0"
+                                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Runs Per Test
+                                    </label>
+                                    <input
+                                        type="number"
+                                        value={suiteData.defaults.runs_per_test}
+                                        onChange={(e) => handleDefaultsChange('runs_per_test', parseInt(e.target.value) || 1)}
+                                        min={1}
+                                        max={100}
+                                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Default Constraints */}
+                    <div className="bg-gray-50 rounded-lg p-4">
+                        <h4 className="font-semibold text-gray-700 mb-4">Default Constraints</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Timeout (seconds)
+                                </label>
+                                <input
+                                    type="number"
+                                    value={suiteData.defaults.timeout_seconds}
+                                    onChange={(e) => handleDefaultsChange('timeout_seconds', parseInt(e.target.value) || 300)}
+                                    min={1}
+                                    max={3600}
+                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Max Steps (optional)
+                                </label>
+                                <input
+                                    type="number"
+                                    value={suiteData.defaults.constraints?.max_steps || ''}
+                                    onChange={(e) => {
+                                        const value = e.target.value ? parseInt(e.target.value) : null;
+                                        onChange({
+                                            ...suiteData,
+                                            defaults: {
+                                                ...suiteData.defaults,
+                                                constraints: {
+                                                    ...suiteData.defaults.constraints,
+                                                    max_steps: value
+                                                }
+                                            }
+                                        });
+                                    }}
+                                    min={1}
+                                    placeholder="No limit"
+                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Scoring Weights */}
+                    <div className="bg-gray-50 rounded-lg p-4">
+                        <h4 className="font-semibold text-gray-700 mb-4">Default Scoring Weights</h4>
+                        <div className="space-y-4">
+                            {[
+                                { key: 'quality_weight', label: 'Quality', value: suiteData.defaults.scoring.quality_weight },
+                                { key: 'completeness_weight', label: 'Completeness', value: suiteData.defaults.scoring.completeness_weight },
+                                { key: 'efficiency_weight', label: 'Efficiency', value: suiteData.defaults.scoring.efficiency_weight },
+                                { key: 'cost_weight', label: 'Cost', value: suiteData.defaults.scoring.cost_weight },
+                            ].map(({ key, label, value }) => (
+                                <div key={key} className="flex items-center gap-4">
+                                    <label className="w-28 text-sm font-medium text-gray-700">{label}</label>
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="1"
+                                        step="0.1"
+                                        value={value}
+                                        onChange={(e) => handleScoringChange(key, parseFloat(e.target.value))}
+                                        className="flex-grow h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                                    />
+                                    <span className="w-12 text-sm text-gray-600 text-right">{(value * 100).toFixed(0)}%</span>
+                                </div>
+                            ))}
+                            <p className="text-xs text-gray-500">
+                                Total: {(
+                                    (suiteData.defaults.scoring.quality_weight +
+                                    suiteData.defaults.scoring.completeness_weight +
+                                    suiteData.defaults.scoring.efficiency_weight +
+                                    suiteData.defaults.scoring.cost_weight) * 100
+                                ).toFixed(0)}% (should equal 100%)
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Step 2: Template Selection and Test List
+        function TemplateSelectionStep({ templates, tests, onAddTest, onRemoveTest, onEditTest, selectedCategory, onCategoryChange, loading }) {
+            const [selectedTemplate, setSelectedTemplate] = useState(null);
+            const [showAddModal, setShowAddModal] = useState(false);
+            const [editingTest, setEditingTest] = useState(null);
+
+            // Filter templates by category
+            const filteredTemplates = selectedCategory === 'all'
+                ? templates
+                : templates.filter(t => t.category === selectedCategory);
+
+            // Get unique categories
+            const categories = ['all', ...new Set(templates.map(t => t.category))];
+
+            const handleAddFromTemplate = () => {
+                if (selectedTemplate) {
+                    setEditingTest({
+                        id: `test-${Date.now()}`,
+                        name: selectedTemplate.name,
+                        description: selectedTemplate.description,
+                        tags: [...(selectedTemplate.tags || [])],
+                        task: {
+                            description: selectedTemplate.task_template,
+                            input_data: null,
+                            expected_artifacts: null
+                        },
+                        constraints: selectedTemplate.default_constraints,
+                        assertions: selectedTemplate.default_assertions,
+                        scoring: null
+                    });
+                    setShowAddModal(true);
+                }
+            };
+
+            const handleAddCustom = () => {
+                setSelectedTemplate(null);
+                setEditingTest({
+                    id: `test-${Date.now()}`,
+                    name: '',
+                    description: '',
+                    tags: [],
+                    task: {
+                        description: '',
+                        input_data: null,
+                        expected_artifacts: null
+                    },
+                    constraints: {
+                        max_steps: null,
+                        max_tokens: null,
+                        timeout_seconds: 300,
+                        allowed_tools: null,
+                        budget_usd: null
+                    },
+                    assertions: [],
+                    scoring: null
+                });
+                setShowAddModal(true);
+            };
+
+            const handleSaveTest = (test) => {
+                onAddTest(test);
+                setShowAddModal(false);
+                setEditingTest(null);
+                setSelectedTemplate(null);
+            };
+
+            const handleEditExisting = (test) => {
+                setEditingTest(test);
+                setShowAddModal(true);
+            };
+
+            if (loading) {
+                return (
+                    <div className="space-y-4">
+                        <SkeletonBox className="h-10 w-full rounded" />
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {[1, 2, 3, 4, 5, 6].map((i) => (
+                                <div key={i} className="border rounded-lg p-4">
+                                    <SkeletonBox className="h-5 w-3/4 mb-2" />
+                                    <SkeletonBox className="h-4 w-full mb-1" />
+                                    <SkeletonBox className="h-4 w-2/3" />
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="space-y-6">
+                    {/* Category Filter */}
+                    <div className="flex flex-wrap gap-2 items-center">
+                        <span className="text-sm font-medium text-gray-700">Category:</span>
+                        {categories.map((cat) => {
+                            const colors = cat === 'all'
+                                ? { bg: 'bg-gray-100', text: 'text-gray-700' }
+                                : getCategoryColor(cat);
+                            return (
+                                <button
+                                    key={cat}
+                                    onClick={() => onCategoryChange(cat)}
+                                    className={`px-3 py-1.5 text-sm rounded-full transition-all ${
+                                        selectedCategory === cat
+                                            ? `${colors.bg} ${colors.text} ring-2 ring-offset-1 ring-blue-300`
+                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                    }`}
+                                >
+                                    {cat === 'all' ? 'All' : cat.charAt(0).toUpperCase() + cat.slice(1)}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {/* Template Grid */}
+                    <div>
+                        <h4 className="font-semibold text-gray-700 mb-3">Available Templates</h4>
+                        {filteredTemplates.length === 0 ? (
+                            <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
+                                No templates found in this category.
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-80 overflow-y-auto p-1">
+                                {filteredTemplates.map((template) => (
+                                    <TemplateCard
+                                        key={template.name}
+                                        template={template}
+                                        isSelected={selectedTemplate?.name === template.name}
+                                        onSelect={setSelectedTemplate}
+                                    />
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Add Test Buttons */}
+                    <div className="flex flex-wrap gap-3">
+                        <button
+                            onClick={handleAddFromTemplate}
+                            disabled={!selectedTemplate}
+                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                        >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                            </svg>
+                            Add from Template
+                        </button>
+                        <button
+                            onClick={handleAddCustom}
+                            className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                        >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                            Add Custom Test
+                        </button>
+                    </div>
+
+                    {/* Test List */}
+                    <div>
+                        <div className="flex items-center justify-between mb-3">
+                            <h4 className="font-semibold text-gray-700">Tests in Suite ({tests.length})</h4>
+                        </div>
+                        {tests.length === 0 ? (
+                            <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                                <svg className="w-12 h-12 mx-auto mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                                </svg>
+                                <p>No tests added yet.</p>
+                                <p className="text-sm mt-1">Select a template above or add a custom test.</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-2 max-h-64 overflow-y-auto">
+                                {tests.map((test) => (
+                                    <TestItem
+                                        key={test.id}
+                                        test={test}
+                                        onRemove={onRemoveTest}
+                                        onEdit={handleEditExisting}
+                                    />
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Add/Edit Test Modal */}
+                    {showAddModal && editingTest && (
+                        <TestEditModal
+                            test={editingTest}
+                            onSave={handleSaveTest}
+                            onCancel={() => {
+                                setShowAddModal(false);
+                                setEditingTest(null);
+                            }}
+                            isEditing={tests.some(t => t.id === editingTest.id)}
+                        />
+                    )}
+                </div>
+            );
+        }
+
+        // Test Edit Modal
+        function TestEditModal({ test, onSave, onCancel, isEditing }) {
+            const [formData, setFormData] = useState(test);
+            const [errors, setErrors] = useState({});
+
+            const handleChange = (field, value) => {
+                setFormData({ ...formData, [field]: value });
+                if (errors[field]) {
+                    setErrors({ ...errors, [field]: null });
+                }
+            };
+
+            const handleTaskChange = (field, value) => {
+                setFormData({
+                    ...formData,
+                    task: { ...formData.task, [field]: value }
+                });
+            };
+
+            const handleSubmit = () => {
+                const newErrors = {};
+                if (!formData.id.trim()) newErrors.id = 'Test ID is required';
+                if (!formData.name.trim()) newErrors.name = 'Test name is required';
+                if (!formData.task.description.trim()) newErrors.description = 'Task description is required';
+
+                if (Object.keys(newErrors).length > 0) {
+                    setErrors(newErrors);
+                    return;
+                }
+
+                onSave(formData);
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                        <div className="p-6 border-b">
+                            <h3 className="text-lg font-bold text-gray-800">
+                                {isEditing ? 'Edit Test' : 'Add New Test'}
+                            </h3>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Test ID <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={formData.id}
+                                        onChange={(e) => handleChange('id', e.target.value)}
+                                        placeholder="e.g., test-file-creation"
+                                        disabled={isEditing}
+                                        className={`w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                                            errors.id ? 'border-red-500' : 'border-gray-300'
+                                        } ${isEditing ? 'bg-gray-100' : ''}`}
+                                    />
+                                    {errors.id && <p className="text-red-500 text-xs mt-1">{errors.id}</p>}
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Test Name <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={formData.name}
+                                        onChange={(e) => handleChange('name', e.target.value)}
+                                        placeholder="e.g., File Creation Test"
+                                        className={`w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                                            errors.name ? 'border-red-500' : 'border-gray-300'
+                                        }`}
+                                    />
+                                    {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Description
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formData.description || ''}
+                                    onChange={(e) => handleChange('description', e.target.value)}
+                                    placeholder="Brief description of the test"
+                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Task Description <span className="text-red-500">*</span>
+                                </label>
+                                <textarea
+                                    value={formData.task.description}
+                                    onChange={(e) => handleTaskChange('description', e.target.value)}
+                                    placeholder="Describe the task the agent should perform..."
+                                    rows={4}
+                                    className={`w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                                        errors.description ? 'border-red-500' : 'border-gray-300'
+                                    }`}
+                                />
+                                {errors.description && <p className="text-red-500 text-xs mt-1">{errors.description}</p>}
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Tags (comma-separated)
+                                </label>
+                                <input
+                                    type="text"
+                                    value={(formData.tags || []).join(', ')}
+                                    onChange={(e) => handleChange('tags', e.target.value.split(',').map(t => t.trim()).filter(t => t))}
+                                    placeholder="e.g., file, basic, smoke"
+                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Timeout (seconds)
+                                    </label>
+                                    <input
+                                        type="number"
+                                        value={formData.constraints?.timeout_seconds || 300}
+                                        onChange={(e) => handleChange('constraints', {
+                                            ...formData.constraints,
+                                            timeout_seconds: parseInt(e.target.value) || 300
+                                        })}
+                                        min={1}
+                                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Max Steps (optional)
+                                    </label>
+                                    <input
+                                        type="number"
+                                        value={formData.constraints?.max_steps || ''}
+                                        onChange={(e) => handleChange('constraints', {
+                                            ...formData.constraints,
+                                            max_steps: e.target.value ? parseInt(e.target.value) : null
+                                        })}
+                                        min={1}
+                                        placeholder="No limit"
+                                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                        <div className="p-6 border-t bg-gray-50 flex justify-end gap-3">
+                            <button
+                                onClick={onCancel}
+                                className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleSubmit}
+                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                            >
+                                {isEditing ? 'Update Test' : 'Add Test'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Step 3: YAML Preview and Save
+        function YAMLPreviewStep({ suiteData, tests, onSave, saving, error }) {
+            const [yamlPreview, setYamlPreview] = useState('');
+            const [copied, setCopied] = useState(false);
+
+            // Generate YAML preview
+            useEffect(() => {
+                const yaml = generateYAMLPreview(suiteData, tests);
+                setYamlPreview(yaml);
+            }, [suiteData, tests]);
+
+            const handleCopy = async () => {
+                try {
+                    await navigator.clipboard.writeText(yamlPreview);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                } catch (err) {
+                    console.error('Failed to copy:', err);
+                }
+            };
+
+            return (
+                <div className="space-y-6">
+                    {/* Summary */}
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <h4 className="font-semibold text-blue-800 mb-2">Suite Summary</h4>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                            <div>
+                                <span className="text-blue-600">Name:</span>
+                                <span className="ml-2 font-medium text-blue-900">{suiteData.name}</span>
+                            </div>
+                            <div>
+                                <span className="text-blue-600">Version:</span>
+                                <span className="ml-2 font-medium text-blue-900">{suiteData.version}</span>
+                            </div>
+                            <div>
+                                <span className="text-blue-600">Tests:</span>
+                                <span className="ml-2 font-medium text-blue-900">{tests.length}</span>
+                            </div>
+                            <div>
+                                <span className="text-blue-600">Runs/Test:</span>
+                                <span className="ml-2 font-medium text-blue-900">{suiteData.defaults.runs_per_test}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* YAML Preview */}
+                    <div>
+                        <div className="flex items-center justify-between mb-2">
+                            <h4 className="font-semibold text-gray-700">YAML Preview</h4>
+                            <button
+                                onClick={handleCopy}
+                                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                            >
+                                {copied ? (
+                                    <>
+                                        <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                        </svg>
+                                        Copied!
+                                    </>
+                                ) : (
+                                    <>
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                        </svg>
+                                        Copy to Clipboard
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                        <div className="bg-gray-900 rounded-lg p-4 overflow-x-auto max-h-96">
+                            <pre className="text-sm text-gray-100 font-mono whitespace-pre">{yamlPreview}</pre>
+                        </div>
+                    </div>
+
+                    {/* Error Message */}
+                    {error && (
+                        <ErrorDisplay
+                            error={{ message: error }}
+                            title="Failed to save suite"
+                        />
+                    )}
+
+                    {/* Save Button */}
+                    <div className="flex justify-end">
+                        <button
+                            onClick={onSave}
+                            disabled={saving || tests.length === 0}
+                            className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors font-medium"
+                        >
+                            {saving ? (
+                                <>
+                                    <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    Saving...
+                                </>
+                            ) : (
+                                <>
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                                    </svg>
+                                    Save Suite Definition
+                                </>
+                            )}
+                        </button>
+                    </div>
+
+                    {tests.length === 0 && (
+                        <p className="text-center text-amber-600 text-sm">
+                            Please add at least one test before saving.
+                        </p>
+                    )}
+                </div>
+            );
+        }
+
+        // Helper function to generate YAML preview
+        function generateYAMLPreview(suiteData, tests) {
+            const indent = (str, spaces) => str.split('\n').map(line => ' '.repeat(spaces) + line).join('\n');
+
+            let yaml = `# ATP Test Suite Definition
+# Generated by ATP Dashboard
+
+name: "${suiteData.name}"
+version: "${suiteData.version}"
+`;
+
+            if (suiteData.description) {
+                yaml += `description: "${suiteData.description}"
+
+`;
+            } else {
+                yaml += `
+`;
+            }
+
+            yaml += `defaults:
+  runs_per_test: ${suiteData.defaults.runs_per_test}
+  timeout_seconds: ${suiteData.defaults.timeout_seconds}
+  scoring:
+    quality_weight: ${suiteData.defaults.scoring.quality_weight}
+    completeness_weight: ${suiteData.defaults.scoring.completeness_weight}
+    efficiency_weight: ${suiteData.defaults.scoring.efficiency_weight}
+    cost_weight: ${suiteData.defaults.scoring.cost_weight}
+
+tests:
+`;
+
+            tests.forEach((test) => {
+                yaml += `  - id: "${test.id}"
+    name: "${test.name}"
+`;
+                if (test.description) {
+                    yaml += `    description: "${test.description}"
+`;
+                }
+                if (test.tags && test.tags.length > 0) {
+                    yaml += `    tags: [${test.tags.map(t => `"${t}"`).join(', ')}]
+`;
+                }
+                yaml += `    task:
+      description: |
+${indent(test.task.description, 8)}
+    constraints:
+      timeout_seconds: ${test.constraints?.timeout_seconds || 300}
+`;
+                if (test.constraints?.max_steps) {
+                    yaml += `      max_steps: ${test.constraints.max_steps}
+`;
+                }
+                yaml += `
+`;
+            });
+
+            return yaml.trim();
+        }
+
+        // Main TestCreatorForm component
+        function TestCreatorForm({ onClose, onSuccess }) {
+            const [currentStep, setCurrentStep] = useState(0);
+            const [suiteData, setSuiteData] = useState({
+                name: '',
+                version: '1.0',
+                description: '',
+                defaults: {
+                    runs_per_test: 1,
+                    timeout_seconds: 300,
+                    scoring: {
+                        quality_weight: 0.4,
+                        completeness_weight: 0.3,
+                        efficiency_weight: 0.2,
+                        cost_weight: 0.1
+                    },
+                    constraints: null
+                },
+                agents: []
+            });
+            const [tests, setTests] = useState([]);
+            const [templates, setTemplates] = useState([]);
+            const [selectedCategory, setSelectedCategory] = useState('all');
+            const [loading, setLoading] = useState(true);
+            const [saving, setSaving] = useState(false);
+            const [errors, setErrors] = useState({});
+            const [saveError, setSaveError] = useState(null);
+
+            const steps = [
+                { id: 'details', label: 'Suite Details' },
+                { id: 'tests', label: 'Tests' },
+                { id: 'preview', label: 'Preview & Save' }
+            ];
+
+            // Load templates on mount
+            useEffect(() => {
+                api.get('/templates')
+                    .then((data) => {
+                        setTemplates(data.templates || []);
+                    })
+                    .catch(console.error)
+                    .finally(() => setLoading(false));
+            }, []);
+
+            const validateStep = (step) => {
+                const newErrors = {};
+
+                if (step === 0) {
+                    if (!suiteData.name.trim()) {
+                        newErrors.name = 'Suite name is required';
+                    }
+                }
+
+                setErrors(newErrors);
+                return Object.keys(newErrors).length === 0;
+            };
+
+            const handleNext = () => {
+                if (validateStep(currentStep)) {
+                    setCurrentStep(Math.min(currentStep + 1, steps.length - 1));
+                }
+            };
+
+            const handleBack = () => {
+                setCurrentStep(Math.max(currentStep - 1, 0));
+            };
+
+            const handleAddTest = (test) => {
+                const existingIndex = tests.findIndex(t => t.id === test.id);
+                if (existingIndex >= 0) {
+                    const newTests = [...tests];
+                    newTests[existingIndex] = test;
+                    setTests(newTests);
+                } else {
+                    setTests([...tests, test]);
+                }
+            };
+
+            const handleRemoveTest = (testId) => {
+                setTests(tests.filter(t => t.id !== testId));
+            };
+
+            const handleSave = async () => {
+                setSaving(true);
+                setSaveError(null);
+
+                try {
+                    const payload = {
+                        name: suiteData.name,
+                        version: suiteData.version,
+                        description: suiteData.description || null,
+                        defaults: suiteData.defaults,
+                        agents: [],
+                        tests: tests
+                    };
+
+                    const result = await api.post('/suite-definitions', payload);
+                    if (onSuccess) {
+                        onSuccess(result);
+                    }
+                } catch (err) {
+                    setSaveError(err.message || 'Failed to save suite definition');
+                } finally {
+                    setSaving(false);
+                }
+            };
+
+            if (loading) {
+                return <SkeletonTestCreator />;
+            }
+
+            return (
+                <div className="bg-white rounded-lg shadow-lg">
+                    {/* Header */}
+                    <div className="p-6 border-b flex items-center justify-between">
+                        <div>
+                            <h2 className="text-xl font-bold text-gray-800">Create Test Suite</h2>
+                            <p className="text-sm text-gray-500 mt-1">
+                                Define a new test suite to evaluate your agents
+                            </p>
+                        </div>
+                        {onClose && (
+                            <button
+                                onClick={onClose}
+                                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                            >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Step Indicator */}
+                    <div className="px-6 pt-6">
+                        <StepIndicator currentStep={currentStep} steps={steps} />
+                    </div>
+
+                    {/* Step Content */}
+                    <div className="p-6">
+                        {currentStep === 0 && (
+                            <SuiteDetailsStep
+                                suiteData={suiteData}
+                                onChange={setSuiteData}
+                                errors={errors}
+                            />
+                        )}
+
+                        {currentStep === 1 && (
+                            <TemplateSelectionStep
+                                templates={templates}
+                                tests={tests}
+                                onAddTest={handleAddTest}
+                                onRemoveTest={handleRemoveTest}
+                                onEditTest={handleAddTest}
+                                selectedCategory={selectedCategory}
+                                onCategoryChange={setSelectedCategory}
+                                loading={false}
+                            />
+                        )}
+
+                        {currentStep === 2 && (
+                            <YAMLPreviewStep
+                                suiteData={suiteData}
+                                tests={tests}
+                                onSave={handleSave}
+                                saving={saving}
+                                error={saveError}
+                            />
+                        )}
+                    </div>
+
+                    {/* Navigation */}
+                    <div className="px-6 pb-6 flex justify-between">
+                        <button
+                            onClick={handleBack}
+                            disabled={currentStep === 0}
+                            className="flex items-center gap-2 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                            </svg>
+                            Back
+                        </button>
+
+                        {currentStep < steps.length - 1 && (
+                            <button
+                                onClick={handleNext}
+                                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                            >
+                                Next
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
+                            </button>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        // TestCreatorView - wrapper component for the route
+        function TestCreatorView({ onBack, onSuccess }) {
+            const handleSuccess = (result) => {
+                if (onSuccess) {
+                    onSuccess(result);
+                }
+                if (onBack) {
+                    onBack();
+                }
+            };
+
+            return (
+                <div className="max-w-4xl mx-auto">
+                    <TestCreatorForm onClose={onBack} onSuccess={handleSuccess} />
+                </div>
+            );
+        }
+
+        // ==================== End Test Creator Form Components ====================
+
         // Main App component
         function App() {
             const [view, setView] = useState('dashboard');
@@ -3262,6 +4374,12 @@ def create_index_html() -> str:
                                     className={`hover:underline ${view === 'timeline' ? 'font-bold' : ''}`}
                                 >
                                     Timeline
+                                </button>
+                                <button
+                                    onClick={() => { setView('create'); setSelectedExecution(null); }}
+                                    className={`hover:underline ${view === 'create' ? 'font-bold' : ''} bg-green-500 px-3 py-1 rounded text-sm`}
+                                >
+                                    + Create
                                 </button>
                                 {isLoggedIn ? (
                                     <button onClick={handleLogout} className="hover:underline">
@@ -3391,7 +4509,27 @@ def create_index_html() -> str:
                             </ErrorBoundary>
                         )}
 
-                        {!summary && view !== 'login' && view !== 'leaderboard' && view !== 'timeline' && (
+                        {view === 'create' && (
+                            <ErrorBoundary title="Create Suite Error" message="Unable to display the test creator.">
+                                <TestCreatorView
+                                    onBack={() => setView('dashboard')}
+                                    onSuccess={(result) => {
+                                        // Refresh suite names after successful creation
+                                        api.get('/suites/names/list')
+                                            .then(names => {
+                                                setSuiteNames(names);
+                                                if (result && result.name) {
+                                                    setSelectedSuite(result.name);
+                                                }
+                                            })
+                                            .catch(console.error);
+                                        setView('dashboard');
+                                    }}
+                                />
+                            </ErrorBoundary>
+                        )}
+
+                        {!summary && view !== 'login' && view !== 'leaderboard' && view !== 'timeline' && view !== 'create' && (
                             <div className="text-center py-10">
                                 <p className="text-gray-600">
                                     No data available. Run some tests to see results here.

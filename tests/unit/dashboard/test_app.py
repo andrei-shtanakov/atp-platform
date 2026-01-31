@@ -189,6 +189,117 @@ class TestHTMLContent:
         assert "timeline-container" in html or "timeline" in html.lower()
 
 
+class TestTestCreatorFormComponents:
+    """Tests for TestCreatorForm UI components."""
+
+    def test_html_content_has_test_creator_form(self) -> None:
+        """Test that HTML includes TestCreatorForm component."""
+        html = create_index_html()
+        assert "TestCreatorForm" in html
+        assert "TestCreatorView" in html
+
+    def test_html_content_has_step_indicator(self) -> None:
+        """Test that HTML includes StepIndicator component."""
+        html = create_index_html()
+        assert "StepIndicator" in html
+        assert "currentStep" in html
+
+    def test_html_content_has_suite_details_step(self) -> None:
+        """Test that HTML includes SuiteDetailsStep component."""
+        html = create_index_html()
+        assert "SuiteDetailsStep" in html
+        assert "Suite Name" in html
+        assert "runs_per_test" in html
+
+    def test_html_content_has_template_selection_step(self) -> None:
+        """Test that HTML includes TemplateSelectionStep component."""
+        html = create_index_html()
+        assert "TemplateSelectionStep" in html
+        assert "TemplateCard" in html
+
+    def test_html_content_has_yaml_preview_step(self) -> None:
+        """Test that HTML includes YAMLPreviewStep component."""
+        html = create_index_html()
+        assert "YAMLPreviewStep" in html
+        assert "YAML Preview" in html
+        assert "generateYAMLPreview" in html
+
+    def test_html_content_has_template_card(self) -> None:
+        """Test that HTML includes TemplateCard component."""
+        html = create_index_html()
+        assert "TemplateCard" in html
+        assert "isSelected" in html
+        assert "onSelect" in html
+
+    def test_html_content_has_test_item(self) -> None:
+        """Test that HTML includes TestItem component."""
+        html = create_index_html()
+        assert "TestItem" in html
+        assert "onRemove" in html
+        assert "onEdit" in html
+
+    def test_html_content_has_test_edit_modal(self) -> None:
+        """Test that HTML includes TestEditModal component."""
+        html = create_index_html()
+        assert "TestEditModal" in html
+        assert "Test ID" in html
+        assert "Test Name" in html
+        assert "Task Description" in html
+
+    def test_html_content_has_create_navigation(self) -> None:
+        """Test that HTML includes Create navigation button."""
+        html = create_index_html()
+        assert "setView('create')" in html
+        assert "+ Create" in html
+
+    def test_html_content_has_create_view(self) -> None:
+        """Test that HTML includes create view handler."""
+        html = create_index_html()
+        assert "view === 'create'" in html
+
+    def test_html_content_has_category_colors(self) -> None:
+        """Test that HTML includes category color constants."""
+        html = create_index_html()
+        assert "CATEGORY_COLORS" in html
+        assert "getCategoryColor" in html
+
+    def test_html_content_has_scoring_weights(self) -> None:
+        """Test that HTML includes scoring weight controls."""
+        html = create_index_html()
+        assert "quality_weight" in html
+        assert "completeness_weight" in html
+        assert "efficiency_weight" in html
+        assert "cost_weight" in html
+
+    def test_html_content_has_suite_api_post(self) -> None:
+        """Test that HTML includes API POST for suite definitions."""
+        html = create_index_html()
+        assert "api.post('/suite-definitions'" in html
+
+    def test_html_content_has_templates_api_get(self) -> None:
+        """Test that HTML includes API GET for templates."""
+        html = create_index_html()
+        assert "api.get('/templates')" in html
+
+    def test_html_content_has_copy_to_clipboard(self) -> None:
+        """Test that HTML includes copy to clipboard functionality."""
+        html = create_index_html()
+        assert "Copy to Clipboard" in html
+        assert "handleCopy" in html
+
+    def test_html_content_has_skeleton_test_creator(self) -> None:
+        """Test that HTML includes SkeletonTestCreator component."""
+        html = create_index_html()
+        assert "SkeletonTestCreator" in html
+
+    def test_html_content_has_multi_step_wizard(self) -> None:
+        """Test that HTML includes multi-step wizard logic."""
+        html = create_index_html()
+        assert "handleNext" in html
+        assert "handleBack" in html
+        assert "validateStep" in html
+
+
 class TestAppRoutes:
     """Tests for app routes."""
 
