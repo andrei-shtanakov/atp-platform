@@ -40,6 +40,7 @@ from atp.dashboard.v2.dependencies import (
     require_feature,
 )
 from atp.dashboard.v2.factory import app, create_app, create_test_app
+from atp.dashboard.v2.routes import router
 
 __all__ = [
     # App factory
@@ -63,4 +64,6 @@ __all__ = [
     "AdminUser",
     "Pagination",
     "PaginationParams",
+    # Routes
+    "router",
 ]
