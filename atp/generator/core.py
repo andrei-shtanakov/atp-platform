@@ -1,6 +1,7 @@
 """Core test generator engine for creating ATP test suites."""
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from atp.generator.templates import (
@@ -342,3 +343,43 @@ class TestGenerator:
             constraints=final_constraints,
             assertions=assertions,
         )
+
+    def to_yaml(self, suite: TestSuiteData) -> str:
+        """Convert a test suite to YAML string.
+
+        Args:
+            suite: TestSuiteData to convert.
+
+        Returns:
+            YAML formatted string with proper indentation.
+
+        Example:
+            >>> generator = TestGenerator()
+            >>> suite = generator.create_suite("my_suite", "My test suite")
+            >>> test = generator.create_custom_test("test-001", "Test", "Do something")
+            >>> suite = generator.add_test(suite, test)
+            >>> yaml_content = generator.to_yaml(suite)
+        """
+        from atp.generator.writer import YAMLWriter
+
+        writer = YAMLWriter()
+        return writer.to_yaml(suite)
+
+    def save(self, suite: TestSuiteData, file_path: str | Path) -> None:
+        """Save a test suite to a YAML file.
+
+        Args:
+            suite: TestSuiteData to save.
+            file_path: Path to output file.
+
+        Example:
+            >>> generator = TestGenerator()
+            >>> suite = generator.create_suite("my_suite", "My test suite")
+            >>> test = generator.create_custom_test("test-001", "Test", "Do something")
+            >>> suite = generator.add_test(suite, test)
+            >>> generator.save(suite, "output.yaml")
+        """
+        from atp.generator.writer import YAMLWriter
+
+        writer = YAMLWriter()
+        writer.save(suite, file_path)

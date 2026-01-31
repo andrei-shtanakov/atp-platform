@@ -1563,6 +1563,47 @@ def dashboard_cmd(host: str, port: int, reload: bool) -> None:
     run_server(host=host, port=port, reload=reload)
 
 
+@cli.command(name="tui")
+def tui_cmd() -> None:
+    """Start the ATP Terminal User Interface.
+
+    Launches an interactive terminal interface for viewing test results,
+    managing test suites, and configuring agents.
+
+    Examples:
+
+      # Start the TUI
+      atp tui
+
+    Requirements:
+
+      This command requires optional TUI dependencies. Install with:
+      uv add atp-platform[tui]
+
+    Keyboard Shortcuts:
+
+      h - Home screen
+      s - Suites screen
+      r - Results screen
+      a - Agents screen
+      ? - Help screen
+      q - Quit
+    """
+    try:
+        from atp.tui import ATPTUI
+    except ImportError as e:
+        click.echo(
+            "Error: TUI dependencies not installed.\n"
+            "Install with: uv add atp-platform[tui]",
+            err=True,
+        )
+        click.echo(f"Details: {e}", err=True)
+        sys.exit(EXIT_ERROR)
+
+    app = ATPTUI()
+    app.run()
+
+
 @cli.command(name="list")
 @click.argument("suite_file", type=click.Path(exists=True, path_type=Path))
 @click.option(
