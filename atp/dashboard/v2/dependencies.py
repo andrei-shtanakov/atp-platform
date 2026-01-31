@@ -1,7 +1,7 @@
 """FastAPI dependency injection for ATP Dashboard v2.
 
 This module provides dependency injection functions for FastAPI routes,
-including database sessions, configuration, and authentication.
+including database sessions, configuration, authentication, and services.
 """
 
 from collections.abc import AsyncGenerator
@@ -18,6 +18,10 @@ from atp.dashboard.auth import (
 from atp.dashboard.database import Database, get_database
 from atp.dashboard.models import User
 from atp.dashboard.v2.config import DashboardConfig, get_config
+from atp.dashboard.v2.services.agent_service import AgentService
+from atp.dashboard.v2.services.comparison_service import ComparisonService
+from atp.dashboard.v2.services.export_service import ExportService
+from atp.dashboard.v2.services.test_service import TestService
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
@@ -121,3 +125,79 @@ def require_feature(feature_name: str):
             )
 
     return _check_feature
+
+
+# Service dependency injection factories
+async def get_test_service(session: DBSession) -> TestService:
+    """Get a TestService instance for dependency injection.
+
+    Args:
+        session: Database session.
+
+    Returns:
+        TestService instance.
+
+    Example:
+        @app.get("/tests")
+        async def list_tests(service: TestServiceDep):
+            return await service.list_test_executions()
+    """
+    return TestService(session)
+
+
+async def get_agent_service(session: DBSession) -> AgentService:
+    """Get an AgentService instance for dependency injection.
+
+    Args:
+        session: Database session.
+
+    Returns:
+        AgentService instance.
+
+    Example:
+        @app.get("/agents")
+        async def list_agents(service: AgentServiceDep):
+            return await service.list_agents()
+    """
+    return AgentService(session)
+
+
+async def get_comparison_service(session: DBSession) -> ComparisonService:
+    """Get a ComparisonService instance for dependency injection.
+
+    Args:
+        session: Database session.
+
+    Returns:
+        ComparisonService instance.
+
+    Example:
+        @app.get("/compare/agents")
+        async def compare_agents(service: ComparisonServiceDep, ...):
+            return await service.compare_agents(...)
+    """
+    return ComparisonService(session)
+
+
+async def get_export_service(session: DBSession) -> ExportService:
+    """Get an ExportService instance for dependency injection.
+
+    Args:
+        session: Database session.
+
+    Returns:
+        ExportService instance.
+
+    Example:
+        @app.get("/export/csv")
+        async def export_csv(service: ExportServiceDep, ...):
+            return await service.export_results_to_csv(...)
+    """
+    return ExportService(session)
+
+
+# Service type aliases for cleaner route signatures
+TestServiceDep = Annotated[TestService, Depends(get_test_service)]
+AgentServiceDep = Annotated[AgentService, Depends(get_agent_service)]
+ComparisonServiceDep = Annotated[ComparisonService, Depends(get_comparison_service)]
+ExportServiceDep = Annotated[ExportService, Depends(get_export_service)]
