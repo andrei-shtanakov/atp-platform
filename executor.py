@@ -28,6 +28,7 @@ from task import (
     Task,
     get_next_tasks,
     get_task_by_id,
+    mark_all_checklist_done,
     parse_tasks,
     update_task_status,
 )
@@ -687,6 +688,7 @@ def execute_task(task: Task, config: ExecutorConfig, state: ExecutorState) -> bo
             if hook_success:
                 state.record_attempt(task_id, True, duration, output=output)
                 update_task_status(TASKS_FILE, task_id, "done")
+                mark_all_checklist_done(TASKS_FILE, task_id)
                 print(f"✅ {task_id} completed successfully in {duration:.1f}s")
                 return True
             else:
@@ -796,12 +798,46 @@ def cmd_run(args, config: ExecutorConfig):
         print(f"   - {t.id}: {t.name}")
 
     # Execute
-    for task in tasks_to_run:
-        success = run_with_retries(task, config, state)
+    if args.all:
+        # For --all mode, continuously re-evaluate ready tasks after each completion
+        executed_ids: set[str] = set()
+        while True:
+            # Re-parse tasks to get updated statuses
+            tasks = parse_tasks(TASKS_FILE)
+            ready_tasks = get_next_tasks(tasks)
 
-        if not success and state.should_stop():
-            print("\n⛔ Stopping: too many consecutive failures")
-            break
+            # Filter by milestone if specified
+            if args.milestone:
+                ready_tasks = [
+                    t
+                    for t in ready_tasks
+                    if args.milestone.lower() in t.milestone.lower()
+                ]
+
+            # Filter out already executed tasks
+            ready_tasks = [t for t in ready_tasks if t.id not in executed_ids]
+
+            if not ready_tasks:
+                break
+
+            task = ready_tasks[0]
+            executed_ids.add(task.id)
+
+            print(f"\n📋 Next ready task: {task.id}: {task.name}")
+
+            success = run_with_retries(task, config, state)
+
+            if not success and state.should_stop():
+                print("\n⛔ Stopping: too many consecutive failures")
+                break
+    else:
+        # For single task or milestone mode, execute the fixed list
+        for task in tasks_to_run:
+            success = run_with_retries(task, config, state)
+
+            if not success and state.should_stop():
+                print("\n⛔ Stopping: too many consecutive failures")
+                break
 
     # Summary
     # Re-read tasks to get updated statuses after execution

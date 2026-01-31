@@ -250,6 +250,38 @@ def update_checklist_item(
     return False
 
 
+def mark_all_checklist_done(filepath: Path, task_id: str) -> int:
+    """Mark all checklist items as done for a task.
+
+    Returns number of items marked.
+    """
+    content = filepath.read_text()
+    lines = content.split("\n")
+
+    in_task = False
+    marked_count = 0
+
+    for i, line in enumerate(lines):
+        if TASK_HEADER.match(line):
+            in_task = task_id in line
+            continue
+
+        # Stop when reaching next task
+        if in_task and line.startswith("### TASK-"):
+            break
+
+        if in_task and CHECKLIST_ITEM.match(line):
+            if "[ ]" in line:
+                lines[i] = line.replace("[ ]", "[x]")
+                marked_count += 1
+
+    if marked_count > 0:
+        filepath.write_text("\n".join(lines))
+        log_change(task_id, f"checklist: marked {marked_count} items done")
+
+    return marked_count
+
+
 def log_change(task_id: str, change: str):
     """Log change to history"""
     HISTORY_FILE.parent.mkdir(exist_ok=True)

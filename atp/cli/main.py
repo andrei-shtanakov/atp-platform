@@ -10,6 +10,7 @@ import click
 import yaml
 
 from atp import __version__
+from atp.cli.commands.init import init_command
 from atp.loader import TestLoader
 
 # Exit codes as per requirements
@@ -1646,6 +1647,10 @@ def list_tests(suite_file: Path, tags: str | None) -> None:
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(EXIT_ERROR)
+
+
+# Register the init command
+cli.add_command(init_command)
 
 
 def main() -> None:
