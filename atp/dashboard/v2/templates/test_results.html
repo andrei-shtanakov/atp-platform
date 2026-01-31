@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+
+{% block title %}ATP Dashboard - Test Results{% endblock %}
+
+{% block content %}
+<!-- Test results content rendered by React -->
+<div id="test-results-root"></div>
+{% endblock %}
+
+{% block scripts %}
+<script type="text/babel">
+    // Suite Detail Component
+    function SuiteDetail({ executionId, onBack }) {
+        const [execution, setExecution] = React.useState(null);
+        const [loading, setLoading] = React.useState(true);
+        const [error, setError] = React.useState(null);
+
+        const loadExecution = React.useCallback(async () => {
+            setLoading(true);
+            setError(null);
+            try {
+                const data = await api.get(`/suites/${executionId}`);
+                setExecution(data);
+            } catch (err) {
+                setError(err.message);
+            } finally {
+                setLoading(false);
+            }
+        }, [executionId]);
+
+        React.useEffect(() => {
+            if (executionId) {
+                loadExecution();
+            }
+        }, [executionId, loadExecution]);
+
+        if (loading) {
+            return (
+                <div>
+                    <SkeletonBox className="h-5 w-24 mb-4" />
+                    <SkeletonBox className="h-7 w-48 mb-4" />
+                    <div className="grid grid-cols-3 gap-4 mb-6">
+                        {[1, 2, 3].map((i) => (
+                            <div key={i} className="bg-white p-4 rounded shadow">
+                                <SkeletonBox className="h-4 w-16 mb-2" />
+                                <SkeletonBox className="h-6 w-24" />
+                            </div>
+                        ))}
+                    </div>
+                    <SkeletonBox className="h-6 w-16 mb-2" />
+                    <SkeletonSuiteList rows={4} />
+                </div>
+            );
+        }
+
+        if (error) {
+            return (
+                <ErrorDisplay
+                    error={{ message: error }}
+                    onRetry={loadExecution}
+                    title="Failed to load test results"
+                />
+            );
+        }
+
+        if (!execution) {
+            return (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+                    <p className="text-yellow-700">Execution not found. It may have been deleted.</p>
+                    <button
+                        onClick={onBack}
+                        className="mt-4 text-blue-500 hover:text-blue-700"
+                    >
+                        &larr; Back to list
+                    </button>
+                </div>
+            );
+        }
+
+        return (
+            <div>
+                <button
+                    onClick={onBack}
+                    className="mb-4 text-blue-500 hover:underline"
+                >
+                    &larr; Back to list
+                </button>
+                <h2 className="text-xl font-bold mb-4">{execution.suite_name}</h2>
+
+                {/* Summary cards */}
+                <div className="grid grid-cols-3 gap-4 mb-6">
+                    <div className="bg-white p-4 rounded shadow">
+                        <h3 className="text-gray-500 text-sm">Agent</h3>
+                        <p className="font-bold">{execution.agent_name}</p>
+                    </div>
+                    <div className="bg-white p-4 rounded shadow">
+                        <h3 className="text-gray-500 text-sm">Success Rate</h3>
+                        <p className="font-bold">{(execution.success_rate * 100).toFixed(1)}%</p>
+                    </div>
+                    <div className="bg-white p-4 rounded shadow">
+                        <h3 className="text-gray-500 text-sm">Duration</h3>
+                        <p className="font-bold">
+                            {execution.duration_seconds?.toFixed(2) || '-'}s
+                        </p>
+                    </div>
+                </div>
+
+                {/* Test results table */}
+                <h3 className="text-lg font-bold mb-2">Tests</h3>
+                <div className="bg-white rounded-lg shadow overflow-hidden">
+                    <table className="min-w-full">
+                        <thead className="bg-gray-50">
+                            <tr>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Test</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Score</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Runs</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                            {execution.tests && execution.tests.map((test) => (
+                                <tr key={test.id}>
+                                    <td className="px-4 py-3">{test.test_name}</td>
+                                    <td className="px-4 py-3">
+                                        <span className={`px-2 py-1 text-xs rounded ${
+                                            test.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                                        }`}>
+                                            {test.success ? 'Passed' : 'Failed'}
+                                        </span>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                        {test.score?.toFixed(1) || '-'}/100
+                                    </td>
+                                    <td className="px-4 py-3">
+                                        {test.successful_runs}/{test.total_runs}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        );
+    }
+
+    // Test Results Page Component
+    function TestResultsPage() {
+        // Get execution ID from URL path or query parameter
+        const pathParts = window.location.pathname.split('/');
+        const executionIdFromPath = pathParts[pathParts.length - 1];
+        const urlParams = new URLSearchParams(window.location.search);
+        const executionId = urlParams.get('id') || (executionIdFromPath !== 'test-results' ? executionIdFromPath : null);
+
+        const handleBack = () => {
+            window.location.href = '/';
+        };
+
+        if (!executionId) {
+            return (
+                <div className="text-center py-10">
+                    <p className="text-gray-600">No execution selected.</p>
+                    <button
+                        onClick={handleBack}
+                        className="mt-4 text-blue-500 hover:text-blue-700"
+                    >
+                        &larr; Go to Dashboard
+                    </button>
+                </div>
+            );
+        }
+
+        return (
+            <ErrorBoundary title="Test Results Error" message="Unable to display test results.">
+                <SuiteDetail executionId={executionId} onBack={handleBack} />
+            </ErrorBoundary>
+        );
+    }
+
+    // Render the test results page
+    const testResultsRoot = document.getElementById('test-results-root');
+    if (testResultsRoot) {
+        const root = ReactDOM.createRoot(testResultsRoot);
+        root.render(<TestResultsPage />);
+    }
+</script>
+{% endblock %}

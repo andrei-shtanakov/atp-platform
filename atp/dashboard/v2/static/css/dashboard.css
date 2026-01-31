@@ -1,0 +1,344 @@
+/**
+ * ATP Dashboard Styles
+ * Custom styles for the ATP Dashboard components
+ */
+
+/* Chart container sizing */
+.chart-container {
+    position: relative;
+    height: 300px;
+}
+
+/* Matrix scroll container for leaderboard */
+.matrix-scroll-container {
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+.matrix-scroll-container::-webkit-scrollbar {
+    height: 8px;
+}
+
+.matrix-scroll-container::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.matrix-scroll-container::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+}
+
+.matrix-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: #a1a1a1;
+}
+
+/* Timeline styles */
+.timeline-container {
+    position: relative;
+    overflow-x: auto;
+}
+
+.timeline-track {
+    position: relative;
+    min-height: 40px;
+}
+
+.timeline-marker {
+    transition: all 0.15s ease;
+}
+
+.timeline-marker:hover {
+    transform: scale(1.1);
+    z-index: 10;
+}
+
+/* Skeleton loader animation */
+@keyframes skeleton-pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.skeleton-pulse {
+    animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+/* Focus styles for keyboard navigation */
+.timeline-event-focusable:focus {
+    outline: 2px solid #3B82F6;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
+}
+
+.timeline-event-focusable:focus:not(:focus-visible) {
+    outline: none;
+    box-shadow: none;
+}
+
+/* Status badge colors */
+.status-badge-completed {
+    background-color: #DEF7EC;
+    color: #03543F;
+}
+
+.status-badge-failed {
+    background-color: #FDE8E8;
+    color: #9B1C1C;
+}
+
+.status-badge-running {
+    background-color: #FEF3C7;
+    color: #92400E;
+}
+
+.status-badge-pending {
+    background-color: #E5E7EB;
+    color: #374151;
+}
+
+/* Event type colors */
+.event-tool-call {
+    background-color: #EFF6FF;
+    border-color: #60A5FA;
+    color: #1D4ED8;
+}
+
+.event-llm-request {
+    background-color: #F0FDF4;
+    border-color: #4ADE80;
+    color: #15803D;
+}
+
+.event-reasoning {
+    background-color: #FFFBEB;
+    border-color: #FBBF24;
+    color: #B45309;
+}
+
+.event-error {
+    background-color: #FEF2F2;
+    border-color: #F87171;
+    color: #B91C1C;
+}
+
+.event-progress {
+    background-color: #F5F3FF;
+    border-color: #A78BFA;
+    color: #6D28D9;
+}
+
+/* Card styles */
+.card {
+    background-color: white;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+}
+
+.card-header {
+    padding: 1rem;
+    border-bottom: 1px solid #E5E7EB;
+    background-color: #F9FAFB;
+    border-radius: 0.5rem 0.5rem 0 0;
+}
+
+.card-body {
+    padding: 1rem;
+}
+
+/* Table styles */
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.data-table thead {
+    background-color: #F9FAFB;
+}
+
+.data-table th {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #6B7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.data-table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #E5E7EB;
+}
+
+.data-table tbody tr:hover {
+    background-color: #F9FAFB;
+}
+
+/* Button styles */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    border-radius: 0.375rem;
+    transition: all 0.15s ease;
+    cursor: pointer;
+}
+
+.btn-primary {
+    background-color: #3B82F6;
+    color: white;
+}
+
+.btn-primary:hover {
+    background-color: #2563EB;
+}
+
+.btn-primary:disabled {
+    background-color: #D1D5DB;
+    cursor: not-allowed;
+}
+
+.btn-secondary {
+    background-color: #F3F4F6;
+    color: #374151;
+    border: 1px solid #D1D5DB;
+}
+
+.btn-secondary:hover {
+    background-color: #E5E7EB;
+}
+
+.btn-danger {
+    background-color: #EF4444;
+    color: white;
+}
+
+.btn-danger:hover {
+    background-color: #DC2626;
+}
+
+/* Form styles */
+.form-input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #D1D5DB;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+}
+
+.form-input:focus {
+    outline: none;
+    ring: 2px;
+    ring-color: #3B82F6;
+    border-color: #3B82F6;
+}
+
+.form-select {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #D1D5DB;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    background-color: white;
+}
+
+.form-select:focus {
+    outline: none;
+    ring: 2px;
+    ring-color: #3B82F6;
+    border-color: #3B82F6;
+}
+
+/* Navigation tabs */
+.nav-tabs {
+    display: flex;
+    gap: 0.25rem;
+    border-bottom: 1px solid #E5E7EB;
+}
+
+.nav-tab {
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #6B7280;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.nav-tab:hover {
+    color: #374151;
+}
+
+.nav-tab.active {
+    color: #3B82F6;
+    border-bottom-color: #3B82F6;
+}
+
+/* Metric display */
+.metric-card {
+    padding: 1rem;
+    background-color: white;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+}
+
+.metric-label {
+    font-size: 0.875rem;
+    color: #6B7280;
+    margin-bottom: 0.25rem;
+}
+
+.metric-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #111827;
+}
+
+.metric-value.success {
+    color: #059669;
+}
+
+.metric-value.error {
+    color: #DC2626;
+}
+
+.metric-value.warning {
+    color: #D97706;
+}
+
+/* Loading spinner */
+.spinner {
+    width: 1.5rem;
+    height: 1.5rem;
+    border: 2px solid #E5E7EB;
+    border-top-color: #3B82F6;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Responsive utilities */
+@media (max-width: 768px) {
+    .metric-value {
+        font-size: 1.25rem;
+    }
+
+    .data-table th,
+    .data-table td {
+        padding: 0.5rem;
+        font-size: 0.75rem;
+    }
+}

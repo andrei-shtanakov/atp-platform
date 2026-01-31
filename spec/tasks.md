@@ -91,7 +91,7 @@ Create service layer to separate business logic from route handlers.
 ---
 
 ### TASK-104: Dashboard Templates Extraction
-🔴 P0 | ⬜ TODO | Est: 3-4h
+🔴 P0 | 🔄 IN_PROGRESS | Est: 3-4h
 
 **Description:**
 Extract inline HTML/JS templates to Jinja2 template files.

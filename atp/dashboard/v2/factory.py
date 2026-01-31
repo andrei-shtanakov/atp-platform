@@ -12,15 +12,24 @@ Set ATP_DASHBOARD_V2=true to enable v2 routes.
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 from atp.dashboard.api import router as api_router_v1
 from atp.dashboard.database import init_database
 from atp.dashboard.v2.config import DashboardConfig, get_config, is_v2_enabled
 from atp.dashboard.v2.routes import router as api_router_v2
+
+# Template and static file directories
+V2_DIR = Path(__file__).parent
+TEMPLATES_DIR = V2_DIR / "templates"
+STATIC_DIR = V2_DIR / "static"
 
 
 @asynccontextmanager
@@ -119,6 +128,48 @@ def create_app(
     # Mount API routes (v1 or v2 based on configuration)
     api_router = api_router_v2 if use_v2_routes else api_router_v1
     app.include_router(api_router, prefix="/api")
+
+    # Configure Jinja2 templates
+    if TEMPLATES_DIR.exists():
+        templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+        app.state.templates = templates
+
+        # Mount static files for v2
+        if STATIC_DIR.exists():
+            app.mount(
+                "/static/v2",
+                StaticFiles(directory=str(STATIC_DIR)),
+                name="static_v2",
+            )
+
+        # Add HTML routes for template rendering
+        @app.get("/", response_class=HTMLResponse)
+        async def home(request: Request) -> HTMLResponse:
+            """Render the home page template."""
+            return templates.TemplateResponse(
+                request=request,
+                name="home.html",
+            )
+
+        @app.get("/test-results", response_class=HTMLResponse)
+        @app.get("/test-results/{execution_id}", response_class=HTMLResponse)
+        async def test_results(
+            request: Request, execution_id: str | None = None
+        ) -> HTMLResponse:
+            """Render the test results page template."""
+            return templates.TemplateResponse(
+                request=request,
+                name="test_results.html",
+                context={"execution_id": execution_id},
+            )
+
+        @app.get("/comparison", response_class=HTMLResponse)
+        async def comparison(request: Request) -> HTMLResponse:
+            """Render the comparison page template."""
+            return templates.TemplateResponse(
+                request=request,
+                name="comparison.html",
+            )
 
     return app
 

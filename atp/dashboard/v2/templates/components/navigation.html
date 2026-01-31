@@ -1,0 +1,211 @@
+{# Navigation Component Template - Header and navigation for the dashboard #}
+
+{# Macro for main navigation bar #}
+{% macro navbar(current_page="", user=None) %}
+<nav class="bg-white shadow-sm border-b border-gray-200">
+    <div class="container mx-auto px-4">
+        <div class="flex justify-between items-center h-16">
+            <!-- Logo and title -->
+            <div class="flex items-center gap-4">
+                <a href="/" class="flex items-center gap-2">
+                    <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                    </svg>
+                    <span class="text-xl font-bold text-gray-800">ATP Dashboard</span>
+                </a>
+            </div>
+
+            <!-- Navigation links -->
+            <div class="hidden md:flex items-center gap-1">
+                {{ nav_link("Dashboard", "/", current_page == "home") }}
+                {{ nav_link("Suites", "/suites", current_page == "suites") }}
+                {{ nav_link("Compare", "/comparison", current_page == "comparison") }}
+                {{ nav_link("Leaderboard", "/leaderboard", current_page == "leaderboard") }}
+                {{ nav_link("Timeline", "/timeline", current_page == "timeline") }}
+            </div>
+
+            <!-- User menu / Actions -->
+            <div class="flex items-center gap-4">
+                {% if user %}
+                <div class="flex items-center gap-2">
+                    <span class="text-sm text-gray-600">{{ user.username }}</span>
+                    <button
+                        onclick="logout()"
+                        class="text-sm text-gray-500 hover:text-gray-700"
+                    >
+                        Logout
+                    </button>
+                </div>
+                {% else %}
+                <a href="/login" class="text-sm text-gray-600 hover:text-gray-800">
+                    Login
+                </a>
+                {% endif %}
+
+                <!-- Mobile menu button -->
+                <button
+                    type="button"
+                    class="md:hidden p-2 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+                    onclick="toggleMobileMenu()"
+                    aria-label="Toggle menu"
+                >
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Mobile navigation menu -->
+        <div id="mobile-menu" class="md:hidden hidden pb-4">
+            <div class="flex flex-col gap-1">
+                {{ mobile_nav_link("Dashboard", "/", current_page == "home") }}
+                {{ mobile_nav_link("Suites", "/suites", current_page == "suites") }}
+                {{ mobile_nav_link("Compare", "/comparison", current_page == "comparison") }}
+                {{ mobile_nav_link("Leaderboard", "/leaderboard", current_page == "leaderboard") }}
+                {{ mobile_nav_link("Timeline", "/timeline", current_page == "timeline") }}
+            </div>
+        </div>
+    </div>
+</nav>
+{% endmacro %}
+
+{# Helper macro for desktop nav link #}
+{% macro nav_link(label, href, is_active=false) %}
+<a
+    href="{{ href }}"
+    class="px-3 py-2 text-sm font-medium rounded-md transition-colors
+        {% if is_active %}
+            bg-blue-100 text-blue-700
+        {% else %}
+            text-gray-600 hover:bg-gray-100 hover:text-gray-800
+        {% endif %}"
+>
+    {{ label }}
+</a>
+{% endmacro %}
+
+{# Helper macro for mobile nav link #}
+{% macro mobile_nav_link(label, href, is_active=false) %}
+<a
+    href="{{ href }}"
+    class="block px-3 py-2 text-base font-medium rounded-md transition-colors
+        {% if is_active %}
+            bg-blue-100 text-blue-700
+        {% else %}
+            text-gray-600 hover:bg-gray-100 hover:text-gray-800
+        {% endif %}"
+>
+    {{ label }}
+</a>
+{% endmacro %}
+
+{# Macro for breadcrumb navigation #}
+{% macro breadcrumb(items) %}
+<nav class="flex mb-4" aria-label="Breadcrumb">
+    <ol class="flex items-center space-x-2">
+        {% for item in items %}
+        <li class="flex items-center">
+            {% if not loop.first %}
+            <svg class="w-4 h-4 text-gray-400 mx-2" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+            </svg>
+            {% endif %}
+            {% if item.href and not loop.last %}
+            <a href="{{ item.href }}" class="text-sm text-blue-600 hover:text-blue-800">
+                {{ item.label }}
+            </a>
+            {% else %}
+            <span class="text-sm text-gray-500">{{ item.label }}</span>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ol>
+</nav>
+{% endmacro %}
+
+{# Macro for page header with title and actions #}
+{% macro page_header(title, subtitle=None, actions=None) %}
+<div class="mb-6">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">{{ title }}</h1>
+            {% if subtitle %}
+            <p class="mt-1 text-sm text-gray-500">{{ subtitle }}</p>
+            {% endif %}
+        </div>
+        {% if actions %}
+        <div class="flex items-center gap-2">
+            {{ caller() }}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endmacro %}
+
+{# Macro for tab navigation #}
+{% macro tabs(items, current_tab="", tab_param="tab") %}
+<div class="border-b border-gray-200 mb-6">
+    <nav class="flex gap-4" aria-label="Tabs">
+        {% for item in items %}
+        <a
+            href="?{{ tab_param }}={{ item.id }}"
+            class="py-3 px-1 border-b-2 text-sm font-medium transition-colors
+                {% if current_tab == item.id or (not current_tab and loop.first) %}
+                    border-blue-500 text-blue-600
+                {% else %}
+                    border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300
+                {% endif %}"
+        >
+            {{ item.label }}
+            {% if item.count is defined %}
+            <span class="ml-2 px-2 py-0.5 rounded-full text-xs
+                {% if current_tab == item.id or (not current_tab and loop.first) %}
+                    bg-blue-100 text-blue-600
+                {% else %}
+                    bg-gray-100 text-gray-600
+                {% endif %}">
+                {{ item.count }}
+            </span>
+            {% endif %}
+        </a>
+        {% endfor %}
+    </nav>
+</div>
+{% endmacro %}
+
+{# JavaScript for navigation #}
+{% macro nav_scripts() %}
+<script>
+    /**
+     * Toggle mobile menu visibility
+     */
+    function toggleMobileMenu() {
+        const menu = document.getElementById('mobile-menu');
+        if (menu) {
+            menu.classList.toggle('hidden');
+        }
+    }
+
+    /**
+     * Handle logout
+     */
+    function logout() {
+        localStorage.removeItem('token');
+        window.location.href = '/login';
+    }
+
+    // Close mobile menu when clicking outside
+    document.addEventListener('click', (event) => {
+        const menu = document.getElementById('mobile-menu');
+        const button = event.target.closest('[onclick="toggleMobileMenu()"]');
+        if (menu && !menu.contains(event.target) && !button) {
+            menu.classList.add('hidden');
+        }
+    });
+
+    // Export functions globally
+    window.toggleMobileMenu = toggleMobileMenu;
+    window.logout = logout;
+</script>
+{% endmacro %}
