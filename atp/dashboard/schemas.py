@@ -435,5 +435,207 @@ class DashboardSummary(BaseModel):
     recent_executions: list[SuiteExecutionSummary]
 
 
+# ==================== Test Suite Management Schemas ====================
+
+
+class ConstraintsCreate(BaseModel):
+    """Schema for creating execution constraints."""
+
+    max_steps: int | None = Field(None, description="Maximum number of steps allowed")
+    max_tokens: int | None = Field(None, description="Maximum tokens allowed")
+    timeout_seconds: int = Field(300, ge=1, description="Timeout in seconds")
+    allowed_tools: list[str] | None = Field(
+        None, description="List of allowed tools, None means all allowed"
+    )
+    budget_usd: float | None = Field(None, ge=0, description="Budget limit in USD")
+
+
+class AssertionCreate(BaseModel):
+    """Schema for creating an assertion."""
+
+    type: str = Field(..., min_length=1, description="Assertion type")
+    config: dict[str, Any] = Field(
+        default_factory=dict, description="Assertion configuration"
+    )
+
+
+class TaskCreate(BaseModel):
+    """Schema for creating a task definition."""
+
+    description: str = Field(
+        ..., min_length=1, max_length=10000, description="Task description"
+    )
+    input_data: dict[str, Any] | None = Field(None, description="Optional input data")
+    expected_artifacts: list[str] | None = Field(
+        None, description="Expected output artifacts"
+    )
+
+
+class ScoringWeightsCreate(BaseModel):
+    """Schema for scoring weights."""
+
+    quality_weight: float = Field(0.4, ge=0.0, le=1.0)
+    completeness_weight: float = Field(0.3, ge=0.0, le=1.0)
+    efficiency_weight: float = Field(0.2, ge=0.0, le=1.0)
+    cost_weight: float = Field(0.1, ge=0.0, le=1.0)
+
+
+class TestCreateRequest(BaseModel):
+    """Schema for creating a test within a suite."""
+
+    id: str = Field(..., min_length=1, max_length=100, description="Test ID")
+    name: str = Field(..., min_length=1, max_length=255, description="Test name")
+    description: str | None = Field(None, max_length=2000, description="Description")
+    tags: list[str] = Field(default_factory=list, description="Test tags")
+    task: TaskCreate = Field(..., description="Task specification")
+    constraints: ConstraintsCreate = Field(
+        default_factory=ConstraintsCreate, description="Execution constraints"
+    )
+    assertions: list[AssertionCreate] = Field(
+        default_factory=list, description="Test assertions"
+    )
+    scoring: ScoringWeightsCreate | None = Field(
+        None, description="Optional scoring weights override"
+    )
+
+
+class TestDefaultsCreate(BaseModel):
+    """Schema for test suite defaults."""
+
+    runs_per_test: int = Field(1, ge=1, le=100, description="Number of runs per test")
+    timeout_seconds: int = Field(300, ge=1, le=3600, description="Default timeout")
+    scoring: ScoringWeightsCreate = Field(
+        default_factory=ScoringWeightsCreate, description="Default scoring weights"
+    )
+    constraints: ConstraintsCreate | None = Field(
+        None, description="Default constraints"
+    )
+
+
+class AgentConfigCreate(BaseModel):
+    """Schema for agent configuration in suite."""
+
+    name: str = Field(..., min_length=1, max_length=100, description="Agent name")
+    type: str | None = Field(
+        None, max_length=50, description="Agent type (http, container, etc.)"
+    )
+    config: dict[str, Any] = Field(
+        default_factory=dict, description="Agent-specific configuration"
+    )
+
+
+class SuiteCreateRequest(BaseModel):
+    """Schema for creating a new test suite definition."""
+
+    name: str = Field(..., min_length=1, max_length=255, description="Suite name")
+    version: str = Field("1.0", max_length=20, description="Suite version")
+    description: str | None = Field(None, max_length=2000, description="Description")
+    defaults: TestDefaultsCreate = Field(
+        default_factory=TestDefaultsCreate, description="Default settings"
+    )
+    agents: list[AgentConfigCreate] = Field(
+        default_factory=list, description="Agent configurations"
+    )
+    tests: list[TestCreateRequest] = Field(
+        default_factory=list, description="Initial tests (optional)"
+    )
+
+
+class TestResponse(BaseModel):
+    """Schema for test response in suite."""
+
+    id: str
+    name: str
+    description: str | None
+    tags: list[str]
+    task: TaskCreate
+    constraints: ConstraintsCreate
+    assertions: list[AssertionCreate]
+    scoring: ScoringWeightsCreate | None
+
+
+class SuiteDefinitionResponse(BaseModel):
+    """Schema for suite definition response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    version: str
+    description: str | None
+    defaults: TestDefaultsCreate
+    agents: list[AgentConfigCreate]
+    tests: list[TestResponse]
+    created_at: datetime
+    updated_at: datetime
+
+
+class SuiteDefinitionSummary(BaseModel):
+    """Summary of a suite definition."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    version: str
+    description: str | None
+    test_count: int
+    agent_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class SuiteDefinitionList(BaseModel):
+    """Paginated list of suite definitions."""
+
+    total: int
+    items: list[SuiteDefinitionSummary]
+    limit: int
+    offset: int
+
+
+# ==================== Template Schemas ====================
+
+
+class TemplateVariableInfo(BaseModel):
+    """Information about a variable used in a template."""
+
+    name: str
+    description: str | None = None
+    required: bool = True
+
+
+class TemplateResponse(BaseModel):
+    """Schema for template response."""
+
+    name: str
+    description: str
+    category: str
+    task_template: str
+    default_constraints: ConstraintsCreate
+    default_assertions: list[AssertionCreate]
+    tags: list[str]
+    variables: list[str]
+
+
+class TemplateListResponse(BaseModel):
+    """Response containing list of templates."""
+
+    templates: list[TemplateResponse]
+    categories: list[str]
+    total: int
+
+
+# ==================== YAML Export Schemas ====================
+
+
+class YAMLExportResponse(BaseModel):
+    """Response for YAML export."""
+
+    yaml_content: str
+    suite_name: str
+    test_count: int
+
+
 # Update forward references
 SuiteExecutionDetail.model_rebuild()

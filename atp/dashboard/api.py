@@ -23,6 +23,7 @@ from atp.dashboard.database import get_database
 from atp.dashboard.models import (
     Agent,
     RunResult,
+    SuiteDefinition,
     SuiteExecution,
     TestExecution,
     User,
@@ -33,11 +34,14 @@ from atp.dashboard.schemas import (
     AgentColumn,
     AgentComparisonMetrics,
     AgentComparisonResponse,
+    AgentConfigCreate,
     AgentCreate,
     AgentExecutionDetail,
     AgentResponse,
     AgentTimeline,
     AgentUpdate,
+    AssertionCreate,
+    ConstraintsCreate,
     DashboardSummary,
     EvaluationResultResponse,
     EventSummary,
@@ -45,15 +49,26 @@ from atp.dashboard.schemas import (
     MultiTimelineResponse,
     RunResultSummary,
     ScoreComponentResponse,
+    ScoringWeightsCreate,
     SideBySideComparisonResponse,
+    SuiteCreateRequest,
+    SuiteDefinitionList,
+    SuiteDefinitionResponse,
+    SuiteDefinitionSummary,
     SuiteExecutionDetail,
     SuiteExecutionList,
     SuiteExecutionSummary,
     SuiteTrend,
+    TaskCreate,
+    TemplateListResponse,
+    TemplateResponse,
     TestComparisonMetrics,
+    TestCreateRequest,
+    TestDefaultsCreate,
     TestExecutionDetail,
     TestExecutionList,
     TestExecutionSummary,
+    TestResponse,
     TestRow,
     TestScore,
     TestTrend,
@@ -64,6 +79,7 @@ from atp.dashboard.schemas import (
     TrendResponse,
     UserCreate,
     UserResponse,
+    YAMLExportResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -1531,4 +1547,478 @@ async def get_dashboard_summary(
         recent_success_rate=recent_success_rate,
         recent_avg_score=recent_avg_score,
         recent_executions=recent_summaries,
+    )
+
+
+# ==================== Suite Definition Routes ====================
+
+
+@router.post(
+    "/suite-definitions",
+    response_model=SuiteDefinitionResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["suite-definitions"],
+)
+async def create_suite_definition(
+    session: SessionDep,
+    suite_data: SuiteCreateRequest,
+    user: RequiredUser,
+) -> SuiteDefinitionResponse:
+    """Create a new test suite definition.
+
+    Requires authentication. Creates a new suite definition that can be
+    managed through the dashboard and exported to YAML.
+
+    Args:
+        session: Database session.
+        suite_data: Suite definition data.
+        user: Authenticated user.
+
+    Returns:
+        The created suite definition.
+
+    Raises:
+        HTTPException: If a suite with the same name already exists.
+    """
+    # Check for existing suite with same name
+    stmt = select(SuiteDefinition).where(SuiteDefinition.name == suite_data.name)
+    result = await session.execute(stmt)
+    if result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Suite '{suite_data.name}' already exists",
+        )
+
+    # Convert Pydantic models to dicts for JSON storage
+    defaults_dict = suite_data.defaults.model_dump()
+    agents_list = [a.model_dump() for a in suite_data.agents]
+    tests_list = [t.model_dump() for t in suite_data.tests]
+
+    # Create suite definition
+    suite_def = SuiteDefinition(
+        name=suite_data.name,
+        version=suite_data.version,
+        description=suite_data.description,
+        defaults_json=defaults_dict,
+        agents_json=agents_list,
+        tests_json=tests_list,
+        created_by_id=user.id,
+    )
+    session.add(suite_def)
+    await session.commit()
+    await session.refresh(suite_def)
+
+    return _build_suite_definition_response(suite_def)
+
+
+@router.get(
+    "/suite-definitions",
+    response_model=SuiteDefinitionList,
+    tags=["suite-definitions"],
+)
+async def list_suite_definitions(
+    session: SessionDep,
+    user: CurrentUser,
+    limit: int = Query(default=50, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> SuiteDefinitionList:
+    """List all suite definitions.
+
+    Args:
+        session: Database session.
+        user: Current user (optional auth).
+        limit: Maximum items to return.
+        offset: Offset for pagination.
+
+    Returns:
+        Paginated list of suite definitions.
+    """
+    # Get total count
+    count_stmt = select(func.count(SuiteDefinition.id))
+    total = (await session.execute(count_stmt)).scalar() or 0
+
+    # Get paginated results
+    stmt = (
+        select(SuiteDefinition)
+        .order_by(SuiteDefinition.updated_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    result = await session.execute(stmt)
+    suites = result.scalars().all()
+
+    items = [
+        SuiteDefinitionSummary(
+            id=s.id,
+            name=s.name,
+            version=s.version,
+            description=s.description,
+            test_count=s.test_count,
+            agent_count=s.agent_count,
+            created_at=s.created_at,
+            updated_at=s.updated_at,
+        )
+        for s in suites
+    ]
+
+    return SuiteDefinitionList(
+        total=total,
+        items=items,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get(
+    "/suite-definitions/{suite_id}",
+    response_model=SuiteDefinitionResponse,
+    tags=["suite-definitions"],
+)
+async def get_suite_definition(
+    session: SessionDep,
+    suite_id: int,
+    user: CurrentUser,
+) -> SuiteDefinitionResponse:
+    """Get a suite definition by ID.
+
+    Args:
+        session: Database session.
+        suite_id: Suite definition ID.
+        user: Current user (optional auth).
+
+    Returns:
+        The suite definition.
+
+    Raises:
+        HTTPException: If suite not found.
+    """
+    suite_def = await session.get(SuiteDefinition, suite_id)
+    if suite_def is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Suite definition {suite_id} not found",
+        )
+
+    return _build_suite_definition_response(suite_def)
+
+
+@router.post(
+    "/suite-definitions/{suite_id}/tests",
+    response_model=SuiteDefinitionResponse,
+    tags=["suite-definitions"],
+)
+async def add_test_to_suite(
+    session: SessionDep,
+    suite_id: int,
+    test_data: TestCreateRequest,
+    user: RequiredUser,
+) -> SuiteDefinitionResponse:
+    """Add a test to an existing suite definition.
+
+    Requires authentication. Adds a new test to the suite's tests list.
+
+    Args:
+        session: Database session.
+        suite_id: Suite definition ID.
+        test_data: Test definition data.
+        user: Authenticated user.
+
+    Returns:
+        The updated suite definition.
+
+    Raises:
+        HTTPException: If suite not found or test ID already exists.
+    """
+    suite_def = await session.get(SuiteDefinition, suite_id)
+    if suite_def is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Suite definition {suite_id} not found",
+        )
+
+    # Check if test ID already exists
+    existing_ids = {t.get("id") for t in suite_def.tests_json}
+    if test_data.id in existing_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Test ID '{test_data.id}' already exists in suite",
+        )
+
+    # Add test to suite
+    test_dict = test_data.model_dump()
+    suite_def.tests_json = [*suite_def.tests_json, test_dict]
+
+    await session.commit()
+    await session.refresh(suite_def)
+
+    return _build_suite_definition_response(suite_def)
+
+
+@router.delete(
+    "/suite-definitions/{suite_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["suite-definitions"],
+)
+async def delete_suite_definition(
+    session: SessionDep,
+    suite_id: int,
+    user: RequiredUser,
+) -> None:
+    """Delete a suite definition.
+
+    Requires authentication.
+
+    Args:
+        session: Database session.
+        suite_id: Suite definition ID.
+        user: Authenticated user.
+
+    Raises:
+        HTTPException: If suite not found.
+    """
+    suite_def = await session.get(SuiteDefinition, suite_id)
+    if suite_def is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Suite definition {suite_id} not found",
+        )
+
+    await session.delete(suite_def)
+    await session.commit()
+
+
+@router.get(
+    "/suite-definitions/{suite_id}/yaml",
+    response_model=YAMLExportResponse,
+    tags=["suite-definitions"],
+)
+async def export_suite_yaml(
+    session: SessionDep,
+    suite_id: int,
+    user: CurrentUser,
+) -> YAMLExportResponse:
+    """Export a suite definition as YAML.
+
+    Args:
+        session: Database session.
+        suite_id: Suite definition ID.
+        user: Current user (optional auth).
+
+    Returns:
+        YAML content and metadata.
+
+    Raises:
+        HTTPException: If suite not found or has no tests.
+    """
+    suite_def = await session.get(SuiteDefinition, suite_id)
+    if suite_def is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Suite definition {suite_id} not found",
+        )
+
+    if not suite_def.tests_json:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot export suite with no tests",
+        )
+
+    # Convert to TestSuiteData for YAML export
+    from atp.generator.core import TestSuiteData
+    from atp.generator.writer import YAMLWriter
+    from atp.loader.models import (
+        AgentConfig,
+        Assertion,
+        Constraints,
+        ScoringWeights,
+        TaskDefinition,
+        TestDefaults,
+        TestDefinition,
+    )
+
+    # Build TestDefaults
+    defaults_data = suite_def.defaults_json
+    defaults = TestDefaults(
+        runs_per_test=defaults_data.get("runs_per_test", 1),
+        timeout_seconds=defaults_data.get("timeout_seconds", 300),
+        scoring=ScoringWeights(**defaults_data.get("scoring", {})),
+        constraints=Constraints(**defaults_data.get("constraints", {}))
+        if defaults_data.get("constraints")
+        else None,
+    )
+
+    # Build agents
+    agents = [
+        AgentConfig(
+            name=a["name"],
+            type=a.get("type"),
+            config=a.get("config", {}),
+        )
+        for a in suite_def.agents_json
+    ]
+
+    # Build tests
+    tests = []
+    for t in suite_def.tests_json:
+        task_data = t["task"]
+        tests.append(
+            TestDefinition(
+                id=t["id"],
+                name=t["name"],
+                description=t.get("description"),
+                tags=t.get("tags", []),
+                task=TaskDefinition(
+                    description=task_data["description"],
+                    input_data=task_data.get("input_data"),
+                    expected_artifacts=task_data.get("expected_artifacts"),
+                ),
+                constraints=Constraints(**t.get("constraints", {})),
+                assertions=[
+                    Assertion(type=a["type"], config=a.get("config", {}))
+                    for a in t.get("assertions", [])
+                ],
+                scoring=ScoringWeights(**t["scoring"]) if t.get("scoring") else None,
+            )
+        )
+
+    # Create suite data
+    suite_data = TestSuiteData(
+        name=suite_def.name,
+        version=suite_def.version,
+        description=suite_def.description,
+        defaults=defaults,
+        agents=agents,
+        tests=tests,
+    )
+
+    # Generate YAML
+    writer = YAMLWriter()
+    yaml_content = writer.to_yaml(suite_data)
+
+    return YAMLExportResponse(
+        yaml_content=yaml_content,
+        suite_name=suite_def.name,
+        test_count=len(suite_def.tests_json),
+    )
+
+
+def _build_suite_definition_response(
+    suite_def: SuiteDefinition,
+) -> SuiteDefinitionResponse:
+    """Build a SuiteDefinitionResponse from a SuiteDefinition model.
+
+    Args:
+        suite_def: The database model.
+
+    Returns:
+        The response schema.
+    """
+    # Convert JSON fields back to Pydantic models
+    defaults = TestDefaultsCreate(**suite_def.defaults_json)
+    agents = [AgentConfigCreate(**a) for a in suite_def.agents_json]
+    tests = [
+        TestResponse(
+            id=t["id"],
+            name=t["name"],
+            description=t.get("description"),
+            tags=t.get("tags", []),
+            task=TaskCreate(**t["task"]),
+            constraints=ConstraintsCreate(**t.get("constraints", {})),
+            assertions=[AssertionCreate(**a) for a in t.get("assertions", [])],
+            scoring=ScoringWeightsCreate(**t["scoring"]) if t.get("scoring") else None,
+        )
+        for t in suite_def.tests_json
+    ]
+
+    return SuiteDefinitionResponse(
+        id=suite_def.id,
+        name=suite_def.name,
+        version=suite_def.version,
+        description=suite_def.description,
+        defaults=defaults,
+        agents=agents,
+        tests=tests,
+        created_at=suite_def.created_at,
+        updated_at=suite_def.updated_at,
+    )
+
+
+# ==================== Template Routes ====================
+
+
+@router.get(
+    "/templates",
+    response_model=TemplateListResponse,
+    tags=["templates"],
+)
+async def list_templates(
+    user: CurrentUser,
+    category: str | None = None,
+) -> TemplateListResponse:
+    """List available test templates.
+
+    Returns all registered templates that can be used to create tests.
+    Templates provide pre-defined patterns with variable placeholders.
+
+    Args:
+        user: Current user (optional auth).
+        category: Optional category filter.
+
+    Returns:
+        List of templates and available categories.
+    """
+    from atp.generator.templates import (
+        TemplateRegistry,
+        get_template_variables,
+    )
+
+    registry = TemplateRegistry()
+    template_names = registry.list_templates()
+
+    templates: list[TemplateResponse] = []
+    categories_set: set[str] = set()
+
+    for name in template_names:
+        template = registry.get(name)
+        categories_set.add(template.category)
+
+        # Filter by category if specified
+        if category and template.category != category:
+            continue
+
+        # Get variables used in template
+        variables = list(get_template_variables(template))
+
+        # Convert constraints to schema
+        constraints = ConstraintsCreate(
+            max_steps=template.default_constraints.max_steps,
+            max_tokens=template.default_constraints.max_tokens,
+            timeout_seconds=template.default_constraints.timeout_seconds,
+            allowed_tools=template.default_constraints.allowed_tools,
+            budget_usd=template.default_constraints.budget_usd,
+        )
+
+        # Convert assertions to schema
+        assertions = [
+            AssertionCreate(type=a.type, config=a.config)
+            for a in template.default_assertions
+        ]
+
+        templates.append(
+            TemplateResponse(
+                name=template.name,
+                description=template.description,
+                category=template.category,
+                task_template=template.task_template,
+                default_constraints=constraints,
+                default_assertions=assertions,
+                tags=template.tags,
+                variables=variables,
+            )
+        )
+
+    return TemplateListResponse(
+        templates=templates,
+        categories=sorted(categories_set),
+        total=len(templates),
     )
