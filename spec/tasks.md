@@ -113,7 +113,7 @@ Implement `atp init` command for interactive test suite creation.
 ---
 
 ### TASK-005: CLI Generate Command
-🟠 P1 | ⬜ TODO | Est: 2-3h
+🟠 P1 | 🔄 IN_PROGRESS | Est: 2-3h
 
 **Description:**
 Implement `atp generate` command for adding tests to existing suites.
