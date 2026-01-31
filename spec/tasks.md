@@ -113,21 +113,21 @@ Implement `atp init` command for interactive test suite creation.
 ---
 
 ### TASK-005: CLI Generate Command
-🟠 P1 | 🔄 IN_PROGRESS | Est: 2-3h
+🟠 P1 | ✅ DONE | Est: 2-3h
 
 **Description:**
 Implement `atp generate` command for adding tests to existing suites.
 
 **Checklist:**
-- [ ] Create `atp/cli/commands/generate.py`
-- [ ] Implement `generate_command` with Click decorators
-- [ ] Add `--suite` option to specify existing suite file
-- [ ] Add `--template` option for template-based generation
-- [ ] Load existing suite, add test, save back
-- [ ] Implement `atp generate test` subcommand
-- [ ] Implement `atp generate suite` subcommand for batch creation
-- [ ] Register command in `atp/cli/main.py`
-- [ ] Write integration tests
+- [x] Create `atp/cli/commands/generate.py`
+- [x] Implement `generate_command` with Click decorators
+- [x] Add `--suite` option to specify existing suite file
+- [x] Add `--template` option for template-based generation
+- [x] Load existing suite, add test, save back
+- [x] Implement `atp generate test` subcommand
+- [x] Implement `atp generate suite` subcommand for batch creation
+- [x] Register command in `atp/cli/main.py`
+- [x] Write integration tests
 
 **Traces to:** [ARCH-002]
 **Depends on:** [TASK-004]
@@ -227,21 +227,21 @@ Add API endpoints for test suite management in the dashboard.
 ---
 
 ### TASK-010: Dashboard UI Components
-🟠 P1 | ⬜ TODO | Est: 4-5h
+🟠 P1 | ✅ DONE | Est: 4-5h
 
 **Description:**
 Add React components for test suite creation in the dashboard.
 
 **Checklist:**
-- [ ] Create `TestCreatorForm` component with multi-step wizard
-- [ ] Step 1: Suite details (name, description, defaults)
-- [ ] Step 2: Template selection and test list
-- [ ] Step 3: YAML preview and save
-- [ ] Add template cards with category badges
-- [ ] Add test list management (add/remove)
-- [ ] Wire up API calls for creation
-- [ ] Add loading and error states
-- [ ] Test responsive layout
+- [x] Create `TestCreatorForm` component with multi-step wizard
+- [x] Step 1: Suite details (name, description, defaults)
+- [x] Step 2: Template selection and test list
+- [x] Step 3: YAML preview and save
+- [x] Add template cards with category badges
+- [x] Add test list management (add/remove)
+- [x] Wire up API calls for creation
+- [x] Add loading and error states
+- [x] Test responsive layout
 
 **Traces to:** [ARCH-004]
 **Depends on:** [TASK-009]
@@ -270,9 +270,9 @@ TASK-001 (Core Class) ✅
     │                 │
     │                 └──► TASK-008 (TUI Editors)
     │
-    └──► TASK-009 (Dashboard API)
+    └──► TASK-009 (Dashboard API) ✅
              │
-             └──► TASK-010 (Dashboard UI)
+             └──► TASK-010 (Dashboard UI) ✅
 ```
 
 ---
