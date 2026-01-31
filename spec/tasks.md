@@ -181,20 +181,20 @@ Implement the main TUI screen with tree view and YAML preview.
 ---
 
 ### TASK-008: TUI Editor Screens
-🟡 P2 | ⬜ TODO | Est: 3-4h
+🟡 P2 | ✅ DONE | Est: 3-4h
 
 **Description:**
 Implement suite and test editor screens.
 
 **Checklist:**
-- [ ] Create `atp/tui/screens/suite_editor.py` with `NewSuiteScreen`
-- [ ] Create `atp/tui/screens/test_editor.py` with `AddTestScreen`
-- [ ] Add input fields for all suite properties
-- [ ] Add input fields for all test properties
-- [ ] Implement form validation
-- [ ] Add Create/Cancel buttons with proper navigation
-- [ ] Wire up callbacks to update main screen
-- [ ] Write tests for form submission
+- [x] Create `atp/tui/screens/suite_editor.py` with `NewSuiteScreen`
+- [x] Create `atp/tui/screens/test_editor.py` with `AddTestScreen`
+- [x] Add input fields for all suite properties
+- [x] Add input fields for all test properties
+- [x] Implement form validation
+- [x] Add Create/Cancel buttons with proper navigation
+- [x] Wire up callbacks to update main screen
+- [x] Write tests for form submission
 
 **Traces to:** [ARCH-003]
 **Depends on:** [TASK-007]
@@ -266,9 +266,9 @@ TASK-001 (Core Class) ✅
     │
     ├──► TASK-006 (TUI Setup) ✅
     │        │
-    │        └──► TASK-007 (TUI Main)
+    │        └──► TASK-007 (TUI Main) ✅
     │                 │
-    │                 └──► TASK-008 (TUI Editors)
+    │                 └──► TASK-008 (TUI Editors) ✅
     │
     └──► TASK-009 (Dashboard API) ✅
              │
@@ -288,9 +288,7 @@ TASK-001 (Core Class) ✅
 | **Total** | 10 tasks | ~27-36h |
 
 ### Ready to Start
-- [TASK-005] CLI Generate Command (TASK-004 done)
-- [TASK-007] TUI Main Screen (TASK-006 done)
-- [TASK-009] Dashboard API Endpoints (TASK-001, TASK-002 done)
+- All tasks completed!
 
 ### Critical Path
 TASK-001 ✅ → TASK-002 ✅ → TASK-004 ✅ → TASK-005 (CLI)
@@ -302,4 +300,4 @@ TASK-001 ✅ → TASK-003 ✅ → TASK-004 ✅ (YAML)
 3. ✅ TASK-004 (CLI Init) — first user-facing feature
 4. TASK-005 (CLI Generate) — extends CLI
 5. TASK-009 + TASK-010 (Dashboard) — web interface
-6. ✅ TASK-006 → TASK-007 → TASK-008 (TUI) — optional, lower priority
+6. ✅ TASK-006 → ✅ TASK-007 → ✅ TASK-008 (TUI) — completed

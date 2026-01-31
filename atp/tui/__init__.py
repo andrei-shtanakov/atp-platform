@@ -19,6 +19,8 @@ Requirements:
 
 from atp.tui.app import ATPTUI, run_tui
 from atp.tui.screens.main_menu import MainScreen
+from atp.tui.screens.suite_editor import NewSuiteScreen
+from atp.tui.screens.test_editor import AddTestScreen
 from atp.tui.widgets.test_tree import TestTreeWidget
 from atp.tui.widgets.yaml_preview import YAMLPreviewWidget
 
@@ -26,6 +28,8 @@ __all__ = [
     "ATPTUI",
     "run_tui",
     "MainScreen",
+    "NewSuiteScreen",
+    "AddTestScreen",
     "TestTreeWidget",
     "YAMLPreviewWidget",
 ]
