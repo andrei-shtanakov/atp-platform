@@ -70,19 +70,19 @@ Extract route handlers from monolithic `app.py` into separate route modules.
 ---
 
 ### TASK-103: Dashboard Services Layer
-🔴 P0 | ⬜ TODO | Est: 3-4h
+🔴 P0 | ✅ DONE | Est: 3-4h
 
 **Description:**
 Create service layer to separate business logic from route handlers.
 
 **Checklist:**
-- [ ] Create `atp/dashboard/v2/services/__init__.py`
-- [ ] Create `TestService` class with test result operations
-- [ ] Create `AgentService` class with agent management operations
-- [ ] Create `ComparisonService` class with comparison operations
-- [ ] Create `ExportService` class with export operations
-- [ ] Inject services via FastAPI dependency injection
-- [ ] Write unit tests for each service
+- [x] Create `atp/dashboard/v2/services/__init__.py`
+- [x] Create `TestService` class with test result operations
+- [x] Create `AgentService` class with agent management operations
+- [x] Create `ComparisonService` class with comparison operations
+- [x] Create `ExportService` class with export operations
+- [x] Inject services via FastAPI dependency injection
+- [x] Write unit tests for each service
 
 **Traces to:** [REQ-101]
 **Depends on:** [TASK-101]
