@@ -1,0 +1,17 @@
+# Demo Agent Dockerfile
+#
+# Simple agent that performs file operations.
+# Follows ATP Protocol: reads JSON from stdin, writes JSON to stdout.
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# No external dependencies needed for this simple agent
+COPY agent.py .
+
+# Make agent executable
+RUN chmod +x agent.py
+
+# Agent reads from stdin, writes to stdout
+ENTRYPOINT ["python", "agent.py"]

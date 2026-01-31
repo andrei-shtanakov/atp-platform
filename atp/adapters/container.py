@@ -31,6 +31,13 @@ from .exceptions import (
 )
 
 
+def _check_command_exists(cmd: str) -> bool:
+    """Check if a command exists in PATH."""
+    import shutil
+
+    return shutil.which(cmd) is not None
+
+
 class ContainerResources(AdapterConfig):
     """Resource limits for container."""
 
@@ -49,6 +56,10 @@ class ContainerAdapterConfig(AdapterConfig):
     """Configuration for container adapter."""
 
     image: str = Field(..., description="Docker image name with tag")
+    runtime: str = Field(
+        default="auto",
+        description="Container runtime: 'docker', 'podman', or 'auto' (detect)",
+    )
     resources: ContainerResources = Field(
         default_factory=ContainerResources, description="Resource limits"
     )
@@ -85,6 +96,15 @@ class ContainerAdapterConfig(AdapterConfig):
         description="Linux capabilities to drop",
     )
 
+    @field_validator("runtime")
+    @classmethod
+    def validate_runtime(cls, v: str) -> str:
+        """Validate container runtime."""
+        allowed = {"auto", "docker", "podman"}
+        if v.lower() not in allowed:
+            raise ValueError(f"runtime must be one of: {allowed}")
+        return v.lower()
+
     @field_validator("image")
     @classmethod
     def validate_image(cls, v: str) -> str:
@@ -100,12 +120,14 @@ class ContainerAdapterConfig(AdapterConfig):
 
 class ContainerAdapter(AgentAdapter):
     """
-    Adapter for Docker-packaged agents.
+    Adapter for container-packaged agents (Docker/Podman).
 
-    Runs agents in Docker containers with:
+    Runs agents in containers with:
     - ATP Request sent via stdin (JSON)
     - ATP Response received via stdout (JSON)
     - ATP Events received via stderr (JSONL)
+
+    Supports both Docker and Podman runtimes.
     """
 
     def __init__(self, config: ContainerAdapterConfig) -> None:
@@ -118,19 +140,56 @@ class ContainerAdapter(AgentAdapter):
         super().__init__(config)
         self._config: ContainerAdapterConfig = config
         self._current_container_id: str | None = None
+        self._runtime: str | None = None
 
     @property
     def adapter_type(self) -> str:
         """Return the adapter type identifier."""
         return "container"
 
-    def _build_docker_command(self) -> list[str]:
-        """Build the docker run command arguments.
+    def _get_runtime(self) -> str:
+        """Get the container runtime command.
+
+        Returns:
+            'docker' or 'podman' based on configuration and availability.
+
+        Raises:
+            AdapterConnectionError: If no runtime is available.
+        """
+        if self._runtime:
+            return self._runtime
+
+        runtime = self._config.runtime
+
+        if runtime == "auto":
+            # Check environment variable first
+            import os
+
+            env_runtime = os.environ.get("ATP_CONTAINER_RUNTIME", "").lower()
+            if env_runtime in ("docker", "podman"):
+                runtime = env_runtime
+            # Try podman first (preferred when both available)
+            elif _check_command_exists("podman"):
+                runtime = "podman"
+            elif _check_command_exists("docker"):
+                runtime = "docker"
+            else:
+                raise AdapterConnectionError(
+                    "No container runtime found. Install Docker or Podman.",
+                    adapter_type=self.adapter_type,
+                )
+
+        self._runtime = runtime
+        return runtime
+
+    def _build_container_command(self) -> list[str]:
+        """Build the container run command arguments.
 
         Security: Applies resource limits, privilege restrictions,
         and capability drops for defense in depth.
         """
-        cmd = ["docker", "run", "-i"]
+        runtime = self._get_runtime()
+        cmd = [runtime, "run", "-i"]
 
         if self._config.auto_remove:
             cmd.append("--rm")
@@ -200,7 +259,7 @@ class ContainerAdapter(AgentAdapter):
             AdapterTimeoutError: If execution times out.
             AdapterResponseError: If agent returns invalid response.
         """
-        cmd = self._build_docker_command()
+        cmd = self._build_container_command()
         request_json = request.model_dump_json()
 
         try:
@@ -211,14 +270,16 @@ class ContainerAdapter(AgentAdapter):
                 stderr=asyncio.subprocess.PIPE,
             )
         except FileNotFoundError as e:
+            runtime = self._get_runtime()
             raise AdapterConnectionError(
-                "Docker command not found. Is Docker installed?",
+                f"{runtime} command not found. Is {runtime} installed?",
                 adapter_type=self.adapter_type,
                 cause=e,
             ) from e
         except OSError as e:
+            runtime = self._get_runtime()
             raise AdapterConnectionError(
-                f"Failed to start Docker: {e}",
+                f"Failed to start {runtime}: {e}",
                 adapter_type=self.adapter_type,
                 cause=e,
             ) from e
@@ -289,7 +350,7 @@ class ContainerAdapter(AgentAdapter):
             AdapterTimeoutError: If execution times out.
             AdapterResponseError: If agent returns invalid response.
         """
-        cmd = self._build_docker_command()
+        cmd = self._build_container_command()
         request_json = request.model_dump_json()
 
         try:
@@ -300,14 +361,16 @@ class ContainerAdapter(AgentAdapter):
                 stderr=asyncio.subprocess.PIPE,
             )
         except FileNotFoundError as e:
+            runtime = self._get_runtime()
             raise AdapterConnectionError(
-                "Docker command not found. Is Docker installed?",
+                f"{runtime} command not found. Is {runtime} installed?",
                 adapter_type=self.adapter_type,
                 cause=e,
             ) from e
         except OSError as e:
+            runtime = self._get_runtime()
             raise AdapterConnectionError(
-                f"Failed to start Docker: {e}",
+                f"Failed to start {runtime}: {e}",
                 adapter_type=self.adapter_type,
                 cause=e,
             ) from e
@@ -402,15 +465,17 @@ class ContainerAdapter(AgentAdapter):
 
     async def health_check(self) -> bool:
         """
-        Check if Docker is available and image exists.
+        Check if container runtime is available and image exists.
 
         Returns:
-            True if Docker is available and image exists, False otherwise.
+            True if runtime is available and image exists, False otherwise.
         """
         try:
-            # Check Docker is running
+            runtime = self._get_runtime()
+
+            # Check runtime is working
             process = await asyncio.create_subprocess_exec(
-                "docker",
+                runtime,
                 "info",
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL,
@@ -421,7 +486,7 @@ class ContainerAdapter(AgentAdapter):
 
             # Check image exists (optional, image might be pulled on first run)
             process = await asyncio.create_subprocess_exec(
-                "docker",
+                runtime,
                 "image",
                 "inspect",
                 self._config.image,
@@ -430,7 +495,7 @@ class ContainerAdapter(AgentAdapter):
             )
             await process.wait()
             return process.returncode == 0
-        except (FileNotFoundError, OSError):
+        except (FileNotFoundError, OSError, AdapterConnectionError):
             return False
 
     async def cleanup(self) -> None:

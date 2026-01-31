@@ -1,0 +1,116 @@
+version: "3.8"
+
+# ATP Container Compose Example
+#
+# This setup demonstrates testing agents in containers.
+# Compatible with Docker Compose and Podman Compose.
+#
+# Usage with Docker:
+#   docker compose up -d          # Start services
+#   docker compose run atp-test   # Run tests
+#   docker compose down           # Stop services
+#
+# Usage with Podman:
+#   podman compose up -d          # Start services
+#   podman compose run atp-test   # Run tests
+#   podman compose down           # Stop services
+#
+# Or with podman-compose (older):
+#   podman-compose up -d
+#   podman-compose run atp-test
+#   podman-compose down
+
+services:
+  # ===========================================
+  # Example Agent (simple file operations)
+  # ===========================================
+  demo-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    image: atp-demo-agent:latest
+    # Agent doesn't need to run as a service -
+    # it's invoked by ATP via docker run
+    profiles:
+      - build-only
+
+  # ===========================================
+  # MCP Server (for MCP agent testing)
+  # ===========================================
+  mcp-server:
+    build:
+      context: ../..
+      dockerfile: examples/docker/Dockerfile.mcp-server
+    image: atp-mcp-server:latest
+    ports:
+      - "9876:9876"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9876/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  # ===========================================
+  # OpenAI-powered Agent (requires API key)
+  # ===========================================
+  openai-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.openai-agent
+    image: atp-openai-agent:latest
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - MCP_SERVER_URL=http://mcp-server:9876
+    depends_on:
+      mcp-server:
+        condition: service_healthy
+    profiles:
+      - build-only
+
+  # ===========================================
+  # ATP Test Runner
+  # ===========================================
+  atp-test:
+    build:
+      context: ../..
+      dockerfile: examples/docker/Dockerfile.atp
+    image: atp-runner:latest
+    volumes:
+      # Mount test suites
+      - ../../examples/test_suites:/tests:ro
+      # Mount results directory
+      - ./results:/results
+      # Mount Docker socket to run agent containers
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      mcp-server:
+        condition: service_healthy
+    command: >
+      atp test /tests/docker_agent_test.yaml
+      --adapter=container
+      --adapter-config='image=atp-demo-agent:latest'
+      --output=json
+      --output-file=/results/test_results.json
+
+  # ===========================================
+  # ATP Dashboard
+  # ===========================================
+  dashboard:
+    build:
+      context: ../..
+      dockerfile: examples/docker/Dockerfile.atp
+    image: atp-runner:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - dashboard-data:/root/.atp
+    command: atp dashboard --host 0.0.0.0 --port 8080
+
+volumes:
+  dashboard-data:
+
+networks:
+  default:
+    name: atp-network

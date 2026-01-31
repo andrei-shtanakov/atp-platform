@@ -1,0 +1,15 @@
+# OpenAI Agent Dockerfile
+#
+# Agent that uses OpenAI API and connects to MCP server.
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install dependencies
+RUN pip install --no-cache-dir openai httpx
+
+# Copy agent script
+COPY openai_agent.py .
+
+ENTRYPOINT ["python", "openai_agent.py"]

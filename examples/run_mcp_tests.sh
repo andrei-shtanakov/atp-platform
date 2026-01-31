@@ -183,7 +183,7 @@ echo ""
 
 set +e  # Don't exit on test failure
 
-uv run atp test "$PROJECT_ROOT/examples/test_suites/mcp_connection_test.yaml" \
+uv run --project "$PROJECT_ROOT" atp test "$PROJECT_ROOT/examples/test_suites/mcp_connection_test.yaml" \
     --adapter=cli \
     --adapter-config="command=python" \
     --adapter-config="args=[\"$PROJECT_ROOT/examples/mcp_agent.py\"]" \

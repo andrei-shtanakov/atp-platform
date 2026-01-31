@@ -1,0 +1,29 @@
+# ATP Runner Dockerfile
+#
+# Runs ATP tests and dashboard.
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    docker.io \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv for faster package management
+RUN pip install --no-cache-dir uv
+
+# Copy project files
+COPY pyproject.toml uv.lock ./
+COPY atp/ ./atp/
+
+# Install ATP
+RUN uv pip install --system -e .
+
+# Create results directory
+RUN mkdir -p /results
+
+ENTRYPOINT ["uv", "run"]
+CMD ["atp", "--help"]

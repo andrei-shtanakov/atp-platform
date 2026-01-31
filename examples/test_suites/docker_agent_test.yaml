@@ -1,0 +1,68 @@
+# Test Suite for Docker/Podman Agent
+#
+# Tests the demo agent running in a container.
+#
+# Available assertion types:
+#   - artifact_exists: config: {path: "file.txt"}
+#   - contains: config: {path: "file.txt", pattern: "text"}
+#   - no_errors: (no config needed)
+#
+# Usage:
+#   podman build -t atp-demo-agent:latest -f examples/docker/Dockerfile.agent examples/docker/
+#   uv run atp test examples/test_suites/docker_agent_test.yaml \
+#     --adapter=container \
+#     --adapter-config='image=atp-demo-agent:latest'
+
+test_suite: docker_agent_tests
+description: Tests for container-packaged demo agent
+version: "1.0"
+
+defaults:
+  timeout_seconds: 30
+
+tests:
+  - id: create_file
+    name: Create a file in container
+    tags: [smoke, file-ops]
+    task:
+      description: "create file hello.txt with content Hello from Docker!"
+      expected_artifacts:
+        - "hello.txt"
+    assertions:
+      - type: no_errors
+      - type: artifact_exists
+        config:
+          path: "hello.txt"
+      - type: contains
+        config:
+          path: "hello.txt"
+          pattern: "Hello from Docker!"
+
+  - id: list_files
+    name: List files in container
+    tags: [smoke, file-ops]
+    task:
+      description: "list files"
+    assertions:
+      - type: no_errors
+
+  - id: create_json
+    name: Create a JSON file
+    tags: [file-ops]
+    task:
+      description: "create file data.json with content {\"name\": \"test\", \"value\": 42}"
+      expected_artifacts:
+        - "data.json"
+    assertions:
+      - type: no_errors
+      - type: artifact_exists
+        config:
+          path: "data.json"
+      - type: contains
+        config:
+          path: "data.json"
+          pattern: "name"
+      - type: contains
+        config:
+          path: "data.json"
+          pattern: "42"
