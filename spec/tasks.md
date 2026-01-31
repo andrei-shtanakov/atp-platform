@@ -47,7 +47,7 @@ Implement the core TestGenerator class that provides the foundation for all test
 ---
 
 ### TASK-002: Test Templates System
-🔴 P0 | 🔄 IN_PROGRESS | Est: 2-3h
+🔴 P0 | ✅ DONE | Est: 2-3h
 
 **Description:**
 Implement the template system for predefined test patterns.
@@ -68,7 +68,7 @@ Implement the template system for predefined test patterns.
 ---
 
 ### TASK-003: YAML Writer
-🔴 P0 | ⬜ TODO | Est: 2h
+🔴 P0 | ✅ DONE | Est: 2h
 
 **Description:**
 Implement serialization of test suites to YAML format.
@@ -138,7 +138,7 @@ Implement `atp generate` command for adding tests to existing suites.
 ## Milestone 3: TUI Interface (Optional)
 
 ### TASK-006: TUI Application Setup
-🟡 P2 | ⬜ TODO | Est: 2-3h
+🟡 P2 | 🔄 IN_PROGRESS | Est: 2-3h
 
 **Description:**
 Set up the TUI application using Textual framework.

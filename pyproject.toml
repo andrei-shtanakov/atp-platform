@@ -35,6 +35,10 @@ dev = [
     "pytest-anyio>=0.0.0",
     "ruff>=0.4",
 ]
+tui = [
+    "rich>=13.0",
+    "textual>=0.47.0",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -73,6 +77,7 @@ omit = [
     "*/tests/*",
     "*/__pycache__/*",
     "*/.venv/*",
+    "atp/tui/*",  # TUI is optional, tested separately with [tui] extra
 ]
 
 [tool.coverage.report]

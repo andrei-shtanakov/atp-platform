@@ -9,12 +9,14 @@ from atp.generator.templates import (
     substitute_in_assertion,
     substitute_variables,
 )
+from atp.generator.writer import YAMLWriter
 
 __all__ = [
     "TestGenerator",
     "TestSuiteData",
     "TestTemplate",
     "TemplateRegistry",
+    "YAMLWriter",
     "substitute_variables",
     "substitute_in_assertion",
     "extract_variables",
