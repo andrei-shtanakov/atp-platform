@@ -12,6 +12,7 @@ from textual.screen import Screen
 from textual.widgets import Footer, Header, Static
 
 from atp import __version__
+from atp.tui.screens.main_menu import MainScreen
 
 
 class WelcomePanel(Static):
@@ -24,6 +25,7 @@ class WelcomePanel(Static):
             "[dim]Framework-agnostic platform for testing "
             "and evaluating AI agents.[/]\n\n"
             "[bold]Quick Start:[/]\n"
+            "  [cyan]m[/] - Suite editor (main screen)\n"
             "  [cyan]s[/] - View test suites\n"
             "  [cyan]r[/] - View recent results\n"
             "  [cyan]a[/] - View agents\n"
@@ -78,11 +80,17 @@ class HelpPanel(Static):
             "[bold cyan]ATP TUI Help[/]\n\n"
             "[bold]Navigation:[/]\n"
             "  [cyan]h[/] - Home screen\n"
+            "  [cyan]m[/] - Main screen (suite editor)\n"
             "  [cyan]s[/] - Suites screen\n"
             "  [cyan]r[/] - Results screen\n"
             "  [cyan]a[/] - Agents screen\n"
             "  [cyan]?[/] - This help screen\n\n"
-            "[bold]Actions:[/]\n"
+            "[bold]Main Screen Actions:[/]\n"
+            "  [cyan]n[/] - New suite\n"
+            "  [cyan]o[/] - Open suite\n"
+            "  [cyan]s[/] - Save suite\n"
+            "  [cyan]a[/] - Add test\n\n"
+            "[bold]General:[/]\n"
             "  [cyan]q[/] - Quit application\n"
             "  [cyan]Escape[/] - Go back / Cancel\n"
             "  [cyan]Enter[/] - Select item\n"
@@ -98,6 +106,7 @@ class HomeScreen(Screen):
     SCREEN_NAME = "home"
 
     BINDINGS = [
+        Binding("m", "switch_main", "Main"),
         Binding("s", "switch_suites", "Suites"),
         Binding("r", "switch_results", "Results"),
         Binding("a", "switch_agents", "Agents"),
@@ -122,6 +131,10 @@ class HomeScreen(Screen):
             id="home-container",
         )
         yield Footer()
+
+    def action_switch_main(self) -> None:
+        """Switch to main screen."""
+        self.app.switch_screen("main")
 
     def action_switch_suites(self) -> None:
         """Switch to suites screen."""
@@ -249,6 +262,7 @@ class HelpScreen(Screen):
 
     BINDINGS = [
         Binding("h", "switch_home", "Home"),
+        Binding("m", "switch_main", "Main"),
         Binding("s", "switch_suites", "Suites"),
         Binding("r", "switch_results", "Results"),
         Binding("a", "switch_agents", "Agents"),
@@ -267,6 +281,10 @@ class HelpScreen(Screen):
     def action_switch_home(self) -> None:
         """Switch to home screen."""
         self.app.switch_screen("home")
+
+    def action_switch_main(self) -> None:
+        """Switch to main screen."""
+        self.app.switch_screen("main")
 
     def action_switch_suites(self) -> None:
         """Switch to suites screen."""
@@ -321,10 +339,52 @@ class ATPTUI(App):
     #suites-container,
     #results-container,
     #agents-container,
-    #help-container {
+    #help-container,
+    #main-screen-container {
         width: 100%;
         height: 100%;
         padding: 1 2;
+    }
+
+    /* Main screen layout */
+    #main-screen-content {
+        width: 100%;
+        height: 100%;
+    }
+
+    #tree-panel {
+        width: 40%;
+        height: 100%;
+        padding-right: 1;
+    }
+
+    #preview-panel {
+        width: 60%;
+        height: 100%;
+        padding-left: 1;
+    }
+
+    #test-tree {
+        width: 100%;
+        height: 100%;
+        border: solid $primary;
+        background: $surface;
+    }
+
+    #yaml-preview {
+        width: 100%;
+        height: 100%;
+        border: solid $primary;
+        background: $surface;
+        overflow-y: auto;
+        padding: 1 2;
+    }
+
+    #status-bar {
+        height: 1;
+        padding: 0 2;
+        background: $surface-darken-1;
+        color: $text-muted;
     }
 
     /* Main content layout */
@@ -396,6 +456,7 @@ class ATPTUI(App):
 
     SCREENS = {
         "home": HomeScreen,
+        "main": MainScreen,
         "suites": SuitesScreen,
         "results": ResultsScreen,
         "agents": AgentsScreen,

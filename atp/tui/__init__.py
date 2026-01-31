@@ -18,5 +18,14 @@ Requirements:
 """
 
 from atp.tui.app import ATPTUI, run_tui
+from atp.tui.screens.main_menu import MainScreen
+from atp.tui.widgets.test_tree import TestTreeWidget
+from atp.tui.widgets.yaml_preview import YAMLPreviewWidget
 
-__all__ = ["ATPTUI", "run_tui"]
+__all__ = [
+    "ATPTUI",
+    "run_tui",
+    "MainScreen",
+    "TestTreeWidget",
+    "YAMLPreviewWidget",
+]

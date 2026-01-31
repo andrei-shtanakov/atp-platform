@@ -48,7 +48,7 @@ class TestATPTUI:
     def test_atptui_screens_defined(self) -> None:
         """Test that all screens are defined."""
         app = ATPTUI()
-        expected_screens = {"home", "suites", "results", "agents", "help"}
+        expected_screens = {"home", "main", "suites", "results", "agents", "help"}
         assert set(app.SCREENS.keys()) == expected_screens
 
     def test_atptui_bindings_defined(self) -> None:
@@ -75,6 +75,7 @@ class TestScreens:
         """Test HomeScreen has expected bindings."""
         screen = HomeScreen()
         binding_keys = [b.key for b in screen.BINDINGS]
+        assert "m" in binding_keys
         assert "s" in binding_keys
         assert "r" in binding_keys
         assert "a" in binding_keys
@@ -112,6 +113,7 @@ class TestScreens:
         screen = HelpScreen()
         binding_keys = [b.key for b in screen.BINDINGS]
         assert "h" in binding_keys
+        assert "m" in binding_keys
         assert "s" in binding_keys
         assert "r" in binding_keys
         assert "a" in binding_keys
