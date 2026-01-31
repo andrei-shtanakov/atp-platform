@@ -112,14 +112,15 @@ class TestContainerAdapter:
         adapter = ContainerAdapter(container_config)
         assert adapter.adapter_type == "container"
 
-    def test_build_docker_command_basic(
+    def test_build_container_command_basic(
         self, container_config: ContainerAdapterConfig
     ) -> None:
-        """Test building basic docker command."""
+        """Test building basic container command."""
         adapter = ContainerAdapter(container_config)
-        cmd = adapter._build_docker_command()
+        cmd = adapter._build_container_command()
 
-        assert cmd[0] == "docker"
+        # First element is runtime (docker or podman)
+        assert cmd[0] in ("docker", "podman")
         assert cmd[1] == "run"
         assert "-i" in cmd
         assert "--rm" in cmd
@@ -128,8 +129,8 @@ class TestContainerAdapter:
         assert "--network" in cmd
         assert "test-agent:latest" in cmd
 
-    def test_build_docker_command_full(self) -> None:
-        """Test building full docker command with all options."""
+    def test_build_container_command_full(self) -> None:
+        """Test building full container command with all options."""
         config = ContainerAdapterConfig(
             image="my-agent:v1",
             resources=ContainerResources(memory="4g", cpu="2"),
@@ -140,7 +141,7 @@ class TestContainerAdapter:
             auto_remove=False,
         )
         adapter = ContainerAdapter(config)
-        cmd = adapter._build_docker_command()
+        cmd = adapter._build_container_command()
 
         assert "--rm" not in cmd
         assert "--memory" in cmd
@@ -180,22 +181,23 @@ class TestContainerAdapter:
         assert response.status == ResponseStatus.COMPLETED
 
     @pytest.mark.anyio
-    async def test_execute_docker_not_found(
+    async def test_execute_container_not_found(
         self,
         container_config: ContainerAdapterConfig,
         sample_request: ATPRequest,
     ) -> None:
-        """Test execute when docker is not installed."""
+        """Test execute when container runtime is not installed."""
         adapter = ContainerAdapter(container_config)
 
         with patch(
             "asyncio.create_subprocess_exec",
-            side_effect=FileNotFoundError("docker not found"),
+            side_effect=FileNotFoundError("command not found"),
         ):
             with pytest.raises(AdapterConnectionError) as exc_info:
                 await adapter.execute(sample_request)
 
-        assert "Docker command not found" in str(exc_info.value)
+        # Error message includes runtime name (docker or podman)
+        assert "command not found" in str(exc_info.value)
 
     @pytest.mark.anyio
     async def test_execute_non_zero_exit(
