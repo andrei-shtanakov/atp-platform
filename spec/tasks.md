@@ -507,21 +507,21 @@ Implement evaluator for verifying factual accuracy of agent outputs.
 ---
 
 ### TASK-306: Style & Tone Evaluator
-🟡 P2 | 🔄 IN_PROGRESS | Est: 3-4h
+🟡 P2 | ✅ DONE | Est: 3-4h
 
 **Description:**
 Implement evaluator for writing style and tone analysis.
 
 **Checklist:**
-- [ ] Create `atp/evaluators/style.py`
-- [ ] Implement tone analysis: professional, casual, formal, friendly
-- [ ] Implement readability metrics: Flesch-Kincaid, SMOG
-- [ ] Implement passive voice percentage calculation
-- [ ] Implement sentence length analysis
-- [ ] Add configurable style rules
-- [ ] Register in evaluator registry
-- [ ] Write tests
-- [ ] Create documentation
+- [x] Create `atp/evaluators/style.py`
+- [x] Implement tone analysis: professional, casual, formal, friendly
+- [x] Implement readability metrics: Flesch-Kincaid, SMOG
+- [x] Implement passive voice percentage calculation
+- [x] Implement sentence length analysis
+- [x] Add configurable style rules
+- [x] Register in evaluator registry
+- [x] Write tests
+- [x] Create documentation
 
 **Traces to:** [REQ-303]
 **Depends on:** -
@@ -801,7 +801,7 @@ Add advanced analytics features to dashboard.
 ---
 
 ### TASK-506: A/B Testing Framework
-🟡 P2 | ⬜ TODO | Est: 5-6h
+🟡 P2 | 🔄 IN_PROGRESS | Est: 5-6h
 
 **Description:**
 Implement A/B testing framework for agent comparison.

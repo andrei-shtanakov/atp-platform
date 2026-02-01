@@ -1,4 +1,4 @@
-"""SQLAlchemy ORM models for ATP Analytics cost tracking."""
+"""SQLAlchemy ORM models for ATP Analytics cost tracking and A/B testing."""
 
 from datetime import datetime
 from decimal import Decimal
@@ -9,6 +9,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     Float,
+    ForeignKey,
     Index,
     Integer,
     Numeric,
@@ -19,6 +20,7 @@ from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
     mapped_column,
+    relationship,
 )
 
 
@@ -223,3 +225,176 @@ class ScheduledReport(AnalyticsBase):
     def filters(self) -> dict[str, Any]:
         """Get filters as dict."""
         return self.filters_json or {}
+
+
+# ==================== A/B Testing Models ====================
+
+
+class ABExperiment(AnalyticsBase):
+    """A/B testing experiment record.
+
+    Stores experiment configuration, status, and results for comparing
+    agent variants with statistical rigor.
+    """
+
+    __tablename__ = "ab_experiments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    # Basic info
+    name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    suite_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+
+    # Test IDs filter (JSON array of test IDs, null = all tests)
+    test_ids_json: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+
+    # Variants configuration (JSON)
+    control_variant_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    treatment_variant_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+
+    # Metrics configuration (JSON array of MetricConfig)
+    metrics_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+
+    # Rollback configuration (JSON)
+    rollback_config_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+
+    # Sample size configuration
+    min_sample_size: Mapped[int] = mapped_column(Integer, default=30)
+    max_sample_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_duration_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    significance_level: Mapped[float] = mapped_column(Float, default=0.05)
+
+    # Status
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="draft", index=True
+    )
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    concluded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    paused_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # Results
+    conclusion_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    winner: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    results_json: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSON, nullable=True
+    )
+    rollback_triggered: Mapped[bool] = mapped_column(Boolean, default=False)
+    consecutive_degradation_checks: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Relationships
+    observations: Mapped[list["ABExperimentObservation"]] = relationship(
+        "ABExperimentObservation",
+        back_populates="experiment",
+        cascade="all, delete-orphan",
+    )
+
+    # Indexes
+    __table_args__ = (
+        Index("idx_ab_experiment_status_created", "status", "created_at"),
+        Index("idx_ab_experiment_suite", "suite_name"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"ABExperiment(id={self.id}, name={self.name!r}, "
+            f"status={self.status!r}, suite={self.suite_name!r})"
+        )
+
+    @property
+    def test_ids(self) -> list[str] | None:
+        """Get test IDs filter."""
+        return self.test_ids_json
+
+    @property
+    def control_variant(self) -> dict[str, Any]:
+        """Get control variant config."""
+        return self.control_variant_json
+
+    @property
+    def treatment_variant(self) -> dict[str, Any]:
+        """Get treatment variant config."""
+        return self.treatment_variant_json
+
+    @property
+    def metrics(self) -> list[dict[str, Any]]:
+        """Get metrics configuration."""
+        return self.metrics_json
+
+    @property
+    def rollback_config(self) -> dict[str, Any]:
+        """Get rollback configuration."""
+        return self.rollback_config_json
+
+    @property
+    def results(self) -> list[dict[str, Any]]:
+        """Get experiment results."""
+        return self.results_json or []
+
+
+class ABExperimentObservation(AnalyticsBase):
+    """Single observation in an A/B experiment.
+
+    Records the result of a single test run assigned to a variant.
+    """
+
+    __tablename__ = "ab_experiment_observations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    # Foreign key to experiment
+    experiment_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("ab_experiments.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # Variant assignment
+    variant_name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+
+    # Test info
+    test_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    run_id: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+
+    # Timestamp
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now, index=True
+    )
+
+    # Metrics
+    score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    success: Mapped[bool] = mapped_column(Boolean, default=False)
+    duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Additional metadata
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
+    # Relationship
+    experiment: Mapped["ABExperiment"] = relationship(
+        "ABExperiment", back_populates="observations"
+    )
+
+    # Indexes
+    __table_args__ = (
+        Index("idx_ab_obs_experiment_variant", "experiment_id", "variant_name"),
+        Index("idx_ab_obs_experiment_timestamp", "experiment_id", "timestamp"),
+        Index("idx_ab_obs_test", "test_id", "timestamp"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"ABExperimentObservation(id={self.id}, "
+            f"experiment_id={self.experiment_id}, "
+            f"variant={self.variant_name!r}, test_id={self.test_id!r})"
+        )
+
+    @property
+    def observation_metadata(self) -> dict[str, Any]:
+        """Get observation metadata."""
+        return self.metadata_json or {}

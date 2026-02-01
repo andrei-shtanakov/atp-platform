@@ -20,6 +20,7 @@ Each module handles a specific domain of functionality:
 - costs: Cost analytics and breakdowns
 - budgets: Budget management and monitoring
 - analytics: Advanced analytics (trends, anomalies, correlations, export)
+- experiments: A/B testing experiment management (TASK-506)
 - tenants: Tenant management (admin-only CRUD, quotas, settings)
 - roles: Role-based access control management
 - audit: Audit logging (query, filter, export, retention)
@@ -36,6 +37,7 @@ from atp.dashboard.v2.routes.budgets import router as budgets_router
 from atp.dashboard.v2.routes.comparison import router as comparison_router
 from atp.dashboard.v2.routes.costs import router as costs_router
 from atp.dashboard.v2.routes.definitions import router as definitions_router
+from atp.dashboard.v2.routes.experiments import router as experiments_router
 from atp.dashboard.v2.routes.home import router as home_router
 from atp.dashboard.v2.routes.leaderboard import router as leaderboard_router
 from atp.dashboard.v2.routes.metrics import router as metrics_router
@@ -70,6 +72,7 @@ router.include_router(metrics_router)
 router.include_router(costs_router)
 router.include_router(budgets_router)
 router.include_router(analytics_router)
+router.include_router(experiments_router)
 router.include_router(tenants_router)
 router.include_router(roles_router)
 router.include_router(sso_router)
@@ -86,6 +89,7 @@ __all__ = [
     "comparison_router",
     "costs_router",
     "definitions_router",
+    "experiments_router",
     "home_router",
     "leaderboard_router",
     "metrics_router",
