@@ -1089,20 +1089,20 @@ Implement OIDC (OpenID Connect) authentication.
 ---
 
 ### TASK-707: SSO - SAML Integration
-🟡 P2 | 🔄 IN_PROGRESS | Est: 4-5h
+🟡 P2 | ✅ DONE | Est: 4-5h
 
 **Description:**
 Implement SAML 2.0 authentication.
 
 **Checklist:**
-- [ ] Add `python3-saml` to dependencies
-- [ ] Create `atp/dashboard/auth/sso/saml.py`
-- [ ] Implement SAML SP (Service Provider) endpoints
-- [ ] Implement assertion parsing
-- [ ] Implement attribute mapping
-- [ ] Implement session management
-- [ ] Add IdP metadata configuration
-- [ ] Write tests
+- [x] Add `python3-saml` to dependencies
+- [x] Create `atp/dashboard/auth/sso/saml.py`
+- [x] Implement SAML SP (Service Provider) endpoints
+- [x] Implement assertion parsing
+- [x] Implement attribute mapping
+- [x] Implement session management
+- [x] Add IdP metadata configuration
+- [x] Write tests
 
 **Traces to:** [REQ-703]
 **Depends on:** [TASK-706]
@@ -1157,7 +1157,7 @@ Implement WebSocket for real-time dashboard updates.
 ---
 
 ### TASK-802: Public Leaderboard
-🟡 P2 | ⬜ TODO | Est: 4-5h
+🟡 P2 | 🔄 IN_PROGRESS | Est: 4-5h
 
 **Description:**
 Implement public leaderboard for benchmark results.

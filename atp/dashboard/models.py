@@ -383,6 +383,203 @@ class ScoreComponent(Base):
         )
 
 
+class PublishedResult(Base):
+    """Published benchmark result for the public leaderboard.
+
+    Stores opt-in published results that appear on the public leaderboard.
+    Users can publish their benchmark results for visibility and comparison.
+    """
+
+    __tablename__ = "published_results"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(100), nullable=False, default=DEFAULT_TENANT_ID, index=True
+    )
+
+    # Reference to the original suite execution
+    suite_execution_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("suite_executions.id"), nullable=False
+    )
+
+    # Agent profile reference
+    agent_profile_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("agent_profiles.id"), nullable=False
+    )
+
+    # Benchmark category (e.g., "coding", "reasoning", "analysis")
+    category: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+
+    # Aggregated metrics for the leaderboard
+    score: Mapped[float] = mapped_column(Float, nullable=False)
+    success_rate: Mapped[float] = mapped_column(Float, nullable=False)
+    total_tests: Mapped[int] = mapped_column(Integer, nullable=False)
+    passed_tests: Mapped[int] = mapped_column(Integer, nullable=False)
+    total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # Verification status
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    verified_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=True
+    )
+
+    # Timestamps
+    published_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.now, onupdate=datetime.now
+    )
+
+    # Relationships
+    suite_execution: Mapped["SuiteExecution"] = relationship()
+    agent_profile: Mapped["AgentProfile"] = relationship(
+        back_populates="published_results"
+    )
+    verified_by: Mapped["User | None"] = relationship()
+
+    # Indexes
+    __table_args__ = (
+        UniqueConstraint(
+            "suite_execution_id", name="uq_published_result_suite_execution"
+        ),
+        Index("idx_published_result_category", "category"),
+        Index("idx_published_result_score", "score"),
+        Index("idx_published_result_published_at", "published_at"),
+        Index("idx_published_result_verified", "is_verified"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"PublishedResult(id={self.id}, category={self.category!r}, "
+            f"score={self.score:.2f})"
+        )
+
+
+class AgentProfile(Base):
+    """Public agent profile for the leaderboard.
+
+    Represents an agent's public-facing profile with metadata,
+    verification status, and links to published results.
+    """
+
+    __tablename__ = "agent_profiles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(100), nullable=False, default=DEFAULT_TENANT_ID, index=True
+    )
+
+    # Link to the internal agent
+    agent_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("agents.id"), nullable=False
+    )
+
+    # Public profile information
+    display_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    website_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    repository_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # Tags for categorization (e.g., ["llm", "coding", "open-source"])
+    tags: Mapped[list[str]] = mapped_column(JSON, default=list)
+
+    # Verification badges
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    verification_badges: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # Possible badges: ["official", "reproducible", "open_source", "community_verified"]
+
+    # Public visibility
+    is_public: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Statistics (denormalized for performance)
+    total_submissions: Mapped[int] = mapped_column(Integer, default=0)
+    best_overall_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    best_overall_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.now, onupdate=datetime.now
+    )
+
+    # Owner (who created/manages this profile)
+    owner_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=True
+    )
+
+    # Relationships
+    agent: Mapped["Agent"] = relationship()
+    owner: Mapped["User | None"] = relationship()
+    published_results: Mapped[list["PublishedResult"]] = relationship(
+        back_populates="agent_profile", cascade="all, delete-orphan"
+    )
+
+    # Indexes
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "agent_id", name="uq_agent_profile_tenant_agent"),
+        Index("idx_agent_profile_display_name", "display_name"),
+        Index("idx_agent_profile_is_public", "is_public"),
+        Index("idx_agent_profile_is_verified", "is_verified"),
+        Index("idx_agent_profile_best_score", "best_overall_score"),
+    )
+
+    def __repr__(self) -> str:
+        return f"AgentProfile(id={self.id}, display_name={self.display_name!r})"
+
+
+class BenchmarkCategory(Base):
+    """Benchmark category for organizing leaderboards.
+
+    Categories group related benchmarks together for comparison.
+    """
+
+    __tablename__ = "benchmark_categories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    # Category information
+    name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    slug: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    icon: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    # Display order
+    display_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Parent category for hierarchical organization
+    parent_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("benchmark_categories.id"), nullable=True
+    )
+
+    # Configuration
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    min_submissions_for_ranking: Mapped[int] = mapped_column(Integer, default=1)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.now, onupdate=datetime.now
+    )
+
+    # Relationships
+    parent: Mapped["BenchmarkCategory | None"] = relationship(
+        remote_side="BenchmarkCategory.id"
+    )
+
+    # Indexes
+    __table_args__ = (
+        Index("idx_benchmark_category_slug", "slug"),
+        Index("idx_benchmark_category_active", "is_active"),
+        Index("idx_benchmark_category_order", "display_order"),
+    )
+
+    def __repr__(self) -> str:
+        return f"BenchmarkCategory(id={self.id}, name={self.name!r})"
+
+
 class SuiteDefinition(Base):
     """Stored test suite definition for dashboard management.
 

@@ -1123,5 +1123,235 @@ class TrafficAssignmentResponse(BaseModel):
     run_id: str
 
 
+# ==================== Public Leaderboard Schemas ====================
+
+
+class BenchmarkCategoryCreate(BaseModel):
+    """Schema for creating a benchmark category."""
+
+    name: str = Field(..., min_length=1, max_length=100)
+    slug: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-z0-9-]+$")
+    description: str | None = Field(None, max_length=2000)
+    icon: str | None = Field(None, max_length=50)
+    display_order: int = Field(default=0)
+    parent_id: int | None = None
+    min_submissions_for_ranking: int = Field(default=1, ge=1)
+
+
+class BenchmarkCategoryUpdate(BaseModel):
+    """Schema for updating a benchmark category."""
+
+    name: str | None = Field(None, min_length=1, max_length=100)
+    description: str | None = None
+    icon: str | None = None
+    display_order: int | None = None
+    is_active: bool | None = None
+    min_submissions_for_ranking: int | None = Field(None, ge=1)
+
+
+class BenchmarkCategoryResponse(BaseModel):
+    """Schema for benchmark category response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    slug: str
+    description: str | None
+    icon: str | None
+    display_order: int
+    parent_id: int | None
+    is_active: bool
+    min_submissions_for_ranking: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class BenchmarkCategoryList(BaseModel):
+    """List of benchmark categories."""
+
+    items: list[BenchmarkCategoryResponse]
+    total: int
+
+
+class AgentProfileCreate(BaseModel):
+    """Schema for creating an agent profile."""
+
+    agent_id: int
+    display_name: str = Field(..., min_length=1, max_length=100)
+    description: str | None = Field(None, max_length=2000)
+    website_url: str | None = Field(None, max_length=500)
+    repository_url: str | None = Field(None, max_length=500)
+    avatar_url: str | None = Field(None, max_length=500)
+    tags: list[str] = Field(default_factory=list)
+    is_public: bool = True
+
+
+class AgentProfileUpdate(BaseModel):
+    """Schema for updating an agent profile."""
+
+    display_name: str | None = Field(None, min_length=1, max_length=100)
+    description: str | None = None
+    website_url: str | None = None
+    repository_url: str | None = None
+    avatar_url: str | None = None
+    tags: list[str] | None = None
+    is_public: bool | None = None
+
+
+class AgentProfileResponse(BaseModel):
+    """Schema for agent profile response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    agent_id: int
+    display_name: str
+    description: str | None
+    website_url: str | None
+    repository_url: str | None
+    avatar_url: str | None
+    tags: list[str]
+    is_verified: bool
+    verification_badges: list[str]
+    is_public: bool
+    total_submissions: int
+    best_overall_score: float | None
+    best_overall_rank: int | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AgentProfileSummary(BaseModel):
+    """Summary of an agent profile for leaderboard display."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    display_name: str
+    avatar_url: str | None
+    is_verified: bool
+    verification_badges: list[str]
+    total_submissions: int
+    best_overall_score: float | None
+    best_overall_rank: int | None
+
+
+class AgentProfileList(BaseModel):
+    """Paginated list of agent profiles."""
+
+    items: list[AgentProfileResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class PublishResultRequest(BaseModel):
+    """Schema for publishing a result to the leaderboard."""
+
+    suite_execution_id: int
+    category: str = Field(..., min_length=1, max_length=100)
+
+
+class PublishedResultResponse(BaseModel):
+    """Schema for published result response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    suite_execution_id: int
+    agent_profile_id: int
+    category: str
+    score: float
+    success_rate: float
+    total_tests: int
+    passed_tests: int
+    total_tokens: int | None
+    total_cost_usd: float | None
+    duration_seconds: float | None
+    is_verified: bool
+    verified_at: datetime | None
+    published_at: datetime
+    updated_at: datetime
+
+
+class PublishedResultWithProfile(PublishedResultResponse):
+    """Published result with agent profile information."""
+
+    agent_profile: AgentProfileSummary
+
+
+class PublishedResultList(BaseModel):
+    """Paginated list of published results."""
+
+    items: list[PublishedResultWithProfile]
+    total: int
+    limit: int
+    offset: int
+
+
+class LeaderboardEntry(BaseModel):
+    """Single entry in the public leaderboard."""
+
+    rank: int
+    agent_profile: AgentProfileSummary
+    score: float
+    success_rate: float
+    total_tests: int
+    passed_tests: int
+    total_tokens: int | None
+    total_cost_usd: float | None
+    duration_seconds: float | None
+    is_verified: bool
+    published_at: datetime
+    # Historical trend data (last 5 submissions)
+    score_history: list[float] = Field(default_factory=list)
+    trend: str | None = None  # "up", "down", "stable", or None
+
+
+class PublicLeaderboardResponse(BaseModel):
+    """Response for public leaderboard."""
+
+    category: BenchmarkCategoryResponse
+    entries: list[LeaderboardEntry]
+    total_entries: int
+    last_updated: datetime
+    limit: int
+    offset: int
+
+
+class LeaderboardTrendPoint(BaseModel):
+    """Single point in a leaderboard trend."""
+
+    timestamp: datetime
+    rank: int
+    score: float
+
+
+class AgentLeaderboardHistory(BaseModel):
+    """Historical leaderboard data for an agent."""
+
+    agent_profile: AgentProfileSummary
+    category: str
+    data_points: list[LeaderboardTrendPoint]
+
+
+class VerificationRequest(BaseModel):
+    """Schema for requesting verification."""
+
+    published_result_id: int
+    verification_type: str = Field(..., pattern=r"^(official|reproducible|community)$")
+    notes: str | None = Field(None, max_length=1000)
+
+
+class VerificationBadgeRequest(BaseModel):
+    """Schema for adding a verification badge."""
+
+    agent_profile_id: int
+    badge: str = Field(
+        ..., pattern=r"^(official|reproducible|open_source|community_verified)$"
+    )
+
+
 # Update forward references
 SuiteExecutionDetail.model_rebuild()
