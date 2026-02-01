@@ -6,7 +6,10 @@ from .artifact import ArtifactEvaluator
 from .base import Evaluator
 from .behavior import BehaviorEvaluator
 from .code_exec import CodeExecEvaluator
+from .factuality import FactualityEvaluator
 from .llm_judge import LLMJudgeEvaluator
+from .performance import PerformanceEvaluator
+from .security import SecurityEvaluator
 
 
 class EvaluatorNotFoundError(Exception):
@@ -33,6 +36,9 @@ class EvaluatorRegistry:
         self.register("behavior", BehaviorEvaluator)
         self.register("llm_judge", LLMJudgeEvaluator)
         self.register("code_exec", CodeExecEvaluator)
+        self.register("security", SecurityEvaluator)
+        self.register("factuality", FactualityEvaluator)
+        self.register("performance", PerformanceEvaluator)
 
         self._register_assertion_mapping("artifact_exists", "artifact")
         self._register_assertion_mapping("contains", "artifact")
@@ -52,6 +58,15 @@ class EvaluatorRegistry:
         self._register_assertion_mapping("npm", "code_exec")
         self._register_assertion_mapping("custom_command", "code_exec")
         self._register_assertion_mapping("lint", "code_exec")
+
+        # Security assertions
+        self._register_assertion_mapping("security", "security")
+
+        # Factuality assertions
+        self._register_assertion_mapping("factuality", "factuality")
+
+        # Performance assertions
+        self._register_assertion_mapping("performance", "performance")
 
     def register(
         self,

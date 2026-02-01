@@ -15,6 +15,19 @@ from atp.runner.models import (
     SuiteResult,
     TestResult,
 )
+from atp.runner.multi_agent import (
+    AgentConfig,
+    AgentRanking,
+    AgentTestResult,
+    ComparisonMetrics,
+    MultiAgentMode,
+    MultiAgentOrchestrator,
+    MultiAgentSuiteResult,
+    MultiAgentTestResult,
+    RankingMetric,
+    run_comparison,
+    run_suite_comparison,
+)
 from atp.runner.orchestrator import TestOrchestrator, run_suite, run_test
 from atp.runner.progress import (
     ParallelProgressTracker,
@@ -25,17 +38,28 @@ from atp.runner.progress import (
 from atp.runner.sandbox import SandboxManager
 
 __all__ = [
+    "AgentConfig",
+    "AgentRanking",
+    "AgentTestResult",
+    "ComparisonMetrics",
     "create_progress_callback",
+    "MultiAgentMode",
+    "MultiAgentOrchestrator",
+    "MultiAgentSuiteResult",
+    "MultiAgentTestResult",
     "ParallelProgressTracker",
     "ProgressCallback",
     "ProgressEvent",
     "ProgressEventType",
     "ProgressStatus",
+    "RankingMetric",
+    "run_comparison",
+    "run_suite",
+    "run_suite_comparison",
+    "run_test",
     "RunnerError",
     "RunnerTimeoutError",
     "RunResult",
-    "run_suite",
-    "run_test",
     "SandboxConfig",
     "SandboxError",
     "SandboxManager",

@@ -3,13 +3,17 @@
 from typing import Any
 
 from .autogen import AutoGenAdapter, AutoGenAdapterConfig
+from .azure_openai import AzureOpenAIAdapter, AzureOpenAIAdapterConfig
 from .base import AdapterConfig, AgentAdapter
+from .bedrock import BedrockAdapter, BedrockAdapterConfig
 from .cli import CLIAdapter, CLIAdapterConfig
 from .container import ContainerAdapter, ContainerAdapterConfig
 from .crewai import CrewAIAdapter, CrewAIAdapterConfig
 from .exceptions import AdapterNotFoundError
 from .http import HTTPAdapter, HTTPAdapterConfig
 from .langgraph import LangGraphAdapter, LangGraphAdapterConfig
+from .mcp import MCPAdapter, MCPAdapterConfig
+from .vertex import VertexAdapter, VertexAdapterConfig
 
 
 class AdapterRegistry:
@@ -31,6 +35,10 @@ class AdapterRegistry:
         self.register("langgraph", LangGraphAdapter, LangGraphAdapterConfig)
         self.register("crewai", CrewAIAdapter, CrewAIAdapterConfig)
         self.register("autogen", AutoGenAdapter, AutoGenAdapterConfig)
+        self.register("mcp", MCPAdapter, MCPAdapterConfig)
+        self.register("bedrock", BedrockAdapter, BedrockAdapterConfig)
+        self.register("vertex", VertexAdapter, VertexAdapterConfig)
+        self.register("azure_openai", AzureOpenAIAdapter, AzureOpenAIAdapterConfig)
 
     def register(
         self,

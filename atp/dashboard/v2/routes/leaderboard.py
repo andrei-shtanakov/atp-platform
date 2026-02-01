@@ -2,23 +2,28 @@
 
 This module provides endpoints for the performance leaderboard matrix,
 showing test scores across agents with rankings and difficulty analysis.
+
+Permissions:
+    - GET /leaderboard/matrix: RESULTS_READ
 """
 
 import logging
+from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 
 from atp.dashboard.models import Agent
 from atp.dashboard.optimized_queries import build_leaderboard_data
 from atp.dashboard.query_cache import get_leaderboard_cache
+from atp.dashboard.rbac import Permission, require_permission
 from atp.dashboard.schemas import (
     AgentColumn,
     LeaderboardMatrixResponse,
     TestRow,
     TestScore,
 )
-from atp.dashboard.v2.dependencies import CurrentUser, DBSession
+from atp.dashboard.v2.dependencies import DBSession
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +85,7 @@ def _detect_pattern(scores: list[float | None], pass_rates: list[float]) -> str 
 )
 async def get_leaderboard_matrix(
     session: DBSession,
-    user: CurrentUser,
+    _: Annotated[None, Depends(require_permission(Permission.RESULTS_READ))],
     suite_name: str,
     agents: list[str] | None = Query(None),
     limit_executions: int = Query(default=5, le=20),
@@ -89,6 +94,8 @@ async def get_leaderboard_matrix(
 ) -> LeaderboardMatrixResponse:
     """Get leaderboard matrix for a test suite.
 
+    Requires RESULTS_READ permission.
+
     Returns a matrix of tests (rows) vs agents (columns) with scores,
     difficulty ratings, and agent rankings.
 
@@ -96,7 +103,6 @@ async def get_leaderboard_matrix(
 
     Args:
         session: Database session.
-        user: Current user (optional auth).
         suite_name: Name of the test suite.
         agents: Optional list of agent names to filter by.
         limit_executions: Max number of recent executions per agent to consider.

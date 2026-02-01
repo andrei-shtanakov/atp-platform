@@ -2,13 +2,20 @@
 
 This module provides endpoints for querying and viewing
 test execution results.
+
+Permissions:
+    - GET /tests: RESULTS_READ
+    - GET /tests/{id}: RESULTS_READ
 """
 
-from fastapi import APIRouter, HTTPException, Query, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from atp.dashboard.models import TestExecution
+from atp.dashboard.rbac import Permission, require_permission
 from atp.dashboard.schemas import (
     EvaluationResultResponse,
     RunResultSummary,
@@ -17,7 +24,7 @@ from atp.dashboard.schemas import (
     TestExecutionList,
     TestExecutionSummary,
 )
-from atp.dashboard.v2.dependencies import CurrentUser, DBSession
+from atp.dashboard.v2.dependencies import DBSession
 
 router = APIRouter(prefix="/tests", tags=["tests"])
 
@@ -25,7 +32,7 @@ router = APIRouter(prefix="/tests", tags=["tests"])
 @router.get("", response_model=TestExecutionList)
 async def list_test_executions(
     session: DBSession,
-    user: CurrentUser,
+    _: Annotated[None, Depends(require_permission(Permission.RESULTS_READ))],
     suite_execution_id: int | None = None,
     test_id: str | None = None,
     success: bool | None = None,
@@ -34,9 +41,10 @@ async def list_test_executions(
 ) -> TestExecutionList:
     """List test executions with optional filtering.
 
+    Requires RESULTS_READ permission.
+
     Args:
         session: Database session.
-        user: Current user (optional auth).
         suite_execution_id: Filter by suite execution ID.
         test_id: Filter by test ID.
         success: Filter by success status.
@@ -73,14 +81,17 @@ async def list_test_executions(
 
 @router.get("/{execution_id}", response_model=TestExecutionDetail)
 async def get_test_execution(
-    session: DBSession, execution_id: int, user: CurrentUser
+    session: DBSession,
+    execution_id: int,
+    _: Annotated[None, Depends(require_permission(Permission.RESULTS_READ))],
 ) -> TestExecutionDetail:
     """Get test execution details.
+
+    Requires RESULTS_READ permission.
 
     Args:
         session: Database session.
         execution_id: Test execution ID.
-        user: Current user (optional auth).
 
     Returns:
         Detailed test execution information including runs,

@@ -1,4 +1,13 @@
-"""Authentication module for ATP Dashboard."""
+"""Authentication module for ATP Dashboard.
+
+This module provides authentication and SSO support including:
+- JWT token-based authentication
+- OIDC/OAuth2 SSO integration
+- Just-In-Time user provisioning
+- Group-to-role mapping
+
+Re-exports from the core authentication module for backward compatibility.
+"""
 
 import os
 from datetime import datetime, timedelta
@@ -11,6 +20,7 @@ from jose import JWTError, jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from atp.dashboard.auth.sso import OIDCProvider, SSOConfig, SSOManager
 from atp.dashboard.database import get_database
 from atp.dashboard.models import User
 from atp.dashboard.schemas import TokenData
@@ -252,3 +262,27 @@ def get_optional_user() -> User | None:
     Returns None if no valid token is provided, instead of raising an error.
     """
     return Depends(get_current_user)
+
+
+__all__ = [
+    # Core auth
+    "ACCESS_TOKEN_EXPIRE_MINUTES",
+    "ALGORITHM",
+    "SECRET_KEY",
+    "authenticate_user",
+    "create_access_token",
+    "create_user",
+    "get_current_active_user",
+    "get_current_admin_user",
+    "get_current_user",
+    "get_optional_user",
+    "get_password_hash",
+    "get_user_by_email",
+    "get_user_by_username",
+    "oauth2_scheme",
+    "verify_password",
+    # SSO
+    "OIDCProvider",
+    "SSOConfig",
+    "SSOManager",
+]

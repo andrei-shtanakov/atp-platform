@@ -171,6 +171,22 @@ def create_app(
                 name="comparison.html",
             )
 
+        @app.get("/costs", response_class=HTMLResponse)
+        async def costs(request: Request) -> HTMLResponse:
+            """Render the cost analytics page template."""
+            return templates.TemplateResponse(
+                request=request,
+                name="costs.html",
+            )
+
+        @app.get("/analytics", response_class=HTMLResponse)
+        async def analytics(request: Request) -> HTMLResponse:
+            """Render the advanced analytics page template."""
+            return templates.TemplateResponse(
+                request=request,
+                name="analytics.html",
+            )
+
     return app
 
 

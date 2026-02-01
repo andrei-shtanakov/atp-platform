@@ -1,6 +1,24 @@
-"""FastAPI application for ATP Dashboard."""
+"""FastAPI application for ATP Dashboard (v1 - DEPRECATED).
+
+.. deprecated:: 0.2.0
+    This module is deprecated and will be removed in ATP 1.0.0.
+    Use :mod:`atp.dashboard.v2` instead with ``ATP_DASHBOARD_V2=true``.
+
+    Migration guide: docs/reference/dashboard-migration.md
+
+Example usage with v2:
+    >>> import os
+    >>> os.environ["ATP_DASHBOARD_V2"] = "true"
+    >>> from atp.dashboard import create_app
+    >>> app = create_app()
+
+Or directly:
+    >>> from atp.dashboard.v2 import create_app
+    >>> app = create_app()
+"""
 
 import os
+import warnings
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -11,6 +29,15 @@ from fastapi.staticfiles import StaticFiles
 
 from atp.dashboard.api import router as api_router
 from atp.dashboard.database import init_database
+
+# Emit deprecation warning when this module is imported
+warnings.warn(
+    "atp.dashboard.app (v1) is deprecated and will be removed in ATP 1.0.0. "
+    "Set ATP_DASHBOARD_V2=true to use the new modular dashboard. "
+    "See docs/reference/dashboard-migration.md for migration guide.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 
 @asynccontextmanager
@@ -4570,7 +4597,17 @@ async def health_check() -> dict[str, str]:  # pragma: no cover
 
 
 def create_app() -> FastAPI:
-    """Factory function to create the FastAPI application."""
+    """Factory function to create the FastAPI application.
+
+    .. deprecated:: 0.2.0
+        Use :func:`atp.dashboard.v2.create_app` instead.
+    """
+    warnings.warn(
+        "create_app() from atp.dashboard.app is deprecated. "
+        "Use atp.dashboard.v2.create_app() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return app
 
 

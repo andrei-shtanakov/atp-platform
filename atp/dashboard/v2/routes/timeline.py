@@ -2,22 +2,28 @@
 
 This module provides endpoints for viewing execution timelines
 with event sequences and multi-agent comparison.
+
+Permissions:
+    - GET /timeline/events: RESULTS_READ
+    - GET /timeline/compare: RESULTS_READ
 """
 
 from datetime import datetime
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from atp.dashboard.models import Agent, SuiteExecution, TestExecution
+from atp.dashboard.rbac import Permission, require_permission
 from atp.dashboard.schemas import (
     AgentTimeline,
     MultiTimelineResponse,
     TimelineEvent,
     TimelineEventsResponse,
 )
-from atp.dashboard.v2.dependencies import CurrentUser, DBSession
+from atp.dashboard.v2.dependencies import DBSession
 
 router = APIRouter(prefix="/timeline", tags=["timeline"])
 
@@ -106,7 +112,7 @@ def _format_timeline_event(
 )
 async def get_timeline_events(
     session: DBSession,
-    user: CurrentUser,
+    _: Annotated[None, Depends(require_permission(Permission.RESULTS_READ))],
     suite_name: str,
     test_id: str,
     agent_name: str,
@@ -116,12 +122,13 @@ async def get_timeline_events(
 ) -> TimelineEventsResponse:
     """Get timeline events for a specific test execution.
 
+    Requires RESULTS_READ permission.
+
     Returns events from the latest test execution for the specified agent,
     with relative timing information for timeline visualization.
 
     Args:
         session: Database session.
-        user: Current user (optional auth).
         suite_name: Name of the test suite.
         test_id: ID of the specific test.
         agent_name: Name of the agent.
@@ -243,7 +250,7 @@ async def get_timeline_events(
 )
 async def get_multi_timeline(
     session: DBSession,
-    user: CurrentUser,
+    _: Annotated[None, Depends(require_permission(Permission.RESULTS_READ))],
     suite_name: str,
     test_id: str,
     agents: list[str] = Query(..., min_length=2, max_length=3),
@@ -251,12 +258,13 @@ async def get_multi_timeline(
 ) -> MultiTimelineResponse:
     """Get aligned timelines for multiple agents on the same test.
 
+    Requires RESULTS_READ permission.
+
     Returns timelines for 2-3 agents aligned by start time, enabling
     visual comparison of execution strategies and timing.
 
     Args:
         session: Database session.
-        user: Current user (optional auth).
         suite_name: Name of the test suite.
         test_id: ID of the specific test.
         agents: List of agent names to compare (2-3 agents).

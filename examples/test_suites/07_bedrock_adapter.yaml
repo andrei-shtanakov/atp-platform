@@ -1,0 +1,94 @@
+# Example test suite for AWS Bedrock Agents
+#
+# This example demonstrates testing an agent deployed on AWS Bedrock.
+# Before running, ensure you have:
+# 1. Created a Bedrock agent in your AWS account
+# 2. Set up the required environment variables
+# 3. Installed boto3: uv add boto3
+
+name: bedrock-agent-example
+description: Example tests for AWS Bedrock agent
+
+# Agent configuration
+agent:
+  adapter: bedrock
+  config:
+    # Replace with your agent ID or use environment variable
+    agent_id: "${BEDROCK_AGENT_ID:ABCDEFGHIJ}"
+
+    # Agent alias (TSTALIASID = draft version)
+    agent_alias_id: "TSTALIASID"
+
+    # AWS region
+    region: "us-east-1"
+
+    # Enable tracing for detailed execution logs
+    enable_trace: true
+    trace_include_reasoning: true
+
+    # Timeout in seconds
+    timeout_seconds: 120
+
+# Test cases
+tests:
+  # Basic functionality test
+  - id: basic-greeting
+    description: Test basic agent greeting
+    task:
+      description: "Hello! Can you introduce yourself?"
+    evaluators:
+      - type: artifact
+        config:
+          expected:
+            - name: output
+
+  # Test agent reasoning
+  - id: simple-math
+    description: Test agent reasoning with math
+    task:
+      description: "What is 25 multiplied by 4?"
+    evaluators:
+      - type: llm_judge
+        config:
+          criteria:
+            - "Response includes the correct answer: 100"
+            - "Response is clear and helpful"
+
+  # Test with constraints
+  - id: constrained-response
+    description: Test with step constraints
+    task:
+      description: "List 3 benefits of cloud computing"
+    constraints:
+      max_steps: 5
+    evaluators:
+      - type: llm_judge
+        config:
+          criteria:
+            - "Response lists exactly 3 benefits"
+            - "Benefits are relevant to cloud computing"
+
+# Uncomment the following tests for knowledge base integration:
+#
+#   - id: knowledge-base-query
+#     description: Test knowledge base retrieval
+#     task:
+#       description: "What is our company's remote work policy?"
+#     evaluators:
+#       - type: llm_judge
+#         config:
+#           criteria:
+#             - "Response references specific company policies"
+#             - "Information appears accurate and relevant"
+#
+# Uncomment for action group testing:
+#
+#   - id: action-group-test
+#     description: Test action group invocation
+#     task:
+#       description: "Look up customer with email test@example.com"
+#     evaluators:
+#       - type: behavior
+#         config:
+#           expected_tools:
+#             - "customer-lookup"

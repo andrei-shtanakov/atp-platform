@@ -2,12 +2,23 @@
 
 This module provides CRUD operations for suite definitions,
 including creating, updating, and exporting suites to YAML.
+
+Permissions:
+    - GET /suite-definitions: SUITES_READ
+    - POST /suite-definitions: SUITES_WRITE
+    - GET /suite-definitions/{id}: SUITES_READ
+    - POST /suite-definitions/{id}/tests: SUITES_WRITE
+    - DELETE /suite-definitions/{id}: SUITES_DELETE
+    - GET /suite-definitions/{id}/yaml: SUITES_READ
 """
 
-from fastapi import APIRouter, HTTPException, Query, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 
 from atp.dashboard.models import SuiteDefinition
+from atp.dashboard.rbac import Permission, require_permission
 from atp.dashboard.schemas import (
     AgentConfigCreate,
     AssertionCreate,
@@ -23,7 +34,7 @@ from atp.dashboard.schemas import (
     TestResponse,
     YAMLExportResponse,
 )
-from atp.dashboard.v2.dependencies import CurrentUser, DBSession, RequiredUser
+from atp.dashboard.v2.dependencies import DBSession
 
 router = APIRouter(prefix="/suite-definitions", tags=["suite-definitions"])
 
@@ -77,17 +88,16 @@ def _build_suite_definition_response(
 async def create_suite_definition(
     session: DBSession,
     suite_data: SuiteCreateRequest,
-    user: RequiredUser,
+    _: Annotated[None, Depends(require_permission(Permission.SUITES_WRITE))],
 ) -> SuiteDefinitionResponse:
     """Create a new test suite definition.
 
-    Requires authentication. Creates a new suite definition that can be
+    Requires SUITES_WRITE permission. Creates a new suite definition that can be
     managed through the dashboard and exported to YAML.
 
     Args:
         session: Database session.
         suite_data: Suite definition data.
-        user: Authenticated user.
 
     Returns:
         The created suite definition.
@@ -109,7 +119,7 @@ async def create_suite_definition(
     agents_list = [a.model_dump() for a in suite_data.agents]
     tests_list = [t.model_dump() for t in suite_data.tests]
 
-    # Create suite definition
+    # Create suite definition (Note: created_by_id would need current_user)
     suite_def = SuiteDefinition(
         name=suite_data.name,
         version=suite_data.version,
@@ -117,7 +127,6 @@ async def create_suite_definition(
         defaults_json=defaults_dict,
         agents_json=agents_list,
         tests_json=tests_list,
-        created_by_id=user.id,
     )
     session.add(suite_def)
     await session.commit()
@@ -132,15 +141,16 @@ async def create_suite_definition(
 )
 async def list_suite_definitions(
     session: DBSession,
-    user: CurrentUser,
+    _: Annotated[None, Depends(require_permission(Permission.SUITES_READ))],
     limit: int = Query(default=50, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> SuiteDefinitionList:
     """List all suite definitions.
 
+    Requires SUITES_READ permission.
+
     Args:
         session: Database session.
-        user: Current user (optional auth).
         limit: Maximum items to return.
         offset: Offset for pagination.
 
@@ -190,14 +200,15 @@ async def list_suite_definitions(
 async def get_suite_definition(
     session: DBSession,
     suite_id: int,
-    user: CurrentUser,
+    _: Annotated[None, Depends(require_permission(Permission.SUITES_READ))],
 ) -> SuiteDefinitionResponse:
     """Get a suite definition by ID.
+
+    Requires SUITES_READ permission.
 
     Args:
         session: Database session.
         suite_id: Suite definition ID.
-        user: Current user (optional auth).
 
     Returns:
         The suite definition.
@@ -223,17 +234,16 @@ async def add_test_to_suite(
     session: DBSession,
     suite_id: int,
     test_data: TestCreateRequest,
-    user: RequiredUser,
+    _: Annotated[None, Depends(require_permission(Permission.SUITES_WRITE))],
 ) -> SuiteDefinitionResponse:
     """Add a test to an existing suite definition.
 
-    Requires authentication. Adds a new test to the suite's tests list.
+    Requires SUITES_WRITE permission. Adds a new test to the suite's tests list.
 
     Args:
         session: Database session.
         suite_id: Suite definition ID.
         test_data: Test definition data.
-        user: Authenticated user.
 
     Returns:
         The updated suite definition.
@@ -273,16 +283,15 @@ async def add_test_to_suite(
 async def delete_suite_definition(
     session: DBSession,
     suite_id: int,
-    user: RequiredUser,
+    _: Annotated[None, Depends(require_permission(Permission.SUITES_DELETE))],
 ) -> None:
     """Delete a suite definition.
 
-    Requires authentication.
+    Requires SUITES_DELETE permission.
 
     Args:
         session: Database session.
         suite_id: Suite definition ID.
-        user: Authenticated user.
 
     Raises:
         HTTPException: If suite not found.
@@ -305,14 +314,15 @@ async def delete_suite_definition(
 async def export_suite_yaml(
     session: DBSession,
     suite_id: int,
-    user: CurrentUser,
+    _: Annotated[None, Depends(require_permission(Permission.SUITES_READ))],
 ) -> YAMLExportResponse:
     """Export a suite definition as YAML.
+
+    Requires SUITES_READ permission.
 
     Args:
         session: Database session.
         suite_id: Suite definition ID.
-        user: Current user (optional auth).
 
     Returns:
         YAML content and metadata.

@@ -1,0 +1,516 @@
+{% extends "base.html" %}
+{% from "components/charts.html" import trend_chart, bar_chart, pie_chart, metric_card, chart_scripts %}
+
+{% block title %}ATP Dashboard - Cost Analytics{% endblock %}
+
+{% block content %}
+<!-- Cost Analytics page content rendered by React -->
+<div id="costs-root"></div>
+{% endblock %}
+
+{% block scripts %}
+{{ chart_scripts() }}
+<script type="text/babel">
+    // ==================== Cost Summary Cards ====================
+
+    function CostSummaryCards({ summary, loading }) {
+        if (loading) {
+            return React.createElement(SkeletonDashboardSummary);
+        }
+
+        if (!summary) {
+            return null;
+        }
+
+        const cards = [
+            {
+                label: 'Total Cost',
+                value: `$${summary.total_cost.toFixed(2)}`,
+                icon: '💰'
+            },
+            {
+                label: 'Total Records',
+                value: summary.total_records.toLocaleString(),
+                icon: '📊'
+            },
+            {
+                label: 'Input Tokens',
+                value: summary.total_input_tokens.toLocaleString(),
+                icon: '📥'
+            },
+            {
+                label: 'Output Tokens',
+                value: summary.total_output_tokens.toLocaleString(),
+                icon: '📤'
+            }
+        ];
+
+        return (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                {cards.map((card, idx) => (
+                    <div key={idx} className="bg-white p-4 rounded-lg shadow">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h3 className="text-gray-500 text-sm">{card.label}</h3>
+                                <p className="text-2xl font-bold">{card.value}</p>
+                            </div>
+                            <span className="text-3xl">{card.icon}</span>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        );
+    }
+
+    // ==================== Cost Breakdown Chart ====================
+
+    function CostBreakdownChart({ data, title, chartId }) {
+        const chartRef = React.useRef(null);
+        const chartInstance = React.useRef(null);
+
+        React.useEffect(() => {
+            if (!data || data.length === 0) return;
+
+            const ctx = document.getElementById(chartId);
+            if (!ctx) return;
+
+            // Destroy existing chart
+            if (chartInstance.current) {
+                chartInstance.current.destroy();
+            }
+
+            // Create new chart
+            chartInstance.current = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: data.map(item => item.name),
+                    datasets: [{
+                        data: data.map(item => item.total_cost),
+                        backgroundColor: chartColors.palette.slice(0, data.length),
+                        borderWidth: 1,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                generateLabels: function(chart) {
+                                    const data = chart.data;
+                                    return data.labels.map((label, i) => ({
+                                        text: `${label} ($${data.datasets[0].data[i].toFixed(2)})`,
+                                        fillStyle: data.datasets[0].backgroundColor[i],
+                                        index: i
+                                    }));
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const value = context.raw;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    return `$${value.toFixed(2)} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            return () => {
+                if (chartInstance.current) {
+                    chartInstance.current.destroy();
+                }
+            };
+        }, [data, chartId]);
+
+        if (!data || data.length === 0) {
+            return (
+                <div className="bg-white p-4 rounded-lg shadow">
+                    <h3 className="text-lg font-semibold text-gray-800 mb-4">{title}</h3>
+                    <p className="text-gray-500 text-center py-8">No data available</p>
+                </div>
+            );
+        }
+
+        return (
+            <div className="bg-white p-4 rounded-lg shadow">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">{title}</h3>
+                <div className="flex justify-center" style={{ height: '250px' }}>
+                    <canvas id={chartId}></canvas>
+                </div>
+            </div>
+        );
+    }
+
+    // ==================== Cost Trend Chart ====================
+
+    function CostTrendChart({ data }) {
+        const chartRef = React.useRef(null);
+        const chartInstance = React.useRef(null);
+
+        React.useEffect(() => {
+            if (!data || data.length === 0) return;
+
+            const ctx = document.getElementById('cost-trend-chart');
+            if (!ctx) return;
+
+            // Destroy existing chart
+            if (chartInstance.current) {
+                chartInstance.current.destroy();
+            }
+
+            // Create new chart
+            chartInstance.current = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.map(item => item.date),
+                    datasets: [{
+                        label: 'Daily Cost ($)',
+                        data: data.map(item => item.total_cost),
+                        borderColor: chartColors.primary,
+                        backgroundColor: chartColors.primary + '20',
+                        fill: true,
+                        tension: 0.4,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `$${context.raw.toFixed(4)}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return '$' + value.toFixed(2);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            return () => {
+                if (chartInstance.current) {
+                    chartInstance.current.destroy();
+                }
+            };
+        }, [data]);
+
+        if (!data || data.length === 0) {
+            return (
+                <div className="bg-white p-4 rounded-lg shadow">
+                    <h3 className="text-lg font-semibold text-gray-800 mb-4">Cost Trend</h3>
+                    <p className="text-gray-500 text-center py-8">No trend data available</p>
+                </div>
+            );
+        }
+
+        return (
+            <div className="bg-white p-4 rounded-lg shadow">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">Cost Trend (Daily)</h3>
+                <div style={{ height: '300px' }}>
+                    <canvas id="cost-trend-chart"></canvas>
+                </div>
+            </div>
+        );
+    }
+
+    // ==================== Budget Status Card ====================
+
+    function BudgetStatusCard({ budget }) {
+        const percentage = budget.usage ? budget.usage.percentage : 0;
+        const isOverThreshold = budget.usage ? budget.usage.is_over_threshold : false;
+        const isOverLimit = budget.usage ? budget.usage.is_over_limit : false;
+
+        let statusColor = 'bg-green-500';
+        if (isOverLimit) {
+            statusColor = 'bg-red-500';
+        } else if (isOverThreshold) {
+            statusColor = 'bg-yellow-500';
+        }
+
+        return (
+            <div className="bg-white p-4 rounded-lg shadow">
+                <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-semibold text-gray-800">{budget.name}</h4>
+                    <span className={`px-2 py-1 text-xs rounded ${
+                        budget.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
+                    }`}>
+                        {budget.period}
+                    </span>
+                </div>
+                <div className="mb-2">
+                    <div className="flex justify-between text-sm text-gray-600 mb-1">
+                        <span>
+                            ${budget.usage ? budget.usage.spent.toFixed(2) : '0.00'} / ${budget.limit_usd.toFixed(2)}
+                        </span>
+                        <span>{percentage.toFixed(1)}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div
+                            className={`h-2 rounded-full ${statusColor}`}
+                            style={{ width: `${Math.min(percentage, 100)}%` }}
+                        ></div>
+                    </div>
+                </div>
+                {budget.usage && (
+                    <p className="text-xs text-gray-500">
+                        Remaining: ${budget.usage.remaining.toFixed(2)}
+                    </p>
+                )}
+            </div>
+        );
+    }
+
+    // ==================== Budget List ====================
+
+    function BudgetList({ budgets, loading }) {
+        if (loading) {
+            return (
+                <div className="bg-white p-4 rounded-lg shadow">
+                    <SkeletonText lines={3} />
+                </div>
+            );
+        }
+
+        if (!budgets || budgets.length === 0) {
+            return (
+                <div className="bg-white p-6 rounded-lg shadow text-center text-gray-500">
+                    No budgets configured. Create a budget to track spending limits.
+                </div>
+            );
+        }
+
+        return (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {budgets.map(budget => (
+                    <BudgetStatusCard key={budget.id} budget={budget} />
+                ))}
+            </div>
+        );
+    }
+
+    // ==================== Cost Records Table ====================
+
+    function CostRecordsTable({ records, loading, onLoadMore }) {
+        if (loading && (!records || records.length === 0)) {
+            return React.createElement(SkeletonSuiteList, { rows: 5 });
+        }
+
+        if (!records || records.length === 0) {
+            return (
+                <div className="bg-white p-6 rounded-lg shadow text-center text-gray-500">
+                    No cost records found. Run some tests to see cost data here.
+                </div>
+            );
+        }
+
+        return (
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+                <table className="min-w-full">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Provider</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Model</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tokens (In/Out)</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cost</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Agent</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                        {records.map((record) => (
+                            <tr key={record.id} className="hover:bg-gray-50">
+                                <td className="px-4 py-3 text-sm">
+                                    {new Date(record.timestamp).toLocaleString()}
+                                </td>
+                                <td className="px-4 py-3">
+                                    <span className="px-2 py-1 text-xs rounded bg-blue-100 text-blue-800">
+                                        {record.provider}
+                                    </span>
+                                </td>
+                                <td className="px-4 py-3 text-sm font-mono">{record.model}</td>
+                                <td className="px-4 py-3 text-sm">
+                                    {record.input_tokens.toLocaleString()} / {record.output_tokens.toLocaleString()}
+                                </td>
+                                <td className="px-4 py-3 text-sm font-semibold">
+                                    ${record.cost_usd.toFixed(4)}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-600">
+                                    {record.agent_name || '-'}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        );
+    }
+
+    // ==================== Main Cost Dashboard Page ====================
+
+    function CostDashboardPage() {
+        const [summary, setSummary] = React.useState(null);
+        const [budgets, setBudgets] = React.useState(null);
+        const [records, setRecords] = React.useState(null);
+        const [loading, setLoading] = React.useState(true);
+        const [error, setError] = React.useState(null);
+        const [activeTab, setActiveTab] = React.useState('overview');
+
+        const loadData = React.useCallback(async () => {
+            setLoading(true);
+            setError(null);
+            try {
+                // Load all data in parallel
+                const [summaryData, budgetsData, recordsData] = await Promise.all([
+                    api.get('/costs'),
+                    api.get('/budgets'),
+                    api.get('/costs/records?limit=20')
+                ]);
+                setSummary(summaryData);
+                setBudgets(budgetsData.items);
+                setRecords(recordsData.items);
+            } catch (err) {
+                setError(err.message);
+            } finally {
+                setLoading(false);
+            }
+        }, []);
+
+        React.useEffect(() => {
+            loadData();
+        }, [loadData]);
+
+        if (error) {
+            return (
+                <div className="container mx-auto px-4 py-6">
+                    <ErrorDisplay
+                        error={{ message: error }}
+                        onRetry={loadData}
+                        title="Failed to load cost data"
+                    />
+                </div>
+            );
+        }
+
+        const tabs = [
+            { id: 'overview', label: 'Overview' },
+            { id: 'budgets', label: 'Budgets' },
+            { id: 'records', label: 'Records' }
+        ];
+
+        return (
+            <ErrorBoundary title="Cost Dashboard Error" message="Unable to display the cost dashboard.">
+                <div className="container mx-auto px-4 py-6">
+                    {/* Header */}
+                    <div className="mb-6">
+                        <h1 className="text-2xl font-bold text-gray-800">Cost Analytics</h1>
+                        <p className="text-gray-600">Track and manage your LLM spending</p>
+                    </div>
+
+                    {/* Navigation Tabs */}
+                    <div className="mb-6">
+                        <div className="border-b border-gray-200">
+                            <nav className="-mb-px flex gap-4">
+                                {tabs.map(tab => (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => setActiveTab(tab.id)}
+                                        className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                                            activeTab === tab.id
+                                                ? 'border-blue-500 text-blue-600'
+                                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                        }`}
+                                    >
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </nav>
+                        </div>
+                    </div>
+
+                    {/* Tab Content */}
+                    {activeTab === 'overview' && (
+                        <div>
+                            {/* Summary Cards */}
+                            <CostSummaryCards summary={summary} loading={loading} />
+
+                            {/* Charts Grid */}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                                <CostTrendChart data={summary?.daily_trend} />
+                                <CostBreakdownChart
+                                    data={summary?.by_provider}
+                                    title="Cost by Provider"
+                                    chartId="cost-by-provider-chart"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                                <CostBreakdownChart
+                                    data={summary?.by_model}
+                                    title="Cost by Model"
+                                    chartId="cost-by-model-chart"
+                                />
+                                <CostBreakdownChart
+                                    data={summary?.by_agent}
+                                    title="Cost by Agent"
+                                    chartId="cost-by-agent-chart"
+                                />
+                            </div>
+
+                            {/* Budget Overview */}
+                            <div className="mb-6">
+                                <h2 className="text-lg font-semibold text-gray-800 mb-4">Budget Status</h2>
+                                <BudgetList budgets={budgets} loading={loading} />
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'budgets' && (
+                        <div>
+                            <div className="mb-4 flex justify-between items-center">
+                                <h2 className="text-lg font-semibold text-gray-800">Budget Management</h2>
+                            </div>
+                            <BudgetList budgets={budgets} loading={loading} />
+                        </div>
+                    )}
+
+                    {activeTab === 'records' && (
+                        <div>
+                            <div className="mb-4">
+                                <h2 className="text-lg font-semibold text-gray-800">Cost Records</h2>
+                                <p className="text-sm text-gray-600">Recent cost records from test executions</p>
+                            </div>
+                            <CostRecordsTable records={records} loading={loading} />
+                        </div>
+                    )}
+                </div>
+            </ErrorBoundary>
+        );
+    }
+
+    // Render the cost dashboard page
+    const costsRoot = document.getElementById('costs-root');
+    if (costsRoot) {
+        const root = ReactDOM.createRoot(costsRoot);
+        root.render(<CostDashboardPage />);
+    }
+</script>
+{% endblock %}

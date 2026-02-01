@@ -17,14 +17,30 @@ Environment Variables:
     ATP_TOKEN_EXPIRE_MINUTES: JWT token expiration time (default: 60)
     ATP_CORS_ORIGINS: Comma-separated list of allowed CORS origins
     ATP_DEBUG: Enable debug mode with SQL echo
-    ATP_DASHBOARD_V2: Set to 'true' to enable v2 modular dashboard
+    ATP_DASHBOARD_V2: Set to 'true' to enable v2 modular dashboard (RECOMMENDED)
 
 Version Switching:
     The dashboard supports two versions:
-    - v1 (default): Original monolithic implementation in app.py
-    - v2: New modular implementation with app factory pattern
 
-    Set ATP_DASHBOARD_V2=true to use the v2 implementation.
+    - v1 (default): Original monolithic implementation in app.py
+      **DEPRECATED** - Will be removed in ATP 1.0.0
+
+    - v2 (recommended): New modular implementation with app factory pattern
+      Enable with: ATP_DASHBOARD_V2=true
+
+    **Recommended**: Set ATP_DASHBOARD_V2=true to use the v2 implementation.
+    See docs/reference/dashboard-migration.md for migration guide.
+
+Example (v2 recommended):
+    >>> import os
+    >>> os.environ["ATP_DASHBOARD_V2"] = "true"
+    >>> from atp.dashboard import create_app
+    >>> app = create_app()
+
+    Or directly use v2:
+    >>> from atp.dashboard.v2 import create_app, DashboardConfig
+    >>> config = DashboardConfig(debug=True)
+    >>> app = create_app(config=config)
 """
 
 import os

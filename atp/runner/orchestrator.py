@@ -7,8 +7,18 @@ from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Any
 
+from opentelemetry.trace import SpanKind, Status, StatusCode
+
 from atp.adapters.base import AgentAdapter
 from atp.adapters.exceptions import AdapterError, AdapterTimeoutError
+from atp.core.metrics import get_metrics
+from atp.core.telemetry import (
+    add_span_event,
+    get_tracer,
+    set_span_attribute,
+    set_span_attributes,
+    set_test_result_attributes,
+)
 from atp.loader.models import TestDefinition, TestSuite
 from atp.protocol import (
     ATPEvent,
@@ -32,6 +42,7 @@ from atp.runner.models import (
 from atp.runner.sandbox import SandboxManager
 
 logger = logging.getLogger(__name__)
+tracer = get_tracer(__name__)
 
 
 class TestOrchestrator:
@@ -258,6 +269,7 @@ class TestOrchestrator:
         test: TestDefinition,
         runs: int | None = None,
         parallel: bool | None = None,
+        suite_name: str = "default",
     ) -> TestResult:
         """
         Execute a single test.
@@ -266,6 +278,7 @@ class TestOrchestrator:
             test: Test definition to execute.
             runs: Number of runs (overrides instance default).
             parallel: Run tests in parallel (overrides instance default).
+            suite_name: Name of the test suite (for metrics).
 
         Returns:
             TestResult with all run results.
@@ -274,92 +287,157 @@ class TestOrchestrator:
         use_parallel = parallel if parallel is not None else self.parallel_runs
         result = TestResult(test=test, start_time=datetime.now())
 
-        # Emit test started event
-        self._emit_progress(
-            ProgressEvent(
-                event_type=ProgressEventType.TEST_STARTED,
-                test_id=test.id,
-                test_name=test.name,
-                total_runs=num_runs,
-            )
-        )
+        # Record test start in metrics
+        metrics = get_metrics()
+        if metrics:
+            metrics.record_test_start(suite=suite_name)
 
-        # Create sandbox if enabled
-        sandbox_id: str | None = None
-        workspace_path: str | None = None
-
-        if self.sandbox_config.enabled:
-            if self._sandbox_manager is None:
-                self._sandbox_manager = SandboxManager(self.sandbox_config)
-            sandbox_id = self._sandbox_manager.create(test.id)
-            workspace_path = str(self._sandbox_manager.get_workspace(sandbox_id))
-
-        try:
-            if use_parallel and num_runs > 1:
-                # Execute runs in parallel with semaphore limiting
-                result.runs = await self._execute_runs_parallel(
-                    test=test,
-                    num_runs=num_runs,
-                    workspace_path=workspace_path,
+        # Create span for test execution
+        with tracer.start_as_current_span(
+            f"test:{test.name}",
+            kind=SpanKind.INTERNAL,
+            attributes={
+                "atp.test.id": test.id,
+                "atp.test.name": test.name,
+                "atp.test.runs": num_runs,
+                "atp.test.parallel": use_parallel,
+            },
+        ) as span:
+            # Emit test started event
+            self._emit_progress(
+                ProgressEvent(
+                    event_type=ProgressEventType.TEST_STARTED,
+                    test_id=test.id,
+                    test_name=test.name,
+                    total_runs=num_runs,
                 )
-            else:
-                # Execute runs sequentially
-                for run_number in range(1, num_runs + 1):
-                    run_result = await self._execute_run(
+            )
+            add_span_event("test_started", {"total_runs": num_runs})
+
+            # Create sandbox if enabled
+            sandbox_id: str | None = None
+            workspace_path: str | None = None
+
+            if self.sandbox_config.enabled:
+                if self._sandbox_manager is None:
+                    self._sandbox_manager = SandboxManager(self.sandbox_config)
+                sandbox_id = self._sandbox_manager.create(test.id)
+                workspace_path = str(self._sandbox_manager.get_workspace(sandbox_id))
+                set_span_attribute("atp.sandbox.id", sandbox_id)
+                set_span_attribute("atp.sandbox.path", workspace_path)
+
+            try:
+                if use_parallel and num_runs > 1:
+                    # Execute runs in parallel with semaphore limiting
+                    result.runs = await self._execute_runs_parallel(
                         test=test,
-                        run_number=run_number,
-                        total_runs=num_runs,
+                        num_runs=num_runs,
                         workspace_path=workspace_path,
                     )
-                    result.runs.append(run_result)
-
-                    # Check for fail-fast on this test
-                    if not run_result.success and self.fail_fast:
-                        logger.info(
-                            "Test %s failed on run %d, stopping due to fail_fast",
-                            test.id,
-                            run_number,
+                else:
+                    # Execute runs sequentially
+                    for run_number in range(1, num_runs + 1):
+                        run_result = await self._execute_run(
+                            test=test,
+                            run_number=run_number,
+                            total_runs=num_runs,
+                            workspace_path=workspace_path,
                         )
-                        break
+                        result.runs.append(run_result)
 
-        except Exception as e:
-            result.error = str(e)
-            logger.error("Test %s failed with error: %s", test.id, e)
+                        # Check for fail-fast on this test
+                        if not run_result.success and self.fail_fast:
+                            logger.info(
+                                "Test %s failed on run %d, stopping due to fail_fast",
+                                test.id,
+                                run_number,
+                            )
+                            add_span_event(
+                                "fail_fast_triggered",
+                                {"run_number": run_number},
+                            )
+                            break
 
-        finally:
-            # Cleanup sandbox
-            if sandbox_id and self._sandbox_manager:
-                try:
-                    self._sandbox_manager.cleanup(sandbox_id)
-                except Exception as e:
-                    logger.warning("Failed to cleanup sandbox %s: %s", sandbox_id, e)
+            except Exception as e:
+                result.error = str(e)
+                logger.error("Test %s failed with error: %s", test.id, e)
+                span.record_exception(e)
+                span.set_status(Status(StatusCode.ERROR, str(e)))
 
-        result.end_time = datetime.now()
+            finally:
+                # Cleanup sandbox
+                if sandbox_id and self._sandbox_manager:
+                    try:
+                        self._sandbox_manager.cleanup(sandbox_id)
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to cleanup sandbox %s: %s", sandbox_id, e
+                        )
 
-        # Emit completion event
-        event_type = (
-            ProgressEventType.TEST_COMPLETED
-            if result.success
-            else ProgressEventType.TEST_FAILED
-        )
-        if result.status == ResponseStatus.TIMEOUT:
-            event_type = ProgressEventType.TEST_TIMEOUT
+            result.end_time = datetime.now()
 
-        self._emit_progress(
-            ProgressEvent(
-                event_type=event_type,
-                test_id=test.id,
-                test_name=test.name,
-                success=result.success,
+            # Record test end in metrics
+            if metrics:
+                status_str = "passed" if result.success else "failed"
+                if result.status == ResponseStatus.TIMEOUT:
+                    status_str = "timeout"
+                elif result.error:
+                    status_str = "error"
+                metrics.record_test_end(
+                    suite=suite_name,
+                    status=status_str,
+                    duration_seconds=result.duration_seconds or 0.0,
+                    test_name=test.name,
+                )
+
+            # Set result attributes on span
+            set_test_result_attributes(
+                score=result.score
+                if hasattr(result, "score")
+                else (1.0 if result.success else 0.0),
+                passed=result.success,
+                duration_seconds=result.duration_seconds,
                 error=result.error,
-                details={
+            )
+            set_span_attributes(
+                **{
+                    "atp.result.total_runs": result.total_runs,
+                    "atp.result.successful_runs": result.successful_runs,
+                    "atp.result.status": result.status.value,
+                }
+            )
+
+            # Emit completion event
+            event_type = (
+                ProgressEventType.TEST_COMPLETED
+                if result.success
+                else ProgressEventType.TEST_FAILED
+            )
+            if result.status == ResponseStatus.TIMEOUT:
+                event_type = ProgressEventType.TEST_TIMEOUT
+
+            self._emit_progress(
+                ProgressEvent(
+                    event_type=event_type,
+                    test_id=test.id,
+                    test_name=test.name,
+                    success=result.success,
+                    error=result.error,
+                    details={
+                        "status": result.status.value,
+                        "total_runs": result.total_runs,
+                        "successful_runs": result.successful_runs,
+                        "duration_seconds": result.duration_seconds,
+                    },
+                )
+            )
+            add_span_event(
+                "test_completed",
+                {
+                    "success": result.success,
                     "status": result.status.value,
-                    "total_runs": result.total_runs,
-                    "successful_runs": result.successful_runs,
-                    "duration_seconds": result.duration_seconds,
                 },
             )
-        )
 
         return result
 
@@ -431,6 +509,7 @@ class TestOrchestrator:
         self,
         tests: list[TestDefinition],
         num_runs: int,
+        suite_name: str = "default",
     ) -> list[TestResult]:
         """
         Execute multiple tests in parallel with semaphore limiting.
@@ -438,6 +517,7 @@ class TestOrchestrator:
         Args:
             tests: List of test definitions to execute.
             num_runs: Number of runs per test.
+            suite_name: Name of the test suite (for metrics).
 
         Returns:
             List of TestResult objects, in the same order as input tests.
@@ -448,6 +528,7 @@ class TestOrchestrator:
 
         # Create mapping to preserve order
         test_indices = {test.id: idx for idx, test in enumerate(tests)}
+        metrics = get_metrics()
 
         async def run_test_with_semaphore(test: TestDefinition) -> TestResult:
             async with self._tests_semaphore:  # type: ignore[union-attr]
@@ -456,7 +537,12 @@ class TestOrchestrator:
                     test.name,
                     test.id,
                 )
-                return await self.run_single_test(test, runs=num_runs)
+                # Decrement pending tests
+                if metrics:
+                    metrics.record_test_dequeued()
+                return await self.run_single_test(
+                    test, runs=num_runs, suite_name=suite_name
+                )
 
         # Create tasks for all tests
         tasks = [run_test_with_semaphore(test) for test in tests]
@@ -503,73 +589,112 @@ class TestOrchestrator:
         """
         start_time = datetime.now()
 
-        # Emit run started event
-        self._emit_progress(
-            ProgressEvent(
-                event_type=ProgressEventType.RUN_STARTED,
+        # Create span for individual run
+        with tracer.start_as_current_span(
+            f"run:{test.name}:{run_number}",
+            kind=SpanKind.INTERNAL,
+            attributes={
+                "atp.test.id": test.id,
+                "atp.test.name": test.name,
+                "atp.run.number": run_number,
+                "atp.run.total": total_runs,
+            },
+        ) as span:
+            # Emit run started event
+            self._emit_progress(
+                ProgressEvent(
+                    event_type=ProgressEventType.RUN_STARTED,
+                    test_id=test.id,
+                    test_name=test.name,
+                    run_number=run_number,
+                    total_runs=total_runs,
+                )
+            )
+
+            request = self._create_request(test, workspace_path)
+            timeout = float(test.constraints.timeout_seconds)
+            set_span_attribute("atp.task.id", request.task_id)
+            set_span_attribute("atp.timeout_seconds", timeout)
+
+            events: list[ATPEvent] = []
+            error: str | None = None
+
+            try:
+                response, events = await self._execute_with_timeout(
+                    request=request,
+                    timeout_seconds=timeout,
+                    collect_events=True,
+                )
+            except RunnerTimeoutError as e:
+                response = ATPResponse(
+                    task_id=request.task_id,
+                    status=ResponseStatus.TIMEOUT,
+                    error=str(e),
+                    metrics=Metrics(wall_time_seconds=timeout),
+                )
+                error = str(e)
+                span.record_exception(e)
+                span.set_status(Status(StatusCode.ERROR, "Timeout"))
+            except TestExecutionError as e:
+                response = ATPResponse(
+                    task_id=request.task_id,
+                    status=ResponseStatus.FAILED,
+                    error=str(e),
+                )
+                error = str(e)
+                span.record_exception(e)
+                span.set_status(Status(StatusCode.ERROR, str(e)))
+
+            end_time = datetime.now()
+
+            run_result = RunResult(
                 test_id=test.id,
-                test_name=test.name,
                 run_number=run_number,
-                total_runs=total_runs,
-            )
-        )
-
-        request = self._create_request(test, workspace_path)
-        timeout = float(test.constraints.timeout_seconds)
-
-        events: list[ATPEvent] = []
-        error: str | None = None
-
-        try:
-            response, events = await self._execute_with_timeout(
-                request=request,
-                timeout_seconds=timeout,
-                collect_events=True,
-            )
-        except RunnerTimeoutError as e:
-            response = ATPResponse(
-                task_id=request.task_id,
-                status=ResponseStatus.TIMEOUT,
-                error=str(e),
-                metrics=Metrics(wall_time_seconds=timeout),
-            )
-            error = str(e)
-        except TestExecutionError as e:
-            response = ATPResponse(
-                task_id=request.task_id,
-                status=ResponseStatus.FAILED,
-                error=str(e),
-            )
-            error = str(e)
-
-        end_time = datetime.now()
-
-        run_result = RunResult(
-            test_id=test.id,
-            run_number=run_number,
-            response=response,
-            events=events,
-            start_time=start_time,
-            end_time=end_time,
-            error=error,
-        )
-
-        # Emit run completed event
-        self._emit_progress(
-            ProgressEvent(
-                event_type=ProgressEventType.RUN_COMPLETED,
-                test_id=test.id,
-                test_name=test.name,
-                run_number=run_number,
-                total_runs=total_runs,
-                success=run_result.success,
+                response=response,
+                events=events,
+                start_time=start_time,
+                end_time=end_time,
                 error=error,
-                details={
-                    "status": response.status.value,
-                    "duration_seconds": run_result.duration_seconds,
-                },
             )
-        )
+
+            # Set result attributes
+            set_span_attributes(
+                **{
+                    "atp.run.success": run_result.success,
+                    "atp.run.status": response.status.value,
+                    "atp.run.duration_seconds": run_result.duration_seconds,
+                    "atp.run.event_count": len(events),
+                }
+            )
+            if response.metrics:
+                if response.metrics.input_tokens:
+                    set_span_attribute(
+                        "atp.tokens.input", response.metrics.input_tokens
+                    )
+                if response.metrics.output_tokens:
+                    set_span_attribute(
+                        "atp.tokens.output", response.metrics.output_tokens
+                    )
+
+            if not error:
+                span.set_status(Status(StatusCode.OK))
+
+            # Emit run completed event
+            self._emit_progress(
+                ProgressEvent(
+                    event_type=ProgressEventType.RUN_COMPLETED,
+                    test_id=test.id,
+                    test_name=test.name,
+                    run_number=run_number,
+                    total_runs=total_runs,
+                    success=run_result.success,
+                    error=error,
+                    details={
+                        "status": response.status.value,
+                        "duration_seconds": run_result.duration_seconds,
+                    },
+                )
+            )
 
         return run_result
 
@@ -599,76 +724,143 @@ class TestOrchestrator:
             start_time=datetime.now(),
         )
 
-        # Emit suite started event
-        self._emit_progress(
-            ProgressEvent(
-                event_type=ProgressEventType.SUITE_STARTED,
-                suite_name=suite.test_suite,
-                total_tests=total_tests,
-                details={"agent_name": agent_name, "runs_per_test": num_runs},
+        # Record suite start in metrics
+        metrics = get_metrics()
+        if metrics:
+            metrics.record_suite_start(pending_tests=total_tests)
+
+        # Create span for suite execution
+        with tracer.start_as_current_span(
+            f"suite:{suite.test_suite}",
+            kind=SpanKind.INTERNAL,
+            attributes={
+                "atp.suite.name": suite.test_suite,
+                "atp.agent.name": agent_name,
+                "atp.suite.total_tests": total_tests,
+                "atp.suite.runs_per_test": num_runs,
+                "atp.suite.parallel_tests": self.parallel_tests,
+                "atp.suite.fail_fast": self.fail_fast,
+            },
+        ) as span:
+            # Emit suite started event
+            self._emit_progress(
+                ProgressEvent(
+                    event_type=ProgressEventType.SUITE_STARTED,
+                    suite_name=suite.test_suite,
+                    total_tests=total_tests,
+                    details={"agent_name": agent_name, "runs_per_test": num_runs},
+                )
             )
-        )
+            add_span_event("suite_started", {"total_tests": total_tests})
 
-        # Apply defaults to tests
-        suite.apply_defaults()
+            # Apply defaults to tests
+            suite.apply_defaults()
 
-        try:
-            if self.parallel_tests and not self.fail_fast and total_tests > 1:
-                # Execute tests in parallel (fail_fast is incompatible)
-                logger.info(
-                    "Running %d tests in parallel (max_parallel=%d)",
-                    total_tests,
-                    self.max_parallel_tests,
-                )
-                result.tests = await self._execute_tests_parallel(
-                    tests=suite.tests,
-                    num_runs=num_runs,
-                )
-            else:
-                # Execute tests sequentially
-                for idx, test in enumerate(suite.tests):
+            try:
+                if self.parallel_tests and not self.fail_fast and total_tests > 1:
+                    # Execute tests in parallel (fail_fast is incompatible)
                     logger.info(
-                        "Running test %d/%d: %s (%s)",
-                        idx + 1,
+                        "Running %d tests in parallel (max_parallel=%d)",
                         total_tests,
-                        test.name,
-                        test.id,
+                        self.max_parallel_tests,
                     )
-
-                    test_result = await self.run_single_test(test, runs=num_runs)
-                    result.tests.append(test_result)
-
-                    # Check for fail-fast
-                    if not test_result.success and self.fail_fast:
+                    add_span_event(
+                        "parallel_execution",
+                        {"max_parallel": self.max_parallel_tests},
+                    )
+                    result.tests = await self._execute_tests_parallel(
+                        tests=suite.tests,
+                        num_runs=num_runs,
+                        suite_name=suite.test_suite,
+                    )
+                else:
+                    # Execute tests sequentially
+                    for idx, test in enumerate(suite.tests):
                         logger.info(
-                            "Test %s failed, stopping suite due to fail_fast",
+                            "Running test %d/%d: %s (%s)",
+                            idx + 1,
+                            total_tests,
+                            test.name,
                             test.id,
                         )
-                        break
 
-        except Exception as e:
-            result.error = str(e)
-            logger.error("Suite execution failed: %s", e)
+                        # Decrement pending tests
+                        if metrics:
+                            metrics.record_test_dequeued()
+                        test_result = await self.run_single_test(
+                            test, runs=num_runs, suite_name=suite.test_suite
+                        )
+                        result.tests.append(test_result)
 
-        result.end_time = datetime.now()
+                        # Check for fail-fast
+                        if not test_result.success and self.fail_fast:
+                            logger.info(
+                                "Test %s failed, stopping suite due to fail_fast",
+                                test.id,
+                            )
+                            add_span_event(
+                                "suite_fail_fast",
+                                {"failed_test_id": test.id},
+                            )
+                            break
 
-        # Emit suite completed event
-        self._emit_progress(
-            ProgressEvent(
-                event_type=ProgressEventType.SUITE_COMPLETED,
-                suite_name=suite.test_suite,
-                total_tests=result.total_tests,
-                completed_tests=len(result.tests),
-                success=result.success,
-                error=result.error,
-                details={
+            except Exception as e:
+                result.error = str(e)
+                logger.error("Suite execution failed: %s", e)
+                span.record_exception(e)
+                span.set_status(Status(StatusCode.ERROR, str(e)))
+
+            result.end_time = datetime.now()
+
+            # Record suite end in metrics
+            if metrics:
+                metrics.record_suite_end()
+
+            # Set suite result attributes
+            set_span_attributes(
+                **{
+                    "atp.suite.passed_tests": result.passed_tests,
+                    "atp.suite.failed_tests": result.failed_tests,
+                    "atp.suite.success_rate": result.success_rate,
+                    "atp.suite.duration_seconds": result.duration_seconds,
+                    "atp.suite.success": result.success,
+                }
+            )
+
+            if result.success:
+                span.set_status(Status(StatusCode.OK))
+            elif not result.error:
+                failed = result.failed_tests
+                total = result.total_tests
+                span.set_status(
+                    Status(StatusCode.ERROR, f"Suite failed: {failed}/{total} tests")
+                )
+
+            # Emit suite completed event
+            self._emit_progress(
+                ProgressEvent(
+                    event_type=ProgressEventType.SUITE_COMPLETED,
+                    suite_name=suite.test_suite,
+                    total_tests=result.total_tests,
+                    completed_tests=len(result.tests),
+                    success=result.success,
+                    error=result.error,
+                    details={
+                        "passed_tests": result.passed_tests,
+                        "failed_tests": result.failed_tests,
+                        "success_rate": result.success_rate,
+                        "duration_seconds": result.duration_seconds,
+                    },
+                )
+            )
+            add_span_event(
+                "suite_completed",
+                {
+                    "success": result.success,
                     "passed_tests": result.passed_tests,
                     "failed_tests": result.failed_tests,
-                    "success_rate": result.success_rate,
-                    "duration_seconds": result.duration_seconds,
                 },
             )
-        )
 
         return result
 

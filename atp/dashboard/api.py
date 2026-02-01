@@ -1,10 +1,18 @@
-"""FastAPI routes for ATP Dashboard API."""
+"""FastAPI routes for ATP Dashboard API (v1 - DEPRECATED).
+
+.. deprecated:: 0.2.0
+    This module is deprecated and will be removed in ATP 1.0.0.
+    Use :mod:`atp.dashboard.v2.routes` instead with ``ATP_DASHBOARD_V2=true``.
+
+    Migration guide: docs/reference/dashboard-migration.md
+"""
 
 import logging
+import warnings
 from datetime import datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -83,6 +91,15 @@ from atp.dashboard.schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Emit deprecation warning when this module is imported
+warnings.warn(
+    "atp.dashboard.api (v1) is deprecated and will be removed in ATP 1.0.0. "
+    "Set ATP_DASHBOARD_V2=true to use the new modular routes. "
+    "See docs/reference/dashboard-migration.md for migration guide.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 # Create API router
 router = APIRouter()
@@ -2021,4 +2038,31 @@ async def list_templates(
         templates=templates,
         categories=sorted(categories_set),
         total=len(templates),
+    )
+
+
+# ==================== Metrics Routes ====================
+
+
+@router.get("/metrics", include_in_schema=False)
+async def prometheus_metrics() -> Response:
+    """Prometheus metrics endpoint.
+
+    Returns metrics in Prometheus text format for scraping.
+    This endpoint is designed to be scraped by Prometheus.
+
+    Returns:
+        Response with metrics in Prometheus text format.
+    """
+    from atp.core.metrics import generate_metrics, get_metrics
+
+    # Ensure metrics are initialized
+    get_metrics()
+
+    # Generate metrics output
+    metrics_output = generate_metrics()
+
+    return Response(
+        content=metrics_output,
+        media_type="text/plain; version=0.0.4; charset=utf-8",
     )

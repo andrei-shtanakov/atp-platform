@@ -2,20 +2,28 @@
 
 This module provides endpoints for querying and viewing
 suite execution results.
+
+Permissions:
+    - GET /suites: SUITES_READ
+    - GET /suites/names/list: SUITES_READ
+    - GET /suites/{id}: SUITES_READ
 """
 
-from fastapi import APIRouter, HTTPException, Query, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from atp.dashboard.models import SuiteExecution
+from atp.dashboard.rbac import Permission, require_permission
 from atp.dashboard.schemas import (
     SuiteExecutionDetail,
     SuiteExecutionList,
     SuiteExecutionSummary,
     TestExecutionSummary,
 )
-from atp.dashboard.v2.dependencies import CurrentUser, DBSession
+from atp.dashboard.v2.dependencies import DBSession
 
 router = APIRouter(prefix="/suites", tags=["suites"])
 
@@ -23,7 +31,7 @@ router = APIRouter(prefix="/suites", tags=["suites"])
 @router.get("", response_model=SuiteExecutionList)
 async def list_suite_executions(
     session: DBSession,
-    user: CurrentUser,
+    _: Annotated[None, Depends(require_permission(Permission.SUITES_READ))],
     suite_name: str | None = None,
     agent_id: int | None = None,
     limit: int = Query(default=50, le=100),
@@ -31,9 +39,10 @@ async def list_suite_executions(
 ) -> SuiteExecutionList:
     """List suite executions with optional filtering.
 
+    Requires SUITES_READ permission.
+
     Args:
         session: Database session.
-        user: Current user (optional auth).
         suite_name: Filter by suite name.
         agent_id: Filter by agent ID.
         limit: Maximum number of results (default 50, max 100).
@@ -73,12 +82,16 @@ async def list_suite_executions(
 
 
 @router.get("/names/list", response_model=list[str])
-async def list_suite_names(session: DBSession, user: CurrentUser) -> list[str]:
+async def list_suite_names(
+    session: DBSession,
+    _: Annotated[None, Depends(require_permission(Permission.SUITES_READ))],
+) -> list[str]:
     """List unique suite names.
+
+    Requires SUITES_READ permission.
 
     Args:
         session: Database session.
-        user: Current user (optional auth).
 
     Returns:
         List of unique suite names ordered alphabetically.
@@ -92,14 +105,17 @@ async def list_suite_names(session: DBSession, user: CurrentUser) -> list[str]:
 
 @router.get("/{execution_id}", response_model=SuiteExecutionDetail)
 async def get_suite_execution(
-    session: DBSession, execution_id: int, user: CurrentUser
+    session: DBSession,
+    execution_id: int,
+    _: Annotated[None, Depends(require_permission(Permission.SUITES_READ))],
 ) -> SuiteExecutionDetail:
     """Get suite execution details.
+
+    Requires SUITES_READ permission.
 
     Args:
         session: Database session.
         execution_id: Suite execution ID.
-        user: Current user (optional auth).
 
     Returns:
         Detailed suite execution information including test executions.

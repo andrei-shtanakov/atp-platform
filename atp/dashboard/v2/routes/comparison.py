@@ -2,16 +2,21 @@
 
 This module provides endpoints for comparing multiple agents
 on tests and suites, including side-by-side execution views.
+
+Permissions:
+    - GET /compare/agents: RESULTS_READ
+    - GET /compare/side-by-side: RESULTS_READ
 """
 
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from atp.dashboard.models import Agent, RunResult, SuiteExecution, TestExecution
+from atp.dashboard.rbac import Permission, require_permission
 from atp.dashboard.schemas import (
     AgentComparisonMetrics,
     AgentComparisonResponse,
@@ -20,7 +25,7 @@ from atp.dashboard.schemas import (
     SideBySideComparisonResponse,
     TestComparisonMetrics,
 )
-from atp.dashboard.v2.dependencies import CurrentUser, DBSession
+from atp.dashboard.v2.dependencies import DBSession
 
 router = APIRouter(prefix="/compare", tags=["compare"])
 
@@ -110,16 +115,17 @@ def _calculate_metrics_from_run(
 @router.get("/agents", response_model=AgentComparisonResponse)
 async def compare_agents(
     session: DBSession,
-    user: CurrentUser,
+    _: Annotated[None, Depends(require_permission(Permission.RESULTS_READ))],
     suite_name: str,
     agents: list[str] = Query(...),
     limit_per_agent: int = Query(default=10, le=50),
 ) -> AgentComparisonResponse:
     """Compare multiple agents on a suite.
 
+    Requires RESULTS_READ permission.
+
     Args:
         session: Database session.
-        user: Current user (optional auth).
         suite_name: Name of the test suite to compare.
         agents: List of agent names to compare.
         limit_per_agent: Max executions per agent to consider (default 10, max 50).
@@ -250,12 +256,14 @@ async def compare_agents(
 )
 async def get_side_by_side_comparison(
     session: DBSession,
-    user: CurrentUser,
+    _: Annotated[None, Depends(require_permission(Permission.RESULTS_READ))],
     suite_name: str,
     test_id: str,
     agents: list[str] = Query(..., min_length=2, max_length=3),
 ) -> SideBySideComparisonResponse:
     """Get detailed side-by-side comparison of agents on a specific test.
+
+    Requires RESULTS_READ permission.
 
     This endpoint returns the latest test execution for each agent on the
     specified test, including formatted events for timeline visualization
@@ -263,7 +271,6 @@ async def get_side_by_side_comparison(
 
     Args:
         session: Database session.
-        user: Current user (optional auth).
         suite_name: Name of the test suite.
         test_id: ID of the specific test.
         agents: List of agent names to compare (2-3 agents).

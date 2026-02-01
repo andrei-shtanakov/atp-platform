@@ -1,0 +1,204 @@
+# ATP Test Suite: MCP Adapter Example
+# Purpose: Demonstrates MCP (Model Context Protocol) adapter configuration
+# This suite shows various MCP configuration options and test patterns
+
+test_suite: "mcp_adapter_examples"
+version: "1.0"
+description: >
+  Example test suite demonstrating the MCP (Model Context Protocol) adapter.
+  Shows configuration for both stdio and SSE transports, tool filtering,
+  and various test patterns for MCP-based agents.
+
+defaults:
+  runs_per_test: 1
+  timeout_seconds: 60
+  constraints:
+    max_steps: 10
+    timeout_seconds: 60
+  scoring:
+    quality_weight: 0.3
+    completeness_weight: 0.5
+    efficiency_weight: 0.2
+    cost_weight: 0.0
+
+# Agent configurations demonstrating different MCP setups
+agents:
+  # Example 1: Stdio transport with filesystem MCP server
+  - name: "mcp-filesystem"
+    type: "mcp"
+    config:
+      transport: "stdio"
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "/workspace"]
+      working_dir: "${WORKSPACE_DIR:/tmp/mcp-test}"
+      environment:
+        MCP_ROOT: "/workspace"
+      startup_timeout: 30
+      timeout_seconds: 120
+      tools_filter:
+        - "read_file"
+        - "write_file"
+        - "list_directory"
+
+  # Example 2: Stdio transport with a Python MCP server
+  - name: "mcp-python-server"
+    type: "mcp"
+    config:
+      transport: "stdio"
+      command: "python"
+      args: ["-m", "my_mcp_server"]
+      working_dir: "."
+      environment:
+        PYTHONPATH: "${PYTHONPATH:}"
+        MCP_DEBUG: "false"
+      inherit_environment: true
+      startup_timeout: 15
+      timeout_seconds: 60
+
+  # Example 3: SSE transport for remote MCP server
+  - name: "mcp-remote"
+    type: "mcp"
+    config:
+      transport: "sse"
+      url: "${MCP_SERVER_URL:http://localhost:8080/sse}"
+      headers:
+        Authorization: "Bearer ${MCP_API_KEY:}"
+        X-Client-ID: "atp-test"
+      verify_ssl: true
+      post_endpoint: "${MCP_POST_ENDPOINT:}"
+      startup_timeout: 10
+      timeout_seconds: 90
+
+  # Example 4: MCP server with custom client info
+  - name: "mcp-custom-client"
+    type: "mcp"
+    config:
+      transport: "stdio"
+      command: "node"
+      args: ["./mcp-server.js"]
+      client_name: "atp-test-client"
+      client_version: "2.0.0"
+      startup_timeout: 20
+      timeout_seconds: 60
+      # Allow all tools (no filter)
+      tools_filter: null
+      # Allow all resources (no filter)
+      resources_filter: null
+
+tests:
+  # Test 1: Basic tool discovery
+  - id: "mcp-tool-discovery"
+    name: "Discover available MCP tools"
+    description: "Verify MCP adapter can discover and list available tools"
+    tags: ["mcp", "discovery", "smoke"]
+    task:
+      description: |
+        Connect to the MCP server and list all available tools.
+        Report the tool names and their descriptions.
+      input_data:
+        tool: null  # Let the adapter auto-select
+    constraints:
+      max_steps: 5
+      timeout_seconds: 30
+    assertions:
+      - type: "behavior"
+        config:
+          check: "no_errors"
+
+  # Test 2: Direct tool invocation
+  - id: "mcp-tool-call"
+    name: "Invoke MCP tool directly"
+    description: "Call a specific MCP tool with arguments"
+    tags: ["mcp", "tool_call"]
+    task:
+      description: "Read the contents of a configuration file"
+      input_data:
+        tool: "read_file"
+        arguments:
+          path: "/workspace/config.json"
+    constraints:
+      max_steps: 3
+      timeout_seconds: 30
+    assertions:
+      - type: "behavior"
+        config:
+          check: "no_errors"
+          must_use_tools: ["read_file"]
+
+  # Test 3: Resource access
+  - id: "mcp-resource-read"
+    name: "Read MCP resource"
+    description: "Access an MCP resource by URI"
+    tags: ["mcp", "resource"]
+    task:
+      description: "Read the application configuration resource"
+      input_data:
+        resource: "file:///workspace/config.json"
+    constraints:
+      max_steps: 3
+      timeout_seconds: 30
+    assertions:
+      - type: "behavior"
+        config:
+          check: "no_errors"
+
+  # Test 4: Multi-tool workflow
+  - id: "mcp-workflow"
+    name: "Multi-step MCP workflow"
+    description: "Execute a workflow involving multiple tool calls"
+    tags: ["mcp", "workflow", "advanced"]
+    task:
+      description: |
+        1. List files in the workspace directory
+        2. Read the first file found
+        3. Create a summary of the file contents
+      expected_artifacts:
+        - "summary.txt"
+    constraints:
+      max_steps: 15
+      timeout_seconds: 90
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "summary.txt"
+      - type: "behavior"
+        config:
+          min_tool_calls: 2
+
+  # Test 5: Error handling
+  - id: "mcp-error-handling"
+    name: "Handle MCP errors gracefully"
+    description: "Verify the adapter handles MCP errors appropriately"
+    tags: ["mcp", "error", "edge-case"]
+    task:
+      description: "Try to read a file that does not exist"
+      input_data:
+        tool: "read_file"
+        arguments:
+          path: "/nonexistent/file.txt"
+    constraints:
+      max_steps: 3
+      timeout_seconds: 30
+    assertions:
+      - type: "behavior"
+        config:
+          check: "no_repeated_actions"
+
+  # Test 6: Timeout handling
+  - id: "mcp-timeout"
+    name: "Handle MCP timeout"
+    description: "Verify timeout behavior with slow operations"
+    tags: ["mcp", "timeout", "edge-case"]
+    task:
+      description: "Perform an operation that may take time"
+      input_data:
+        tool: "long_running_task"
+        arguments:
+          duration: 5
+    constraints:
+      max_steps: 3
+      timeout_seconds: 10
+    assertions:
+      - type: "behavior"
+        config:
+          check: "no_errors"

@@ -1,9 +1,25 @@
 """Shared pytest fixtures for ATP tests."""
 
+from collections.abc import Generator
 from pathlib import Path
 from typing import Any
 
 import pytest
+
+from atp.core.metrics import reset_metrics
+
+
+@pytest.fixture(autouse=True)
+def reset_metrics_state() -> Generator[None, None, None]:
+    """Reset metrics state before and after each test.
+
+    This ensures test isolation when running tests that use Prometheus metrics.
+    The prometheus-client library uses a global registry which can cause
+    issues when metrics are configured in one test and affect another.
+    """
+    reset_metrics()
+    yield
+    reset_metrics()
 
 
 @pytest.fixture

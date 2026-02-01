@@ -91,23 +91,23 @@ Create service layer to separate business logic from route handlers.
 ---
 
 ### TASK-104: Dashboard Templates Extraction
-🔴 P0 | 🔄 IN_PROGRESS | Est: 3-4h
+🔴 P0 | ✅ DONE | Est: 3-4h
 
 **Description:**
 Extract inline HTML/JS templates to Jinja2 template files.
 
 **Checklist:**
-- [ ] Create `atp/dashboard/v2/templates/` directory
-- [ ] Create `base.html` with common layout, CSS, JS includes
-- [ ] Extract home page template to `home.html`
-- [ ] Extract test results template to `test_results.html`
-- [ ] Extract comparison template to `comparison.html`
-- [ ] Create `components/` subdirectory for reusable components
-- [ ] Extract charts component to `components/charts.html`
-- [ ] Extract tables component to `components/tables.html`
-- [ ] Create `static/css/` and `static/js/` directories
-- [ ] Configure Jinja2 template loading in factory.py
-- [ ] Write snapshot tests for templates
+- [x] Create `atp/dashboard/v2/templates/` directory
+- [x] Create `base.html` with common layout, CSS, JS includes
+- [x] Extract home page template to `home.html`
+- [x] Extract test results template to `test_results.html`
+- [x] Extract comparison template to `comparison.html`
+- [x] Create `components/` subdirectory for reusable components
+- [x] Extract charts component to `components/charts.html`
+- [x] Extract tables component to `components/tables.html`
+- [x] Create `static/css/` and `static/js/` directories
+- [x] Configure Jinja2 template loading in factory.py
+- [x] Write snapshot tests for templates
 
 **Traces to:** [REQ-101]
 **Depends on:** [TASK-101]
@@ -116,19 +116,19 @@ Extract inline HTML/JS templates to Jinja2 template files.
 ---
 
 ### TASK-105: Dashboard V2 Integration & Cleanup
-🔴 P0 | ⬜ TODO | Est: 2-3h
+🔴 P0 | ✅ DONE | Est: 2-3h
 
 **Description:**
 Integrate all dashboard v2 components and verify full functionality.
 
 **Checklist:**
-- [ ] Wire up all routes, services, and templates in factory.py
-- [ ] Verify all existing functionality works with v2
-- [ ] Run full dashboard test suite with `ATP_DASHBOARD_V2=true`
-- [ ] Update documentation for new structure
-- [ ] Performance comparison: v1 vs v2
-- [ ] Create migration guide for custom extensions
-- [ ] Mark v1 as deprecated (do not remove yet)
+- [x] Wire up all routes, services, and templates in factory.py
+- [x] Verify all existing functionality works with v2
+- [x] Run full dashboard test suite with `ATP_DASHBOARD_V2=true`
+- [x] Update documentation for new structure
+- [x] Performance comparison: v1 vs v2
+- [x] Create migration guide for custom extensions
+- [x] Mark v1 as deprecated (do not remove yet)
 
 **Traces to:** [REQ-101]
 **Depends on:** [TASK-102], [TASK-103], [TASK-104]
@@ -137,23 +137,23 @@ Integrate all dashboard v2 components and verify full functionality.
 ---
 
 ### TASK-106: Configuration Management Enhancement
-🔴 P0 | ⬜ TODO | Est: 3-4h
+🔴 P0 | ✅ DONE | Est: 3-4h
 
 **Description:**
 Implement Pydantic Settings for hierarchical configuration management.
 
 **Checklist:**
-- [ ] Add `pydantic-settings` to dependencies
-- [ ] Create `atp/core/settings.py` with `ATPSettings` class
-- [ ] Define all configuration fields with types and defaults
-- [ ] Implement environment variable support with `ATP_` prefix
-- [ ] Implement `.env` file loading via python-dotenv
-- [ ] Implement config file loading (`atp.config.yaml`)
-- [ ] Implement hierarchy: defaults → file → env → CLI
-- [ ] Add `SecretStr` for sensitive values (API keys)
-- [ ] Generate JSON Schema for IDE autocompletion
-- [ ] Write unit tests for configuration loading
-- [ ] Update documentation with all config options
+- [x] Add `pydantic-settings` to dependencies
+- [x] Create `atp/core/settings.py` with `ATPSettings` class
+- [x] Define all configuration fields with types and defaults
+- [x] Implement environment variable support with `ATP_` prefix
+- [x] Implement `.env` file loading via python-dotenv
+- [x] Implement config file loading (`atp.config.yaml`)
+- [x] Implement hierarchy: defaults → file → env → CLI
+- [x] Add `SecretStr` for sensitive values (API keys)
+- [x] Generate JSON Schema for IDE autocompletion
+- [x] Write unit tests for configuration loading
+- [x] Update documentation with all config options
 
 **Traces to:** [REQ-102]
 **Depends on:** -
@@ -162,21 +162,21 @@ Implement Pydantic Settings for hierarchical configuration management.
 ---
 
 ### TASK-107: Structured Logging Implementation
-🟠 P1 | ⬜ TODO | Est: 3-4h
+🟠 P1 | ✅ DONE | Est: 3-4h
 
 **Description:**
 Implement structured logging with correlation IDs and configurable levels.
 
 **Checklist:**
-- [ ] Add `structlog` to dependencies
-- [ ] Create `atp/core/logging.py` with logger configuration
-- [ ] Implement correlation ID generation and propagation
-- [ ] Configure JSON output for production, pretty output for dev
-- [ ] Add context processors for common fields (version, hostname)
-- [ ] Implement log level configuration per module
-- [ ] Add sensitive data redaction filter
-- [ ] Integrate with existing logging calls
-- [ ] Write tests for logging configuration
+- [x] Add `structlog` to dependencies
+- [x] Create `atp/core/logging.py` with logger configuration
+- [x] Implement correlation ID generation and propagation
+- [x] Configure JSON output for production, pretty output for dev
+- [x] Add context processors for common fields (version, hostname)
+- [x] Implement log level configuration per module
+- [x] Add sensitive data redaction filter
+- [x] Integrate with existing logging calls
+- [x] Write tests for logging configuration
 
 **Traces to:** [REQ-103]
 **Depends on:** [TASK-106]
@@ -185,21 +185,21 @@ Implement structured logging with correlation IDs and configurable levels.
 ---
 
 ### TASK-108: OpenTelemetry Integration
-🟠 P1 | ⬜ TODO | Est: 3-4h
+🟠 P1 | ✅ DONE | Est: 3-4h
 
 **Description:**
 Add OpenTelemetry tracing for test execution flow.
 
 **Checklist:**
-- [ ] Add `opentelemetry-api`, `opentelemetry-sdk`, `opentelemetry-instrumentation-*` to dependencies
-- [ ] Create `atp/core/telemetry.py` with tracer configuration
-- [ ] Instrument test runner with spans
-- [ ] Instrument adapters with spans
-- [ ] Instrument evaluators with spans
-- [ ] Add span attributes for test IDs, agent names, scores
-- [ ] Configure OTLP exporter for trace backends
-- [ ] Add `/traces` debug endpoint (dev mode only)
-- [ ] Write integration tests
+- [x] Add `opentelemetry-api`, `opentelemetry-sdk`, `opentelemetry-instrumentation-*` to dependencies
+- [x] Create `atp/core/telemetry.py` with tracer configuration
+- [x] Instrument test runner with spans
+- [x] Instrument adapters with spans
+- [x] Instrument evaluators with spans
+- [x] Add span attributes for test IDs, agent names, scores
+- [x] Configure OTLP exporter for trace backends
+- [x] Add `/traces` debug endpoint (dev mode only)
+- [x] Write integration tests
 
 **Traces to:** [REQ-103]
 **Depends on:** [TASK-107]
@@ -208,21 +208,21 @@ Add OpenTelemetry tracing for test execution flow.
 ---
 
 ### TASK-109: Prometheus Metrics Endpoint
-🟠 P1 | ⬜ TODO | Est: 2-3h
+🟠 P1 | ✅ DONE | Est: 2-3h
 
 **Description:**
 Add Prometheus metrics endpoint for monitoring.
 
 **Checklist:**
-- [ ] Add `prometheus-client` to dependencies
-- [ ] Create `atp/core/metrics.py` with metric definitions
-- [ ] Define counters: `atp_tests_total`, `atp_llm_calls_total`, `atp_adapter_errors_total`
-- [ ] Define histograms: `atp_test_duration_seconds`, `atp_evaluator_duration_seconds`
-- [ ] Define gauges: `atp_active_tests`, `atp_pending_tests`
-- [ ] Add `/metrics` endpoint to CLI server and dashboard
-- [ ] Instrument test runner, adapters, evaluators
-- [ ] Create Grafana dashboard JSON
-- [ ] Write tests for metrics
+- [x] Add `prometheus-client` to dependencies
+- [x] Create `atp/core/metrics.py` with metric definitions
+- [x] Define counters: `atp_tests_total`, `atp_llm_calls_total`, `atp_adapter_errors_total`
+- [x] Define histograms: `atp_test_duration_seconds`, `atp_evaluator_duration_seconds`
+- [x] Define gauges: `atp_active_tests`, `atp_pending_tests`
+- [x] Add `/metrics` endpoint to CLI server and dashboard
+- [x] Instrument test runner, adapters, evaluators
+- [x] Create Grafana dashboard JSON
+- [x] Write tests for metrics
 
 **Traces to:** [REQ-103]
 **Depends on:** [TASK-107]
@@ -233,21 +233,21 @@ Add Prometheus metrics endpoint for monitoring.
 ## Milestone 2: Plugin Ecosystem
 
 ### TASK-201: Plugin Discovery via Entry Points
-🔴 P0 | ⬜ TODO | Est: 4-5h
+🔴 P0 | ✅ DONE | Est: 4-5h
 
 **Description:**
 Implement plugin discovery mechanism using Python entry points.
 
 **Checklist:**
-- [ ] Create `atp/plugins/__init__.py`
-- [ ] Create `atp/plugins/discovery.py` with `PluginManager` class
-- [ ] Implement `discover_plugins(group)` method using `importlib.metadata`
-- [ ] Define entry point groups in `pyproject.toml`: `atp.adapters`, `atp.evaluators`, `atp.reporters`
-- [ ] Implement lazy loading (don't import until needed)
-- [ ] Add plugin metadata model: name, version, author, description
-- [ ] Implement plugin caching
-- [ ] Register built-in plugins as entry points
-- [ ] Write unit tests for discovery
+- [x] Create `atp/plugins/__init__.py`
+- [x] Create `atp/plugins/discovery.py` with `PluginManager` class
+- [x] Implement `discover_plugins(group)` method using `importlib.metadata`
+- [x] Define entry point groups in `pyproject.toml`: `atp.adapters`, `atp.evaluators`, `atp.reporters`
+- [x] Implement lazy loading (don't import until needed)
+- [x] Add plugin metadata model: name, version, author, description
+- [x] Implement plugin caching
+- [x] Register built-in plugins as entry points
+- [x] Write unit tests for discovery
 
 **Traces to:** [REQ-201]
 **Depends on:** -
@@ -256,20 +256,20 @@ Implement plugin discovery mechanism using Python entry points.
 ---
 
 ### TASK-202: Plugin Validation & Interface
-🔴 P0 | ⬜ TODO | Est: 3-4h
+🔴 P0 | ✅ DONE | Est: 3-4h
 
 **Description:**
 Implement plugin validation to ensure interface compliance.
 
 **Checklist:**
-- [ ] Create `atp/plugins/interfaces.py` with protocol definitions
-- [ ] Define `AdapterPlugin` protocol with required methods
-- [ ] Define `EvaluatorPlugin` protocol with required methods
-- [ ] Define `ReporterPlugin` protocol with required methods
-- [ ] Implement `_validate_plugin()` in PluginManager
-- [ ] Add version compatibility checking
-- [ ] Create clear error messages for validation failures
-- [ ] Write tests for validation
+- [x] Create `atp/plugins/interfaces.py` with protocol definitions
+- [x] Define `AdapterPlugin` protocol with required methods
+- [x] Define `EvaluatorPlugin` protocol with required methods
+- [x] Define `ReporterPlugin` protocol with required methods
+- [x] Implement `_validate_plugin()` in PluginManager
+- [x] Add version compatibility checking
+- [x] Create clear error messages for validation failures
+- [x] Write tests for validation
 
 **Traces to:** [REQ-201]
 **Depends on:** [TASK-201]
@@ -278,19 +278,19 @@ Implement plugin validation to ensure interface compliance.
 ---
 
 ### TASK-203: Plugin Configuration Schema
-🟠 P1 | ⬜ TODO | Est: 2-3h
+🟠 P1 | ✅ DONE | Est: 2-3h
 
 **Description:**
 Allow plugins to define configuration schemas with validation.
 
 **Checklist:**
-- [ ] Create `atp/plugins/config.py`
-- [ ] Define `PluginConfig` base class extending Pydantic BaseModel
-- [ ] Add `config_schema` attribute to plugin interface
-- [ ] Implement config validation on plugin load
-- [ ] Generate JSON Schema from config models
-- [ ] Add config examples to plugin metadata
-- [ ] Write tests for config validation
+- [x] Create `atp/plugins/config.py`
+- [x] Define `PluginConfig` base class extending Pydantic BaseModel
+- [x] Add `config_schema` attribute to plugin interface
+- [x] Implement config validation on plugin load
+- [x] Generate JSON Schema from config models
+- [x] Add config examples to plugin metadata
+- [x] Write tests for config validation
 
 **Traces to:** [REQ-202]
 **Depends on:** [TASK-202]
@@ -299,21 +299,21 @@ Allow plugins to define configuration schemas with validation.
 ---
 
 ### TASK-204: Plugin CLI Commands
-🟠 P1 | ⬜ TODO | Est: 2-3h
+🟠 P1 | ✅ DONE | Est: 2-3h
 
 **Description:**
 Add CLI commands for plugin management.
 
 **Checklist:**
-- [ ] Create `atp/cli/commands/plugins.py`
-- [ ] Implement `atp plugins list` command
-- [ ] Implement `atp plugins info <name>` command
-- [ ] Implement `atp plugins enable <name>` command
-- [ ] Implement `atp plugins disable <name>` command
-- [ ] Add `--type` filter (adapter, evaluator, reporter)
-- [ ] Format output as table with Rich
-- [ ] Register commands in main CLI
-- [ ] Write CLI tests
+- [x] Create `atp/cli/commands/plugins.py`
+- [x] Implement `atp plugins list` command
+- [x] Implement `atp plugins info <name>` command
+- [x] Implement `atp plugins enable <name>` command
+- [x] Implement `atp plugins disable <name>` command
+- [x] Add `--type` filter (adapter, evaluator, reporter)
+- [x] Format output as table with Rich
+- [x] Register commands in main CLI
+- [x] Write CLI tests
 
 **Traces to:** [REQ-201]
 **Depends on:** [TASK-201]
@@ -322,21 +322,21 @@ Add CLI commands for plugin management.
 ---
 
 ### TASK-205: Plugin Development Guide
-🟠 P1 | ⬜ TODO | Est: 2-3h
+🟠 P1 | ✅ DONE | Est: 2-3h
 
 **Description:**
 Create comprehensive documentation for plugin developers.
 
 **Checklist:**
-- [ ] Create `docs/guides/plugin-development.md`
-- [ ] Document plugin architecture and discovery
-- [ ] Document required interfaces for each plugin type
-- [ ] Document configuration schema definition
-- [ ] Provide adapter plugin example with full code
-- [ ] Provide evaluator plugin example with full code
-- [ ] Provide reporter plugin example with full code
-- [ ] Document testing plugins
-- [ ] Document publishing plugins to PyPI
+- [x] Create `docs/guides/plugin-development.md`
+- [x] Document plugin architecture and discovery
+- [x] Document required interfaces for each plugin type
+- [x] Document configuration schema definition
+- [x] Provide adapter plugin example with full code
+- [x] Provide evaluator plugin example with full code
+- [x] Provide reporter plugin example with full code
+- [x] Document testing plugins
+- [x] Document publishing plugins to PyPI
 
 **Traces to:** [REQ-201]
 **Depends on:** [TASK-202], [TASK-203]
@@ -345,22 +345,22 @@ Create comprehensive documentation for plugin developers.
 ---
 
 ### TASK-206: Benchmark Suite Registry
-🟠 P1 | ⬜ TODO | Est: 4-5h
+🟠 P1 | ✅ DONE | Est: 4-5h
 
 **Description:**
 Create built-in benchmark test suites for common agent evaluation.
 
 **Checklist:**
-- [ ] Create `atp/benchmarks/__init__.py`
-- [ ] Create `atp/benchmarks/registry.py` with `BenchmarkRegistry`
-- [ ] Create benchmark category: `coding` with 20 tests
-- [ ] Create benchmark category: `research` with 10 tests
-- [ ] Create benchmark category: `reasoning` with 15 tests
-- [ ] Create benchmark category: `data_processing` with 10 tests
-- [ ] Store benchmarks in `atp/benchmarks/suites/`
-- [ ] Implement scoring normalization (0-100)
-- [ ] Define baseline scores for comparison
-- [ ] Write documentation for each benchmark
+- [x] Create `atp/benchmarks/__init__.py`
+- [x] Create `atp/benchmarks/registry.py` with `BenchmarkRegistry`
+- [x] Create benchmark category: `coding` with 20 tests
+- [x] Create benchmark category: `research` with 10 tests
+- [x] Create benchmark category: `reasoning` with 15 tests
+- [x] Create benchmark category: `data_processing` with 10 tests
+- [x] Store benchmarks in `atp/benchmarks/suites/`
+- [x] Implement scoring normalization (0-100)
+- [x] Define baseline scores for comparison
+- [x] Write documentation for each benchmark
 
 **Traces to:** [REQ-203]
 **Depends on:** -
@@ -369,21 +369,21 @@ Create built-in benchmark test suites for common agent evaluation.
 ---
 
 ### TASK-207: Benchmark CLI Commands
-🟠 P1 | ⬜ TODO | Est: 2-3h
+🟠 P1 | ✅ DONE | Est: 2-3h
 
 **Description:**
 Add CLI commands for running benchmarks.
 
 **Checklist:**
-- [ ] Create `atp/cli/commands/benchmark.py`
-- [ ] Implement `atp benchmark list` command
-- [ ] Implement `atp benchmark run <category>` command
-- [ ] Implement `atp benchmark run --all` command
-- [ ] Add `--agent` option to specify agent
-- [ ] Add `--output` option for results format
-- [ ] Generate comparison report with baseline
-- [ ] Register commands in main CLI
-- [ ] Write CLI tests
+- [x] Create `atp/cli/commands/benchmark.py`
+- [x] Implement `atp benchmark list` command
+- [x] Implement `atp benchmark run <category>` command
+- [x] Implement `atp benchmark run --all` command
+- [x] Add `--agent` option to specify agent
+- [x] Add `--output` option for results format
+- [x] Generate comparison report with baseline
+- [x] Register commands in main CLI
+- [x] Write CLI tests
 
 **Traces to:** [REQ-203]
 **Depends on:** [TASK-206]
@@ -394,22 +394,22 @@ Add CLI commands for running benchmarks.
 ## Milestone 3: Advanced Evaluators
 
 ### TASK-301: Security Evaluator - Core
-🔴 P0 | ⬜ TODO | Est: 4-5h
+🔴 P0 | ✅ DONE | Est: 4-5h
 
 **Description:**
 Implement the core security evaluator with PII detection.
 
 **Checklist:**
-- [ ] Create `atp/evaluators/security/__init__.py`
-- [ ] Create `atp/evaluators/security/base.py` with `SecurityChecker` ABC
-- [ ] Create `atp/evaluators/security/pii.py` with `PIIChecker`
-- [ ] Implement regex patterns for: email, phone, SSN, credit card
-- [ ] Implement API key detection patterns
-- [ ] Add severity levels: info, low, medium, high, critical
-- [ ] Add evidence masking (don't expose full PII in reports)
-- [ ] Create `SecurityEvaluator` class aggregating checkers
-- [ ] Register evaluator in registry
-- [ ] Write unit tests with 90%+ coverage
+- [x] Create `atp/evaluators/security/__init__.py`
+- [x] Create `atp/evaluators/security/base.py` with `SecurityChecker` ABC
+- [x] Create `atp/evaluators/security/pii.py` with `PIIChecker`
+- [x] Implement regex patterns for: email, phone, SSN, credit card
+- [x] Implement API key detection patterns
+- [x] Add severity levels: info, low, medium, high, critical
+- [x] Add evidence masking (don't expose full PII in reports)
+- [x] Create `SecurityEvaluator` class aggregating checkers
+- [x] Register evaluator in registry
+- [x] Write unit tests with 90%+ coverage
 
 **Traces to:** [REQ-301]
 **Depends on:** -
@@ -418,19 +418,19 @@ Implement the core security evaluator with PII detection.
 ---
 
 ### TASK-302: Security Evaluator - Prompt Injection
-🔴 P0 | ⬜ TODO | Est: 3-4h
+🔴 P0 | ✅ DONE | Est: 3-4h
 
 **Description:**
 Add prompt injection detection to security evaluator.
 
 **Checklist:**
-- [ ] Create `atp/evaluators/security/injection.py`
-- [ ] Implement `PromptInjectionChecker` class
-- [ ] Add patterns for common injection attempts
-- [ ] Add patterns for jailbreak attempts
-- [ ] Add patterns for role manipulation
-- [ ] Integrate with SecurityEvaluator
-- [ ] Write comprehensive tests with injection examples
+- [x] Create `atp/evaluators/security/injection.py`
+- [x] Implement `PromptInjectionChecker` class
+- [x] Add patterns for common injection attempts
+- [x] Add patterns for jailbreak attempts
+- [x] Add patterns for role manipulation
+- [x] Integrate with SecurityEvaluator
+- [x] Write comprehensive tests with injection examples
 
 **Traces to:** [REQ-301]
 **Depends on:** [TASK-301]
@@ -439,21 +439,21 @@ Add prompt injection detection to security evaluator.
 ---
 
 ### TASK-303: Security Evaluator - Code Safety
-🟠 P1 | ⬜ TODO | Est: 3-4h
+🟠 P1 | ✅ DONE | Est: 3-4h
 
 **Description:**
 Add code safety analysis to security evaluator.
 
 **Checklist:**
-- [ ] Create `atp/evaluators/security/code.py`
-- [ ] Implement `CodeSafetyChecker` class
-- [ ] Detect dangerous imports: os, subprocess, socket, etc.
-- [ ] Detect dangerous functions: eval, exec, compile
-- [ ] Detect file system operations
-- [ ] Detect network operations
-- [ ] Support multiple languages: Python, JavaScript, Bash
-- [ ] Integrate with SecurityEvaluator
-- [ ] Write tests with unsafe code examples
+- [x] Create `atp/evaluators/security/code.py`
+- [x] Implement `CodeSafetyChecker` class
+- [x] Detect dangerous imports: os, subprocess, socket, etc.
+- [x] Detect dangerous functions: eval, exec, compile
+- [x] Detect file system operations
+- [x] Detect network operations
+- [x] Support multiple languages: Python, JavaScript, Bash
+- [x] Integrate with SecurityEvaluator
+- [x] Write tests with unsafe code examples
 
 **Traces to:** [REQ-301]
 **Depends on:** [TASK-301]
@@ -462,19 +462,19 @@ Add code safety analysis to security evaluator.
 ---
 
 ### TASK-304: Security Evaluator - Integration
-🟠 P1 | ⬜ TODO | Est: 2-3h
+🟠 P1 | ✅ DONE | Est: 2-3h
 
 **Description:**
 Complete security evaluator integration and documentation.
 
 **Checklist:**
-- [ ] Add configuration support: sensitivity levels, enabled checks
-- [ ] Add `SecretLeakChecker` for common secrets patterns
-- [ ] Generate security reports with remediation suggestions
-- [ ] Add security evaluator to example test suites
-- [ ] Write integration tests
-- [ ] Create documentation for security evaluator
-- [ ] Add to evaluator comparison matrix in docs
+- [x] Add configuration support: sensitivity levels, enabled checks
+- [x] Add `SecretLeakChecker` for common secrets patterns
+- [x] Generate security reports with remediation suggestions
+- [x] Add security evaluator to example test suites
+- [x] Write integration tests
+- [x] Create documentation for security evaluator
+- [x] Add to evaluator comparison matrix in docs
 
 **Traces to:** [REQ-301]
 **Depends on:** [TASK-302], [TASK-303]
@@ -483,22 +483,22 @@ Complete security evaluator integration and documentation.
 ---
 
 ### TASK-305: Factuality Evaluator
-🟠 P1 | ⬜ TODO | Est: 5-6h
+🟠 P1 | ✅ DONE | Est: 5-6h
 
 **Description:**
 Implement evaluator for verifying factual accuracy of agent outputs.
 
 **Checklist:**
-- [ ] Create `atp/evaluators/factuality.py`
-- [ ] Implement claim extraction from text
-- [ ] Implement ground truth verification from JSON file
-- [ ] Implement LLM-based fact verification
-- [ ] Add citation extraction and validation
-- [ ] Add confidence scoring for each claim
-- [ ] Implement hallucination detection heuristics
-- [ ] Register in evaluator registry
-- [ ] Write comprehensive tests
-- [ ] Create documentation
+- [x] Create `atp/evaluators/factuality.py`
+- [x] Implement claim extraction from text
+- [x] Implement ground truth verification from JSON file
+- [x] Implement LLM-based fact verification
+- [x] Add citation extraction and validation
+- [x] Add confidence scoring for each claim
+- [x] Implement hallucination detection heuristics
+- [x] Register in evaluator registry
+- [x] Write comprehensive tests
+- [x] Create documentation
 
 **Traces to:** [REQ-302]
 **Depends on:** -
@@ -530,22 +530,22 @@ Implement evaluator for writing style and tone analysis.
 ---
 
 ### TASK-307: Performance Evaluator
-🟠 P1 | ⬜ TODO | Est: 3-4h
+🟠 P1 | ✅ DONE | Est: 3-4h
 
 **Description:**
 Implement evaluator for agent performance metrics.
 
 **Checklist:**
-- [ ] Create `atp/evaluators/performance.py`
-- [ ] Track latency percentiles: p50, p95, p99
-- [ ] Track time to first token (for streaming)
-- [ ] Track tokens per second throughput
-- [ ] Track token efficiency ratio
-- [ ] Add configurable thresholds
-- [ ] Implement regression detection vs baseline
-- [ ] Register in evaluator registry
-- [ ] Write tests
-- [ ] Create documentation
+- [x] Create `atp/evaluators/performance.py`
+- [x] Track latency percentiles: p50, p95, p99
+- [x] Track time to first token (for streaming)
+- [x] Track tokens per second throughput
+- [x] Track token efficiency ratio
+- [x] Add configurable thresholds
+- [x] Implement regression detection vs baseline
+- [x] Register in evaluator registry
+- [x] Write tests
+- [x] Create documentation
 
 **Traces to:** [REQ-304]
 **Depends on:** -
@@ -556,20 +556,20 @@ Implement evaluator for agent performance metrics.
 ## Milestone 4: New Adapters
 
 ### TASK-401: MCP Adapter - Transport Layer
-🔴 P0 | ⬜ TODO | Est: 4-5h
+🔴 P0 | ✅ DONE | Est: 4-5h
 
 **Description:**
 Implement transport abstraction for MCP communication.
 
 **Checklist:**
-- [ ] Create `atp/adapters/mcp/__init__.py`
-- [ ] Create `atp/adapters/mcp/transport.py` with `MCPTransport` ABC
-- [ ] Implement `StdioTransport` for subprocess communication
-- [ ] Implement `SSETransport` for HTTP SSE communication
-- [ ] Add JSON-RPC message framing
-- [ ] Add connection timeout handling
-- [ ] Add reconnection logic
-- [ ] Write unit tests for each transport
+- [x] Create `atp/adapters/mcp/__init__.py`
+- [x] Create `atp/adapters/mcp/transport.py` with `MCPTransport` ABC
+- [x] Implement `StdioTransport` for subprocess communication
+- [x] Implement `SSETransport` for HTTP SSE communication
+- [x] Add JSON-RPC message framing
+- [x] Add connection timeout handling
+- [x] Add reconnection logic
+- [x] Write unit tests for each transport
 
 **Traces to:** [REQ-401]
 **Depends on:** -
@@ -578,21 +578,21 @@ Implement transport abstraction for MCP communication.
 ---
 
 ### TASK-402: MCP Adapter - Protocol Handler
-🔴 P0 | ⬜ TODO | Est: 4-5h
+🔴 P0 | ✅ DONE | Est: 4-5h
 
 **Description:**
 Implement MCP protocol handling and tool discovery.
 
 **Checklist:**
-- [ ] Create `atp/adapters/mcp/adapter.py` with `MCPAdapter` class
-- [ ] Implement `initialize()` for MCP handshake
-- [ ] Implement tool discovery via `tools/list`
-- [ ] Implement resource access
-- [ ] Implement tool invocation
-- [ ] Map MCP events to ATP events
-- [ ] Convert MCP responses to ATP responses
-- [ ] Add tool filtering support
-- [ ] Write integration tests
+- [x] Create `atp/adapters/mcp/adapter.py` with `MCPAdapter` class
+- [x] Implement `initialize()` for MCP handshake
+- [x] Implement tool discovery via `tools/list`
+- [x] Implement resource access
+- [x] Implement tool invocation
+- [x] Map MCP events to ATP events
+- [x] Convert MCP responses to ATP responses
+- [x] Add tool filtering support
+- [x] Write integration tests
 
 **Traces to:** [REQ-401]
 **Depends on:** [TASK-401]
@@ -601,18 +601,18 @@ Implement MCP protocol handling and tool discovery.
 ---
 
 ### TASK-403: MCP Adapter - Integration
-🟠 P1 | ⬜ TODO | Est: 2-3h
+🟠 P1 | ✅ DONE | Est: 2-3h
 
 **Description:**
 Complete MCP adapter integration and documentation.
 
 **Checklist:**
-- [ ] Register MCP adapter in adapter registry
-- [ ] Add MCP adapter configuration in test suite YAML
-- [ ] Create example test suite using MCP adapter
-- [ ] Write end-to-end tests with sample MCP server
-- [ ] Create documentation with configuration examples
-- [ ] Add troubleshooting section
+- [x] Register MCP adapter in adapter registry
+- [x] Add MCP adapter configuration in test suite YAML
+- [x] Create example test suite using MCP adapter
+- [x] Write end-to-end tests with sample MCP server
+- [x] Create documentation with configuration examples
+- [x] Add troubleshooting section
 
 **Traces to:** [REQ-401]
 **Depends on:** [TASK-402]
@@ -621,23 +621,23 @@ Complete MCP adapter integration and documentation.
 ---
 
 ### TASK-404: AWS Bedrock Adapter
-🟠 P1 | ⬜ TODO | Est: 4-5h
+🟠 P1 | ✅ DONE | Est: 4-5h
 
 **Description:**
 Implement adapter for AWS Bedrock Agents.
 
 **Checklist:**
-- [ ] Create `atp/adapters/bedrock.py`
-- [ ] Add `boto3` as optional dependency
-- [ ] Implement Bedrock Agent invocation
-- [ ] Implement session management
-- [ ] Extract trace events from Bedrock
-- [ ] Handle knowledge base integration
-- [ ] Handle action group support
-- [ ] Add AWS credential configuration
-- [ ] Register in adapter registry
-- [ ] Write tests (with moto mocking)
-- [ ] Create documentation
+- [x] Create `atp/adapters/bedrock.py`
+- [x] Add `boto3` as optional dependency
+- [x] Implement Bedrock Agent invocation
+- [x] Implement session management
+- [x] Extract trace events from Bedrock
+- [x] Handle knowledge base integration
+- [x] Handle action group support
+- [x] Add AWS credential configuration
+- [x] Register in adapter registry
+- [x] Write tests (with moto mocking)
+- [x] Create documentation
 
 **Traces to:** [REQ-402]
 **Depends on:** -
@@ -646,21 +646,21 @@ Implement adapter for AWS Bedrock Agents.
 ---
 
 ### TASK-405: Vertex AI Adapter
-🟠 P1 | ⬜ TODO | Est: 4-5h
+🟠 P1 | ✅ DONE | Est: 4-5h
 
 **Description:**
 Implement adapter for Google Vertex AI Agents.
 
 **Checklist:**
-- [ ] Create `atp/adapters/vertex.py`
-- [ ] Add `google-cloud-aiplatform` as optional dependency
-- [ ] Implement Vertex AI Agent invocation
-- [ ] Implement conversation session management
-- [ ] Extract tool use information
-- [ ] Add Google Cloud auth integration
-- [ ] Register in adapter registry
-- [ ] Write tests
-- [ ] Create documentation
+- [x] Create `atp/adapters/vertex.py`
+- [x] Add `google-cloud-aiplatform` as optional dependency
+- [x] Implement Vertex AI Agent invocation
+- [x] Implement conversation session management
+- [x] Extract tool use information
+- [x] Add Google Cloud auth integration
+- [x] Register in adapter registry
+- [x] Write tests
+- [x] Create documentation
 
 **Traces to:** [REQ-403]
 **Depends on:** -
@@ -669,20 +669,20 @@ Implement adapter for Google Vertex AI Agents.
 ---
 
 ### TASK-406: Azure OpenAI Adapter
-🟠 P1 | ⬜ TODO | Est: 3-4h
+🟠 P1 | ✅ DONE | Est: 3-4h
 
 **Description:**
 Implement adapter for Azure-hosted OpenAI deployments.
 
 **Checklist:**
-- [ ] Create `atp/adapters/azure_openai.py`
-- [ ] Implement Azure OpenAI API support
-- [ ] Add deployment configuration
-- [ ] Implement Azure AD authentication
-- [ ] Add region selection
-- [ ] Register in adapter registry
-- [ ] Write tests
-- [ ] Create documentation
+- [x] Create `atp/adapters/azure_openai.py`
+- [x] Implement Azure OpenAI API support
+- [x] Add deployment configuration
+- [x] Implement Azure AD authentication
+- [x] Add region selection
+- [x] Register in adapter registry
+- [x] Write tests
+- [x] Create documentation
 
 **Traces to:** [REQ-404]
 **Depends on:** -
@@ -693,19 +693,19 @@ Implement adapter for Azure-hosted OpenAI deployments.
 ## Milestone 5: Analytics & Cost Management
 
 ### TASK-501: Cost Tracking Data Model
-🔴 P0 | ⬜ TODO | Est: 3-4h
+🔴 P0 | ✅ DONE | Est: 3-4h
 
 **Description:**
 Define data models and storage for cost tracking.
 
 **Checklist:**
-- [ ] Create `atp/analytics/__init__.py`
-- [ ] Create `atp/analytics/models.py` with `CostRecord`, `CostBudget`
-- [ ] Add database migrations for cost tables
-- [ ] Create indexes for efficient querying
-- [ ] Implement `CostRepository` for CRUD operations
-- [ ] Add aggregation queries: by day, provider, model, agent
-- [ ] Write unit tests
+- [x] Create `atp/analytics/__init__.py`
+- [x] Create `atp/analytics/models.py` with `CostRecord`, `CostBudget`
+- [x] Add database migrations for cost tables
+- [x] Create indexes for efficient querying
+- [x] Implement `CostRepository` for CRUD operations
+- [x] Add aggregation queries: by day, provider, model, agent
+- [x] Write unit tests
 
 **Traces to:** [REQ-501]
 **Depends on:** [TASK-106]
@@ -714,21 +714,21 @@ Define data models and storage for cost tracking.
 ---
 
 ### TASK-502: Cost Tracking Service
-🔴 P0 | ⬜ TODO | Est: 4-5h
+🔴 P0 | ✅ DONE | Est: 4-5h
 
 **Description:**
 Implement non-blocking cost tracking service.
 
 **Checklist:**
-- [ ] Create `atp/analytics/cost.py` with `CostTracker` class
-- [ ] Implement async event queue for cost events
-- [ ] Implement background processor for batch inserts
-- [ ] Implement pricing configuration loader
-- [ ] Add pricing for OpenAI, Anthropic, Google, Azure, AWS
-- [ ] Add custom pricing configuration support
-- [ ] Integrate with LLM evaluator
-- [ ] Integrate with adapters (where applicable)
-- [ ] Write unit tests
+- [x] Create `atp/analytics/cost.py` with `CostTracker` class
+- [x] Implement async event queue for cost events
+- [x] Implement background processor for batch inserts
+- [x] Implement pricing configuration loader
+- [x] Add pricing for OpenAI, Anthropic, Google, Azure, AWS
+- [x] Add custom pricing configuration support
+- [x] Integrate with LLM evaluator
+- [x] Integrate with adapters (where applicable)
+- [x] Write unit tests
 
 **Traces to:** [REQ-501]
 **Depends on:** [TASK-501]
@@ -737,19 +737,19 @@ Implement non-blocking cost tracking service.
 ---
 
 ### TASK-503: Cost Budgets & Alerts
-🟠 P1 | ⬜ TODO | Est: 3-4h
+🟠 P1 | ✅ DONE | Est: 3-4h
 
 **Description:**
 Implement cost budgets with alerting.
 
 **Checklist:**
-- [ ] Create `atp/analytics/budgets.py`
-- [ ] Implement budget definition: daily, weekly, monthly
-- [ ] Implement budget checking during cost tracking
-- [ ] Implement alert thresholds
-- [ ] Add alert channels: log, webhook, email (pluggable)
-- [ ] Create CLI for budget management
-- [ ] Write tests
+- [x] Create `atp/analytics/budgets.py`
+- [x] Implement budget definition: daily, weekly, monthly
+- [x] Implement budget checking during cost tracking
+- [x] Implement alert thresholds
+- [x] Add alert channels: log, webhook, email (pluggable)
+- [x] Create CLI for budget management
+- [x] Write tests
 
 **Traces to:** [REQ-501]
 **Depends on:** [TASK-501]
@@ -758,20 +758,20 @@ Implement cost budgets with alerting.
 ---
 
 ### TASK-504: Cost Dashboard Integration
-🟠 P1 | ⬜ TODO | Est: 3-4h
+🟠 P1 | ✅ DONE | Est: 3-4h
 
 **Description:**
 Add cost tracking UI to dashboard.
 
 **Checklist:**
-- [ ] Add `/api/v2/costs` endpoint for cost summary
-- [ ] Add `/api/v2/costs/records` endpoint for detailed records
-- [ ] Add `/api/v2/budgets` endpoints for budget management
-- [ ] Create cost dashboard page with charts
-- [ ] Show cost breakdown by provider, model, agent
-- [ ] Show cost trends over time
-- [ ] Show budget utilization
-- [ ] Write API tests
+- [x] Add `/api/v2/costs` endpoint for cost summary
+- [x] Add `/api/v2/costs/records` endpoint for detailed records
+- [x] Add `/api/v2/budgets` endpoints for budget management
+- [x] Create cost dashboard page with charts
+- [x] Show cost breakdown by provider, model, agent
+- [x] Show cost trends over time
+- [x] Show budget utilization
+- [x] Write API tests
 
 **Traces to:** [REQ-501]
 **Depends on:** [TASK-502], [TASK-503], [TASK-105]
@@ -780,19 +780,19 @@ Add cost tracking UI to dashboard.
 ---
 
 ### TASK-505: Advanced Analytics Dashboard
-🟠 P1 | ⬜ TODO | Est: 5-6h
+🟠 P1 | ✅ DONE | Est: 5-6h
 
 **Description:**
 Add advanced analytics features to dashboard.
 
 **Checklist:**
-- [ ] Implement trend analysis: score trends over time
-- [ ] Implement anomaly detection for unusual results
-- [ ] Implement correlation analysis: factors affecting scores
-- [ ] Add export to CSV/Excel
-- [ ] Add scheduled reports configuration
-- [ ] Create analytics page in dashboard
-- [ ] Write tests
+- [x] Implement trend analysis: score trends over time
+- [x] Implement anomaly detection for unusual results
+- [x] Implement correlation analysis: factors affecting scores
+- [x] Add export to CSV/Excel
+- [x] Add scheduled reports configuration
+- [x] Create analytics page in dashboard
+- [x] Write tests
 
 **Traces to:** [REQ-502]
 **Depends on:** [TASK-105]
@@ -827,20 +827,20 @@ Implement A/B testing framework for agent comparison.
 ## Milestone 6: Multi-Agent & Advanced Testing
 
 ### TASK-601: Multi-Agent Orchestrator
-🟠 P1 | ⬜ TODO | Est: 5-6h
+🟠 P1 | ✅ DONE | Est: 5-6h
 
 **Description:**
 Implement orchestrator for multi-agent test execution.
 
 **Checklist:**
-- [ ] Create `atp/runner/multi_agent.py`
-- [ ] Implement `MultiAgentOrchestrator` class
-- [ ] Implement comparison mode: same test, multiple agents
-- [ ] Implement parallel execution with asyncio.gather
-- [ ] Implement result aggregation
-- [ ] Implement ranking by metrics
-- [ ] Create `MultiAgentResult` model
-- [ ] Write unit tests
+- [x] Create `atp/runner/multi_agent.py`
+- [x] Implement `MultiAgentOrchestrator` class
+- [x] Implement comparison mode: same test, multiple agents
+- [x] Implement parallel execution with asyncio.gather
+- [x] Implement result aggregation
+- [x] Implement ranking by metrics
+- [x] Create `MultiAgentResult` model
+- [x] Write unit tests
 
 **Traces to:** [REQ-601]
 **Depends on:** -
@@ -957,21 +957,21 @@ Generate test cases from recorded agent interactions.
 ## Milestone 7: Enterprise Features
 
 ### TASK-701: Multi-Tenancy Schema Management
-🟠 P1 | ⬜ TODO | Est: 5-6h
+🟠 P1 | ✅ DONE | Est: 5-6h
 
 **Description:**
 Implement schema-per-tenant database architecture.
 
 **Checklist:**
-- [ ] Create `atp/dashboard/tenancy/__init__.py`
-- [ ] Create `TenantManager` class
-- [ ] Implement `create_tenant()` with schema creation
-- [ ] Implement `delete_tenant()` with cleanup
-- [ ] Implement `TenantAwareSession` for scoped queries
-- [ ] Add tenant_id to all models
-- [ ] Create migration for default tenant
-- [ ] Migrate existing data to default tenant
-- [ ] Write tests
+- [x] Create `atp/dashboard/tenancy/__init__.py`
+- [x] Create `TenantManager` class
+- [x] Implement `create_tenant()` with schema creation
+- [x] Implement `delete_tenant()` with cleanup
+- [x] Implement `TenantAwareSession` for scoped queries
+- [x] Add tenant_id to all models
+- [x] Create migration for default tenant
+- [x] Migrate existing data to default tenant
+- [x] Write tests
 
 **Traces to:** [REQ-701]
 **Depends on:** [TASK-105]
@@ -980,19 +980,19 @@ Implement schema-per-tenant database architecture.
 ---
 
 ### TASK-702: Tenant Management API
-🟠 P1 | ⬜ TODO | Est: 3-4h
+🟠 P1 | ✅ DONE | Est: 3-4h
 
 **Description:**
 Implement REST API for tenant management.
 
 **Checklist:**
-- [ ] Add `/api/v2/tenants` endpoints
-- [ ] Implement tenant CRUD operations
-- [ ] Implement quota configuration
-- [ ] Implement settings configuration
-- [ ] Add admin-only authorization
-- [ ] Write API tests
-- [ ] Create documentation
+- [x] Add `/api/v2/tenants` endpoints
+- [x] Implement tenant CRUD operations
+- [x] Implement quota configuration
+- [x] Implement settings configuration
+- [x] Add admin-only authorization
+- [x] Write API tests
+- [x] Create documentation
 
 **Traces to:** [REQ-701]
 **Depends on:** [TASK-701]
@@ -1001,19 +1001,19 @@ Implement REST API for tenant management.
 ---
 
 ### TASK-703: Tenant Quotas Enforcement
-🟠 P1 | ⬜ TODO | Est: 3-4h
+🟠 P1 | ✅ DONE | Est: 3-4h
 
 **Description:**
 Implement quota enforcement for tenants.
 
 **Checklist:**
-- [ ] Create `atp/dashboard/tenancy/quotas.py`
-- [ ] Define quota types: tests/day, parallel runs, storage, agents, budget
-- [ ] Implement quota checking middleware
-- [ ] Implement quota usage tracking
-- [ ] Add quota exceeded responses (HTTP 429)
-- [ ] Add quota usage API endpoint
-- [ ] Write tests
+- [x] Create `atp/dashboard/tenancy/quotas.py`
+- [x] Define quota types: tests/day, parallel runs, storage, agents, budget
+- [x] Implement quota checking middleware
+- [x] Implement quota usage tracking
+- [x] Add quota exceeded responses (HTTP 429)
+- [x] Add quota usage API endpoint
+- [x] Write tests
 
 **Traces to:** [REQ-701]
 **Depends on:** [TASK-702]
@@ -1022,21 +1022,21 @@ Implement quota enforcement for tenants.
 ---
 
 ### TASK-704: RBAC - Roles & Permissions
-🟠 P1 | ⬜ TODO | Est: 4-5h
+🟠 P1 | ✅ DONE | Est: 4-5h
 
 **Description:**
 Implement role-based access control.
 
 **Checklist:**
-- [ ] Create `atp/dashboard/auth/rbac.py`
-- [ ] Define `Permission` enum with all permissions
-- [ ] Define default roles: admin, developer, analyst, viewer
-- [ ] Implement `ROLE_PERMISSIONS` mapping
-- [ ] Create `Role` and `UserRole` models
-- [ ] Implement `has_permission()` function
-- [ ] Implement `@require_permission` decorator
-- [ ] Add user-role assignment API
-- [ ] Write tests
+- [x] Create `atp/dashboard/auth/rbac.py`
+- [x] Define `Permission` enum with all permissions
+- [x] Define default roles: admin, developer, analyst, viewer
+- [x] Implement `ROLE_PERMISSIONS` mapping
+- [x] Create `Role` and `UserRole` models
+- [x] Implement `has_permission()` function
+- [x] Implement `@require_permission` decorator
+- [x] Add user-role assignment API
+- [x] Write tests
 
 **Traces to:** [REQ-702]
 **Depends on:** -
@@ -1045,7 +1045,7 @@ Implement role-based access control.
 ---
 
 ### TASK-705: RBAC - API Integration
-🟠 P1 | ⬜ TODO | Est: 3-4h
+🟠 P1 | 🔄 IN_PROGRESS | Est: 3-4h
 
 **Description:**
 Apply RBAC to all API endpoints.
@@ -1066,21 +1066,21 @@ Apply RBAC to all API endpoints.
 ---
 
 ### TASK-706: SSO - OIDC Integration
-🟠 P1 | ⬜ TODO | Est: 4-5h
+🟠 P1 | ✅ DONE | Est: 4-5h
 
 **Description:**
 Implement OIDC (OpenID Connect) authentication.
 
 **Checklist:**
-- [ ] Add `authlib` to dependencies
-- [ ] Create `atp/dashboard/auth/sso/__init__.py`
-- [ ] Create `atp/dashboard/auth/sso/oidc.py`
-- [ ] Implement OIDC authorization flow
-- [ ] Implement token validation
-- [ ] Implement user provisioning (JIT)
-- [ ] Implement group-to-role mapping
-- [ ] Add configuration for popular providers (Okta, Auth0, Azure AD)
-- [ ] Write tests
+- [x] Add `authlib` to dependencies
+- [x] Create `atp/dashboard/auth/sso/__init__.py`
+- [x] Create `atp/dashboard/auth/sso/oidc.py`
+- [x] Implement OIDC authorization flow
+- [x] Implement token validation
+- [x] Implement user provisioning (JIT)
+- [x] Implement group-to-role mapping
+- [x] Add configuration for popular providers (Okta, Auth0, Azure AD)
+- [x] Write tests
 
 **Traces to:** [REQ-703]
 **Depends on:** [TASK-704]
@@ -1111,7 +1111,7 @@ Implement SAML 2.0 authentication.
 ---
 
 ### TASK-708: Audit Logging
-🟠 P1 | ⬜ TODO | Est: 3-4h
+🟠 P1 | 🔄 IN_PROGRESS | Est: 3-4h
 
 **Description:**
 Implement comprehensive audit logging.
@@ -1260,7 +1260,7 @@ TASK-601 (Multi-Agent) ⬜
     │
     └──► TASK-603 (Handoff) ⬜ ──► TASK-604 (Format)
 
-TASK-701 (Tenancy Schema) ⬜
+TASK-701 (Tenancy Schema) ✅
     │
     └──► TASK-702 (API) ⬜ ──► TASK-703 (Quotas)
                         └──► TASK-708 (Audit)

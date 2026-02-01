@@ -1,0 +1,29 @@
+# Azure OpenAI with System Message Example
+# This demonstrates Azure OpenAI adapter with custom system message
+
+name: azure-openai-with-system-message
+description: Azure OpenAI tests with system message
+
+agent:
+  adapter: azure_openai
+  config:
+    endpoint: "${AZURE_OPENAI_ENDPOINT}"
+    deployment_name: "${AZURE_OPENAI_DEPLOYMENT}"
+    api_key: "${AZURE_OPENAI_API_KEY}"
+    system_message: |
+      You are a helpful technical assistant specializing in software development.
+      Always provide code examples when applicable.
+      Be concise but thorough in your explanations.
+    temperature: 0.5
+
+tests:
+  - id: technical-question
+    description: Test response with technical system message
+    task:
+      description: "Explain what a closure is in programming."
+    evaluators:
+      - type: llm_judge
+        config:
+          criteria:
+            - "Response explains closures clearly"
+            - "Response includes a code example"

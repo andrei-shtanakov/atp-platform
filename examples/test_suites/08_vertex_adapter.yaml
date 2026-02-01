@@ -1,0 +1,146 @@
+# Example: Vertex AI Adapter Test Suite
+# This test suite demonstrates testing AI models on Google Vertex AI.
+#
+# Prerequisites:
+# 1. Install: uv add google-cloud-aiplatform
+# 2. Set up authentication (one of):
+#    - Set GOOGLE_APPLICATION_CREDENTIALS to your service account key file
+#    - Run: gcloud auth application-default login
+#    - Use GCE/GKE attached service account
+# 3. Set GCP_PROJECT_ID environment variable
+#
+# Run with:
+#   atp test examples/test_suites/08_vertex_adapter.yaml --adapter=vertex
+
+name: vertex-ai-adapter-tests
+description: Demonstration of Vertex AI adapter capabilities
+
+# Agent configuration
+agent:
+  adapter: vertex
+  config:
+    project_id: "${GCP_PROJECT_ID}"
+    location: "us-central1"
+    model_name: "gemini-1.5-pro"
+    temperature: 0.7
+    max_output_tokens: 2048
+    timeout_seconds: 60
+
+# Test cases
+tests:
+  # Basic text generation
+  - id: basic-generation
+    description: Test basic text generation
+    task:
+      description: "What is the capital of France? Please answer in one sentence."
+    evaluators:
+      - type: artifact
+        config:
+          expected:
+            - name: output
+      - type: llm_judge
+        config:
+          criteria:
+            - "Response correctly identifies Paris as the capital of France"
+            - "Response is concise"
+
+  # Multi-turn conversation (requires session persistence)
+  - id: conversation-context
+    description: Test that model can follow conversation context
+    task:
+      description: "I'm thinking of a number between 1 and 100. It's 42. Remember this number."
+      input_data:
+        context: "We are playing a number guessing game."
+    evaluators:
+      - type: artifact
+        config:
+          expected:
+            - name: output
+
+  # Complex reasoning
+  - id: reasoning-task
+    description: Test logical reasoning capabilities
+    task:
+      description: |
+        Solve this logic puzzle:
+        - Alice is older than Bob
+        - Bob is older than Charlie
+        - Who is the youngest?
+    evaluators:
+      - type: llm_judge
+        config:
+          criteria:
+            - "Response correctly identifies Charlie as the youngest"
+            - "Response shows logical reasoning"
+
+  # Creative writing
+  - id: creative-writing
+    description: Test creative writing capabilities
+    task:
+      description: "Write a haiku about artificial intelligence."
+    evaluators:
+      - type: llm_judge
+        config:
+          criteria:
+            - "Response is a valid haiku (5-7-5 syllable structure)"
+            - "Response is about artificial intelligence"
+
+  # Code generation
+  - id: code-generation
+    description: Test code generation
+    task:
+      description: "Write a Python function that checks if a number is prime."
+    evaluators:
+      - type: llm_judge
+        config:
+          criteria:
+            - "Response contains a valid Python function"
+            - "Function correctly checks for prime numbers"
+            - "Code is well-formatted"
+
+  # Structured output
+  - id: structured-output
+    description: Test structured output generation
+    task:
+      description: |
+        List 3 popular programming languages and their typical use cases.
+        Format your response as a bullet list.
+    evaluators:
+      - type: llm_judge
+        config:
+          criteria:
+            - "Response lists exactly 3 programming languages"
+            - "Each language has at least one use case described"
+            - "Response is formatted as a bullet list"
+
+  # Long context
+  - id: long-context
+    description: Test handling of longer context
+    task:
+      description: |
+        Summarize the following text in 2-3 sentences:
+
+        Machine learning is a subset of artificial intelligence (AI) that provides
+        systems the ability to automatically learn and improve from experience
+        without being explicitly programmed. Machine learning focuses on the
+        development of computer programs that can access data and use it to
+        learn for themselves. The process of learning begins with observations
+        or data, such as examples, direct experience, or instruction, in order
+        to look for patterns in data and make better decisions in the future
+        based on the examples that we provide.
+    evaluators:
+      - type: llm_judge
+        config:
+          criteria:
+            - "Summary captures the main concept of machine learning"
+            - "Summary is 2-3 sentences long"
+            - "Summary is accurate to the original text"
+
+# Metadata for tracking
+metadata:
+  version: "1.0"
+  author: "ATP Framework"
+  tags:
+    - vertex-ai
+    - gemini
+    - example

@@ -10,8 +10,11 @@ import click
 import yaml
 
 from atp import __version__
+from atp.cli.commands.benchmark import benchmark_command
+from atp.cli.commands.budget import budget_command
 from atp.cli.commands.generate import generate_command
 from atp.cli.commands.init import init_command
+from atp.cli.commands.plugins import plugins_command
 from atp.loader import TestLoader
 
 # Exit codes as per requirements
@@ -189,7 +192,7 @@ def version_cmd() -> None:
     "--adapter",
     type=str,
     default="http",
-    help="Adapter type to use (http, cli, container, langgraph, crewai, autogen)",
+    help="Adapter type to use (http, cli, container, langgraph, crewai, autogen, mcp)",
 )
 @click.option(
     "--adapter-config",
@@ -400,7 +403,7 @@ def test_cmd(
     "--adapter",
     type=str,
     default="http",
-    help="Adapter type to use (http, cli, container, langgraph, crewai, autogen)",
+    help="Adapter type to use (http, cli, container, langgraph, crewai, autogen, mcp)",
 )
 @click.option(
     "--adapter-config",
@@ -759,7 +762,10 @@ async def _save_results_to_db(
 @click.option(
     "--adapter",
     type=str,
-    help="Adapter type to validate (http, cli, container, langgraph, crewai, autogen)",
+    help=(
+        "Adapter type to validate "
+        "(http, cli, container, langgraph, crewai, autogen, mcp)"
+    ),
 )
 @click.option(
     "--adapter-config",
@@ -949,6 +955,7 @@ def list_agents_cmd(config_ctx: ConfigContext, verbose: bool) -> None:
         "langgraph": "LangGraph framework adapter",
         "crewai": "CrewAI framework adapter",
         "autogen": "AutoGen framework adapter",
+        "mcp": "MCP (Model Context Protocol) adapter for tool/resource access",
     }
 
     for adapter_type in sorted(adapter_types):
@@ -1036,7 +1043,7 @@ def baseline() -> None:
     "--adapter",
     type=str,
     default="http",
-    help="Adapter type to use (http, cli, container, langgraph, crewai, autogen)",
+    help="Adapter type to use (http, cli, container, langgraph, crewai, autogen, mcp)",
 )
 @click.option(
     "--adapter-config",
@@ -1651,8 +1658,11 @@ def list_tests(suite_file: Path, tags: str | None) -> None:
 
 
 # Register commands
+cli.add_command(benchmark_command)
+cli.add_command(budget_command)
 cli.add_command(init_command)
 cli.add_command(generate_command)
+cli.add_command(plugins_command)
 
 
 def main() -> None:

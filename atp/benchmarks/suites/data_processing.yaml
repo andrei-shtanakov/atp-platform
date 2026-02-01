@@ -1,0 +1,596 @@
+# Data Processing Benchmark Suite
+# Tests agent capabilities in data manipulation, transformation, and analysis
+name: data_processing
+category: data_processing
+version: "1.0.0"
+description: |
+  Benchmark suite for evaluating agent data processing capabilities.
+  Includes tests for data transformation, cleaning, analysis, and visualization.
+default_timeout_seconds: 300
+default_max_steps: 50
+
+tests:
+  # Data Transformation Tests (4 tests)
+  - id: data-transform-001
+    name: "JSON to CSV Conversion"
+    description: "Transform nested JSON to flat CSV"
+    task_description: |
+      Convert this nested JSON data to a flat CSV format:
+
+      ```json
+      {
+        "orders": [
+          {
+            "id": "ORD001",
+            "customer": {
+              "name": "John Smith",
+              "email": "john@example.com",
+              "address": {
+                "city": "New York",
+                "zip": "10001"
+              }
+            },
+            "items": [
+              {"product": "Widget", "qty": 2, "price": 9.99},
+              {"product": "Gadget", "qty": 1, "price": 24.99}
+            ],
+            "date": "2024-01-15"
+          },
+          {
+            "id": "ORD002",
+            "customer": {
+              "name": "Jane Doe",
+              "email": "jane@example.com",
+              "address": {
+                "city": "Los Angeles",
+                "zip": "90001"
+              }
+            },
+            "items": [
+              {"product": "Gizmo", "qty": 3, "price": 14.99}
+            ],
+            "date": "2024-01-16"
+          }
+        ]
+      }
+      ```
+
+      Create a Python script that:
+      1. Flattens the nested structure (one row per item)
+      2. Includes all relevant fields
+      3. Calculates a total_amount for each row
+      4. Outputs valid CSV
+    expected_artifacts:
+      - "*.py"
+      - "*.csv"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.py"
+      - type: contains
+        config:
+          pattern: "csv"
+    metadata:
+      category: data_processing
+      difficulty: medium
+      estimated_time_seconds: 180
+      skills_tested:
+        - json_processing
+        - data_flattening
+        - csv_generation
+      baseline_scores:
+        - model_name: gpt-4
+          score: 85.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 88.0
+          date: "2024-01-15"
+    tags:
+      - transformation
+      - json
+      - csv
+
+  - id: data-transform-002
+    name: "Data Pivoting"
+    description: "Pivot data from long to wide format"
+    task_description: |
+      Transform this sales data from long format to wide format:
+
+      Long format (input):
+      ```
+      date,product,sales
+      2024-01-01,A,100
+      2024-01-01,B,150
+      2024-01-01,C,200
+      2024-01-02,A,120
+      2024-01-02,B,140
+      2024-01-02,C,180
+      2024-01-03,A,110
+      2024-01-03,B,160
+      2024-01-03,C,190
+      ```
+
+      Wide format (output):
+      ```
+      date,A,B,C,total
+      2024-01-01,100,150,200,450
+      2024-01-02,120,140,180,440
+      2024-01-03,110,160,190,460
+      ```
+
+      Write a Python script using pandas that:
+      1. Reads the input data
+      2. Pivots the data
+      3. Adds a total column
+      4. Outputs the result
+    expected_artifacts:
+      - "*.py"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.py"
+      - type: contains
+        config:
+          pattern: "pivot"
+    metadata:
+      category: data_processing
+      difficulty: easy
+      estimated_time_seconds: 120
+      skills_tested:
+        - pandas
+        - data_reshaping
+        - aggregation
+      baseline_scores:
+        - model_name: gpt-4
+          score: 90.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 92.0
+          date: "2024-01-15"
+    tags:
+      - transformation
+      - pandas
+
+  - id: data-transform-003
+    name: "XML Processing"
+    description: "Parse and transform XML data"
+    task_description: |
+      Parse this XML and extract structured data:
+
+      ```xml
+      <?xml version="1.0"?>
+      <catalog>
+        <book id="bk101">
+          <author>Gambardella, Matthew</author>
+          <title>XML Developer's Guide</title>
+          <genre>Computer</genre>
+          <price>44.95</price>
+          <publish_date>2000-10-01</publish_date>
+        </book>
+        <book id="bk102">
+          <author>Ralls, Kim</author>
+          <title>Midnight Rain</title>
+          <genre>Fantasy</genre>
+          <price>5.95</price>
+          <publish_date>2000-12-16</publish_date>
+        </book>
+        <book id="bk103">
+          <author>Corets, Eva</author>
+          <title>Maeve Ascendant</title>
+          <genre>Fantasy</genre>
+          <price>5.95</price>
+          <publish_date>2000-11-17</publish_date>
+        </book>
+      </catalog>
+      ```
+
+      Write a Python script that:
+      1. Parses the XML
+      2. Converts it to a list of dictionaries
+      3. Groups books by genre with count and average price
+      4. Outputs results as JSON
+    expected_artifacts:
+      - "*.py"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.py"
+      - type: contains
+        config:
+          pattern: "xml"
+    metadata:
+      category: data_processing
+      difficulty: medium
+      estimated_time_seconds: 180
+      skills_tested:
+        - xml_parsing
+        - data_aggregation
+        - json_generation
+      baseline_scores:
+        - model_name: gpt-4
+          score: 85.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 88.0
+          date: "2024-01-15"
+    tags:
+      - transformation
+      - xml
+
+  - id: data-transform-004
+    name: "Log File Parsing"
+    description: "Extract structured data from logs"
+    task_description: |
+      Parse this web server log and extract metrics:
+
+      ```
+      192.168.1.100 - - [15/Jan/2024:10:00:01 +0000] "GET /api/users HTTP/1.1" 200 1234 0.045
+      192.168.1.101 - - [15/Jan/2024:10:00:02 +0000] "POST /api/orders HTTP/1.1" 201 567 0.123
+      192.168.1.100 - - [15/Jan/2024:10:00:03 +0000] "GET /api/products HTTP/1.1" 200 8901 0.089
+      192.168.1.102 - - [15/Jan/2024:10:00:04 +0000] "GET /api/users/123 HTTP/1.1" 404 45 0.012
+      192.168.1.100 - - [15/Jan/2024:10:00:05 +0000] "DELETE /api/orders/456 HTTP/1.1" 500 89 0.234
+      ```
+
+      Format: IP - - [timestamp] "method path protocol" status bytes response_time
+
+      Write a Python script that calculates:
+      1. Total requests per IP
+      2. Request count by status code
+      3. Average response time per endpoint
+      4. Error rate (4xx + 5xx / total)
+      5. Top 3 slowest endpoints
+    expected_artifacts:
+      - "*.py"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.py"
+      - type: contains
+        config:
+          pattern: "regex"
+    metadata:
+      category: data_processing
+      difficulty: medium
+      estimated_time_seconds: 180
+      skills_tested:
+        - regex
+        - log_parsing
+        - metrics_calculation
+      baseline_scores:
+        - model_name: gpt-4
+          score: 82.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 86.0
+          date: "2024-01-15"
+    tags:
+      - transformation
+      - logs
+
+  # Data Cleaning Tests (3 tests)
+  - id: data-clean-001
+    name: "Missing Value Handling"
+    description: "Clean dataset with missing values"
+    task_description: |
+      Clean this dataset with missing values:
+
+      ```csv
+      id,name,age,salary,department,start_date
+      1,John Smith,35,75000,Engineering,2020-01-15
+      2,Jane Doe,,80000,Marketing,2019-06-20
+      3,Bob Wilson,42,,Engineering,
+      4,,38,65000,Sales,2021-03-10
+      5,Alice Brown,29,70000,,2022-01-05
+      6,Charlie Davis,NULL,85000,Engineering,2018-11-30
+      7,Diana Evans,33,N/A,Marketing,2020-08-15
+      8,Edward Fox,45,90000,Engineering,invalid_date
+      ```
+
+      Write a Python script that:
+      1. Detects different representations of missing values (empty, NULL, N/A)
+      2. Fills missing ages with median age
+      3. Fills missing salaries with department median
+      4. Fills missing departments with "Unknown"
+      5. Parses dates and handles invalid ones
+      6. Removes rows with missing critical fields (id, name)
+      7. Outputs cleaned data and a summary of changes made
+    expected_artifacts:
+      - "*.py"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.py"
+      - type: contains
+        config:
+          pattern: "fillna"
+    metadata:
+      category: data_processing
+      difficulty: medium
+      estimated_time_seconds: 180
+      skills_tested:
+        - data_cleaning
+        - missing_value_imputation
+        - pandas
+      baseline_scores:
+        - model_name: gpt-4
+          score: 83.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 86.0
+          date: "2024-01-15"
+    tags:
+      - cleaning
+      - missing_values
+
+  - id: data-clean-002
+    name: "Data Deduplication"
+    description: "Identify and handle duplicate records"
+    task_description: |
+      Handle duplicates in this customer dataset:
+
+      ```csv
+      customer_id,email,name,phone,created_at
+      1001,john@email.com,John Smith,555-1234,2023-01-15
+      1002,jane@email.com,Jane Doe,555-5678,2023-02-20
+      1003,john@email.com,John A. Smith,555-1234,2023-01-16
+      1004,bob@email.com,Bob Wilson,555-9012,2023-03-10
+      1005,JANE@EMAIL.COM,Jane Doe,555-5678,2023-02-21
+      1006,bob@email.com,Robert Wilson,555-9012,2023-03-11
+      1007,alice@email.com,Alice Brown,555-3456,2023-04-05
+      ```
+
+      Write a Python script that:
+      1. Identifies exact duplicates
+      2. Identifies fuzzy duplicates (same email, case-insensitive)
+      3. Identifies potential duplicates (same phone number)
+      4. For duplicates, keeps the record with the earliest created_at
+      5. Generates a report of all duplicates found and actions taken
+      6. Outputs the deduplicated dataset
+    expected_artifacts:
+      - "*.py"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.py"
+      - type: contains
+        config:
+          pattern: "duplicate"
+    metadata:
+      category: data_processing
+      difficulty: medium
+      estimated_time_seconds: 180
+      skills_tested:
+        - deduplication
+        - fuzzy_matching
+        - data_quality
+      baseline_scores:
+        - model_name: gpt-4
+          score: 80.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 84.0
+          date: "2024-01-15"
+    tags:
+      - cleaning
+      - deduplication
+
+  - id: data-clean-003
+    name: "Data Validation and Correction"
+    description: "Validate and correct data errors"
+    task_description: |
+      Validate and correct this dataset:
+
+      ```csv
+      id,email,phone,zip_code,country,amount,date
+      1,john@example.com,555-123-4567,10001,USA,1000.50,2024-01-15
+      2,invalid-email,555-123-4567,10002,USA,2000.00,2024-01-16
+      3,jane@example.com,123-456-7890,ABC12,USA,-500.00,2024-13-45
+      4,bob@example.com,555.123.4567,90210,US,3000.00,2024-02-30
+      5,alice@example,555-999-0000,SW1A 1AA,UK,1500.25,2024-02-15
+      6,charlie@example.com,12345,75001,France,abc,2024-03-01
+      ```
+
+      Write a Python script that:
+      1. Validates emails (flag invalid ones)
+      2. Normalizes phone numbers to consistent format
+      3. Validates zip codes based on country
+      4. Validates amounts (must be positive numbers)
+      5. Validates dates (must be valid calendar dates)
+      6. Generates a validation report with all issues found
+      7. Outputs corrected data where possible, flags uncorrectable rows
+    expected_artifacts:
+      - "*.py"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.py"
+      - type: contains
+        config:
+          pattern: "valid"
+    metadata:
+      category: data_processing
+      difficulty: hard
+      estimated_time_seconds: 240
+      skills_tested:
+        - data_validation
+        - regex
+        - error_handling
+      baseline_scores:
+        - model_name: gpt-4
+          score: 75.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 80.0
+          date: "2024-01-15"
+    tags:
+      - cleaning
+      - validation
+
+  # Data Analysis Tests (3 tests)
+  - id: data-analysis-001
+    name: "Statistical Summary"
+    description: "Generate comprehensive statistics"
+    task_description: |
+      Analyze this sales dataset and generate a statistical summary:
+
+      ```csv
+      date,product,category,units,revenue,cost,region
+      2024-01-01,Widget A,Electronics,50,2500,1500,North
+      2024-01-01,Widget B,Electronics,30,1800,1000,South
+      2024-01-02,Gadget X,Accessories,100,3000,1800,North
+      2024-01-02,Widget A,Electronics,45,2250,1350,East
+      2024-01-03,Gadget Y,Accessories,75,2625,1500,West
+      2024-01-03,Widget B,Electronics,60,3600,2000,North
+      2024-01-04,Widget A,Electronics,55,2750,1650,South
+      2024-01-04,Gadget X,Accessories,80,2400,1440,East
+      2024-01-05,Widget B,Electronics,40,2400,1400,West
+      2024-01-05,Gadget Y,Accessories,90,3150,1800,North
+      ```
+
+      Write a Python script that calculates:
+      1. Descriptive statistics (mean, median, std, quartiles) for revenue
+      2. Profit margin by product and category
+      3. Sales trends (daily, by category)
+      4. Regional performance comparison
+      5. Top performing products
+      6. Correlation between units and revenue
+
+      Include appropriate visualizations (describe what charts to create).
+    expected_artifacts:
+      - "*.py"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.py"
+      - type: contains
+        config:
+          pattern: "mean"
+    metadata:
+      category: data_processing
+      difficulty: medium
+      estimated_time_seconds: 240
+      skills_tested:
+        - statistical_analysis
+        - pandas
+        - data_visualization
+      baseline_scores:
+        - model_name: gpt-4
+          score: 82.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 86.0
+          date: "2024-01-15"
+    tags:
+      - analysis
+      - statistics
+
+  - id: data-analysis-002
+    name: "Cohort Analysis"
+    description: "Perform cohort-based analysis"
+    task_description: |
+      Perform a cohort analysis on this user activity data:
+
+      ```csv
+      user_id,signup_date,activity_date,action_type
+      U001,2024-01-01,2024-01-01,signup
+      U001,2024-01-01,2024-01-05,purchase
+      U001,2024-01-01,2024-01-15,purchase
+      U002,2024-01-01,2024-01-01,signup
+      U002,2024-01-01,2024-01-03,purchase
+      U003,2024-01-08,2024-01-08,signup
+      U003,2024-01-08,2024-01-10,purchase
+      U004,2024-01-08,2024-01-08,signup
+      U005,2024-01-15,2024-01-15,signup
+      U005,2024-01-15,2024-01-16,purchase
+      U005,2024-01-15,2024-01-20,purchase
+      ```
+
+      Write a Python script that:
+      1. Groups users into weekly cohorts by signup date
+      2. Calculates retention rates for each cohort
+      3. Creates a cohort retention matrix
+      4. Calculates average revenue per user by cohort
+      5. Identifies the best and worst performing cohorts
+      6. Outputs a formatted report
+    expected_artifacts:
+      - "*.py"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.py"
+      - type: contains
+        config:
+          pattern: "cohort"
+    metadata:
+      category: data_processing
+      difficulty: hard
+      estimated_time_seconds: 300
+      skills_tested:
+        - cohort_analysis
+        - retention_metrics
+        - pandas
+      baseline_scores:
+        - model_name: gpt-4
+          score: 75.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 80.0
+          date: "2024-01-15"
+    tags:
+      - analysis
+      - cohorts
+
+  - id: data-analysis-003
+    name: "Time Series Analysis"
+    description: "Analyze time series data"
+    task_description: |
+      Analyze this time series data of website traffic:
+
+      ```csv
+      date,page_views,unique_visitors,bounce_rate,avg_session_duration
+      2024-01-01,10000,5000,0.45,180
+      2024-01-02,12000,5500,0.42,195
+      2024-01-03,11500,5200,0.44,185
+      2024-01-04,13000,6000,0.40,200
+      2024-01-05,15000,7000,0.38,210
+      2024-01-06,18000,8000,0.35,220
+      2024-01-07,17000,7500,0.36,215
+      2024-01-08,11000,5100,0.43,185
+      2024-01-09,12500,5600,0.41,190
+      2024-01-10,13500,6200,0.39,205
+      ```
+
+      Write a Python script that:
+      1. Identifies trends and seasonality patterns
+      2. Calculates moving averages (7-day)
+      3. Detects anomalies (values outside 2 std deviations)
+      4. Calculates week-over-week growth rates
+      5. Computes correlations between metrics
+      6. Generates a forecast for the next 3 days (simple projection)
+    expected_artifacts:
+      - "*.py"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.py"
+      - type: contains
+        config:
+          pattern: "rolling"
+    metadata:
+      category: data_processing
+      difficulty: hard
+      estimated_time_seconds: 300
+      skills_tested:
+        - time_series
+        - trend_analysis
+        - forecasting
+      baseline_scores:
+        - model_name: gpt-4
+          score: 78.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 82.0
+          date: "2024-01-15"
+    tags:
+      - analysis
+      - time_series

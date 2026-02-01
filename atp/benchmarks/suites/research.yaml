@@ -1,0 +1,568 @@
+# Research Benchmark Suite
+# Tests agent capabilities in web research, summarization, and information synthesis
+name: research
+category: research
+version: "1.0.0"
+description: |
+  Benchmark suite for evaluating agent research and information gathering capabilities.
+  Includes tests for web research, document summarization, and fact-finding.
+default_timeout_seconds: 600
+default_max_steps: 100
+
+tests:
+  # Web Research Tests (5 tests)
+  - id: research-web-001
+    name: "Technology Comparison"
+    description: "Research and compare technologies"
+    task_description: |
+      Research and compare the following Python web frameworks:
+      - Django
+      - FastAPI
+      - Flask
+
+      Create a comparison table covering:
+      - Performance characteristics
+      - Learning curve
+      - Use cases (best suited for)
+      - Community size and support
+      - Key features
+
+      Provide sources for your information.
+    expected_artifacts:
+      - "*.md"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.md"
+      - type: contains
+        config:
+          pattern: "Django"
+      - type: contains
+        config:
+          pattern: "FastAPI"
+      - type: contains
+        config:
+          pattern: "Flask"
+    metadata:
+      category: research
+      difficulty: medium
+      estimated_time_seconds: 300
+      skills_tested:
+        - web_search
+        - comparison_analysis
+        - technical_writing
+      baseline_scores:
+        - model_name: gpt-4
+          score: 82.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 85.0
+          date: "2024-01-15"
+    tags:
+      - web_research
+      - comparison
+
+  - id: research-web-002
+    name: "Market Research"
+    description: "Research a market segment"
+    task_description: |
+      Research the current state of the AI code assistant market:
+
+      1. Identify the top 5 AI code assistants (by market share or popularity)
+      2. For each, provide:
+         - Key features
+         - Pricing model
+         - Supported languages/IDEs
+         - Unique selling points
+      3. Identify emerging trends in this space
+      4. Provide your sources
+
+      Output as a structured markdown report.
+    expected_artifacts:
+      - "*.md"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.md"
+      - type: contains
+        config:
+          pattern: "GitHub Copilot"
+    metadata:
+      category: research
+      difficulty: medium
+      estimated_time_seconds: 360
+      skills_tested:
+        - market_research
+        - competitive_analysis
+        - trend_identification
+      baseline_scores:
+        - model_name: gpt-4
+          score: 78.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 82.0
+          date: "2024-01-15"
+    tags:
+      - web_research
+      - market_analysis
+
+  - id: research-web-003
+    name: "Fact Verification"
+    description: "Verify claims with research"
+    task_description: |
+      Verify or refute each of the following claims:
+
+      1. "Python is the most popular programming language in 2024"
+      2. "Rust has the best memory safety among systems languages"
+      3. "GraphQL is replacing REST APIs in modern applications"
+      4. "Kubernetes is used by over 50% of Fortune 500 companies"
+
+      For each claim:
+      - State whether it's TRUE, FALSE, or PARTIALLY TRUE
+      - Provide evidence supporting your assessment
+      - Cite your sources
+
+      Be objective and thorough.
+    expected_artifacts:
+      - "*.md"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.md"
+      - type: contains
+        config:
+          pattern: "TRUE"
+    metadata:
+      category: research
+      difficulty: hard
+      estimated_time_seconds: 420
+      skills_tested:
+        - fact_checking
+        - critical_analysis
+        - source_evaluation
+      baseline_scores:
+        - model_name: gpt-4
+          score: 75.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 80.0
+          date: "2024-01-15"
+    tags:
+      - web_research
+      - fact_checking
+
+  - id: research-web-004
+    name: "Best Practices Research"
+    description: "Research current best practices"
+    task_description: |
+      Research current best practices for securing a Python web application.
+      Your report should cover:
+
+      1. Authentication and authorization (including modern approaches like OAuth2, JWT)
+      2. Input validation and sanitization
+      3. Database security (SQL injection prevention, encryption)
+      4. API security
+      5. Dependency management and vulnerability scanning
+
+      Include code examples where appropriate and cite authoritative sources
+      (OWASP, security advisories, official documentation).
+    expected_artifacts:
+      - "*.md"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.md"
+      - type: contains
+        config:
+          pattern: "OWASP"
+    metadata:
+      category: research
+      difficulty: hard
+      estimated_time_seconds: 480
+      skills_tested:
+        - security_research
+        - technical_documentation
+        - best_practices
+      baseline_scores:
+        - model_name: gpt-4
+          score: 80.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 84.0
+          date: "2024-01-15"
+    tags:
+      - web_research
+      - security
+
+  - id: research-web-005
+    name: "Tutorial Creation"
+    description: "Research and create a tutorial"
+    task_description: |
+      Research and create a beginner-friendly tutorial on setting up a
+      CI/CD pipeline with GitHub Actions for a Python project.
+
+      The tutorial should include:
+      1. Prerequisites
+      2. Step-by-step instructions
+      3. YAML configuration examples
+      4. Common pitfalls and how to avoid them
+      5. Best practices
+      6. References and further reading
+
+      Target audience: developers new to CI/CD.
+    expected_artifacts:
+      - "*.md"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.md"
+      - type: contains
+        config:
+          pattern: "GitHub Actions"
+      - type: contains
+        config:
+          pattern: "yaml"
+    metadata:
+      category: research
+      difficulty: medium
+      estimated_time_seconds: 360
+      skills_tested:
+        - technical_writing
+        - tutorial_creation
+        - ci_cd_knowledge
+      baseline_scores:
+        - model_name: gpt-4
+          score: 83.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 86.0
+          date: "2024-01-15"
+    tags:
+      - web_research
+      - documentation
+
+  # Summarization Tests (5 tests)
+  - id: research-sum-001
+    name: "Technical Document Summary"
+    description: "Summarize a technical document"
+    task_description: |
+      Summarize the following technical specification in 200-300 words:
+
+      """
+      The OAuth 2.0 authorization framework enables a third-party application to
+      obtain limited access to an HTTP service, either on behalf of a resource
+      owner by orchestrating an approval interaction between the resource owner
+      and the HTTP service, or by allowing the third-party application to obtain
+      access on its own behalf.
+
+      OAuth defines four roles: resource owner, resource server, client, and
+      authorization server. The resource owner is an entity capable of granting
+      access to a protected resource. The resource server hosts the protected
+      resources and accepts/responds to requests using access tokens. The client
+      is an application making protected resource requests on behalf of the
+      resource owner. The authorization server issues access tokens to the
+      client after authenticating the resource owner and obtaining authorization.
+
+      The authorization process involves obtaining authorization grants, which
+      represent the resource owner's authorization. OAuth 2.0 defines four grant
+      types: authorization code, implicit, resource owner password credentials,
+      and client credentials. Each grant type is optimized for a specific use
+      case based on security requirements and the capabilities of the client.
+
+      Access tokens are credentials used to access protected resources. They
+      represent an authorization issued to the client, abstracting authorization
+      details. Refresh tokens are credentials used to obtain new access tokens
+      when the current access token expires. The use of refresh tokens reduces
+      the exposure of the access token credential.
+      """
+
+      Include key concepts and main takeaways.
+    expected_artifacts:
+      - "*.md"
+      - "*.txt"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.md"
+      - type: contains
+        config:
+          pattern: "OAuth"
+    metadata:
+      category: research
+      difficulty: easy
+      estimated_time_seconds: 120
+      skills_tested:
+        - summarization
+        - technical_comprehension
+        - concise_writing
+      baseline_scores:
+        - model_name: gpt-4
+          score: 88.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 90.0
+          date: "2024-01-15"
+    tags:
+      - summarization
+      - technical
+
+  - id: research-sum-002
+    name: "Meeting Notes Extraction"
+    description: "Extract action items from meeting notes"
+    task_description: |
+      Extract all action items, decisions, and key points from these meeting notes:
+
+      """
+      Project Alpha Status Meeting - March 15, 2024
+
+      Attendees: Sarah (PM), John (Dev Lead), Maria (QA), Tom (Design)
+
+      Sarah started by reviewing last sprint's velocity. We completed 45 out of
+      50 story points. John mentioned the authentication module took longer than
+      expected due to an integration issue with the legacy system.
+
+      Tom presented the new dashboard mockups. Everyone agreed on the layout but
+      Maria suggested we add a filter panel. Tom will update the mockups by Friday.
+
+      John raised concerns about the upcoming database migration. He recommends
+      we do it during the maintenance window next Saturday. Sarah will coordinate
+      with ops team to schedule this.
+
+      Maria reported 3 critical bugs found in testing. Bug #1234 causes data loss
+      under specific conditions - John will prioritize this for immediate fix.
+      The other two can wait until next sprint.
+
+      For next sprint, we're targeting 48 story points. The team agreed to
+      focus on the reporting module. John will break down the stories by Wednesday.
+
+      Next meeting scheduled for March 22nd at 2pm.
+      """
+
+      Output a structured summary with sections for: Action Items, Decisions,
+      Key Issues, and Next Steps.
+    expected_artifacts:
+      - "*.md"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.md"
+      - type: contains
+        config:
+          pattern: "Action"
+    metadata:
+      category: research
+      difficulty: easy
+      estimated_time_seconds: 90
+      skills_tested:
+        - information_extraction
+        - organization
+        - summarization
+      baseline_scores:
+        - model_name: gpt-4
+          score: 90.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 92.0
+          date: "2024-01-15"
+    tags:
+      - summarization
+      - business
+
+  - id: research-sum-003
+    name: "Research Paper Abstract"
+    description: "Create abstract from paper content"
+    task_description: |
+      Create an academic-style abstract (150-200 words) for this research:
+
+      """
+      Introduction: Microservices architecture has become the dominant pattern
+      for building large-scale distributed systems. However, debugging and
+      monitoring these systems remains challenging due to their distributed
+      nature and complex interactions.
+
+      Methods: We developed a novel tracing framework that combines distributed
+      tracing with anomaly detection. Our approach uses machine learning to
+      identify unusual patterns in request flows. We evaluated our framework
+      on a production system with 50+ microservices processing 100k requests/second.
+
+      Results: Our framework detected 87% of injected faults with only 3% false
+      positives. The average detection latency was 12 seconds. Performance
+      overhead was less than 2% for request processing time.
+
+      Discussion: The results demonstrate that combining tracing with ML-based
+      anomaly detection can significantly improve observability. The low overhead
+      makes this practical for production use. Limitations include the need for
+      training data and potential blind spots for novel failure modes.
+
+      Conclusion: We present a practical approach to improving microservices
+      observability. Future work will focus on reducing detection latency and
+      handling previously unseen failure patterns.
+      """
+
+      Follow standard academic abstract conventions.
+    expected_artifacts:
+      - "*.md"
+      - "*.txt"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.md"
+      - type: contains
+        config:
+          pattern: "microservices"
+    metadata:
+      category: research
+      difficulty: medium
+      estimated_time_seconds: 150
+      skills_tested:
+        - academic_writing
+        - synthesis
+        - summarization
+      baseline_scores:
+        - model_name: gpt-4
+          score: 85.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 88.0
+          date: "2024-01-15"
+    tags:
+      - summarization
+      - academic
+
+  - id: research-sum-004
+    name: "Code Documentation Generation"
+    description: "Generate documentation from code"
+    task_description: |
+      Generate comprehensive README documentation for this Python module:
+
+      ```python
+      class RateLimiter:
+          def __init__(self, max_requests: int, window_seconds: int):
+              self.max_requests = max_requests
+              self.window = window_seconds
+              self.requests: dict[str, list[float]] = {}
+
+          def is_allowed(self, client_id: str) -> bool:
+              import time
+              now = time.time()
+              if client_id not in self.requests:
+                  self.requests[client_id] = []
+              self.requests[client_id] = [
+                  t for t in self.requests[client_id]
+                  if t > now - self.window
+              ]
+              if len(self.requests[client_id]) >= self.max_requests:
+                  return False
+              self.requests[client_id].append(now)
+              return True
+
+          def get_remaining(self, client_id: str) -> int:
+              import time
+              now = time.time()
+              if client_id not in self.requests:
+                  return self.max_requests
+              valid = [t for t in self.requests[client_id] if t > now - self.window]
+              return max(0, self.max_requests - len(valid))
+      ```
+
+      Include: overview, installation, usage examples, API reference, and limitations.
+    expected_artifacts:
+      - "*.md"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.md"
+      - type: contains
+        config:
+          pattern: "RateLimiter"
+      - type: contains
+        config:
+          pattern: "Usage"
+    metadata:
+      category: research
+      difficulty: medium
+      estimated_time_seconds: 180
+      skills_tested:
+        - documentation
+        - code_comprehension
+        - technical_writing
+      baseline_scores:
+        - model_name: gpt-4
+          score: 86.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 89.0
+          date: "2024-01-15"
+    tags:
+      - summarization
+      - documentation
+
+  - id: research-sum-005
+    name: "Executive Summary"
+    description: "Create executive summary from report"
+    task_description: |
+      Create a one-page executive summary for this technical report:
+
+      """
+      Q3 2024 Cloud Infrastructure Report
+
+      Overview:
+      Our cloud infrastructure handled 1.2 billion requests this quarter, up 34%
+      from Q2. We migrated 12 legacy services to Kubernetes, completing 60% of
+      our modernization initiative.
+
+      Performance:
+      Average response time improved from 145ms to 98ms due to CDN optimization
+      and database query improvements. P99 latency reduced from 890ms to 450ms.
+      Uptime was 99.97%, exceeding our 99.95% SLA.
+
+      Cost Analysis:
+      Total cloud spend was $2.4M, up from $2.1M. However, cost per million
+      requests dropped from $1.75 to $1.52, a 13% efficiency improvement.
+      Reserved instance optimization saved $180K this quarter.
+
+      Security:
+      We blocked 45M malicious requests. Zero data breaches occurred. Completed
+      SOC 2 Type II certification. Implemented zero-trust network architecture
+      for internal services.
+
+      Challenges:
+      - Database scaling issues during peak traffic (resolved with read replicas)
+      - Container memory leaks in payment service (patched)
+      - Vendor pricing increase of 8% effective Q4
+
+      Recommendations:
+      1. Increase reserved instance coverage from 60% to 75%
+      2. Accelerate Kubernetes migration to reduce operational overhead
+      3. Implement FinOps practices for better cost visibility
+      4. Evaluate multi-cloud strategy for vendor risk mitigation
+      """
+
+      Target audience: C-level executives. Focus on business impact.
+    expected_artifacts:
+      - "*.md"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.md"
+      - type: contains
+        config:
+          pattern: "Summary"
+    metadata:
+      category: research
+      difficulty: medium
+      estimated_time_seconds: 180
+      skills_tested:
+        - executive_communication
+        - business_writing
+        - synthesis
+      baseline_scores:
+        - model_name: gpt-4
+          score: 84.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 87.0
+          date: "2024-01-15"
+    tags:
+      - summarization
+      - business

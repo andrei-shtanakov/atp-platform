@@ -2,17 +2,22 @@
 
 This module provides endpoints for discovering and listing
 available test templates that can be used to create tests.
+
+Permissions:
+    - GET /templates: SUITES_READ
 """
 
-from fastapi import APIRouter
+from typing import Annotated
 
+from fastapi import APIRouter, Depends
+
+from atp.dashboard.rbac import Permission, require_permission
 from atp.dashboard.schemas import (
     AssertionCreate,
     ConstraintsCreate,
     TemplateListResponse,
     TemplateResponse,
 )
-from atp.dashboard.v2.dependencies import CurrentUser
 
 router = APIRouter(prefix="/templates", tags=["templates"])
 
@@ -22,16 +27,17 @@ router = APIRouter(prefix="/templates", tags=["templates"])
     response_model=TemplateListResponse,
 )
 async def list_templates(
-    user: CurrentUser,
+    _: Annotated[None, Depends(require_permission(Permission.SUITES_READ))],
     category: str | None = None,
 ) -> TemplateListResponse:
     """List available test templates.
+
+    Requires SUITES_READ permission.
 
     Returns all registered templates that can be used to create tests.
     Templates provide pre-defined patterns with variable placeholders.
 
     Args:
-        user: Current user (optional auth).
         category: Optional category filter.
 
     Returns:

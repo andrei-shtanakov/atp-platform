@@ -9,6 +9,21 @@ from .code_exec import (
     CommandResult,
     LintResults,
 )
+from .factuality import (
+    Citation,
+    CitationExtractor,
+    Claim,
+    ClaimExtractor,
+    ClaimType,
+    FactualityConfig,
+    FactualityEvaluator,
+    FactualityResult,
+    GroundTruthVerifier,
+    HallucinationDetector,
+    HallucinationIndicator,
+    LLMFactVerifier,
+    VerificationMethod,
+)
 from .llm_judge import (
     BUILTIN_CRITERIA,
     LLMJudgeConfig,
@@ -16,10 +31,27 @@ from .llm_judge import (
     LLMJudgeEvaluator,
     LLMJudgeResponse,
 )
+from .performance import (
+    PerformanceBaseline,
+    PerformanceConfig,
+    PerformanceEvaluator,
+    PerformanceMetrics,
+    PerformanceMetricType,
+    PerformanceThresholds,
+    RegressionResult,
+    RegressionStatus,
+)
 from .registry import (
     EvaluatorRegistry,
     create_evaluator,
     get_registry,
+)
+from .security import (
+    PIIChecker,
+    SecurityChecker,
+    SecurityEvaluator,
+    SecurityFinding,
+    Severity,
 )
 
 __all__ = [
@@ -32,6 +64,19 @@ __all__ = [
     "CodeTestResults",
     "CommandResult",
     "LintResults",
+    "FactualityEvaluator",
+    "FactualityConfig",
+    "FactualityResult",
+    "Claim",
+    "ClaimType",
+    "ClaimExtractor",
+    "Citation",
+    "CitationExtractor",
+    "GroundTruthVerifier",
+    "LLMFactVerifier",
+    "HallucinationDetector",
+    "HallucinationIndicator",
+    "VerificationMethod",
     "LLMJudgeEvaluator",
     "LLMJudgeConfig",
     "LLMJudgeCost",
@@ -40,4 +85,17 @@ __all__ = [
     "EvaluatorRegistry",
     "create_evaluator",
     "get_registry",
+    "SecurityChecker",
+    "SecurityEvaluator",
+    "SecurityFinding",
+    "Severity",
+    "PIIChecker",
+    "PerformanceEvaluator",
+    "PerformanceConfig",
+    "PerformanceThresholds",
+    "PerformanceBaseline",
+    "PerformanceMetrics",
+    "PerformanceMetricType",
+    "RegressionResult",
+    "RegressionStatus",
 ]
