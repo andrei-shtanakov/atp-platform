@@ -933,20 +933,20 @@ Implement chaos engineering for agent resilience testing.
 ---
 
 ### TASK-606: Regression Test Generator
-🟡 P2 | 🔄 IN_PROGRESS | Est: 4-5h
+🟡 P2 | ✅ DONE | Est: 4-5h
 
 **Description:**
 Generate test cases from recorded agent interactions.
 
 **Checklist:**
-- [ ] Create `atp/generator/regression.py`
-- [ ] Implement recording mode: capture interactions
-- [ ] Implement YAML generation from recordings
-- [ ] Implement parameterization of recorded tests
-- [ ] Implement data anonymization
-- [ ] Implement deduplication
-- [ ] Add CLI command: `atp generate regression`
-- [ ] Write tests
+- [x] Create `atp/generator/regression.py`
+- [x] Implement recording mode: capture interactions
+- [x] Implement YAML generation from recordings
+- [x] Implement parameterization of recorded tests
+- [x] Implement data anonymization
+- [x] Implement deduplication
+- [x] Add CLI command: `atp generate regression`
+- [x] Write tests
 
 **Traces to:** [REQ-603]
 **Depends on:** -
@@ -1089,7 +1089,7 @@ Implement OIDC (OpenID Connect) authentication.
 ---
 
 ### TASK-707: SSO - SAML Integration
-🟡 P2 | ⬜ TODO | Est: 4-5h
+🟡 P2 | 🔄 IN_PROGRESS | Est: 4-5h
 
 **Description:**
 Implement SAML 2.0 authentication.
