@@ -8,6 +8,11 @@ import click
 import yaml
 
 from atp.generator.core import TestGenerator, TestSuiteData
+from atp.generator.regression import (
+    AnonymizationLevel,
+    RegressionTestGenerator,
+    load_recordings_from_file,
+)
 from atp.generator.templates import TemplateRegistry, get_template_variables
 from atp.loader.models import Assertion, Constraints
 
@@ -711,6 +716,221 @@ def generate_suite(
         sys.exit(EXIT_ERROR)
     except click.ClickException:
         raise
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(EXIT_ERROR)
+
+
+@generate_command.command(name="regression")
+@click.option(
+    "--recordings",
+    "-r",
+    "recordings_file",
+    type=click.Path(exists=True, path_type=Path),
+    required=True,
+    help="Path to recordings file (JSON format)",
+)
+@click.option(
+    "--output",
+    "-o",
+    "output_file",
+    type=click.Path(path_type=Path),
+    required=True,
+    help="Output file path for generated test suite",
+)
+@click.option(
+    "--name",
+    "-n",
+    "suite_name",
+    type=str,
+    default=None,
+    help="Name for the generated suite (default: derived from output filename)",
+)
+@click.option(
+    "--description",
+    "-d",
+    "suite_description",
+    type=str,
+    default=None,
+    help="Description for the generated suite",
+)
+@click.option(
+    "--anonymize",
+    type=click.Choice(["none", "basic", "strict"]),
+    default="basic",
+    help="Level of data anonymization: none, basic (default), or strict",
+)
+@click.option(
+    "--no-dedupe",
+    is_flag=True,
+    help="Disable deduplication of similar recordings",
+)
+@click.option(
+    "--similarity",
+    type=float,
+    default=0.8,
+    help="Similarity threshold for deduplication (0.0-1.0, default: 0.8)",
+)
+@click.option(
+    "--no-parameterize",
+    is_flag=True,
+    help="Disable automatic parameterization of recorded values",
+)
+@click.option(
+    "--tags",
+    type=str,
+    default=None,
+    help="Comma-separated tags to add to all generated tests",
+)
+@click.option(
+    "--save-params",
+    is_flag=True,
+    help="Save extracted parameters to a separate file",
+)
+def generate_regression(
+    recordings_file: Path,
+    output_file: Path,
+    suite_name: str | None,
+    suite_description: str | None,
+    anonymize: str,
+    no_dedupe: bool,
+    similarity: float,
+    no_parameterize: bool,
+    tags: str | None,
+    save_params: bool,
+) -> None:
+    """Generate regression tests from recorded agent interactions.
+
+    This command converts recorded agent interactions into reusable test
+    cases. Recordings capture requests, responses, and events from real
+    agent runs, which can then be used to create regression tests.
+
+    Features:
+
+      - Automatic anonymization of sensitive data (emails, API keys, etc.)
+      - Deduplication of similar recordings
+      - Parameterization of variable values for test reuse
+      - Assertion generation based on actual responses
+
+    Examples:
+
+      # Generate tests from recordings with default settings
+      atp generate regression -r recordings.json -o regression-tests.yaml
+
+      # Strict anonymization with custom suite name
+      atp generate regression -r logs.json -o tests.yaml --anonymize=strict \\
+          --name="API Tests"
+
+      # Disable deduplication and parameterization
+      atp generate regression -r data.json -o tests.yaml --no-dedupe \\
+          --no-parameterize
+
+      # Add tags to all generated tests
+      atp generate regression -r data.json -o tests.yaml --tags="regression,ci"
+
+      # Save extracted parameters for later use
+      atp generate regression -r data.json -o tests.yaml --save-params
+
+    Recording Format:
+
+      Recordings should be a JSON file containing an array of recording
+      objects, or an object with a "recordings" key containing the array.
+      Each recording includes request, response, and events data.
+
+    Exit Codes:
+
+      0 - Tests generated successfully
+      2 - Error occurred
+    """
+    try:
+        # Parse anonymization level
+        anon_level = AnonymizationLevel(anonymize)
+
+        # Parse tags
+        tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
+
+        # Derive suite name from output file if not provided
+        if suite_name is None:
+            suite_name = output_file.stem.replace("-", "_").replace(".", "_")
+
+        click.echo(f"Loading recordings from: {recordings_file}")
+
+        # Load recordings
+        recordings = load_recordings_from_file(recordings_file)
+        click.echo(f"  Found {len(recordings)} recording(s)")
+
+        # Filter to completed recordings
+        completed_count = sum(1 for r in recordings if r.status.value == "completed")
+        click.echo(f"  Completed: {completed_count}")
+
+        if completed_count == 0:
+            raise click.ClickException(
+                "No completed recordings found. "
+                "Only completed recordings can be converted to tests."
+            )
+
+        # Create generator
+        generator = RegressionTestGenerator(
+            anonymization_level=anon_level,
+            similarity_threshold=similarity,
+            extract_parameters=not no_parameterize,
+        )
+
+        click.echo("\nGenerating tests...")
+        click.echo(f"  Anonymization: {anonymize}")
+        dedupe_status = "disabled" if no_dedupe else "enabled"
+        click.echo(f"  Deduplication: {dedupe_status}")
+        param_status = "disabled" if no_parameterize else "enabled"
+        click.echo(f"  Parameterization: {param_status}")
+
+        # Generate suite
+        suite, parameters = generator.generate_from_recordings(
+            recordings=recordings,
+            suite_name=suite_name,
+            suite_description=suite_description,
+            deduplicate=not no_dedupe,
+            tags=tag_list,
+        )
+
+        click.echo(f"\n  Generated {len(suite.tests)} test(s)")
+
+        if no_dedupe:
+            click.echo("  (deduplication disabled)")
+        else:
+            dedupe_removed = completed_count - len(suite.tests)
+            if dedupe_removed > 0:
+                click.echo(f"  Removed {dedupe_removed} duplicate(s)")
+
+        # Save suite
+        generator.save_suite(
+            suite,
+            output_file,
+            parameters=parameters if save_params else None,
+        )
+
+        click.echo(f"\nTest suite saved: {output_file}")
+        click.echo(f"  Name: {suite.name}")
+        click.echo(f"  Tests: {len(suite.tests)}")
+
+        if save_params and parameters:
+            params_file = output_file.with_suffix(".params.yaml")
+            click.echo(f"  Parameters: {params_file}")
+
+        click.echo(f"\nRun tests with: atp test {output_file}")
+
+        sys.exit(EXIT_SUCCESS)
+
+    except click.Abort:
+        click.echo("\nOperation cancelled.", err=True)
+        sys.exit(EXIT_ERROR)
+    except click.ClickException:
+        raise
+    except FileNotFoundError as e:
+        click.echo(f"Error: File not found: {e}", err=True)
+        sys.exit(EXIT_ERROR)
+    except ValueError as e:
+        click.echo(f"Error: Invalid data: {e}", err=True)
+        sys.exit(EXIT_ERROR)
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(EXIT_ERROR)

@@ -909,22 +909,22 @@ Extend test suite YAML format for multi-agent tests.
 ---
 
 ### TASK-605: Chaos Engineering Module
-🟡 P2 | 🔄 IN_PROGRESS | Est: 5-6h
+🟡 P2 | ✅ DONE | Est: 5-6h
 
 **Description:**
 Implement chaos engineering for agent resilience testing.
 
 **Checklist:**
-- [ ] Create `atp/chaos/__init__.py`
-- [ ] Create `atp/chaos/injectors.py` with fault injectors
-- [ ] Implement tool failure injection (configurable probability)
-- [ ] Implement latency injection (min/max delay)
-- [ ] Implement token limit simulation
-- [ ] Implement partial response simulation
-- [ ] Implement rate limit simulation
-- [ ] Create chaos profiles (predefined combinations)
-- [ ] Add chaos configuration to test suite YAML
-- [ ] Write tests
+- [x] Create `atp/chaos/__init__.py`
+- [x] Create `atp/chaos/injectors.py` with fault injectors
+- [x] Implement tool failure injection (configurable probability)
+- [x] Implement latency injection (min/max delay)
+- [x] Implement token limit simulation
+- [x] Implement partial response simulation
+- [x] Implement rate limit simulation
+- [x] Create chaos profiles (predefined combinations)
+- [x] Add chaos configuration to test suite YAML
+- [x] Write tests
 
 **Traces to:** [REQ-602]
 **Depends on:** -
@@ -933,7 +933,7 @@ Implement chaos engineering for agent resilience testing.
 ---
 
 ### TASK-606: Regression Test Generator
-🟡 P2 | ⬜ TODO | Est: 4-5h
+🟡 P2 | 🔄 IN_PROGRESS | Est: 4-5h
 
 **Description:**
 Generate test cases from recorded agent interactions.
