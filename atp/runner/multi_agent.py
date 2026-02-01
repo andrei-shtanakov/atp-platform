@@ -235,6 +235,154 @@ class CollaborationMetrics(BaseModel):
     )
 
 
+# ===========================================================================
+# Handoff Mode Models
+# ===========================================================================
+
+
+class HandoffTrigger(str, Enum):
+    """Triggers for when to perform a handoff to the next agent."""
+
+    ALWAYS = "always"  # Always handoff after each agent
+    ON_SUCCESS = "on_success"  # Handoff only if current agent succeeded
+    ON_FAILURE = "on_failure"  # Handoff only if current agent failed
+    ON_PARTIAL = "on_partial"  # Handoff if partial completion
+    EXPLICIT = "explicit"  # Agent must explicitly request handoff
+
+
+class ContextAccumulationMode(str, Enum):
+    """How context is accumulated across handoffs."""
+
+    APPEND = "append"  # Append all previous outputs
+    REPLACE = "replace"  # Only pass the most recent output
+    MERGE = "merge"  # Merge artifacts, keeping latest values
+    SUMMARY = "summary"  # Pass summarized context (for large outputs)
+
+
+class HandoffConfig(BaseModel):
+    """Configuration for handoff mode."""
+
+    handoff_trigger: HandoffTrigger = Field(
+        default=HandoffTrigger.ALWAYS,
+        description="When to trigger handoff to next agent",
+    )
+    context_accumulation: ContextAccumulationMode = Field(
+        default=ContextAccumulationMode.APPEND,
+        description="How to accumulate context across handoffs",
+    )
+    max_context_size: int | None = Field(
+        None, description="Maximum context size in characters (None for unlimited)"
+    )
+    allow_backtrack: bool = Field(
+        default=False, description="Allow previous agents to be re-invoked on failure"
+    )
+    final_agent_decides: bool = Field(
+        default=True, description="Whether the final agent makes the overall decision"
+    )
+    agent_timeout_seconds: float = Field(
+        default=120.0, description="Timeout per agent in seconds", gt=0
+    )
+    continue_on_failure: bool = Field(
+        default=False, description="Continue to next agent even if current fails"
+    )
+
+
+class AgentHandoffOutput(BaseModel):
+    """Output from a single agent in the handoff chain."""
+
+    agent_name: str = Field(..., description="Name of the agent")
+    sequence_position: int = Field(..., description="Position in handoff sequence")
+    response: ATPResponse | None = Field(None, description="Agent's response")
+    artifacts: list[Any] = Field(
+        default_factory=list, description="Artifacts produced by this agent"
+    )
+    error: str | None = Field(None, description="Error message if agent failed")
+    duration_seconds: float | None = Field(None, description="Time taken by this agent")
+
+
+class HandoffContext(BaseModel):
+    """Context passed between agents during handoff."""
+
+    original_task: str = Field(..., description="Original task description")
+    previous_outputs: list[AgentHandoffOutput] = Field(
+        default_factory=list, description="Outputs from previous agents in sequence"
+    )
+    agent_sequence: list[str] = Field(
+        default_factory=list, description="Order of agents in the handoff chain"
+    )
+    current_position: int = Field(default=0, description="Current position in sequence")
+    accumulated_artifacts: dict[str, Any] = Field(
+        default_factory=dict, description="Merged/accumulated artifacts"
+    )
+    handoff_notes: list[str] = Field(
+        default_factory=list, description="Notes passed between agents"
+    )
+
+    def add_output(self, output: AgentHandoffOutput) -> None:
+        """Add an output from an agent."""
+        self.previous_outputs.append(output)
+        # Update accumulated artifacts
+        for idx, artifact in enumerate(output.artifacts):
+            # Try to get name from attribute or dict key
+            if hasattr(artifact, "name"):
+                key = artifact.name
+            elif isinstance(artifact, dict) and "name" in artifact:
+                key = artifact["name"]
+            else:
+                key = f"artifact_{output.sequence_position}_{idx}"
+            self.accumulated_artifacts[key] = artifact
+
+    def get_last_output(self) -> AgentHandoffOutput | None:
+        """Get the most recent agent output."""
+        if self.previous_outputs:
+            return self.previous_outputs[-1]
+        return None
+
+    def get_successful_outputs(self) -> list[AgentHandoffOutput]:
+        """Get all successful agent outputs."""
+        return [o for o in self.previous_outputs if o.error is None]
+
+    def add_handoff_note(self, note: str) -> None:
+        """Add a handoff note."""
+        self.handoff_notes.append(note)
+
+
+class HandoffMetrics(BaseModel):
+    """Metrics specific to handoff mode."""
+
+    total_agents: int = Field(default=0, description="Total agents in handoff chain")
+    agents_executed: int = Field(
+        default=0, description="Number of agents that executed"
+    )
+    successful_handoffs: int = Field(
+        default=0, description="Number of successful handoffs"
+    )
+    failed_handoffs: int = Field(default=0, description="Number of failed handoffs")
+    total_duration_seconds: float = Field(
+        default=0.0, description="Total duration across all agents"
+    )
+    duration_per_agent: dict[str, float] = Field(
+        default_factory=dict, description="Duration per agent"
+    )
+    agent_contributions: dict[str, float] = Field(
+        default_factory=dict, description="Contribution score per agent (0.0-1.0)"
+    )
+    total_tokens: int = Field(default=0, description="Total tokens used by all agents")
+    tokens_per_agent: dict[str, int] = Field(
+        default_factory=dict, description="Tokens used per agent"
+    )
+    total_cost_usd: float = Field(
+        default=0.0, description="Total cost across all agents"
+    )
+    cost_per_agent: dict[str, float] = Field(
+        default_factory=dict, description="Cost per agent"
+    )
+    termination_reason: str | None = Field(None, description="Why handoff chain ended")
+    final_agent: str | None = Field(
+        None, description="Name of the agent that produced final output"
+    )
+
+
 @dataclass
 class AgentTestResult:
     """Result of running a test with a specific agent."""
@@ -329,6 +477,87 @@ class CollaborationResult:
 
 
 @dataclass
+class HandoffTurnResult:
+    """Result of a single agent's execution in handoff mode."""
+
+    agent_name: str
+    sequence_position: int
+    response: ATPResponse | None = None
+    context_received: HandoffContext | None = None
+    context_passed: HandoffContext | None = None
+    start_time: datetime = field(default_factory=datetime.now)
+    end_time: datetime | None = None
+    error: str | None = None
+    handoff_triggered: bool = False
+
+    @property
+    def success(self) -> bool:
+        """Check if agent execution succeeded."""
+        if self.error:
+            return False
+        if self.response:
+            return self.response.status == ResponseStatus.COMPLETED
+        return False
+
+    @property
+    def duration_seconds(self) -> float | None:
+        """Calculate execution duration in seconds."""
+        if self.end_time is None:
+            return None
+        return (self.end_time - self.start_time).total_seconds()
+
+
+@dataclass
+class HandoffResult:
+    """Result of a complete handoff chain execution."""
+
+    test: TestDefinition
+    handoff_context: HandoffContext
+    turn_results: list[HandoffTurnResult] = field(default_factory=list)
+    handoff_metrics: HandoffMetrics = field(default_factory=HandoffMetrics)
+    final_response: ATPResponse | None = None
+    start_time: datetime = field(default_factory=datetime.now)
+    end_time: datetime | None = None
+    error: str | None = None
+
+    @property
+    def success(self) -> bool:
+        """Check if handoff chain completed successfully."""
+        if self.error:
+            return False
+        if self.final_response:
+            return self.final_response.status == ResponseStatus.COMPLETED
+        return any(tr.success for tr in self.turn_results)
+
+    @property
+    def duration_seconds(self) -> float | None:
+        """Calculate total handoff duration in seconds."""
+        if self.end_time is None:
+            return None
+        return (self.end_time - self.start_time).total_seconds()
+
+    @property
+    def total_agents_executed(self) -> int:
+        """Get total number of agents that executed."""
+        return len(self.turn_results)
+
+    def get_result_for_agent(self, agent_name: str) -> HandoffTurnResult | None:
+        """Get the result for a specific agent."""
+        for result in self.turn_results:
+            if result.agent_name == agent_name:
+                return result
+        return None
+
+    def get_successful_agents(self) -> list[str]:
+        """Get names of agents that succeeded."""
+        return [tr.agent_name for tr in self.turn_results if tr.success]
+
+    def get_failed_agents(self) -> list[str]:
+        """Get names of agents that failed."""
+        return [tr.agent_name for tr in self.turn_results if not tr.success]
+
+
+@dataclass
 class MultiAgentTestResult:
     """Result of running a single test across multiple agents."""
 
@@ -341,6 +570,8 @@ class MultiAgentTestResult:
     rankings: list[AgentRanking] = field(default_factory=list)
     # Collaboration-specific fields
     collaboration_result: CollaborationResult | None = None
+    # Handoff-specific fields
+    handoff_result: HandoffResult | None = None
 
     @property
     def all_succeeded(self) -> bool:
@@ -350,6 +581,8 @@ class MultiAgentTestResult:
                 self.collaboration_result is not None
                 and self.collaboration_result.success
             )
+        if self.mode == MultiAgentMode.HANDOFF:
+            return self.handoff_result is not None and self.handoff_result.success
         if not self.agent_results:
             return False
         return all(r.success for r in self.agent_results)
@@ -362,6 +595,8 @@ class MultiAgentTestResult:
                 self.collaboration_result is not None
                 and self.collaboration_result.success
             )
+        if self.mode == MultiAgentMode.HANDOFF:
+            return self.handoff_result is not None and self.handoff_result.success
         return any(r.success for r in self.agent_results)
 
     @property
@@ -374,6 +609,8 @@ class MultiAgentTestResult:
     @property
     def agent_names(self) -> list[str]:
         """Get list of agent names."""
+        if self.mode == MultiAgentMode.HANDOFF and self.handoff_result:
+            return [tr.agent_name for tr in self.handoff_result.turn_results]
         return [r.agent_name for r in self.agent_results]
 
     def get_result_for_agent(self, agent_name: str) -> AgentTestResult | None:
@@ -439,6 +676,9 @@ class MultiAgentOrchestrator:
 
     Supports collaboration mode where agents work together on a task,
     exchanging messages and sharing context.
+
+    Supports handoff mode where agents execute sequentially, passing
+    context and results from one agent to the next.
     """
 
     def __init__(
@@ -453,6 +693,7 @@ class MultiAgentOrchestrator:
         ranking_metrics: list[RankingMetric] | None = None,
         determine_winner: bool = True,
         collaboration_config: CollaborationConfig | None = None,
+        handoff_config: HandoffConfig | None = None,
     ) -> None:
         """
         Initialize the multi-agent orchestrator.
@@ -468,6 +709,7 @@ class MultiAgentOrchestrator:
             ranking_metrics: Metrics to use for ranking (default: success_rate).
             determine_winner: Whether to determine a winner for each test.
             collaboration_config: Configuration for collaboration mode.
+            handoff_config: Configuration for handoff mode.
         """
         if not agents:
             raise ValueError("At least one agent is required")
@@ -482,6 +724,7 @@ class MultiAgentOrchestrator:
         self.ranking_metrics = ranking_metrics or [RankingMetric.SUCCESS_RATE]
         self.determine_winner = determine_winner
         self.collaboration_config = collaboration_config or CollaborationConfig()
+        self.handoff_config = handoff_config or HandoffConfig()
         self._semaphore: asyncio.Semaphore | None = None
         self._orchestrators: dict[str, TestOrchestrator] = {}
         self._message_counter = 0
@@ -741,6 +984,61 @@ class MultiAgentOrchestrator:
                             "total_turns": collaboration_result.total_turns,
                             "termination_reason": (
                                 collaboration_result.collaboration_metrics.termination_reason
+                            ),
+                        },
+                    )
+                )
+
+                return result
+
+            # Handle handoff mode separately
+            if self.mode == MultiAgentMode.HANDOFF:
+                handoff_result = await self._run_handoff(test)
+                result.handoff_result = handoff_result
+                result.end_time = datetime.now()
+
+                # Set span attributes for handoff
+                set_span_attributes(
+                    **{
+                        "atp.multi_agent.all_succeeded": result.all_succeeded,
+                        "atp.multi_agent.any_succeeded": result.any_succeeded,
+                        "atp.multi_agent.duration_seconds": result.duration_seconds,
+                        "atp.handoff.agents_executed": (
+                            handoff_result.total_agents_executed
+                        ),
+                    }
+                )
+
+                if result.all_succeeded:
+                    span.set_status(Status(StatusCode.OK))
+                else:
+                    span.set_status(Status(StatusCode.ERROR, "Handoff did not succeed"))
+
+                add_span_event(
+                    "multi_agent_test_completed",
+                    {
+                        "all_succeeded": result.all_succeeded,
+                        "mode": "handoff",
+                        "agents_executed": handoff_result.total_agents_executed,
+                    },
+                )
+
+                # Emit completion event
+                self._emit_progress(
+                    ProgressEvent(
+                        event_type=(
+                            ProgressEventType.TEST_COMPLETED
+                            if result.any_succeeded
+                            else ProgressEventType.TEST_FAILED
+                        ),
+                        test_id=test.id,
+                        test_name=test.name,
+                        success=result.all_succeeded,
+                        details={
+                            "mode": self.mode.value,
+                            "agents_executed": handoff_result.total_agents_executed,
+                            "termination_reason": (
+                                handoff_result.handoff_metrics.termination_reason
                             ),
                         },
                     )
@@ -1488,6 +1786,537 @@ class MultiAgentOrchestrator:
 
         return collaboration_result
 
+    # =========================================================================
+    # Handoff Mode Methods
+    # =========================================================================
+
+    def _create_handoff_context(self, test: TestDefinition) -> HandoffContext:
+        """Create a new handoff context for sequential agent execution."""
+        return HandoffContext(
+            original_task=test.task.description,
+            previous_outputs=[],
+            agent_sequence=[a.name for a in self.agents],
+            current_position=0,
+            accumulated_artifacts={},
+            handoff_notes=[],
+        )
+
+    def _should_trigger_handoff(
+        self, turn_result: HandoffTurnResult, position: int
+    ) -> bool:
+        """Determine if handoff should be triggered based on config and result."""
+        trigger = self.handoff_config.handoff_trigger
+
+        # Last agent never triggers handoff
+        if position >= len(self.agents) - 1:
+            return False
+
+        if trigger == HandoffTrigger.ALWAYS:
+            return True
+        elif trigger == HandoffTrigger.ON_SUCCESS:
+            return turn_result.success
+        elif trigger == HandoffTrigger.ON_FAILURE:
+            return not turn_result.success
+        elif trigger == HandoffTrigger.ON_PARTIAL:
+            if turn_result.response:
+                return turn_result.response.status == ResponseStatus.PARTIAL
+            return False
+        elif trigger == HandoffTrigger.EXPLICIT:
+            # Check if agent explicitly requested handoff (in response metadata)
+            if turn_result.response and turn_result.response.artifacts:
+                for artifact in turn_result.response.artifacts:
+                    artifact_data = artifact.model_dump()
+                    if artifact_data.get("name") == "handoff_request":
+                        return True
+            return False
+        return True
+
+    def _build_handoff_context_string(
+        self, context: HandoffContext, agent_name: str, is_final: bool
+    ) -> str:
+        """Build a context string to prepend to the task for handoff mode."""
+        config = self.handoff_config
+        context_parts = [
+            "=== HANDOFF CONTEXT ===",
+            f"Agent: {agent_name}",
+            f"Position: {context.current_position + 1} of "
+            f"{len(context.agent_sequence)}",
+            "",
+            f"Original task: {context.original_task}",
+            "",
+        ]
+
+        # Add previous outputs based on accumulation mode
+        if context.previous_outputs:
+            context_parts.append("Previous agent outputs:")
+
+            if config.context_accumulation == ContextAccumulationMode.REPLACE:
+                # Only show the last output
+                last_output = context.previous_outputs[-1]
+                context_parts.append(self._format_agent_output(last_output))
+            elif config.context_accumulation == ContextAccumulationMode.SUMMARY:
+                # Show summarized outputs
+                context_parts.append(
+                    f"  Total agents executed: {len(context.previous_outputs)}"
+                )
+                successful = [o for o in context.previous_outputs if o.error is None]
+                failed = [o for o in context.previous_outputs if o.error is not None]
+                context_parts.append(f"  Successful: {len(successful)}")
+                context_parts.append(f"  Failed: {len(failed)}")
+                if context.previous_outputs:
+                    last = context.previous_outputs[-1]
+                    context_parts.append(f"  Last agent: {last.agent_name}")
+                    if last.error:
+                        context_parts.append(f"    Status: FAILED - {last.error}")
+                    else:
+                        context_parts.append("    Status: SUCCESS")
+            else:
+                # APPEND or MERGE - show all outputs
+                for output in context.previous_outputs:
+                    context_parts.append(self._format_agent_output(output))
+
+            context_parts.append("")
+
+        # Add handoff notes
+        if context.handoff_notes:
+            context_parts.append("Handoff notes:")
+            for note in context.handoff_notes:
+                context_parts.append(f"  - {note}")
+            context_parts.append("")
+
+        # Add accumulated artifacts summary
+        if context.accumulated_artifacts:
+            context_parts.append("Accumulated artifacts:")
+            for key in context.accumulated_artifacts.keys():
+                context_parts.append(f"  - {key}")
+            context_parts.append("")
+
+        # Add role instruction for final agent
+        if is_final and config.final_agent_decides:
+            context_parts.append(
+                "You are the FINAL agent in this handoff chain. "
+                "Please provide the definitive answer/solution based on "
+                "the work done by previous agents."
+            )
+            context_parts.append("")
+
+        context_parts.append("=== END HANDOFF CONTEXT ===")
+        context_parts.append("")
+        context_parts.append("Continue working on the task based on the above context.")
+
+        # Apply context size limit if configured
+        context_str = "\n".join(context_parts)
+        if config.max_context_size and len(context_str) > config.max_context_size:
+            context_str = context_str[: config.max_context_size] + "\n... [truncated]"
+
+        return context_str
+
+    def _format_agent_output(self, output: AgentHandoffOutput) -> str:
+        """Format a single agent output for context string."""
+        lines = [f"  Agent: {output.agent_name} (position {output.sequence_position})"]
+        if output.error:
+            lines.append(f"    Status: FAILED - {output.error}")
+        else:
+            lines.append("    Status: SUCCESS")
+            if output.artifacts:
+                lines.append(f"    Artifacts: {len(output.artifacts)} produced")
+        if output.duration_seconds is not None:
+            lines.append(f"    Duration: {output.duration_seconds:.2f}s")
+        return "\n".join(lines)
+
+    def _create_handoff_test(
+        self,
+        test: TestDefinition,
+        context: HandoffContext,
+        agent_name: str,
+        is_final: bool,
+    ) -> TestDefinition:
+        """Create a modified test definition with handoff context."""
+        handoff_test = copy.deepcopy(test)
+
+        # Build and prepend handoff context
+        context_str = self._build_handoff_context_string(context, agent_name, is_final)
+        handoff_test.task.description = (
+            context_str + "\n\n" + handoff_test.task.description
+        )
+
+        return handoff_test
+
+    async def _execute_handoff_turn(
+        self,
+        agent: AgentConfig,
+        test: TestDefinition,
+        context: HandoffContext,
+        position: int,
+    ) -> HandoffTurnResult:
+        """Execute a single agent in the handoff chain."""
+        is_final = position >= len(self.agents) - 1
+        turn_result = HandoffTurnResult(
+            agent_name=agent.name,
+            sequence_position=position,
+            context_received=copy.deepcopy(context),
+            start_time=datetime.now(),
+        )
+
+        try:
+            # Create modified test with handoff context
+            handoff_test = self._create_handoff_test(
+                test=test,
+                context=context,
+                agent_name=agent.name,
+                is_final=is_final,
+            )
+
+            # Get or create orchestrator for this agent
+            if agent.name not in self._orchestrators:
+                self._orchestrators[agent.name] = self._create_orchestrator(agent)
+
+            orchestrator = self._orchestrators[agent.name]
+
+            # Execute with timeout
+            test_result = await asyncio.wait_for(
+                orchestrator.run_single_test(test=handoff_test, runs=1),
+                timeout=self.handoff_config.agent_timeout_seconds,
+            )
+
+            # Check for test-level errors
+            if test_result.error:
+                turn_result.error = test_result.error
+
+            # Extract response from the first run
+            if test_result.runs:
+                turn_result.response = test_result.runs[0].response
+
+                # Check for run-level errors
+                run_error = test_result.runs[0].error
+                if run_error and not turn_result.error:
+                    turn_result.error = run_error
+
+            # Determine if handoff should be triggered
+            turn_result.handoff_triggered = self._should_trigger_handoff(
+                turn_result, position
+            )
+
+        except TimeoutError:
+            turn_result.error = (
+                f"Agent timeout after {self.handoff_config.agent_timeout_seconds}s"
+            )
+            logger.warning("Agent %s timed out at position %d", agent.name, position)
+        except Exception as e:
+            turn_result.error = str(e)
+            logger.error("Agent %s failed at position %d: %s", agent.name, position, e)
+
+        turn_result.end_time = datetime.now()
+
+        # Update context with this agent's output
+        agent_output = AgentHandoffOutput(
+            agent_name=agent.name,
+            sequence_position=position,
+            response=turn_result.response,
+            artifacts=(
+                list(turn_result.response.artifacts)
+                if turn_result.response and turn_result.response.artifacts
+                else []
+            ),
+            error=turn_result.error,
+            duration_seconds=turn_result.duration_seconds,
+        )
+        context.add_output(agent_output)
+        context.current_position = position + 1
+
+        # Store updated context
+        turn_result.context_passed = copy.deepcopy(context)
+
+        return turn_result
+
+    def _calculate_handoff_metrics(
+        self,
+        turn_results: list[HandoffTurnResult],
+        context: HandoffContext,
+        termination_reason: str,
+    ) -> HandoffMetrics:
+        """Calculate handoff-specific metrics."""
+        metrics = HandoffMetrics(
+            total_agents=len(self.agents),
+            agents_executed=len(turn_results),
+            termination_reason=termination_reason,
+        )
+
+        total_duration = 0.0
+        total_tokens = 0
+        total_cost = 0.0
+
+        for turn_result in turn_results:
+            agent = turn_result.agent_name
+
+            # Track duration
+            if turn_result.duration_seconds is not None:
+                metrics.duration_per_agent[agent] = turn_result.duration_seconds
+                total_duration += turn_result.duration_seconds
+
+            # Track tokens and cost
+            if turn_result.response and turn_result.response.metrics:
+                m = turn_result.response.metrics
+                if m.total_tokens:
+                    metrics.tokens_per_agent[agent] = m.total_tokens
+                    total_tokens += m.total_tokens
+                if m.cost_usd:
+                    metrics.cost_per_agent[agent] = m.cost_usd
+                    total_cost += m.cost_usd
+
+            # Count handoffs
+            if turn_result.handoff_triggered:
+                if turn_result.success:
+                    metrics.successful_handoffs += 1
+                else:
+                    metrics.failed_handoffs += 1
+
+        metrics.total_duration_seconds = total_duration
+        metrics.total_tokens = total_tokens
+        metrics.total_cost_usd = total_cost
+
+        # Calculate contribution scores based on success and position
+        if turn_results:
+            total_successful = sum(1 for tr in turn_results if tr.success)
+            for turn_result in turn_results:
+                agent = turn_result.agent_name
+                # Base contribution on success and position weight
+                # Later agents in a successful chain get more credit
+                if turn_result.success:
+                    position_weight = (turn_result.sequence_position + 1) / len(
+                        turn_results
+                    )
+                    metrics.agent_contributions[agent] = position_weight / max(
+                        total_successful, 1
+                    )
+                else:
+                    metrics.agent_contributions[agent] = 0.0
+
+        # Track final agent
+        if turn_results:
+            metrics.final_agent = turn_results[-1].agent_name
+
+        return metrics
+
+    def _create_final_handoff_response(
+        self,
+        turn_results: list[HandoffTurnResult],
+        context: HandoffContext,
+        test: TestDefinition,
+    ) -> ATPResponse:
+        """Create a final aggregated response from handoff results."""
+        # Use the final agent's response if available and successful
+        if turn_results:
+            final_turn = turn_results[-1]
+            if final_turn.response and final_turn.success:
+                return final_turn.response
+
+            # If final agent failed, find the last successful response
+            for turn_result in reversed(turn_results):
+                if turn_result.response and turn_result.success:
+                    return turn_result.response
+
+        # No successful responses - create a failed response
+        all_artifacts = []
+        for artifact_data in context.accumulated_artifacts.values():
+            from atp.protocol import ArtifactStructured
+
+            all_artifacts.append(
+                ArtifactStructured(
+                    name=str(artifact_data.get("name", "handoff_artifact"))
+                    if isinstance(artifact_data, dict)
+                    else "handoff_artifact",
+                    data=artifact_data
+                    if isinstance(artifact_data, dict)
+                    else {"value": artifact_data},
+                )
+            )
+
+        # Determine overall status
+        if any(tr.success for tr in turn_results):
+            status = ResponseStatus.PARTIAL
+        elif any(tr.error and "timeout" in tr.error.lower() for tr in turn_results):
+            status = ResponseStatus.TIMEOUT
+        else:
+            status = ResponseStatus.FAILED
+
+        # Aggregate metrics
+        total_tokens = 0
+        total_cost = 0.0
+        total_steps = 0
+        for tr in turn_results:
+            if tr.response and tr.response.metrics:
+                if tr.response.metrics.total_tokens:
+                    total_tokens += tr.response.metrics.total_tokens
+                if tr.response.metrics.cost_usd:
+                    total_cost += tr.response.metrics.cost_usd
+                if tr.response.metrics.total_steps:
+                    total_steps += tr.response.metrics.total_steps
+
+        from atp.protocol import Metrics
+
+        metrics = Metrics(
+            total_tokens=total_tokens if total_tokens > 0 else None,
+            total_steps=total_steps if total_steps > 0 else None,
+            cost_usd=total_cost if total_cost > 0 else None,
+        )
+
+        # Collect errors
+        errors = [tr.error for tr in turn_results if tr.error]
+        error_msg = "; ".join(errors) if errors else None
+
+        return ATPResponse(
+            task_id=test.id,
+            status=status,
+            artifacts=all_artifacts,
+            metrics=metrics,
+            error=error_msg,
+        )
+
+    async def _run_handoff(self, test: TestDefinition) -> HandoffResult:
+        """
+        Run a test in handoff mode.
+
+        Agents execute sequentially, each receiving context from previous agents.
+        """
+        context = self._create_handoff_context(test)
+        turn_results: list[HandoffTurnResult] = []
+        handoff_result = HandoffResult(
+            test=test,
+            handoff_context=context,
+            start_time=datetime.now(),
+        )
+
+        with tracer.start_as_current_span(
+            f"handoff:{test.name}",
+            kind=SpanKind.INTERNAL,
+            attributes={
+                "atp.test.id": test.id,
+                "atp.test.name": test.name,
+                "atp.handoff.total_agents": len(self.agents),
+                "atp.handoff.trigger": self.handoff_config.handoff_trigger.value,
+            },
+        ) as span:
+            add_span_event(
+                "handoff_started",
+                {"agents": [a.name for a in self.agents]},
+            )
+
+            termination_reason = ""
+
+            try:
+                for position, agent in enumerate(self.agents):
+                    # Emit progress event
+                    self._emit_progress(
+                        ProgressEvent(
+                            event_type=ProgressEventType.RUN_STARTED,
+                            test_id=test.id,
+                            test_name=test.name,
+                            run_number=position + 1,
+                            total_runs=len(self.agents),
+                            details={
+                                "mode": "handoff",
+                                "agent": agent.name,
+                                "position": position,
+                            },
+                        )
+                    )
+
+                    turn_result = await self._execute_handoff_turn(
+                        agent=agent,
+                        test=test,
+                        context=context,
+                        position=position,
+                    )
+                    turn_results.append(turn_result)
+
+                    # Emit turn completion progress
+                    self._emit_progress(
+                        ProgressEvent(
+                            event_type=ProgressEventType.RUN_COMPLETED,
+                            test_id=test.id,
+                            test_name=test.name,
+                            run_number=position + 1,
+                            total_runs=len(self.agents),
+                            success=turn_result.success,
+                            details={
+                                "mode": "handoff",
+                                "agent": agent.name,
+                                "position": position,
+                                "handoff_triggered": turn_result.handoff_triggered,
+                            },
+                        )
+                    )
+
+                    # Check if we should continue
+                    # Agent failed if there's an error OR the response status is FAILED
+                    agent_failed = turn_result.error or (
+                        turn_result.response
+                        and turn_result.response.status == ResponseStatus.FAILED
+                    )
+                    if agent_failed and not self.handoff_config.continue_on_failure:
+                        termination_reason = "agent_failed"
+                        break
+
+                    # Check if handoff was triggered
+                    if not turn_result.handoff_triggered:
+                        if position < len(self.agents) - 1:
+                            termination_reason = "handoff_not_triggered"
+                        else:
+                            termination_reason = "chain_completed"
+                        break
+
+                if not termination_reason:
+                    termination_reason = "chain_completed"
+
+            except Exception as e:
+                handoff_result.error = str(e)
+                termination_reason = "error"
+                logger.error("Handoff failed: %s", e)
+                span.record_exception(e)
+                span.set_status(Status(StatusCode.ERROR, str(e)))
+
+            # Calculate handoff metrics
+            handoff_result.handoff_metrics = self._calculate_handoff_metrics(
+                turn_results, context, termination_reason
+            )
+            handoff_result.turn_results = turn_results
+            handoff_result.handoff_context = context
+
+            # Create final aggregated response
+            handoff_result.final_response = self._create_final_handoff_response(
+                turn_results, context, test
+            )
+
+            handoff_result.end_time = datetime.now()
+
+            # Set span attributes
+            set_span_attributes(
+                **{
+                    "atp.handoff.agents_executed": len(turn_results),
+                    "atp.handoff.success": handoff_result.success,
+                    "atp.handoff.termination_reason": termination_reason,
+                }
+            )
+
+            if handoff_result.success:
+                span.set_status(Status(StatusCode.OK))
+            else:
+                span.set_status(
+                    Status(StatusCode.ERROR, handoff_result.error or "Failed")
+                )
+
+            add_span_event(
+                "handoff_completed",
+                {
+                    "agents_executed": len(turn_results),
+                    "success": handoff_result.success,
+                    "termination_reason": termination_reason,
+                },
+            )
+
+        return handoff_result
+
     async def run_suite(
         self,
         suite: TestSuite,
@@ -1787,6 +2616,66 @@ async def run_suite_collaboration(
         agents=agents,
         mode=MultiAgentMode.COLLABORATION,
         collaboration_config=collaboration_config,
+        progress_callback=progress_callback,
+    ) as orchestrator:
+        return await orchestrator.run_suite(suite)
+
+
+async def run_handoff(
+    agents: list[AgentConfig],
+    test: TestDefinition,
+    handoff_config: HandoffConfig | None = None,
+    progress_callback: ProgressCallback | None = None,
+) -> MultiAgentTestResult:
+    """
+    Convenience function to run a single test in handoff mode.
+
+    Agents execute sequentially, each receiving context and results
+    from previous agents in the chain.
+
+    Args:
+        agents: List of agent configurations (order determines handoff sequence).
+        test: Test definition.
+        handoff_config: Configuration for handoff behavior.
+        progress_callback: Optional progress callback.
+
+    Returns:
+        MultiAgentTestResult with handoff_result populated.
+    """
+    async with MultiAgentOrchestrator(
+        agents=agents,
+        mode=MultiAgentMode.HANDOFF,
+        handoff_config=handoff_config,
+        progress_callback=progress_callback,
+    ) as orchestrator:
+        return await orchestrator.run_single_test(test)
+
+
+async def run_suite_handoff(
+    agents: list[AgentConfig],
+    suite: TestSuite,
+    handoff_config: HandoffConfig | None = None,
+    progress_callback: ProgressCallback | None = None,
+) -> MultiAgentSuiteResult:
+    """
+    Convenience function to run a test suite in handoff mode.
+
+    Each test is executed with agents in sequence, passing context
+    from one agent to the next.
+
+    Args:
+        agents: List of agent configurations (order determines handoff sequence).
+        suite: Test suite.
+        handoff_config: Configuration for handoff behavior.
+        progress_callback: Optional progress callback.
+
+    Returns:
+        MultiAgentSuiteResult.
+    """
+    async with MultiAgentOrchestrator(
+        agents=agents,
+        mode=MultiAgentMode.HANDOFF,
+        handoff_config=handoff_config,
         progress_callback=progress_callback,
     ) as orchestrator:
         return await orchestrator.run_suite(suite)
