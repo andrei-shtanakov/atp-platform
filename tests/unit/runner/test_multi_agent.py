@@ -26,13 +26,22 @@ from atp.runner.multi_agent import (
     AgentConfig,
     AgentRanking,
     AgentTestResult,
+    CollaborationConfig,
+    CollaborationMessage,
+    CollaborationMessageType,
+    CollaborationMetrics,
+    CollaborationResult,
+    CollaborationTurnResult,
     ComparisonMetrics,
     MultiAgentMode,
     MultiAgentOrchestrator,
     MultiAgentSuiteResult,
     MultiAgentTestResult,
     RankingMetric,
+    SharedContext,
+    run_collaboration,
     run_comparison,
+    run_suite_collaboration,
     run_suite_comparison,
 )
 
@@ -934,3 +943,788 @@ class TestRankingMetricEnum:
         assert RankingMetric.SUCCESS_RATE.value == "success_rate"
         assert RankingMetric.TOKENS.value == "tokens"
         assert RankingMetric.STEPS.value == "steps"
+
+
+# ===========================================================================
+# Collaboration Mode Tests
+# ===========================================================================
+
+
+class TestCollaborationMessage:
+    """Tests for CollaborationMessage model."""
+
+    def test_create_message(self) -> None:
+        """CollaborationMessage can be created with required fields."""
+        msg = CollaborationMessage(
+            message_id="msg-001",
+            message_type=CollaborationMessageType.TASK_ASSIGNMENT,
+            from_agent="orchestrator",
+            to_agent="agent-1",
+            content={"task": "do something"},
+        )
+
+        assert msg.message_id == "msg-001"
+        assert msg.message_type == CollaborationMessageType.TASK_ASSIGNMENT
+        assert msg.from_agent == "orchestrator"
+        assert msg.to_agent == "agent-1"
+        assert msg.content == {"task": "do something"}
+        assert msg.turn_number == 0
+        assert msg.in_reply_to is None
+
+    def test_broadcast_message(self) -> None:
+        """CollaborationMessage can be a broadcast (to_agent=None)."""
+        msg = CollaborationMessage(
+            message_id="msg-002",
+            message_type=CollaborationMessageType.STATUS_UPDATE,
+            from_agent="agent-1",
+            content={"status": "working"},
+        )
+
+        assert msg.to_agent is None
+
+    def test_message_types(self) -> None:
+        """All message types are accessible."""
+        assert CollaborationMessageType.TASK_ASSIGNMENT.value == "task_assignment"
+        assert CollaborationMessageType.RESULT.value == "result"
+        assert CollaborationMessageType.QUERY.value == "query"
+        assert CollaborationMessageType.RESPONSE.value == "response"
+        assert CollaborationMessageType.HANDOFF.value == "handoff"
+        assert CollaborationMessageType.STATUS_UPDATE.value == "status_update"
+
+
+class TestSharedContext:
+    """Tests for SharedContext model."""
+
+    def test_create_shared_context(self) -> None:
+        """SharedContext can be created with required fields."""
+        ctx = SharedContext(task_description="Test task")
+
+        assert ctx.task_description == "Test task"
+        assert ctx.artifacts == {}
+        assert ctx.variables == {}
+        assert ctx.messages == []
+        assert ctx.current_turn == 0
+        assert ctx.completed_subtasks == []
+
+    def test_add_message(self) -> None:
+        """SharedContext.add_message adds messages to history."""
+        ctx = SharedContext(task_description="Test task")
+        msg = CollaborationMessage(
+            message_id="msg-001",
+            message_type=CollaborationMessageType.RESULT,
+            from_agent="agent-1",
+            content={"result": "done"},
+        )
+
+        ctx.add_message(msg)
+
+        assert len(ctx.messages) == 1
+        assert ctx.messages[0] is msg
+
+    def test_get_messages_for_agent(self) -> None:
+        """SharedContext.get_messages_for_agent filters correctly."""
+        ctx = SharedContext(task_description="Test task")
+
+        # Add messages
+        msg1 = CollaborationMessage(
+            message_id="msg-001",
+            message_type=CollaborationMessageType.TASK_ASSIGNMENT,
+            from_agent="orchestrator",
+            to_agent="agent-1",
+            content={},
+        )
+        msg2 = CollaborationMessage(
+            message_id="msg-002",
+            message_type=CollaborationMessageType.RESULT,
+            from_agent="agent-1",
+            content={},  # broadcast
+        )
+        msg3 = CollaborationMessage(
+            message_id="msg-003",
+            message_type=CollaborationMessageType.TASK_ASSIGNMENT,
+            from_agent="orchestrator",
+            to_agent="agent-2",
+            content={},
+        )
+
+        ctx.add_message(msg1)
+        ctx.add_message(msg2)
+        ctx.add_message(msg3)
+
+        agent1_msgs = ctx.get_messages_for_agent("agent-1")
+
+        # Should get msg1 (to agent-1), msg2 (from agent-1), and broadcast
+        assert len(agent1_msgs) == 2
+        assert msg1 in agent1_msgs
+        assert msg2 in agent1_msgs
+
+    def test_get_messages_by_turn(self) -> None:
+        """SharedContext.get_messages_by_turn filters by turn number."""
+        ctx = SharedContext(task_description="Test task")
+
+        msg1 = CollaborationMessage(
+            message_id="msg-001",
+            message_type=CollaborationMessageType.RESULT,
+            from_agent="agent-1",
+            content={},
+            turn_number=1,
+        )
+        msg2 = CollaborationMessage(
+            message_id="msg-002",
+            message_type=CollaborationMessageType.RESULT,
+            from_agent="agent-2",
+            content={},
+            turn_number=2,
+        )
+
+        ctx.add_message(msg1)
+        ctx.add_message(msg2)
+
+        turn1_msgs = ctx.get_messages_by_turn(1)
+
+        assert len(turn1_msgs) == 1
+        assert turn1_msgs[0] is msg1
+
+    def test_set_and_get_artifact(self) -> None:
+        """SharedContext artifact management works correctly."""
+        ctx = SharedContext(task_description="Test task")
+
+        ctx.set_artifact("output", {"data": "value"}, "agent-1")
+
+        assert ctx.get_artifact("output") == {"data": "value"}
+        assert ctx.artifacts["output"]["set_by"] == "agent-1"
+        assert ctx.get_artifact("nonexistent") is None
+
+    def test_set_and_get_variable(self) -> None:
+        """SharedContext variable management works correctly."""
+        ctx = SharedContext(task_description="Test task")
+
+        ctx.set_variable("counter", 5)
+
+        assert ctx.get_variable("counter") == 5
+        assert ctx.get_variable("missing", default=0) == 0
+
+
+class TestCollaborationConfig:
+    """Tests for CollaborationConfig model."""
+
+    def test_default_config(self) -> None:
+        """CollaborationConfig has sensible defaults."""
+        config = CollaborationConfig()
+
+        assert config.max_turns == 10
+        assert config.turn_timeout_seconds == 60.0
+        assert config.require_consensus is False
+        assert config.allow_parallel_turns is False
+        assert config.coordinator_agent is None
+        assert config.termination_condition == "all_complete"
+
+    def test_custom_config(self) -> None:
+        """CollaborationConfig can be customized."""
+        config = CollaborationConfig(
+            max_turns=5,
+            turn_timeout_seconds=30.0,
+            require_consensus=True,
+            allow_parallel_turns=True,
+            coordinator_agent="coordinator",
+            termination_condition="consensus",
+        )
+
+        assert config.max_turns == 5
+        assert config.turn_timeout_seconds == 30.0
+        assert config.require_consensus is True
+        assert config.allow_parallel_turns is True
+        assert config.coordinator_agent == "coordinator"
+        assert config.termination_condition == "consensus"
+
+
+class TestCollaborationMetrics:
+    """Tests for CollaborationMetrics model."""
+
+    def test_default_metrics(self) -> None:
+        """CollaborationMetrics has correct defaults."""
+        metrics = CollaborationMetrics()
+
+        assert metrics.total_turns == 0
+        assert metrics.total_messages == 0
+        assert metrics.messages_per_agent == {}
+        assert metrics.turns_per_agent == {}
+        assert metrics.avg_turn_duration_seconds is None
+        assert metrics.consensus_reached is False
+        assert metrics.termination_reason is None
+        assert metrics.agent_contributions == {}
+        assert metrics.total_tokens == 0
+        assert metrics.total_cost_usd == 0.0
+
+    def test_custom_metrics(self) -> None:
+        """CollaborationMetrics can store all metric values."""
+        metrics = CollaborationMetrics(
+            total_turns=5,
+            total_messages=10,
+            messages_per_agent={"agent-1": 5, "agent-2": 5},
+            turns_per_agent={"agent-1": 3, "agent-2": 2},
+            avg_turn_duration_seconds=2.5,
+            consensus_reached=True,
+            termination_reason="consensus_reached",
+            agent_contributions={"agent-1": 0.6, "agent-2": 0.4},
+            total_tokens=500,
+            total_cost_usd=0.05,
+        )
+
+        assert metrics.total_turns == 5
+        assert metrics.total_messages == 10
+        assert metrics.messages_per_agent == {"agent-1": 5, "agent-2": 5}
+        assert metrics.consensus_reached is True
+        assert metrics.total_tokens == 500
+        assert metrics.total_cost_usd == 0.05
+
+
+class TestCollaborationTurnResult:
+    """Tests for CollaborationTurnResult model."""
+
+    def test_successful_turn(self) -> None:
+        """CollaborationTurnResult tracks successful turn."""
+        response = ATPResponse(
+            task_id="test-task",
+            status=ResponseStatus.COMPLETED,
+        )
+        turn_result = CollaborationTurnResult(
+            turn_number=1,
+            agent_name="agent-1",
+            response=response,
+        )
+
+        assert turn_result.turn_number == 1
+        assert turn_result.agent_name == "agent-1"
+        assert turn_result.success is True
+        assert turn_result.error is None
+
+    def test_failed_turn(self) -> None:
+        """CollaborationTurnResult tracks failed turn."""
+        turn_result = CollaborationTurnResult(
+            turn_number=1,
+            agent_name="agent-1",
+            error="Something went wrong",
+        )
+
+        assert turn_result.success is False
+        assert turn_result.error == "Something went wrong"
+
+    def test_turn_with_messages(self) -> None:
+        """CollaborationTurnResult tracks messages sent and received."""
+        msg = CollaborationMessage(
+            message_id="msg-001",
+            message_type=CollaborationMessageType.RESULT,
+            from_agent="agent-1",
+            content={"result": "done"},
+        )
+        turn_result = CollaborationTurnResult(
+            turn_number=1,
+            agent_name="agent-1",
+            messages_sent=[msg],
+        )
+
+        assert len(turn_result.messages_sent) == 1
+        assert turn_result.messages_sent[0] is msg
+
+
+class TestCollaborationResult:
+    """Tests for CollaborationResult model."""
+
+    def test_empty_result(self, test_definition: TestDefinition) -> None:
+        """CollaborationResult with no turns."""
+        shared_ctx = SharedContext(task_description="Test task")
+        result = CollaborationResult(
+            test=test_definition,
+            shared_context=shared_ctx,
+        )
+
+        assert result.test is test_definition
+        assert result.turn_results == []
+        assert result.total_turns == 0
+        # Empty result is successful (no failures)
+        assert result.success is True
+
+    def test_successful_result(self, test_definition: TestDefinition) -> None:
+        """CollaborationResult with successful turns."""
+        shared_ctx = SharedContext(task_description="Test task")
+        turn = CollaborationTurnResult(
+            turn_number=1,
+            agent_name="agent-1",
+            response=ATPResponse(
+                task_id="test",
+                status=ResponseStatus.COMPLETED,
+            ),
+        )
+
+        result = CollaborationResult(
+            test=test_definition,
+            shared_context=shared_ctx,
+            turn_results=[turn],
+            final_response=ATPResponse(
+                task_id="test",
+                status=ResponseStatus.COMPLETED,
+            ),
+        )
+
+        assert result.success is True
+        assert result.total_turns == 1
+
+    def test_result_with_error(self, test_definition: TestDefinition) -> None:
+        """CollaborationResult with error."""
+        shared_ctx = SharedContext(task_description="Test task")
+        result = CollaborationResult(
+            test=test_definition,
+            shared_context=shared_ctx,
+            error="Collaboration failed",
+        )
+
+        assert result.success is False
+        assert result.error == "Collaboration failed"
+
+    def test_get_turns_for_agent(self, test_definition: TestDefinition) -> None:
+        """CollaborationResult.get_turns_for_agent filters correctly."""
+        shared_ctx = SharedContext(task_description="Test task")
+        turn1 = CollaborationTurnResult(turn_number=1, agent_name="agent-1")
+        turn2 = CollaborationTurnResult(turn_number=2, agent_name="agent-2")
+        turn3 = CollaborationTurnResult(turn_number=3, agent_name="agent-1")
+
+        result = CollaborationResult(
+            test=test_definition,
+            shared_context=shared_ctx,
+            turn_results=[turn1, turn2, turn3],
+        )
+
+        agent1_turns = result.get_turns_for_agent("agent-1")
+
+        assert len(agent1_turns) == 2
+        assert turn1 in agent1_turns
+        assert turn3 in agent1_turns
+
+
+class TestMultiAgentTestResultCollaboration:
+    """Tests for MultiAgentTestResult in collaboration mode."""
+
+    def test_collaboration_mode_result(self, test_definition: TestDefinition) -> None:
+        """MultiAgentTestResult supports collaboration mode."""
+        shared_ctx = SharedContext(task_description="Test task")
+        collab_result = CollaborationResult(
+            test=test_definition,
+            shared_context=shared_ctx,
+            final_response=ATPResponse(
+                task_id="test",
+                status=ResponseStatus.COMPLETED,
+            ),
+        )
+
+        result = MultiAgentTestResult(
+            test=test_definition,
+            mode=MultiAgentMode.COLLABORATION,
+            collaboration_result=collab_result,
+        )
+
+        assert result.mode == MultiAgentMode.COLLABORATION
+        assert result.collaboration_result is collab_result
+        assert result.all_succeeded is True
+        assert result.any_succeeded is True
+
+
+class TestMultiAgentOrchestratorCollaboration:
+    """Tests for MultiAgentOrchestrator in collaboration mode."""
+
+    @pytest.mark.anyio
+    async def test_collaboration_mode_execution(
+        self,
+        test_definition: TestDefinition,
+        agent_configs: list[AgentConfig],
+    ) -> None:
+        """Test basic collaboration mode execution."""
+        collab_config = CollaborationConfig(
+            max_turns=3,
+            termination_condition="max_turns",
+        )
+
+        async with MultiAgentOrchestrator(
+            agents=agent_configs,
+            mode=MultiAgentMode.COLLABORATION,
+            collaboration_config=collab_config,
+        ) as orchestrator:
+            result = await orchestrator.run_single_test(test_definition)
+
+        assert result.mode == MultiAgentMode.COLLABORATION
+        assert result.collaboration_result is not None
+        assert result.collaboration_result.total_turns == 3
+        assert result.all_succeeded is True
+
+    @pytest.mark.anyio
+    async def test_collaboration_with_any_complete_termination(
+        self,
+        test_definition: TestDefinition,
+        agent_configs: list[AgentConfig],
+    ) -> None:
+        """Test collaboration terminates on first agent completion."""
+        collab_config = CollaborationConfig(
+            max_turns=10,
+            termination_condition="any_complete",
+        )
+
+        async with MultiAgentOrchestrator(
+            agents=agent_configs,
+            mode=MultiAgentMode.COLLABORATION,
+            collaboration_config=collab_config,
+        ) as orchestrator:
+            result = await orchestrator.run_single_test(test_definition)
+
+        assert result.collaboration_result is not None
+        # Should terminate after first successful turn
+        assert result.collaboration_result.total_turns >= 1
+        assert (
+            result.collaboration_result.collaboration_metrics.termination_reason
+            == "agent_completed"
+        )
+
+    @pytest.mark.anyio
+    async def test_collaboration_with_parallel_turns(
+        self,
+        test_definition: TestDefinition,
+        agent_configs: list[AgentConfig],
+    ) -> None:
+        """Test collaboration with parallel turn execution."""
+        collab_config = CollaborationConfig(
+            max_turns=2,
+            allow_parallel_turns=True,
+            termination_condition="max_turns",
+        )
+
+        async with MultiAgentOrchestrator(
+            agents=agent_configs,
+            mode=MultiAgentMode.COLLABORATION,
+            collaboration_config=collab_config,
+        ) as orchestrator:
+            result = await orchestrator.run_single_test(test_definition)
+
+        assert result.collaboration_result is not None
+        # With 2 agents and 2 turns with parallel execution,
+        # we get 2 agents * 2 turns = 4 turn results
+        assert result.collaboration_result.total_turns == 4
+
+    @pytest.mark.anyio
+    async def test_collaboration_with_coordinator(
+        self,
+        test_definition: TestDefinition,
+        agent_configs: list[AgentConfig],
+    ) -> None:
+        """Test collaboration with a designated coordinator agent."""
+        collab_config = CollaborationConfig(
+            max_turns=4,
+            coordinator_agent="agent-1",
+            termination_condition="max_turns",
+        )
+
+        async with MultiAgentOrchestrator(
+            agents=agent_configs,
+            mode=MultiAgentMode.COLLABORATION,
+            collaboration_config=collab_config,
+        ) as orchestrator:
+            result = await orchestrator.run_single_test(test_definition)
+
+        assert result.collaboration_result is not None
+        # Coordinator should take odd turns (1, 3), others take even turns (2, 4)
+        turn_agents = [tr.agent_name for tr in result.collaboration_result.turn_results]
+        assert turn_agents[0] == "agent-1"  # Turn 1: coordinator
+        assert turn_agents[1] == "agent-2"  # Turn 2: other agent
+        assert turn_agents[2] == "agent-1"  # Turn 3: coordinator
+
+    @pytest.mark.anyio
+    async def test_collaboration_shared_context(
+        self,
+        test_definition: TestDefinition,
+        agent_configs: list[AgentConfig],
+    ) -> None:
+        """Test that shared context is populated during collaboration."""
+        collab_config = CollaborationConfig(
+            max_turns=2,
+            termination_condition="max_turns",
+        )
+
+        async with MultiAgentOrchestrator(
+            agents=agent_configs,
+            mode=MultiAgentMode.COLLABORATION,
+            collaboration_config=collab_config,
+        ) as orchestrator:
+            result = await orchestrator.run_single_test(test_definition)
+
+        assert result.collaboration_result is not None
+        shared_ctx = result.collaboration_result.shared_context
+
+        # Should have initial task assignment messages + result messages
+        assert len(shared_ctx.messages) > 0
+        assert shared_ctx.current_turn == 2
+
+    @pytest.mark.anyio
+    async def test_collaboration_metrics_calculation(
+        self,
+        test_definition: TestDefinition,
+    ) -> None:
+        """Test that collaboration metrics are calculated correctly."""
+        # Create agents with specific metrics
+        agents = [
+            AgentConfig(
+                name="agent-1",
+                adapter=MockAdapter(
+                    name="agent-1",
+                    metrics=Metrics(
+                        total_tokens=100,
+                        cost_usd=0.01,
+                    ),
+                ),
+            ),
+            AgentConfig(
+                name="agent-2",
+                adapter=MockAdapter(
+                    name="agent-2",
+                    metrics=Metrics(
+                        total_tokens=200,
+                        cost_usd=0.02,
+                    ),
+                ),
+            ),
+        ]
+
+        collab_config = CollaborationConfig(
+            max_turns=4,
+            termination_condition="max_turns",
+        )
+
+        async with MultiAgentOrchestrator(
+            agents=agents,
+            mode=MultiAgentMode.COLLABORATION,
+            collaboration_config=collab_config,
+        ) as orchestrator:
+            result = await orchestrator.run_single_test(test_definition)
+
+        assert result.collaboration_result is not None
+        metrics = result.collaboration_result.collaboration_metrics
+
+        assert metrics.total_turns == 4
+        assert metrics.termination_reason == "max_turns_reached"
+        # Each agent should have participated twice (turns 1,3 and 2,4)
+        assert metrics.turns_per_agent.get("agent-1", 0) == 2
+        assert metrics.turns_per_agent.get("agent-2", 0) == 2
+        # Check aggregated tokens (100 * 2 + 200 * 2 = 600)
+        assert metrics.total_tokens == 600
+        # Check aggregated cost (0.01 * 2 + 0.02 * 2 = 0.06)
+        assert abs(metrics.total_cost_usd - 0.06) < 0.001
+
+    @pytest.mark.anyio
+    async def test_collaboration_turn_timeout(
+        self,
+        test_definition: TestDefinition,
+    ) -> None:
+        """Test that turn timeout is enforced."""
+        # Create a slow adapter
+        slow_adapter = MockAdapter(name="slow", delay=2.0)
+        agents = [
+            AgentConfig(name="slow-agent", adapter=slow_adapter),
+        ]
+
+        collab_config = CollaborationConfig(
+            max_turns=1,
+            turn_timeout_seconds=0.1,  # Very short timeout
+            termination_condition="max_turns",
+        )
+
+        async with MultiAgentOrchestrator(
+            agents=agents,
+            mode=MultiAgentMode.COLLABORATION,
+            collaboration_config=collab_config,
+        ) as orchestrator:
+            result = await orchestrator.run_single_test(test_definition)
+
+        assert result.collaboration_result is not None
+        # Turn should have timed out
+        turn_result = result.collaboration_result.turn_results[0]
+        assert turn_result.error is not None
+        assert "timeout" in turn_result.error.lower()
+
+    @pytest.mark.anyio
+    async def test_collaboration_agent_error_handling(
+        self,
+        test_definition: TestDefinition,
+    ) -> None:
+        """Test that agent errors during collaboration are handled."""
+        agents = [
+            AgentConfig(
+                name="error-agent",
+                adapter=MockAdapter(
+                    name="error",
+                    error=RuntimeError("Agent crashed"),
+                ),
+            ),
+        ]
+
+        collab_config = CollaborationConfig(
+            max_turns=1,
+            termination_condition="max_turns",
+        )
+
+        async with MultiAgentOrchestrator(
+            agents=agents,
+            mode=MultiAgentMode.COLLABORATION,
+            collaboration_config=collab_config,
+        ) as orchestrator:
+            result = await orchestrator.run_single_test(test_definition)
+
+        assert result.collaboration_result is not None
+        turn_result = result.collaboration_result.turn_results[0]
+        assert turn_result.error is not None
+        assert "crashed" in turn_result.error.lower()
+
+
+class TestCollaborationProgressEvents:
+    """Tests for progress events in collaboration mode."""
+
+    @pytest.mark.anyio
+    async def test_collaboration_progress_events(
+        self,
+        test_definition: TestDefinition,
+        agent_configs: list[AgentConfig],
+    ) -> None:
+        """Test that progress events are emitted during collaboration."""
+        events: list[ProgressEvent] = []
+
+        collab_config = CollaborationConfig(
+            max_turns=2,
+            termination_condition="max_turns",
+        )
+
+        async with MultiAgentOrchestrator(
+            agents=agent_configs,
+            mode=MultiAgentMode.COLLABORATION,
+            collaboration_config=collab_config,
+            progress_callback=events.append,
+        ) as orchestrator:
+            await orchestrator.run_single_test(test_definition)
+
+        event_types = [e.event_type for e in events]
+
+        # Should have test started, run started/completed for each turn
+        assert ProgressEventType.TEST_STARTED in event_types
+        assert ProgressEventType.RUN_STARTED in event_types
+        assert ProgressEventType.RUN_COMPLETED in event_types
+        assert (
+            ProgressEventType.TEST_COMPLETED in event_types
+            or ProgressEventType.TEST_FAILED in event_types
+        )
+
+
+class TestCollaborationConvenienceFunctions:
+    """Tests for collaboration convenience functions."""
+
+    @pytest.mark.anyio
+    async def test_run_collaboration(
+        self,
+        test_definition: TestDefinition,
+        agent_configs: list[AgentConfig],
+    ) -> None:
+        """Test run_collaboration convenience function."""
+        collab_config = CollaborationConfig(
+            max_turns=2,
+            termination_condition="max_turns",
+        )
+
+        result = await run_collaboration(
+            agents=agent_configs,
+            test=test_definition,
+            collaboration_config=collab_config,
+        )
+
+        assert isinstance(result, MultiAgentTestResult)
+        assert result.mode == MultiAgentMode.COLLABORATION
+        assert result.collaboration_result is not None
+        assert result.collaboration_result.total_turns == 2
+
+    @pytest.mark.anyio
+    async def test_run_suite_collaboration(
+        self,
+        test_suite: TestSuite,
+        agent_configs: list[AgentConfig],
+    ) -> None:
+        """Test run_suite_collaboration convenience function."""
+        collab_config = CollaborationConfig(
+            max_turns=2,
+            termination_condition="max_turns",
+        )
+
+        result = await run_suite_collaboration(
+            agents=agent_configs,
+            suite=test_suite,
+            collaboration_config=collab_config,
+        )
+
+        assert isinstance(result, MultiAgentSuiteResult)
+        assert result.mode == MultiAgentMode.COLLABORATION
+        assert result.total_tests == 2
+
+
+class TestCollaborationConsensusTermination:
+    """Tests for consensus-based termination."""
+
+    @pytest.mark.anyio
+    async def test_consensus_termination(
+        self,
+        test_definition: TestDefinition,
+        agent_configs: list[AgentConfig],
+    ) -> None:
+        """Test that consensus termination works."""
+        collab_config = CollaborationConfig(
+            max_turns=10,
+            termination_condition="consensus",
+        )
+
+        async with MultiAgentOrchestrator(
+            agents=agent_configs,
+            mode=MultiAgentMode.COLLABORATION,
+            collaboration_config=collab_config,
+        ) as orchestrator:
+            result = await orchestrator.run_single_test(test_definition)
+
+        assert result.collaboration_result is not None
+        # With 2 agents succeeding, consensus should be reached after 2 turns
+        assert result.collaboration_result.total_turns >= len(agent_configs)
+        assert (
+            result.collaboration_result.collaboration_metrics.termination_reason
+            == "consensus_reached"
+        )
+        assert result.collaboration_result.collaboration_metrics.consensus_reached
+
+
+class TestCollaborationAllCompleteTermination:
+    """Tests for all_complete termination condition."""
+
+    @pytest.mark.anyio
+    async def test_all_complete_termination(
+        self,
+        test_definition: TestDefinition,
+        agent_configs: list[AgentConfig],
+    ) -> None:
+        """Test that all_complete waits for all agents."""
+        collab_config = CollaborationConfig(
+            max_turns=10,
+            termination_condition="all_complete",
+        )
+
+        async with MultiAgentOrchestrator(
+            agents=agent_configs,
+            mode=MultiAgentMode.COLLABORATION,
+            collaboration_config=collab_config,
+        ) as orchestrator:
+            result = await orchestrator.run_single_test(test_definition)
+
+        assert result.collaboration_result is not None
+        # Should terminate once all agents have completed at least once
+        assert result.collaboration_result.total_turns >= len(agent_configs)
+        assert (
+            result.collaboration_result.collaboration_metrics.termination_reason
+            == "all_agents_completed"
+        )
