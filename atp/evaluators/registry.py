@@ -10,6 +10,7 @@ from .factuality import FactualityEvaluator
 from .llm_judge import LLMJudgeEvaluator
 from .performance import PerformanceEvaluator
 from .security import SecurityEvaluator
+from .style import StyleEvaluator
 
 
 class EvaluatorNotFoundError(Exception):
@@ -39,6 +40,7 @@ class EvaluatorRegistry:
         self.register("security", SecurityEvaluator)
         self.register("factuality", FactualityEvaluator)
         self.register("performance", PerformanceEvaluator)
+        self.register("style", StyleEvaluator)
 
         self._register_assertion_mapping("artifact_exists", "artifact")
         self._register_assertion_mapping("contains", "artifact")
@@ -67,6 +69,14 @@ class EvaluatorRegistry:
 
         # Performance assertions
         self._register_assertion_mapping("performance", "performance")
+
+        # Style assertions
+        self._register_assertion_mapping("style", "style")
+        self._register_assertion_mapping("tone", "style")
+        self._register_assertion_mapping("readability", "style")
+        self._register_assertion_mapping("passive_voice", "style")
+        self._register_assertion_mapping("sentence_length", "style")
+        self._register_assertion_mapping("style_rules", "style")
 
     def register(
         self,
