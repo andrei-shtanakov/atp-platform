@@ -1,10 +1,12 @@
 """Multi-agent orchestrator for running tests across multiple agents."""
 
 import asyncio
+import copy
 import logging
 from dataclasses import field
 from datetime import datetime
 from enum import Enum
+from typing import Any
 
 from opentelemetry.trace import SpanKind, Status, StatusCode
 from pydantic import BaseModel, Field
@@ -18,6 +20,7 @@ from atp.core.telemetry import (
     set_span_attributes,
 )
 from atp.loader.models import TestDefinition, TestSuite
+from atp.protocol import ATPResponse, ResponseStatus
 from atp.runner.models import (
     ProgressCallback,
     ProgressEvent,
@@ -88,6 +91,150 @@ class ComparisonMetrics(BaseModel):
     failed_tests: int = Field(default=0, description="Tests failed")
 
 
+class CollaborationMessageType(str, Enum):
+    """Types of messages exchanged between agents in collaboration mode."""
+
+    TASK_ASSIGNMENT = "task_assignment"
+    RESULT = "result"
+    QUERY = "query"
+    RESPONSE = "response"
+    HANDOFF = "handoff"
+    STATUS_UPDATE = "status_update"
+
+
+class CollaborationMessage(BaseModel):
+    """Message exchanged between agents during collaboration."""
+
+    message_id: str = Field(..., description="Unique message identifier")
+    message_type: CollaborationMessageType = Field(..., description="Type of message")
+    from_agent: str = Field(..., description="Sender agent name")
+    to_agent: str | None = Field(
+        None, description="Target agent name (None for broadcast)"
+    )
+    content: dict[str, Any] = Field(default_factory=dict, description="Message content")
+    timestamp: datetime = Field(
+        default_factory=datetime.now, description="Message timestamp"
+    )
+    turn_number: int = Field(default=0, description="Turn number when message was sent")
+    in_reply_to: str | None = Field(
+        None, description="ID of message this is replying to"
+    )
+
+
+class SharedContext(BaseModel):
+    """Shared context accessible by all agents in collaboration mode."""
+
+    task_description: str = Field(..., description="Original task description")
+    artifacts: dict[str, Any] = Field(
+        default_factory=dict, description="Shared artifacts produced by agents"
+    )
+    variables: dict[str, Any] = Field(
+        default_factory=dict, description="Shared variables for state management"
+    )
+    messages: list[CollaborationMessage] = Field(
+        default_factory=list, description="Message history"
+    )
+    current_turn: int = Field(default=0, description="Current turn number")
+    completed_subtasks: list[str] = Field(
+        default_factory=list, description="IDs of completed subtasks"
+    )
+
+    def add_message(self, message: CollaborationMessage) -> None:
+        """Add a message to the shared context."""
+        self.messages.append(message)
+
+    def get_messages_for_agent(self, agent_name: str) -> list[CollaborationMessage]:
+        """Get all messages addressed to or from a specific agent."""
+        return [
+            m
+            for m in self.messages
+            if m.to_agent == agent_name
+            or m.from_agent == agent_name
+            or m.to_agent is None
+        ]
+
+    def get_messages_by_turn(self, turn: int) -> list[CollaborationMessage]:
+        """Get all messages from a specific turn."""
+        return [m for m in self.messages if m.turn_number == turn]
+
+    def set_artifact(self, key: str, value: Any, agent_name: str) -> None:
+        """Set a shared artifact with provenance tracking."""
+        self.artifacts[key] = {
+            "value": value,
+            "set_by": agent_name,
+            "turn": self.current_turn,
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    def get_artifact(self, key: str) -> Any | None:
+        """Get a shared artifact value."""
+        artifact = self.artifacts.get(key)
+        if artifact:
+            return artifact.get("value")
+        return None
+
+    def set_variable(self, key: str, value: Any) -> None:
+        """Set a shared variable."""
+        self.variables[key] = value
+
+    def get_variable(self, key: str, default: Any = None) -> Any:
+        """Get a shared variable."""
+        return self.variables.get(key, default)
+
+
+class CollaborationConfig(BaseModel):
+    """Configuration for collaboration mode."""
+
+    max_turns: int = Field(
+        default=10, description="Maximum number of collaboration turns", ge=1
+    )
+    turn_timeout_seconds: float = Field(
+        default=60.0, description="Timeout per turn in seconds", gt=0
+    )
+    require_consensus: bool = Field(
+        default=False, description="Require all agents to agree on final result"
+    )
+    allow_parallel_turns: bool = Field(
+        default=False, description="Allow agents to execute in parallel within a turn"
+    )
+    coordinator_agent: str | None = Field(
+        None, description="Name of agent to act as coordinator (None for round-robin)"
+    )
+    termination_condition: str = Field(
+        default="all_complete",
+        description="Condition to end collaboration: 'all_complete', "
+        "'any_complete', 'consensus', 'max_turns'",
+    )
+
+
+class CollaborationMetrics(BaseModel):
+    """Metrics specific to collaboration mode."""
+
+    total_turns: int = Field(default=0, description="Total number of turns taken")
+    total_messages: int = Field(default=0, description="Total messages exchanged")
+    messages_per_agent: dict[str, int] = Field(
+        default_factory=dict, description="Message count per agent"
+    )
+    turns_per_agent: dict[str, int] = Field(
+        default_factory=dict, description="Active turns per agent"
+    )
+    avg_turn_duration_seconds: float | None = Field(
+        None, description="Average turn duration"
+    )
+    consensus_reached: bool = Field(
+        default=False, description="Whether consensus was reached"
+    )
+    termination_reason: str | None = Field(None, description="Why collaboration ended")
+    agent_contributions: dict[str, float] = Field(
+        default_factory=dict,
+        description="Contribution score per agent (0.0-1.0)",
+    )
+    total_tokens: int = Field(default=0, description="Total tokens used by all agents")
+    total_cost_usd: float = Field(
+        default=0.0, description="Total cost across all agents"
+    )
+
+
 @dataclass
 class AgentTestResult:
     """Result of running a test with a specific agent."""
@@ -111,6 +258,77 @@ class AgentTestResult:
 
 
 @dataclass
+class CollaborationTurnResult:
+    """Result of a single turn in collaboration mode."""
+
+    turn_number: int
+    agent_name: str
+    response: ATPResponse | None = None
+    messages_sent: list[CollaborationMessage] = field(default_factory=list)
+    messages_received: list[CollaborationMessage] = field(default_factory=list)
+    start_time: datetime = field(default_factory=datetime.now)
+    end_time: datetime | None = None
+    error: str | None = None
+
+    @property
+    def success(self) -> bool:
+        """Check if turn completed successfully."""
+        if self.error:
+            return False
+        if self.response:
+            return self.response.status == ResponseStatus.COMPLETED
+        return True
+
+    @property
+    def duration_seconds(self) -> float | None:
+        """Calculate turn duration in seconds."""
+        if self.end_time is None:
+            return None
+        return (self.end_time - self.start_time).total_seconds()
+
+
+@dataclass
+class CollaborationResult:
+    """Result of a collaboration session."""
+
+    test: TestDefinition
+    shared_context: SharedContext
+    turn_results: list[CollaborationTurnResult] = field(default_factory=list)
+    collaboration_metrics: CollaborationMetrics = field(
+        default_factory=CollaborationMetrics
+    )
+    final_response: ATPResponse | None = None
+    start_time: datetime = field(default_factory=datetime.now)
+    end_time: datetime | None = None
+    error: str | None = None
+
+    @property
+    def success(self) -> bool:
+        """Check if collaboration completed successfully."""
+        if self.error:
+            return False
+        if self.final_response:
+            return self.final_response.status == ResponseStatus.COMPLETED
+        return all(tr.success for tr in self.turn_results)
+
+    @property
+    def duration_seconds(self) -> float | None:
+        """Calculate total collaboration duration in seconds."""
+        if self.end_time is None:
+            return None
+        return (self.end_time - self.start_time).total_seconds()
+
+    @property
+    def total_turns(self) -> int:
+        """Get total number of turns."""
+        return len(self.turn_results)
+
+    def get_turns_for_agent(self, agent_name: str) -> list[CollaborationTurnResult]:
+        """Get all turns for a specific agent."""
+        return [tr for tr in self.turn_results if tr.agent_name == agent_name]
+
+
+@dataclass
 class MultiAgentTestResult:
     """Result of running a single test across multiple agents."""
 
@@ -121,10 +339,17 @@ class MultiAgentTestResult:
     end_time: datetime | None = None
     winner: str | None = None
     rankings: list[AgentRanking] = field(default_factory=list)
+    # Collaboration-specific fields
+    collaboration_result: CollaborationResult | None = None
 
     @property
     def all_succeeded(self) -> bool:
         """Check if all agents succeeded."""
+        if self.mode == MultiAgentMode.COLLABORATION:
+            return (
+                self.collaboration_result is not None
+                and self.collaboration_result.success
+            )
         if not self.agent_results:
             return False
         return all(r.success for r in self.agent_results)
@@ -132,6 +357,11 @@ class MultiAgentTestResult:
     @property
     def any_succeeded(self) -> bool:
         """Check if any agent succeeded."""
+        if self.mode == MultiAgentMode.COLLABORATION:
+            return (
+                self.collaboration_result is not None
+                and self.collaboration_result.success
+            )
         return any(r.success for r in self.agent_results)
 
     @property
@@ -206,6 +436,9 @@ class MultiAgentOrchestrator:
 
     Supports comparison mode where the same test is run against multiple
     agents for performance comparison and ranking.
+
+    Supports collaboration mode where agents work together on a task,
+    exchanging messages and sharing context.
     """
 
     def __init__(
@@ -219,6 +452,7 @@ class MultiAgentOrchestrator:
         max_parallel_agents: int = 5,
         ranking_metrics: list[RankingMetric] | None = None,
         determine_winner: bool = True,
+        collaboration_config: CollaborationConfig | None = None,
     ) -> None:
         """
         Initialize the multi-agent orchestrator.
@@ -233,6 +467,7 @@ class MultiAgentOrchestrator:
             max_parallel_agents: Maximum number of parallel agent executions.
             ranking_metrics: Metrics to use for ranking (default: success_rate).
             determine_winner: Whether to determine a winner for each test.
+            collaboration_config: Configuration for collaboration mode.
         """
         if not agents:
             raise ValueError("At least one agent is required")
@@ -246,8 +481,10 @@ class MultiAgentOrchestrator:
         self.max_parallel_agents = max_parallel_agents
         self.ranking_metrics = ranking_metrics or [RankingMetric.SUCCESS_RATE]
         self.determine_winner = determine_winner
+        self.collaboration_config = collaboration_config or CollaborationConfig()
         self._semaphore: asyncio.Semaphore | None = None
         self._orchestrators: dict[str, TestOrchestrator] = {}
+        self._message_counter = 0
 
     def _emit_progress(self, event: ProgressEvent) -> None:
         """Emit a progress event if callback is registered."""
@@ -454,6 +691,64 @@ class MultiAgentOrchestrator:
                 )
             )
 
+            # Handle collaboration mode separately
+            if self.mode == MultiAgentMode.COLLABORATION:
+                collaboration_result = await self._run_collaboration(test)
+                result.collaboration_result = collaboration_result
+                result.end_time = datetime.now()
+
+                # Set span attributes for collaboration
+                set_span_attributes(
+                    **{
+                        "atp.multi_agent.all_succeeded": result.all_succeeded,
+                        "atp.multi_agent.any_succeeded": result.any_succeeded,
+                        "atp.multi_agent.duration_seconds": result.duration_seconds,
+                        "atp.collaboration.total_turns": (
+                            collaboration_result.total_turns
+                        ),
+                    }
+                )
+
+                if result.all_succeeded:
+                    span.set_status(Status(StatusCode.OK))
+                else:
+                    span.set_status(
+                        Status(StatusCode.ERROR, "Collaboration did not succeed")
+                    )
+
+                add_span_event(
+                    "multi_agent_test_completed",
+                    {
+                        "all_succeeded": result.all_succeeded,
+                        "mode": "collaboration",
+                        "total_turns": collaboration_result.total_turns,
+                    },
+                )
+
+                # Emit completion event
+                self._emit_progress(
+                    ProgressEvent(
+                        event_type=(
+                            ProgressEventType.TEST_COMPLETED
+                            if result.any_succeeded
+                            else ProgressEventType.TEST_FAILED
+                        ),
+                        test_id=test.id,
+                        test_name=test.name,
+                        success=result.all_succeeded,
+                        details={
+                            "mode": self.mode.value,
+                            "total_turns": collaboration_result.total_turns,
+                            "termination_reason": (
+                                collaboration_result.collaboration_metrics.termination_reason
+                            ),
+                        },
+                    )
+                )
+
+                return result
+
+            # Comparison mode (original behavior)
             if self.parallel_agents:
                 result.agent_results = await self._execute_agents_parallel(
                     test=test,
@@ -614,6 +909,584 @@ class MultiAgentOrchestrator:
             start_time=start_time,
             end_time=datetime.now(),
         )
+
+    # =========================================================================
+    # Collaboration Mode Methods
+    # =========================================================================
+
+    def _generate_message_id(self) -> str:
+        """Generate a unique message ID."""
+        self._message_counter += 1
+        return f"msg-{self._message_counter:06d}"
+
+    def _create_shared_context(self, test: TestDefinition) -> SharedContext:
+        """Create a new shared context for collaboration."""
+        return SharedContext(
+            task_description=test.task.description,
+            artifacts={},
+            variables={},
+            messages=[],
+            current_turn=0,
+            completed_subtasks=[],
+        )
+
+    def _get_next_agent(
+        self, current_turn: int, last_agent: str | None
+    ) -> AgentConfig | None:
+        """
+        Get the next agent for a turn in collaboration mode.
+
+        Uses round-robin scheduling unless a coordinator is specified.
+        """
+        if not self.agents:
+            return None
+
+        # If coordinator is specified, alternate between coordinator and others
+        coordinator_name = self.collaboration_config.coordinator_agent
+        if coordinator_name:
+            coordinator = next(
+                (a for a in self.agents if a.name == coordinator_name), None
+            )
+            if coordinator:
+                # Coordinator goes first on odd turns (1, 3, 5...)
+                # Other agents on even turns (2, 4, 6...)
+                if current_turn % 2 == 1:
+                    return coordinator
+                else:
+                    # Get non-coordinator agents
+                    others = [a for a in self.agents if a.name != coordinator_name]
+                    if others:
+                        idx = (current_turn // 2 - 1) % len(others)
+                        return others[idx]
+                    return coordinator
+
+        # Round-robin scheduling
+        idx = (current_turn - 1) % len(self.agents)
+        return self.agents[idx]
+
+    def _create_collaboration_message(
+        self,
+        message_type: CollaborationMessageType,
+        from_agent: str,
+        content: dict[str, Any],
+        to_agent: str | None = None,
+        turn_number: int = 0,
+        in_reply_to: str | None = None,
+    ) -> CollaborationMessage:
+        """Create a new collaboration message."""
+        return CollaborationMessage(
+            message_id=self._generate_message_id(),
+            message_type=message_type,
+            from_agent=from_agent,
+            to_agent=to_agent,
+            content=content,
+            timestamp=datetime.now(),
+            turn_number=turn_number,
+            in_reply_to=in_reply_to,
+        )
+
+    def _check_termination(
+        self,
+        shared_context: SharedContext,
+        turn_results: list[CollaborationTurnResult],
+    ) -> tuple[bool, str]:
+        """
+        Check if collaboration should terminate.
+
+        Returns:
+            Tuple of (should_terminate, reason)
+        """
+        config = self.collaboration_config
+        current_turn = shared_context.current_turn
+
+        # Check max turns
+        if current_turn >= config.max_turns:
+            return True, "max_turns_reached"
+
+        # Check termination conditions
+        if config.termination_condition == "max_turns":
+            # Only terminate when max turns reached
+            return False, ""
+
+        # Check if any agent has completed
+        completed_agents = set()
+        for turn_result in turn_results:
+            if turn_result.response and turn_result.success:
+                completed_agents.add(turn_result.agent_name)
+
+        if config.termination_condition == "any_complete":
+            if completed_agents:
+                return True, "agent_completed"
+
+        if config.termination_condition == "all_complete":
+            all_agent_names = {a.name for a in self.agents}
+            if completed_agents >= all_agent_names:
+                return True, "all_agents_completed"
+
+        if config.termination_condition == "consensus":
+            # Check if all recent turn results agree (simplified consensus)
+            if len(turn_results) >= len(self.agents):
+                recent_turns = turn_results[-len(self.agents) :]
+                if all(tr.success for tr in recent_turns):
+                    return True, "consensus_reached"
+
+        return False, ""
+
+    async def _execute_collaboration_turn(
+        self,
+        agent: AgentConfig,
+        test: TestDefinition,
+        shared_context: SharedContext,
+        turn_number: int,
+    ) -> CollaborationTurnResult:
+        """Execute a single turn for an agent in collaboration mode."""
+        turn_result = CollaborationTurnResult(
+            turn_number=turn_number,
+            agent_name=agent.name,
+            start_time=datetime.now(),
+        )
+
+        # Get messages for this agent from the shared context
+        agent_messages = shared_context.get_messages_for_agent(agent.name)
+        turn_result.messages_received = [
+            m for m in agent_messages if m.turn_number < turn_number
+        ]
+
+        try:
+            # Create a modified test with collaboration context
+            collab_test = self._create_collaboration_test(
+                test=test,
+                shared_context=shared_context,
+                agent_name=agent.name,
+                turn_number=turn_number,
+            )
+
+            # Execute the agent
+            if agent.name not in self._orchestrators:
+                self._orchestrators[agent.name] = self._create_orchestrator(agent)
+
+            orchestrator = self._orchestrators[agent.name]
+            test_result = await asyncio.wait_for(
+                orchestrator.run_single_test(test=collab_test, runs=1),
+                timeout=self.collaboration_config.turn_timeout_seconds,
+            )
+
+            # Check for test-level errors first
+            if test_result.error:
+                turn_result.error = test_result.error
+
+            # Extract response from the first run
+            if test_result.runs:
+                turn_result.response = test_result.runs[0].response
+
+                # Check for run-level errors
+                run_error = test_result.runs[0].error
+                if run_error and not turn_result.error:
+                    turn_result.error = run_error
+
+                # Extract any artifacts and add to shared context
+                if turn_result.response and turn_result.response.artifacts:
+                    for artifact in turn_result.response.artifacts:
+                        artifact_key = getattr(artifact, "name", None) or getattr(
+                            artifact, "path", f"artifact_{turn_number}"
+                        )
+                        shared_context.set_artifact(
+                            artifact_key, artifact.model_dump(), agent.name
+                        )
+
+                # Create a result message
+                result_msg = self._create_collaboration_message(
+                    message_type=CollaborationMessageType.RESULT,
+                    from_agent=agent.name,
+                    content={
+                        "status": (
+                            turn_result.response.status.value
+                            if turn_result.response
+                            else "unknown"
+                        ),
+                        "artifacts": [
+                            a.model_dump()
+                            for a in (
+                                turn_result.response.artifacts
+                                if turn_result.response
+                                else []
+                            )
+                        ],
+                        "error": turn_result.error,
+                    },
+                    turn_number=turn_number,
+                )
+                shared_context.add_message(result_msg)
+                turn_result.messages_sent.append(result_msg)
+
+        except TimeoutError:
+            turn_result.error = (
+                f"Turn timeout after {self.collaboration_config.turn_timeout_seconds}s"
+            )
+            logger.warning("Agent %s timed out on turn %d", agent.name, turn_number)
+        except Exception as e:
+            turn_result.error = str(e)
+            logger.error("Agent %s failed on turn %d: %s", agent.name, turn_number, e)
+
+        turn_result.end_time = datetime.now()
+        return turn_result
+
+    def _create_collaboration_test(
+        self,
+        test: TestDefinition,
+        shared_context: SharedContext,
+        agent_name: str,
+        turn_number: int,
+    ) -> TestDefinition:
+        """Create a modified test definition with collaboration context."""
+        # Deep copy the test to avoid modifying the original
+        collab_test = copy.deepcopy(test)
+
+        # Build collaboration context string
+        context_parts = [
+            "=== COLLABORATION CONTEXT ===",
+            f"Turn: {turn_number}",
+            f"Your role: {agent_name}",
+            "",
+            f"Original task: {shared_context.task_description}",
+            "",
+        ]
+
+        # Add recent messages
+        recent_messages = shared_context.get_messages_for_agent(agent_name)[-10:]
+        if recent_messages:
+            context_parts.append("Recent messages:")
+            for msg in recent_messages:
+                context_parts.append(
+                    f"  [{msg.from_agent} -> {msg.to_agent or 'all'}]: "
+                    f"{msg.message_type.value} - {msg.content}"
+                )
+            context_parts.append("")
+
+        # Add shared artifacts summary
+        if shared_context.artifacts:
+            context_parts.append("Shared artifacts:")
+            for key, artifact_data in shared_context.artifacts.items():
+                context_parts.append(
+                    f"  - {key} (by {artifact_data.get('set_by', 'unknown')})"
+                )
+            context_parts.append("")
+
+        # Add shared variables
+        if shared_context.variables:
+            context_parts.append("Shared state:")
+            for key, value in shared_context.variables.items():
+                context_parts.append(f"  - {key}: {value}")
+            context_parts.append("")
+
+        context_parts.append("=== END COLLABORATION CONTEXT ===")
+        context_parts.append("")
+        context_parts.append("Continue working on the task based on the above context.")
+
+        # Prepend collaboration context to task description
+        collab_test.task.description = (
+            "\n".join(context_parts) + "\n\n" + collab_test.task.description
+        )
+
+        return collab_test
+
+    def _calculate_collaboration_metrics(
+        self,
+        turn_results: list[CollaborationTurnResult],
+        shared_context: SharedContext,
+        termination_reason: str,
+    ) -> CollaborationMetrics:
+        """Calculate collaboration-specific metrics."""
+        metrics = CollaborationMetrics(
+            total_turns=len(turn_results),
+            total_messages=len(shared_context.messages),
+            termination_reason=termination_reason,
+        )
+
+        # Calculate per-agent metrics
+        messages_per_agent: dict[str, int] = {}
+        turns_per_agent: dict[str, int] = {}
+        turn_durations: list[float] = []
+
+        for turn_result in turn_results:
+            agent = turn_result.agent_name
+            turns_per_agent[agent] = turns_per_agent.get(agent, 0) + 1
+            messages_per_agent[agent] = messages_per_agent.get(agent, 0) + len(
+                turn_result.messages_sent
+            )
+
+            if turn_result.duration_seconds is not None:
+                turn_durations.append(turn_result.duration_seconds)
+
+            # Accumulate token and cost metrics
+            if turn_result.response and turn_result.response.metrics:
+                m = turn_result.response.metrics
+                if m.total_tokens:
+                    metrics.total_tokens += m.total_tokens
+                if m.cost_usd:
+                    metrics.total_cost_usd += m.cost_usd
+
+        metrics.messages_per_agent = messages_per_agent
+        metrics.turns_per_agent = turns_per_agent
+
+        if turn_durations:
+            metrics.avg_turn_duration_seconds = sum(turn_durations) / len(
+                turn_durations
+            )
+
+        # Calculate contribution scores based on turns and messages
+        total_activity = sum(turns_per_agent.values()) + sum(
+            messages_per_agent.values()
+        )
+        if total_activity > 0:
+            for agent in self.agents:
+                agent_activity = turns_per_agent.get(
+                    agent.name, 0
+                ) + messages_per_agent.get(agent.name, 0)
+                metrics.agent_contributions[agent.name] = (
+                    agent_activity / total_activity
+                )
+
+        # Check if consensus was reached
+        metrics.consensus_reached = termination_reason == "consensus_reached"
+
+        return metrics
+
+    def _create_final_collaboration_response(
+        self,
+        turn_results: list[CollaborationTurnResult],
+        shared_context: SharedContext,
+        test: TestDefinition,
+    ) -> ATPResponse:
+        """Create a final aggregated response from collaboration results."""
+        # Aggregate all successful artifacts
+        all_artifacts = []
+        for artifact_data in shared_context.artifacts.values():
+            artifact_value = artifact_data.get("value", {})
+            if artifact_value:
+                # Reconstruct artifact from stored data
+                from atp.protocol import ArtifactStructured
+
+                all_artifacts.append(
+                    ArtifactStructured(
+                        name=str(artifact_value.get("name", "collaboration_artifact")),
+                        data=artifact_value,
+                    )
+                )
+
+        # Determine overall status
+        successful_turns = [tr for tr in turn_results if tr.success]
+        if successful_turns:
+            status = ResponseStatus.COMPLETED
+        elif any(tr.error and "timeout" in tr.error.lower() for tr in turn_results):
+            status = ResponseStatus.TIMEOUT
+        else:
+            status = ResponseStatus.FAILED
+
+        # Aggregate metrics
+        total_tokens = 0
+        total_cost = 0.0
+        total_steps = 0
+        for tr in turn_results:
+            if tr.response and tr.response.metrics:
+                if tr.response.metrics.total_tokens:
+                    total_tokens += tr.response.metrics.total_tokens
+                if tr.response.metrics.cost_usd:
+                    total_cost += tr.response.metrics.cost_usd
+                if tr.response.metrics.total_steps:
+                    total_steps += tr.response.metrics.total_steps
+
+        from atp.protocol import Metrics
+
+        metrics = Metrics(
+            total_tokens=total_tokens if total_tokens > 0 else None,
+            total_steps=total_steps if total_steps > 0 else None,
+            cost_usd=total_cost if total_cost > 0 else None,
+        )
+
+        return ATPResponse(
+            task_id=test.id,
+            status=status,
+            artifacts=all_artifacts,
+            metrics=metrics,
+        )
+
+    async def _run_collaboration(
+        self,
+        test: TestDefinition,
+    ) -> CollaborationResult:
+        """
+        Run a test in collaboration mode.
+
+        Agents take turns working on the task, sharing context and messages.
+        """
+        shared_context = self._create_shared_context(test)
+        turn_results: list[CollaborationTurnResult] = []
+        collaboration_result = CollaborationResult(
+            test=test,
+            shared_context=shared_context,
+            start_time=datetime.now(),
+        )
+
+        with tracer.start_as_current_span(
+            f"collaboration:{test.name}",
+            kind=SpanKind.INTERNAL,
+            attributes={
+                "atp.test.id": test.id,
+                "atp.test.name": test.name,
+                "atp.collaboration.max_turns": self.collaboration_config.max_turns,
+                "atp.collaboration.agent_count": len(self.agents),
+            },
+        ) as span:
+            add_span_event(
+                "collaboration_started",
+                {"agents": [a.name for a in self.agents]},
+            )
+
+            # Send initial task assignment messages to all agents
+            for agent in self.agents:
+                initial_msg = self._create_collaboration_message(
+                    message_type=CollaborationMessageType.TASK_ASSIGNMENT,
+                    from_agent="orchestrator",
+                    to_agent=agent.name,
+                    content={
+                        "task": test.task.description,
+                        "role": agent.name,
+                        "total_agents": len(self.agents),
+                    },
+                    turn_number=0,
+                )
+                shared_context.add_message(initial_msg)
+
+            last_agent: str | None = None
+            termination_reason = ""
+
+            try:
+                while True:
+                    shared_context.current_turn += 1
+                    turn_number = shared_context.current_turn
+
+                    # Emit progress
+                    self._emit_progress(
+                        ProgressEvent(
+                            event_type=ProgressEventType.RUN_STARTED,
+                            test_id=test.id,
+                            test_name=test.name,
+                            run_number=turn_number,
+                            total_runs=self.collaboration_config.max_turns,
+                            details={
+                                "mode": "collaboration",
+                                "turn": turn_number,
+                            },
+                        )
+                    )
+
+                    if self.collaboration_config.allow_parallel_turns:
+                        # Execute all agents in parallel for this turn
+                        turn_tasks = [
+                            self._execute_collaboration_turn(
+                                agent=agent,
+                                test=test,
+                                shared_context=shared_context,
+                                turn_number=turn_number,
+                            )
+                            for agent in self.agents
+                        ]
+                        results = await asyncio.gather(*turn_tasks)
+                        turn_results.extend(results)
+                        last_agent = results[-1].agent_name if results else None
+                    else:
+                        # Get next agent for turn-based execution
+                        agent = self._get_next_agent(turn_number, last_agent)
+                        if not agent:
+                            termination_reason = "no_agents_available"
+                            break
+
+                        turn_result = await self._execute_collaboration_turn(
+                            agent=agent,
+                            test=test,
+                            shared_context=shared_context,
+                            turn_number=turn_number,
+                        )
+                        turn_results.append(turn_result)
+                        last_agent = agent.name
+
+                    # Emit turn completion progress
+                    self._emit_progress(
+                        ProgressEvent(
+                            event_type=ProgressEventType.RUN_COMPLETED,
+                            test_id=test.id,
+                            test_name=test.name,
+                            run_number=turn_number,
+                            total_runs=self.collaboration_config.max_turns,
+                            success=turn_results[-1].success if turn_results else False,
+                            details={
+                                "mode": "collaboration",
+                                "turn": turn_number,
+                                "agent": last_agent,
+                            },
+                        )
+                    )
+
+                    # Check termination condition
+                    should_terminate, reason = self._check_termination(
+                        shared_context, turn_results
+                    )
+                    if should_terminate:
+                        termination_reason = reason
+                        break
+
+            except Exception as e:
+                collaboration_result.error = str(e)
+                termination_reason = "error"
+                logger.error("Collaboration failed: %s", e)
+                span.record_exception(e)
+                span.set_status(Status(StatusCode.ERROR, str(e)))
+
+            # Calculate collaboration metrics
+            collaboration_result.collaboration_metrics = (
+                self._calculate_collaboration_metrics(
+                    turn_results, shared_context, termination_reason
+                )
+            )
+            collaboration_result.turn_results = turn_results
+            collaboration_result.shared_context = shared_context
+
+            # Create final aggregated response
+            collaboration_result.final_response = (
+                self._create_final_collaboration_response(
+                    turn_results, shared_context, test
+                )
+            )
+
+            collaboration_result.end_time = datetime.now()
+
+            # Set span attributes
+            set_span_attributes(
+                **{
+                    "atp.collaboration.total_turns": len(turn_results),
+                    "atp.collaboration.success": collaboration_result.success,
+                    "atp.collaboration.termination_reason": termination_reason,
+                }
+            )
+
+            if collaboration_result.success:
+                span.set_status(Status(StatusCode.OK))
+            else:
+                span.set_status(
+                    Status(StatusCode.ERROR, collaboration_result.error or "Failed")
+                )
+
+            add_span_event(
+                "collaboration_completed",
+                {
+                    "total_turns": len(turn_results),
+                    "success": collaboration_result.success,
+                    "termination_reason": termination_reason,
+                },
+            )
+
+        return collaboration_result
 
     async def run_suite(
         self,
@@ -863,3 +1736,57 @@ async def run_suite_comparison(
         ranking_metrics=ranking_metrics,
     ) as orchestrator:
         return await orchestrator.run_suite(suite, runs_per_test)
+
+
+async def run_collaboration(
+    agents: list[AgentConfig],
+    test: TestDefinition,
+    collaboration_config: CollaborationConfig | None = None,
+    progress_callback: ProgressCallback | None = None,
+) -> MultiAgentTestResult:
+    """
+    Convenience function to run a single test in collaboration mode.
+
+    Args:
+        agents: List of agent configurations.
+        test: Test definition.
+        collaboration_config: Configuration for collaboration behavior.
+        progress_callback: Optional progress callback.
+
+    Returns:
+        MultiAgentTestResult with collaboration_result populated.
+    """
+    async with MultiAgentOrchestrator(
+        agents=agents,
+        mode=MultiAgentMode.COLLABORATION,
+        collaboration_config=collaboration_config,
+        progress_callback=progress_callback,
+    ) as orchestrator:
+        return await orchestrator.run_single_test(test)
+
+
+async def run_suite_collaboration(
+    agents: list[AgentConfig],
+    suite: TestSuite,
+    collaboration_config: CollaborationConfig | None = None,
+    progress_callback: ProgressCallback | None = None,
+) -> MultiAgentSuiteResult:
+    """
+    Convenience function to run a test suite in collaboration mode.
+
+    Args:
+        agents: List of agent configurations.
+        suite: Test suite.
+        collaboration_config: Configuration for collaboration behavior.
+        progress_callback: Optional progress callback.
+
+    Returns:
+        MultiAgentSuiteResult.
+    """
+    async with MultiAgentOrchestrator(
+        agents=agents,
+        mode=MultiAgentMode.COLLABORATION,
+        collaboration_config=collaboration_config,
+        progress_callback=progress_callback,
+    ) as orchestrator:
+        return await orchestrator.run_suite(suite)

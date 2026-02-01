@@ -801,22 +801,22 @@ Add advanced analytics features to dashboard.
 ---
 
 ### TASK-506: A/B Testing Framework
-🟡 P2 | 🔄 IN_PROGRESS | Est: 5-6h
+🟡 P2 | ✅ DONE | Est: 5-6h
 
 **Description:**
 Implement A/B testing framework for agent comparison.
 
 **Checklist:**
-- [ ] Create `atp/analytics/ab_testing.py`
-- [ ] Define experiment model: variants, traffic split, metrics
-- [ ] Implement experiment lifecycle: draft → running → concluded
-- [ ] Implement traffic routing based on split
-- [ ] Implement statistical significance calculation
-- [ ] Implement winner determination
-- [ ] Add automatic rollback on degradation
-- [ ] Create CLI for experiment management
-- [ ] Add dashboard UI for experiments
-- [ ] Write tests
+- [x] Create `atp/analytics/ab_testing.py`
+- [x] Define experiment model: variants, traffic split, metrics
+- [x] Implement experiment lifecycle: draft → running → concluded
+- [x] Implement traffic routing based on split
+- [x] Implement statistical significance calculation
+- [x] Implement winner determination
+- [x] Add automatic rollback on degradation
+- [x] Create CLI for experiment management
+- [x] Add dashboard UI for experiments
+- [x] Write tests
 
 **Traces to:** [REQ-503]
 **Depends on:** -
@@ -849,7 +849,7 @@ Implement orchestrator for multi-agent test execution.
 ---
 
 ### TASK-602: Multi-Agent Collaboration Mode
-🟡 P2 | ⬜ TODO | Est: 4-5h
+🟡 P2 | 🔄 IN_PROGRESS | Est: 4-5h
 
 **Description:**
 Implement collaboration mode for multi-agent tests.
