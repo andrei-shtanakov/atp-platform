@@ -920,5 +920,208 @@ class ExportRequest(BaseModel):
     include_anomalies: bool = True
 
 
+# ==================== A/B Testing Schemas ====================
+
+
+class VariantCreate(BaseModel):
+    """Schema for creating an experiment variant."""
+
+    name: str = Field(..., min_length=1, max_length=100)
+    agent_name: str = Field(..., min_length=1, max_length=100)
+    traffic_weight: float = Field(default=50.0, ge=0.0, le=100.0)
+    description: str | None = Field(None, max_length=500)
+
+
+class MetricConfigCreate(BaseModel):
+    """Schema for metric configuration."""
+
+    metric_type: str = Field(..., pattern="^(score|success_rate|duration|cost|tokens)$")
+    is_primary: bool = False
+    minimize: bool = False
+    min_effect_size: float = Field(default=0.05, ge=0.0, le=1.0)
+
+
+class RollbackConfigCreate(BaseModel):
+    """Schema for rollback configuration."""
+
+    enabled: bool = True
+    degradation_threshold: float = Field(default=0.10, ge=0.0, le=1.0)
+    min_samples_before_rollback: int = Field(default=30, ge=10)
+    consecutive_checks: int = Field(default=3, ge=1)
+
+
+class ExperimentCreate(BaseModel):
+    """Schema for creating an A/B experiment."""
+
+    name: str = Field(..., min_length=1, max_length=100)
+    description: str | None = Field(None, max_length=2000)
+    suite_name: str = Field(..., min_length=1, max_length=255)
+    test_ids: list[str] | None = None
+    control_variant: VariantCreate
+    treatment_variant: VariantCreate
+    metrics: list[MetricConfigCreate] = Field(
+        default_factory=lambda: [
+            MetricConfigCreate(metric_type="score", is_primary=True)
+        ]
+    )
+    rollback: RollbackConfigCreate = Field(default_factory=RollbackConfigCreate)
+    min_sample_size: int = Field(default=30, ge=10)
+    max_sample_size: int | None = None
+    max_duration_days: int | None = None
+    significance_level: float = Field(default=0.05, ge=0.01, le=0.10)
+
+
+class ExperimentUpdate(BaseModel):
+    """Schema for updating an experiment."""
+
+    description: str | None = None
+    rollback: RollbackConfigCreate | None = None
+    max_sample_size: int | None = None
+    max_duration_days: int | None = None
+
+
+class VariantResponse(BaseModel):
+    """Schema for variant response."""
+
+    name: str
+    variant_type: str
+    agent_name: str
+    traffic_weight: float
+    description: str | None = None
+
+
+class VariantMetricsResponse(BaseModel):
+    """Schema for variant metrics response."""
+
+    variant_name: str
+    sample_size: int
+    mean: float
+    std: float
+    min_value: float | None = None
+    max_value: float | None = None
+    ci_lower: float | None = None
+    ci_upper: float | None = None
+
+
+class StatisticalResultResponse(BaseModel):
+    """Schema for statistical result response."""
+
+    metric_type: str
+    control_metrics: VariantMetricsResponse
+    treatment_metrics: VariantMetricsResponse
+    t_statistic: float
+    p_value: float
+    is_significant: bool
+    effect_size: float
+    relative_change: float
+    confidence_level: float
+    winner: str
+
+
+class ExperimentResponse(BaseModel):
+    """Schema for experiment response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    description: str | None
+    suite_name: str
+    test_ids: list[str] | None
+    status: str
+    control_variant: VariantResponse
+    treatment_variant: VariantResponse
+    metrics: list[MetricConfigCreate]
+    rollback: RollbackConfigCreate
+    min_sample_size: int
+    max_sample_size: int | None
+    max_duration_days: int | None
+    significance_level: float
+    control_sample_size: int
+    treatment_sample_size: int
+    winner: str | None
+    rollback_triggered: bool
+    created_at: datetime
+    started_at: datetime | None
+    concluded_at: datetime | None
+    conclusion_reason: str | None
+
+
+class ExperimentSummary(BaseModel):
+    """Summary of an experiment."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    suite_name: str
+    status: str
+    control_variant_name: str
+    treatment_variant_name: str
+    control_sample_size: int
+    treatment_sample_size: int
+    winner: str | None
+    created_at: datetime
+    started_at: datetime | None
+    concluded_at: datetime | None
+
+
+class ExperimentList(BaseModel):
+    """List of experiments."""
+
+    items: list[ExperimentSummary]
+    total: int
+
+
+class ExperimentReportResponse(BaseModel):
+    """Schema for experiment report response."""
+
+    experiment: ExperimentResponse
+    statistical_results: list[StatisticalResultResponse]
+    recommendation: str
+    summary: dict[str, Any]
+
+
+class ObservationCreate(BaseModel):
+    """Schema for creating an experiment observation."""
+
+    variant_name: str = Field(..., min_length=1, max_length=100)
+    test_id: str = Field(..., min_length=1, max_length=255)
+    run_id: str = Field(..., min_length=1, max_length=255)
+    score: float | None = None
+    success: bool = False
+    duration_seconds: float | None = None
+    cost_usd: float | None = None
+    tokens: int | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ObservationResponse(BaseModel):
+    """Schema for observation response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    experiment_id: int
+    variant_name: str
+    test_id: str
+    run_id: str
+    timestamp: datetime
+    score: float | None
+    success: bool
+    duration_seconds: float | None
+    cost_usd: float | None
+    tokens: int | None
+
+
+class TrafficAssignmentResponse(BaseModel):
+    """Schema for traffic assignment response."""
+
+    experiment_id: int
+    variant_name: str
+    agent_name: str
+    run_id: str
+
+
 # Update forward references
 SuiteExecutionDetail.model_rebuild()
