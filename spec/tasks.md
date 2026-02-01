@@ -888,19 +888,19 @@ Implement handoff mode for sequential agent execution.
 ---
 
 ### TASK-604: Multi-Agent Test Suite Format
-🟠 P1 | ⬜ TODO | Est: 2-3h
+🟠 P1 | 🔄 IN_PROGRESS | Est: 2-3h
 
 **Description:**
 Extend test suite YAML format for multi-agent tests.
 
 **Checklist:**
-- [ ] Extend `TestDefinition` with multi-agent fields
-- [ ] Add `agents` field (list of agent names)
-- [ ] Add `mode` field: comparison, collaboration, handoff
-- [ ] Add validation for multi-agent configurations
-- [ ] Update test loader
-- [ ] Create example multi-agent test suite
-- [ ] Update documentation
+- [x] Extend `TestDefinition` with multi-agent fields
+- [x] Add `agents` field (list of agent names)
+- [x] Add `mode` field: comparison, collaboration, handoff
+- [x] Add validation for multi-agent configurations
+- [x] Update test loader
+- [x] Create example multi-agent test suite
+- [x] Update documentation
 
 **Traces to:** [REQ-601]
 **Depends on:** [TASK-601], [TASK-602], [TASK-603]

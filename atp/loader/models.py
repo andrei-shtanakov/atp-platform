@@ -1,8 +1,104 @@
 """Data models for test definitions and suites."""
 
+from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+
+class MultiAgentMode(str, Enum):
+    """Mode for multi-agent test execution."""
+
+    COMPARISON = "comparison"
+    COLLABORATION = "collaboration"
+    HANDOFF = "handoff"
+
+
+class CollaborationConfig(BaseModel):
+    """Configuration for collaboration mode tests."""
+
+    max_turns: int = Field(
+        default=10, description="Maximum number of collaboration turns", ge=1
+    )
+    turn_timeout_seconds: float = Field(
+        default=60.0, description="Timeout per turn in seconds", gt=0
+    )
+    require_consensus: bool = Field(
+        default=False, description="Require all agents to agree on final result"
+    )
+    allow_parallel_turns: bool = Field(
+        default=False, description="Allow agents to execute in parallel within a turn"
+    )
+    coordinator_agent: str | None = Field(
+        None, description="Name of agent to act as coordinator (None for round-robin)"
+    )
+    termination_condition: str = Field(
+        default="all_complete",
+        description="Condition to end collaboration: 'all_complete', "
+        "'any_complete', 'consensus', 'max_turns'",
+    )
+
+
+class HandoffTrigger(str, Enum):
+    """Triggers for when to perform a handoff to the next agent."""
+
+    ALWAYS = "always"
+    ON_SUCCESS = "on_success"
+    ON_FAILURE = "on_failure"
+    ON_PARTIAL = "on_partial"
+    EXPLICIT = "explicit"
+
+
+class ContextAccumulationMode(str, Enum):
+    """How context is accumulated across handoffs."""
+
+    APPEND = "append"
+    REPLACE = "replace"
+    MERGE = "merge"
+    SUMMARY = "summary"
+
+
+class HandoffConfig(BaseModel):
+    """Configuration for handoff mode tests."""
+
+    handoff_trigger: HandoffTrigger = Field(
+        default=HandoffTrigger.ALWAYS,
+        description="When to trigger handoff to next agent",
+    )
+    context_accumulation: ContextAccumulationMode = Field(
+        default=ContextAccumulationMode.APPEND,
+        description="How to accumulate context across handoffs",
+    )
+    max_context_size: int | None = Field(
+        None, description="Maximum context size in characters (None for unlimited)"
+    )
+    allow_backtrack: bool = Field(
+        default=False, description="Allow previous agents to be re-invoked on failure"
+    )
+    final_agent_decides: bool = Field(
+        default=True, description="Whether the final agent makes the overall decision"
+    )
+    agent_timeout_seconds: float = Field(
+        default=120.0, description="Timeout per agent in seconds", gt=0
+    )
+    continue_on_failure: bool = Field(
+        default=False, description="Continue to next agent even if current fails"
+    )
+
+
+class ComparisonConfig(BaseModel):
+    """Configuration for comparison mode tests."""
+
+    metrics: list[str] = Field(
+        default_factory=lambda: ["quality", "speed", "cost"],
+        description="Metrics to compare agents on",
+    )
+    determine_winner: bool = Field(
+        default=True, description="Whether to determine a winner"
+    )
+    parallel_execution: bool = Field(
+        default=True, description="Execute agents in parallel"
+    )
 
 
 class TaskDefinition(BaseModel):
@@ -64,6 +160,91 @@ class TestDefinition(BaseModel):
     scoring: ScoringWeights | None = Field(
         None, description="Optional scoring weights override"
     )
+
+    # Multi-agent fields
+    agents: list[str] | None = Field(
+        None,
+        description="List of agent names to run this test against "
+        "(overrides suite-level agents)",
+    )
+    mode: MultiAgentMode | None = Field(
+        None,
+        description="Multi-agent execution mode: comparison, collaboration, or handoff",
+    )
+    comparison_config: ComparisonConfig | None = Field(
+        None, description="Configuration for comparison mode"
+    )
+    collaboration_config: CollaborationConfig | None = Field(
+        None, description="Configuration for collaboration mode"
+    )
+    handoff_config: HandoffConfig | None = Field(
+        None, description="Configuration for handoff mode"
+    )
+
+    @model_validator(mode="after")
+    def validate_multi_agent_config(self) -> "TestDefinition":
+        """Validate multi-agent configuration consistency."""
+        # If mode is set, agents should be specified
+        if self.mode is not None and self.agents is None:
+            raise ValueError("When 'mode' is specified, 'agents' must also be provided")
+
+        # If agents is set with more than one agent, mode should be specified
+        if self.agents is not None and len(self.agents) > 1 and self.mode is None:
+            raise ValueError(
+                "When multiple agents are specified, 'mode' is required "
+                "(comparison, collaboration, or handoff)"
+            )
+
+        # Validate mode-specific config alignment
+        if self.mode == MultiAgentMode.COMPARISON:
+            # Comparison config is optional, uses defaults
+            if self.collaboration_config is not None:
+                raise ValueError(
+                    "collaboration_config should not be set for comparison mode"
+                )
+            if self.handoff_config is not None:
+                raise ValueError("handoff_config should not be set for comparison mode")
+
+        elif self.mode == MultiAgentMode.COLLABORATION:
+            # Collaboration config is optional, uses defaults
+            if self.comparison_config is not None:
+                raise ValueError(
+                    "comparison_config should not be set for collaboration mode"
+                )
+            if self.handoff_config is not None:
+                raise ValueError(
+                    "handoff_config should not be set for collaboration mode"
+                )
+
+        elif self.mode == MultiAgentMode.HANDOFF:
+            # Handoff config is optional, uses defaults
+            if self.comparison_config is not None:
+                raise ValueError("comparison_config should not be set for handoff mode")
+            if self.collaboration_config is not None:
+                raise ValueError(
+                    "collaboration_config should not be set for handoff mode"
+                )
+
+        # Validate coordinator_agent exists in agents list
+        if (
+            self.collaboration_config is not None
+            and self.collaboration_config.coordinator_agent is not None
+            and self.agents is not None
+            and self.collaboration_config.coordinator_agent not in self.agents
+        ):
+            raise ValueError(
+                f"coordinator_agent '{self.collaboration_config.coordinator_agent}' "
+                "must be in the agents list"
+            )
+
+        return self
+
+    @property
+    def is_multi_agent(self) -> bool:
+        """Check if this is a multi-agent test."""
+        return self.mode is not None or (
+            self.agents is not None and len(self.agents) > 1
+        )
 
 
 class AgentConfig(BaseModel):
