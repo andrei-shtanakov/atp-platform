@@ -10,6 +10,7 @@ Each module handles a specific domain of functionality:
 - comparison: Agent comparison and side-by-side views
 - auth: Authentication routes (login, register, user info)
 - sso: SSO/OIDC authentication routes
+- saml: SAML 2.0 authentication routes
 - trends: Historical trend analysis
 - timeline: Event timeline visualization
 - leaderboard: Performance leaderboard matrix
@@ -42,6 +43,7 @@ from atp.dashboard.v2.routes.home import router as home_router
 from atp.dashboard.v2.routes.leaderboard import router as leaderboard_router
 from atp.dashboard.v2.routes.metrics import router as metrics_router
 from atp.dashboard.v2.routes.roles import router as roles_router
+from atp.dashboard.v2.routes.saml import router as saml_router
 from atp.dashboard.v2.routes.sso import router as sso_router
 from atp.dashboard.v2.routes.suites import router as suites_router
 from atp.dashboard.v2.routes.templates import router as templates_router
@@ -76,6 +78,7 @@ router.include_router(experiments_router)
 router.include_router(tenants_router)
 router.include_router(roles_router)
 router.include_router(sso_router)
+router.include_router(saml_router)
 router.include_router(audit_router)
 router.include_router(websocket_router)
 
@@ -94,6 +97,7 @@ __all__ = [
     "leaderboard_router",
     "metrics_router",
     "roles_router",
+    "saml_router",
     "sso_router",
     "suites_router",
     "templates_router",
