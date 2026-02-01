@@ -1,0 +1,114 @@
+# Azure OpenAI Adapter Example Test Suite
+# This demonstrates testing Azure-hosted OpenAI deployments
+
+name: azure-openai-adapter-tests
+description: Example tests for Azure OpenAI adapter
+
+# Agent configuration using Azure OpenAI
+agent:
+  adapter: azure_openai
+  config:
+    # Azure OpenAI resource settings
+    endpoint: "${AZURE_OPENAI_ENDPOINT}"
+    deployment_name: "${AZURE_OPENAI_DEPLOYMENT}"
+    api_version: "2024-02-15-preview"
+
+    # Authentication (choose one method)
+    # Option 1: API Key
+    api_key: "${AZURE_OPENAI_API_KEY}"
+
+    # Option 2: Azure AD (comment out api_key and enable below)
+    # use_azure_ad: true
+    # For service principal auth:
+    # tenant_id: "${AZURE_TENANT_ID}"
+    # client_id: "${AZURE_CLIENT_ID}"
+    # client_secret: "${AZURE_CLIENT_SECRET}"
+
+    # Model parameters
+    temperature: 0.7
+    max_tokens: 2048
+
+    # Timeout settings
+    timeout_seconds: 120
+
+tests:
+  # Basic functionality test
+  - id: basic-completion
+    description: Test basic chat completion
+    task:
+      description: "What is the capital of France?"
+    evaluators:
+      - type: artifact
+        config:
+          expected:
+            - name: output
+      - type: llm_judge
+        config:
+          criteria:
+            - "Response correctly identifies Paris as the capital"
+
+  # Reasoning test
+  - id: reasoning-test
+    description: Test reasoning capabilities
+    task:
+      description: |
+        A farmer has 17 sheep. All but 9 run away.
+        How many sheep does the farmer have left?
+    evaluators:
+      - type: llm_judge
+        config:
+          criteria:
+            - "Response correctly states 9 sheep"
+            - "Response explains the reasoning"
+
+  # Code generation test
+  - id: code-generation
+    description: Test code generation
+    task:
+      description: |
+        Write a Python function called 'fibonacci' that returns the nth Fibonacci number.
+        Include a docstring and handle edge cases for n < 0.
+    evaluators:
+      - type: llm_judge
+        config:
+          criteria:
+            - "Response contains a valid Python function named 'fibonacci'"
+            - "Function includes a docstring"
+            - "Function handles the edge case for negative numbers"
+
+  # Context understanding test
+  - id: context-understanding
+    description: Test context understanding
+    task:
+      description: "Based on the context, what is the main product the company sells?"
+      input_data:
+        context: |
+          TechCorp was founded in 2015 as a cloud computing company.
+          Their flagship product, CloudStream, helps businesses manage
+          their data infrastructure. CloudStream has over 10,000 enterprise
+          customers worldwide.
+    evaluators:
+      - type: llm_judge
+        config:
+          criteria:
+            - "Response identifies CloudStream as the main product"
+            - "Response mentions it's related to cloud/data infrastructure"
+
+  # Long response test
+  - id: long-response
+    description: Test handling of longer responses
+    task:
+      description: |
+        Write a comprehensive guide on best practices for writing clean,
+        maintainable Python code. Include sections on naming conventions,
+        documentation, error handling, and testing.
+    constraints:
+      timeout_seconds: 180
+    evaluators:
+      - type: llm_judge
+        config:
+          criteria:
+            - "Response covers naming conventions"
+            - "Response covers documentation"
+            - "Response covers error handling"
+            - "Response covers testing"

@@ -6,9 +6,188 @@ Complete configuration guide for ATP Platform.
 
 ATP uses YAML files for test suite configuration and supports environment variable substitution for sensitive data. This document provides a comprehensive reference for all configuration options.
 
+## ATP Platform Configuration
+
+ATP supports hierarchical configuration through multiple sources. Configuration is
+loaded with the following priority (highest to lowest):
+
+1. **CLI arguments** - Command-line options override all other settings
+2. **Environment variables** - Variables with `ATP_` prefix
+3. **Configuration file** - `atp.config.yaml` in project directory
+4. **Default values** - Built-in defaults
+
+### Configuration File (`atp.config.yaml`)
+
+Create an `atp.config.yaml` file in your project root:
+
+```yaml
+# ATP Platform Configuration
+# Environment variables can override these values with ATP_ prefix
+# Example: ATP_LOG_LEVEL=DEBUG
+
+# Core settings
+log_level: INFO              # DEBUG, INFO, WARNING, ERROR, CRITICAL
+parallel_workers: 4          # Number of parallel test workers (1-32)
+default_timeout: 300         # Default test timeout in seconds
+
+# LLM settings (API keys should use environment variables)
+# anthropic_api_key: sk-...  # Better: ATP_ANTHROPIC_API_KEY env var
+# openai_api_key: sk-...     # Better: ATP_OPENAI_API_KEY env var
+default_llm_model: claude-sonnet-4-20250514
+
+# Dashboard settings
+dashboard_host: 127.0.0.1    # Dashboard bind address
+dashboard_port: 8080         # Dashboard port
+dashboard_debug: false       # Enable debug mode
+
+# Database settings
+# database_url: postgresql+asyncpg://user:pass@localhost/atp
+
+# Runner settings
+fail_fast: false             # Stop on first test failure
+sandbox_enabled: false       # Enable sandbox isolation
+runs_per_test: 1             # Default runs per test
+```
+
+### Environment Variables
+
+All settings can be overridden via environment variables with the `ATP_` prefix:
+
+| Setting | Environment Variable | Default |
+|---------|---------------------|---------|
+| `log_level` | `ATP_LOG_LEVEL` | `INFO` |
+| `parallel_workers` | `ATP_PARALLEL_WORKERS` | `4` |
+| `default_timeout` | `ATP_DEFAULT_TIMEOUT` | `300` |
+| `anthropic_api_key` | `ATP_ANTHROPIC_API_KEY` | - |
+| `openai_api_key` | `ATP_OPENAI_API_KEY` | - |
+| `default_llm_model` | `ATP_DEFAULT_LLM_MODEL` | `claude-sonnet-4-20250514` |
+| `dashboard_host` | `ATP_DASHBOARD_HOST` | `127.0.0.1` |
+| `dashboard_port` | `ATP_DASHBOARD_PORT` | `8080` |
+| `dashboard_debug` | `ATP_DASHBOARD_DEBUG` | `false` |
+| `database_url` | `ATP_DATABASE_URL` | SQLite default |
+| `fail_fast` | `ATP_FAIL_FAST` | `false` |
+| `sandbox_enabled` | `ATP_SANDBOX_ENABLED` | `false` |
+| `runs_per_test` | `ATP_RUNS_PER_TEST` | `1` |
+
+Nested settings use double underscores (`__`) as delimiter:
+
+```bash
+# Nested dashboard settings
+export ATP_DASHBOARD__HOST=0.0.0.0
+export ATP_DASHBOARD__PORT=9000
+
+# Nested LLM settings
+export ATP_LLM__MAX_RETRIES=5
+export ATP_LLM__REQUEST_TIMEOUT=120
+```
+
+### `.env` File Support
+
+ATP automatically loads environment variables from a `.env` file in your
+project root:
+
+```bash
+# .env file
+ATP_LOG_LEVEL=DEBUG
+ATP_ANTHROPIC_API_KEY=sk-ant-...
+ATP_OPENAI_API_KEY=sk-...
+ATP_DASHBOARD_PORT=9000
+```
+
+### Secret Values
+
+Sensitive values like API keys are automatically masked in logs and error
+messages using Pydantic's `SecretStr`. Never commit API keys to version control.
+
+```yaml
+# BAD - Don't do this
+anthropic_api_key: sk-ant-api-secret-key
+
+# GOOD - Use environment variables
+# Set ATP_ANTHROPIC_API_KEY in your environment or .env file
+```
+
+### JSON Schema for IDE Support
+
+Generate a JSON Schema for IDE autocompletion and validation:
+
+```python
+from atp.core.settings import generate_json_schema
+
+# Generate schema file for IDE support
+generate_json_schema(Path("atp-config-schema.json"))
+```
+
+Then configure your IDE to use the schema for `atp.config.yaml` files.
+
+### Python API
+
+Access settings programmatically:
+
+```python
+from atp.core.settings import get_settings, get_cached_settings
+
+# Get fresh settings (reads config file each time)
+settings = get_settings()
+
+# Get cached singleton instance
+settings = get_cached_settings()
+
+# Access settings
+print(settings.log_level)  # "INFO"
+print(settings.parallel_workers)  # 4
+
+# Access nested settings
+print(settings.dashboard.port)  # 8080
+print(settings.llm.default_model)  # "claude-sonnet-4-20250514"
+
+# Get API keys safely
+api_key = settings.get_llm_api_key("anthropic")
+
+# Override specific settings
+settings = get_settings(log_level="DEBUG", parallel_workers=8)
+
+# Use specific config file
+settings = get_settings(config_file=Path("custom-config.yaml"))
+```
+
+### Settings Reference
+
+#### Core Settings
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `log_level` | `str` | `INFO` | Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL) |
+| `parallel_workers` | `int` | `4` | Number of parallel workers (1-32) |
+| `default_timeout` | `int` | `300` | Default test timeout in seconds (1-3600) |
+| `fail_fast` | `bool` | `false` | Stop suite on first failure |
+| `sandbox_enabled` | `bool` | `false` | Enable sandbox isolation |
+| `runs_per_test` | `int` | `1` | Default runs per test (1-100) |
+
+#### LLM Settings
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `anthropic_api_key` | `SecretStr` | - | Anthropic API key |
+| `openai_api_key` | `SecretStr` | - | OpenAI API key |
+| `default_llm_model` | `str` | `claude-sonnet-4-20250514` | Default model |
+
+#### Dashboard Settings
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `dashboard_host` | `str` | `127.0.0.1` | Server bind address |
+| `dashboard_port` | `int` | `8080` | Server port (1-65535) |
+| `dashboard_debug` | `bool` | `false` | Enable debug mode |
+| `dashboard_secret_key` | `SecretStr` | dev-key | JWT signing key |
+| `database_url` | `str` | - | Database URL |
+
+---
+
 ## Configuration Files
 
-ATP configuration is primarily done through test suite YAML files. Future versions will support additional configuration files.
+ATP configuration includes both platform-wide settings (`atp.config.yaml`)
+and test suite definitions (`test_suite.yaml`).
 
 ### Test Suite Configuration
 

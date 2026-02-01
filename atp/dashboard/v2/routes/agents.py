@@ -2,30 +2,41 @@
 
 This module provides CRUD operations for managing agents
 in the ATP Dashboard.
+
+Permissions:
+    - GET /agents: AGENTS_READ
+    - POST /agents: AGENTS_WRITE
+    - GET /agents/{id}: AGENTS_READ
+    - PATCH /agents/{id}: AGENTS_WRITE
+    - DELETE /agents/{id}: AGENTS_DELETE
 """
 
-from fastapi import APIRouter, HTTPException, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 
 from atp.dashboard.models import Agent
+from atp.dashboard.rbac import Permission, require_permission
 from atp.dashboard.schemas import AgentCreate, AgentResponse, AgentUpdate
 from atp.dashboard.v2.dependencies import (
-    AdminUser,
-    CurrentUser,
     DBSession,
-    RequiredUser,
 )
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
 
 @router.get("", response_model=list[AgentResponse])
-async def list_agents(session: DBSession, user: CurrentUser) -> list[AgentResponse]:
+async def list_agents(
+    session: DBSession,
+    _: Annotated[None, Depends(require_permission(Permission.AGENTS_READ))],
+) -> list[AgentResponse]:
     """List all agents.
+
+    Requires AGENTS_READ permission.
 
     Args:
         session: Database session.
-        user: Current user (optional auth).
 
     Returns:
         List of all agents ordered by name.
@@ -42,16 +53,17 @@ async def list_agents(session: DBSession, user: CurrentUser) -> list[AgentRespon
     status_code=status.HTTP_201_CREATED,
 )
 async def create_agent(
-    session: DBSession, agent_data: AgentCreate, user: RequiredUser
+    session: DBSession,
+    agent_data: AgentCreate,
+    _: Annotated[None, Depends(require_permission(Permission.AGENTS_WRITE))],
 ) -> AgentResponse:
     """Create a new agent.
 
-    Requires authentication.
+    Requires AGENTS_WRITE permission.
 
     Args:
         session: Database session.
         agent_data: Agent creation data.
-        user: Authenticated user.
 
     Returns:
         The created agent.
@@ -81,14 +93,17 @@ async def create_agent(
 
 @router.get("/{agent_id}", response_model=AgentResponse)
 async def get_agent(
-    session: DBSession, agent_id: int, user: CurrentUser
+    session: DBSession,
+    agent_id: int,
+    _: Annotated[None, Depends(require_permission(Permission.AGENTS_READ))],
 ) -> AgentResponse:
     """Get agent by ID.
+
+    Requires AGENTS_READ permission.
 
     Args:
         session: Database session.
         agent_id: Agent ID.
-        user: Current user (optional auth).
 
     Returns:
         The requested agent.
@@ -110,17 +125,16 @@ async def update_agent(
     session: DBSession,
     agent_id: int,
     agent_data: AgentUpdate,
-    user: RequiredUser,
+    _: Annotated[None, Depends(require_permission(Permission.AGENTS_WRITE))],
 ) -> AgentResponse:
     """Update an agent.
 
-    Requires authentication.
+    Requires AGENTS_WRITE permission.
 
     Args:
         session: Database session.
         agent_id: Agent ID.
         agent_data: Agent update data.
-        user: Authenticated user.
 
     Returns:
         The updated agent.
@@ -147,15 +161,18 @@ async def update_agent(
 
 
 @router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_agent(session: DBSession, agent_id: int, user: AdminUser) -> None:
-    """Delete an agent (admin only).
+async def delete_agent(
+    session: DBSession,
+    agent_id: int,
+    _: Annotated[None, Depends(require_permission(Permission.AGENTS_DELETE))],
+) -> None:
+    """Delete an agent.
 
-    Requires admin authentication.
+    Requires AGENTS_DELETE permission.
 
     Args:
         session: Database session.
         agent_id: Agent ID.
-        user: Admin user.
 
     Raises:
         HTTPException: If agent not found.

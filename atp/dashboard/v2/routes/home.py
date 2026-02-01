@@ -2,24 +2,33 @@
 
 This module provides the main dashboard endpoint that returns
 summary statistics for the platform.
+
+Permissions:
+    - GET /dashboard/summary: SUITES_READ (requires ability to view results)
 """
 
-from fastapi import APIRouter
+from typing import Annotated
+
+from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from atp.dashboard.models import Agent, SuiteExecution
+from atp.dashboard.rbac import Permission, require_permission
 from atp.dashboard.schemas import DashboardSummary, SuiteExecutionSummary
-from atp.dashboard.v2.dependencies import CurrentUser, DBSession
+from atp.dashboard.v2.dependencies import DBSession
 
 router = APIRouter(tags=["dashboard"])
 
 
 @router.get("/dashboard/summary", response_model=DashboardSummary)
 async def get_dashboard_summary(
-    session: DBSession, user: CurrentUser
+    session: DBSession,
+    _: Annotated[None, Depends(require_permission(Permission.SUITES_READ))],
 ) -> DashboardSummary:
     """Get dashboard summary statistics.
+
+    Requires SUITES_READ permission.
 
     Returns aggregate statistics for the platform including:
     - Total number of agents
@@ -30,7 +39,6 @@ async def get_dashboard_summary(
 
     Args:
         session: Database session.
-        user: Current user (optional auth).
 
     Returns:
         DashboardSummary with platform statistics.

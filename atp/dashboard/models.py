@@ -22,6 +22,9 @@ from sqlalchemy.orm import (
     relationship,
 )
 
+# Default tenant ID for single-tenant deployments
+DEFAULT_TENANT_ID = "default"
+
 
 class Base(DeclarativeBase):
     """Base class for all ORM models."""
@@ -35,14 +38,24 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
-    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    tenant_id: Mapped[str] = mapped_column(
+        String(100), nullable=False, default=DEFAULT_TENANT_ID, index=True
+    )
+    username: Mapped[str] = mapped_column(String(50), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.now, onupdate=datetime.now
+    )
+
+    # Unique constraint: username unique within tenant
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "username", name="uq_user_tenant_username"),
+        UniqueConstraint("tenant_id", "email", name="uq_user_tenant_email"),
+        Index("idx_user_tenant", "tenant_id"),
     )
 
     def __repr__(self) -> str:
@@ -55,7 +68,10 @@ class Agent(Base):
     __tablename__ = "agents"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    tenant_id: Mapped[str] = mapped_column(
+        String(100), nullable=False, default=DEFAULT_TENANT_ID, index=True
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
     agent_type: Mapped[str] = mapped_column(String(50), nullable=False)
     config: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -69,8 +85,12 @@ class Agent(Base):
         back_populates="agent", cascade="all, delete-orphan"
     )
 
-    # Indexes for common queries
-    __table_args__ = (Index("idx_agent_name", "name"),)
+    # Indexes for common queries - agent name unique within tenant
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "name", name="uq_agent_tenant_name"),
+        Index("idx_agent_name", "name"),
+        Index("idx_agent_tenant", "tenant_id"),
+    )
 
     def __repr__(self) -> str:
         return f"Agent(id={self.id}, name={self.name!r}, type={self.agent_type!r})"
@@ -82,6 +102,9 @@ class SuiteExecution(Base):
     __tablename__ = "suite_executions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(100), nullable=False, default=DEFAULT_TENANT_ID, index=True
+    )
     suite_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     agent_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("agents.id"), nullable=False
@@ -118,6 +141,7 @@ class SuiteExecution(Base):
         Index("idx_suite_agent", "suite_name", "agent_id"),
         Index("idx_suite_started", "suite_name", "started_at"),
         Index("idx_agent_started", "agent_id", "started_at"),
+        Index("idx_suite_tenant", "tenant_id"),
     )
 
     def __repr__(self) -> str:
@@ -369,7 +393,10 @@ class SuiteDefinition(Base):
     __tablename__ = "suite_definitions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    tenant_id: Mapped[str] = mapped_column(
+        String(100), nullable=False, default=DEFAULT_TENANT_ID, index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
     version: Mapped[str] = mapped_column(String(20), default="1.0")
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -390,8 +417,12 @@ class SuiteDefinition(Base):
     # Relationships
     created_by: Mapped["User | None"] = relationship()
 
-    # Indexes
-    __table_args__ = (Index("idx_suite_def_name", "name"),)
+    # Indexes - suite name unique within tenant
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "name", name="uq_suite_def_tenant_name"),
+        Index("idx_suite_def_name", "name"),
+        Index("idx_suite_def_tenant", "tenant_id"),
+    )
 
     def __repr__(self) -> str:
         return f"SuiteDefinition(id={self.id}, name={self.name!r})"

@@ -1,0 +1,644 @@
+{% extends "base.html" %}
+{% from "components/charts.html" import trend_chart, bar_chart, pie_chart, metric_card, chart_scripts %}
+
+{% block title %}ATP Dashboard - Advanced Analytics{% endblock %}
+
+{% block content %}
+<!-- Analytics page content rendered by React -->
+<div id="analytics-root"></div>
+{% endblock %}
+
+{% block scripts %}
+{{ chart_scripts() }}
+<script type="text/babel">
+    // ==================== Trend Analysis Components ====================
+
+    function TrendCard({ trend }) {
+        const getDirectionIcon = (direction) => {
+            switch (direction) {
+                case 'improving': return { icon: '↗️', color: 'text-green-600', bg: 'bg-green-50' };
+                case 'declining': return { icon: '↘️', color: 'text-red-600', bg: 'bg-red-50' };
+                case 'stable': return { icon: '→', color: 'text-blue-600', bg: 'bg-blue-50' };
+                default: return { icon: '?', color: 'text-gray-600', bg: 'bg-gray-50' };
+            }
+        };
+
+        const { icon, color, bg } = getDirectionIcon(trend.direction);
+        const changeSign = trend.change_percent >= 0 ? '+' : '';
+
+        return (
+            <div className={`p-4 rounded-lg ${bg}`}>
+                <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-semibold text-gray-800 capitalize">{trend.metric}</h4>
+                    <span className="text-2xl">{icon}</span>
+                </div>
+                <div className="space-y-1">
+                    <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Change:</span>
+                        <span className={`font-semibold ${color}`}>
+                            {changeSign}{trend.change_percent.toFixed(1)}%
+                        </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Average:</span>
+                        <span className="font-medium">{trend.average_value.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Confidence:</span>
+                        <span className="font-medium">{(trend.confidence * 100).toFixed(0)}%</span>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    function TrendsChart({ trends, metric }) {
+        const chartRef = React.useRef(null);
+        const chartInstance = React.useRef(null);
+
+        React.useEffect(() => {
+            const trend = trends.find(t => t.metric === metric);
+            if (!trend || !trend.data_points || trend.data_points.length === 0) return;
+
+            const ctx = document.getElementById(`trend-chart-${metric}`);
+            if (!ctx) return;
+
+            if (chartInstance.current) {
+                chartInstance.current.destroy();
+            }
+
+            chartInstance.current = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: trend.data_points.map(dp => dp.date),
+                    datasets: [{
+                        label: metric,
+                        data: trend.data_points.map(dp => dp.value),
+                        borderColor: chartColors.primary,
+                        backgroundColor: chartColors.primary + '20',
+                        fill: true,
+                        tension: 0.4,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: { beginAtZero: metric !== 'score' }
+                    }
+                }
+            });
+
+            return () => {
+                if (chartInstance.current) {
+                    chartInstance.current.destroy();
+                }
+            };
+        }, [trends, metric]);
+
+        const trend = trends.find(t => t.metric === metric);
+        if (!trend || !trend.data_points || trend.data_points.length === 0) {
+            return (
+                <div className="bg-white p-4 rounded-lg shadow">
+                    <h3 className="text-lg font-semibold text-gray-800 mb-4 capitalize">{metric} Trend</h3>
+                    <p className="text-gray-500 text-center py-8">No data available</p>
+                </div>
+            );
+        }
+
+        return (
+            <div className="bg-white p-4 rounded-lg shadow">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4 capitalize">{metric} Trend</h3>
+                <div style={{ height: '200px' }}>
+                    <canvas id={`trend-chart-${metric}`}></canvas>
+                </div>
+            </div>
+        );
+    }
+
+    function TrendsSection({ trends, loading }) {
+        if (loading) {
+            return <SkeletonDashboardSummary />;
+        }
+
+        if (!trends || trends.length === 0) {
+            return (
+                <div className="bg-white p-6 rounded-lg shadow text-center text-gray-500">
+                    No trend data available. Run more tests to see trends.
+                </div>
+            );
+        }
+
+        return (
+            <div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    {trends.map(trend => (
+                        <TrendCard key={trend.metric} trend={trend} />
+                    ))}
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    {trends.map(trend => (
+                        <TrendsChart key={`chart-${trend.metric}`} trends={trends} metric={trend.metric} />
+                    ))}
+                </div>
+            </div>
+        );
+    }
+
+    // ==================== Anomaly Detection Components ====================
+
+    function AnomalySeverityBadge({ severity }) {
+        const colors = {
+            high: 'bg-red-100 text-red-800',
+            medium: 'bg-yellow-100 text-yellow-800',
+            low: 'bg-blue-100 text-blue-800'
+        };
+
+        return (
+            <span className={`px-2 py-1 text-xs rounded ${colors[severity] || colors.medium}`}>
+                {severity}
+            </span>
+        );
+    }
+
+    function AnomalyCard({ anomaly }) {
+        const typeIcons = {
+            score_spike: '📈',
+            score_drop: '📉',
+            duration_spike: '⏱️',
+            error_rate_spike: '⚠️',
+            cost_spike: '💰'
+        };
+
+        return (
+            <div className="bg-white p-4 rounded-lg shadow border-l-4 border-red-400">
+                <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                        <span className="text-xl">{typeIcons[anomaly.anomaly_type] || '❓'}</span>
+                        <span className="font-semibold text-gray-800 capitalize">
+                            {anomaly.anomaly_type.replace(/_/g, ' ')}
+                        </span>
+                    </div>
+                    <AnomalySeverityBadge severity={anomaly.severity} />
+                </div>
+                <div className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                        <span className="text-gray-600">Metric:</span>
+                        <span className="font-medium">{anomaly.metric_name}</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span className="text-gray-600">Expected:</span>
+                        <span className="font-medium">{anomaly.expected_value.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span className="text-gray-600">Actual:</span>
+                        <span className="font-medium text-red-600">{anomaly.actual_value.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span className="text-gray-600">Deviation:</span>
+                        <span className="font-medium">{anomaly.deviation_sigma.toFixed(1)}σ</span>
+                    </div>
+                    {anomaly.test_id && (
+                        <div className="flex justify-between">
+                            <span className="text-gray-600">Test:</span>
+                            <span className="font-mono text-xs">{anomaly.test_id}</span>
+                        </div>
+                    )}
+                </div>
+                <div className="mt-2 text-xs text-gray-500">
+                    {new Date(anomaly.timestamp).toLocaleString()}
+                </div>
+            </div>
+        );
+    }
+
+    function AnomaliesSection({ anomalies, stats, loading }) {
+        if (loading) {
+            return <SkeletonDashboardSummary />;
+        }
+
+        return (
+            <div>
+                {/* Stats Row */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div className="bg-white p-4 rounded-lg shadow">
+                        <h4 className="text-gray-500 text-sm">Records Analyzed</h4>
+                        <p className="text-2xl font-bold">{stats?.total_records_analyzed || 0}</p>
+                    </div>
+                    <div className="bg-white p-4 rounded-lg shadow">
+                        <h4 className="text-gray-500 text-sm">Anomalies Detected</h4>
+                        <p className="text-2xl font-bold text-red-600">{anomalies?.length || 0}</p>
+                    </div>
+                    <div className="bg-white p-4 rounded-lg shadow">
+                        <h4 className="text-gray-500 text-sm">Anomaly Rate</h4>
+                        <p className="text-2xl font-bold">{((stats?.anomaly_rate || 0) * 100).toFixed(1)}%</p>
+                    </div>
+                </div>
+
+                {/* Anomalies List */}
+                {(!anomalies || anomalies.length === 0) ? (
+                    <div className="bg-green-50 p-6 rounded-lg text-center text-green-700">
+                        <span className="text-3xl mb-2">✅</span>
+                        <p className="font-semibold">No anomalies detected</p>
+                        <p className="text-sm">All test results are within normal ranges.</p>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {anomalies.map((anomaly, idx) => (
+                            <AnomalyCard key={idx} anomaly={anomaly} />
+                        ))}
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    // ==================== Correlation Analysis Components ====================
+
+    function CorrelationStrengthBadge({ strength }) {
+        const colors = {
+            strong_positive: 'bg-green-100 text-green-800',
+            moderate_positive: 'bg-green-50 text-green-700',
+            weak_positive: 'bg-gray-100 text-gray-700',
+            no_correlation: 'bg-gray-50 text-gray-500',
+            weak_negative: 'bg-gray-100 text-gray-700',
+            moderate_negative: 'bg-red-50 text-red-700',
+            strong_negative: 'bg-red-100 text-red-800'
+        };
+
+        return (
+            <span className={`px-2 py-1 text-xs rounded ${colors[strength] || colors.no_correlation}`}>
+                {strength.replace(/_/g, ' ')}
+            </span>
+        );
+    }
+
+    function CorrelationBar({ coefficient }) {
+        const width = Math.abs(coefficient) * 100;
+        const isPositive = coefficient >= 0;
+        const bgColor = isPositive ? 'bg-green-500' : 'bg-red-500';
+
+        return (
+            <div className="flex items-center gap-2">
+                <div className="w-24 bg-gray-200 rounded-full h-2 relative">
+                    <div
+                        className={`absolute h-2 rounded-full ${bgColor}`}
+                        style={{
+                            width: `${width}%`,
+                            left: isPositive ? '50%' : `${50 - width}%`
+                        }}
+                    ></div>
+                    <div className="absolute left-1/2 top-0 w-0.5 h-2 bg-gray-400"></div>
+                </div>
+                <span className="text-sm font-mono w-16 text-right">
+                    {coefficient >= 0 ? '+' : ''}{coefficient.toFixed(3)}
+                </span>
+            </div>
+        );
+    }
+
+    function CorrelationsSection({ correlations, loading }) {
+        if (loading) {
+            return <SkeletonDashboardSummary />;
+        }
+
+        if (!correlations || correlations.length === 0) {
+            return (
+                <div className="bg-white p-6 rounded-lg shadow text-center text-gray-500">
+                    No correlation data available. Run more tests to analyze correlations.
+                </div>
+            );
+        }
+
+        return (
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+                <table className="min-w-full">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Factor</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">vs Score</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Strength</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Coefficient</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sample Size</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                        {correlations.map((corr, idx) => (
+                            <tr key={idx} className="hover:bg-gray-50">
+                                <td className="px-4 py-3 font-medium capitalize">
+                                    {corr.factor_x.replace(/_/g, ' ')}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-600">
+                                    {corr.factor_y}
+                                </td>
+                                <td className="px-4 py-3">
+                                    <CorrelationStrengthBadge strength={corr.strength} />
+                                </td>
+                                <td className="px-4 py-3">
+                                    <CorrelationBar coefficient={corr.correlation_coefficient} />
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-600">
+                                    {corr.sample_size}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        );
+    }
+
+    // ==================== Export Section ====================
+
+    function ExportSection() {
+        const [exporting, setExporting] = React.useState(null);
+
+        const handleExport = async (format) => {
+            setExporting(format);
+            try {
+                const endpoint = format === 'csv' ? '/analytics/export/csv' : '/analytics/export/excel';
+                const response = await fetch(`/api${endpoint}`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': format === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Export failed');
+                }
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = format === 'csv' ? 'test_results.csv' : 'analytics_report.xlsx';
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            } catch (err) {
+                console.error('Export error:', err);
+                alert('Export failed: ' + err.message);
+            } finally {
+                setExporting(null);
+            }
+        };
+
+        return (
+            <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">Export Data</h3>
+                <p className="text-gray-600 mb-4">
+                    Download test results and analytics data for external analysis.
+                </p>
+                <div className="flex gap-4">
+                    <button
+                        onClick={() => handleExport('csv')}
+                        disabled={exporting !== null}
+                        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                    >
+                        {exporting === 'csv' ? (
+                            <span className="animate-spin">⏳</span>
+                        ) : (
+                            <span>📄</span>
+                        )}
+                        Export CSV
+                    </button>
+                    <button
+                        onClick={() => handleExport('excel')}
+                        disabled={exporting !== null}
+                        className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+                    >
+                        {exporting === 'excel' ? (
+                            <span className="animate-spin">⏳</span>
+                        ) : (
+                            <span>📊</span>
+                        )}
+                        Export Excel
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    // ==================== Scheduled Reports Section ====================
+
+    function ScheduledReportsSection({ reports, loading, onRefresh }) {
+        if (loading) {
+            return <SkeletonSuiteList rows={3} />;
+        }
+
+        if (!reports || reports.length === 0) {
+            return (
+                <div className="bg-white p-6 rounded-lg shadow text-center text-gray-500">
+                    <p>No scheduled reports configured.</p>
+                    <p className="text-sm mt-2">Create a report to receive automated analytics via email.</p>
+                </div>
+            );
+        }
+
+        return (
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+                <table className="min-w-full">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Frequency</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Content</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Next Run</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                        {reports.map(report => (
+                            <tr key={report.id} className="hover:bg-gray-50">
+                                <td className="px-4 py-3 font-medium">{report.name}</td>
+                                <td className="px-4 py-3">
+                                    <span className="px-2 py-1 text-xs rounded bg-blue-100 text-blue-800">
+                                        {report.frequency}
+                                    </span>
+                                </td>
+                                <td className="px-4 py-3 text-sm">
+                                    <div className="flex gap-1">
+                                        {report.include_trends && <span className="text-xs bg-gray-100 px-1 rounded">Trends</span>}
+                                        {report.include_anomalies && <span className="text-xs bg-gray-100 px-1 rounded">Anomalies</span>}
+                                        {report.include_correlations && <span className="text-xs bg-gray-100 px-1 rounded">Correlations</span>}
+                                    </div>
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-600">
+                                    {report.next_run ? new Date(report.next_run).toLocaleString() : '-'}
+                                </td>
+                                <td className="px-4 py-3">
+                                    <span className={`px-2 py-1 text-xs rounded ${
+                                        report.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
+                                    }`}>
+                                        {report.is_active ? 'Active' : 'Inactive'}
+                                    </span>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        );
+    }
+
+    // ==================== Main Analytics Dashboard ====================
+
+    function AnalyticsDashboard() {
+        const [activeTab, setActiveTab] = React.useState('trends');
+        const [loading, setLoading] = React.useState(true);
+        const [error, setError] = React.useState(null);
+        const [trends, setTrends] = React.useState(null);
+        const [anomalies, setAnomalies] = React.useState(null);
+        const [anomalyStats, setAnomalyStats] = React.useState(null);
+        const [correlations, setCorrelations] = React.useState(null);
+        const [reports, setReports] = React.useState(null);
+
+        const loadData = React.useCallback(async () => {
+            setLoading(true);
+            setError(null);
+            try {
+                const [trendsData, anomaliesData, correlationsData, reportsData] = await Promise.all([
+                    api.get('/analytics/trends'),
+                    api.get('/analytics/anomalies'),
+                    api.get('/analytics/correlations'),
+                    api.get('/analytics/reports')
+                ]);
+
+                setTrends(trendsData.trends);
+                setAnomalies(anomaliesData.anomalies);
+                setAnomalyStats({
+                    total_records_analyzed: anomaliesData.total_records_analyzed,
+                    anomaly_rate: anomaliesData.anomaly_rate
+                });
+                setCorrelations(correlationsData.correlations);
+                setReports(reportsData.items);
+            } catch (err) {
+                setError(err.message);
+            } finally {
+                setLoading(false);
+            }
+        }, []);
+
+        React.useEffect(() => {
+            loadData();
+        }, [loadData]);
+
+        if (error) {
+            return (
+                <div className="container mx-auto px-4 py-6">
+                    <ErrorDisplay
+                        error={{ message: error }}
+                        onRetry={loadData}
+                        title="Failed to load analytics data"
+                    />
+                </div>
+            );
+        }
+
+        const tabs = [
+            { id: 'trends', label: 'Trends', icon: '📈' },
+            { id: 'anomalies', label: 'Anomalies', icon: '⚠️' },
+            { id: 'correlations', label: 'Correlations', icon: '🔗' },
+            { id: 'export', label: 'Export', icon: '📥' },
+            { id: 'reports', label: 'Scheduled Reports', icon: '📧' }
+        ];
+
+        return (
+            <ErrorBoundary title="Analytics Dashboard Error" message="Unable to display analytics.">
+                <div className="container mx-auto px-4 py-6">
+                    {/* Header */}
+                    <div className="mb-6">
+                        <h1 className="text-2xl font-bold text-gray-800">Advanced Analytics</h1>
+                        <p className="text-gray-600">Analyze trends, detect anomalies, and discover correlations in your test results</p>
+                    </div>
+
+                    {/* Navigation Tabs */}
+                    <div className="mb-6">
+                        <div className="border-b border-gray-200">
+                            <nav className="-mb-px flex gap-4 overflow-x-auto">
+                                {tabs.map(tab => (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => setActiveTab(tab.id)}
+                                        className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap flex items-center gap-1 ${
+                                            activeTab === tab.id
+                                                ? 'border-blue-500 text-blue-600'
+                                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                        }`}
+                                    >
+                                        <span>{tab.icon}</span>
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </nav>
+                        </div>
+                    </div>
+
+                    {/* Tab Content */}
+                    {activeTab === 'trends' && (
+                        <div>
+                            <div className="mb-4">
+                                <h2 className="text-lg font-semibold text-gray-800">Score Trends Over Time</h2>
+                                <p className="text-sm text-gray-600">Track how key metrics are changing over your test history</p>
+                            </div>
+                            <TrendsSection trends={trends} loading={loading} />
+                        </div>
+                    )}
+
+                    {activeTab === 'anomalies' && (
+                        <div>
+                            <div className="mb-4">
+                                <h2 className="text-lg font-semibold text-gray-800">Anomaly Detection</h2>
+                                <p className="text-sm text-gray-600">Identify unusual test results that deviate from normal patterns</p>
+                            </div>
+                            <AnomaliesSection anomalies={anomalies} stats={anomalyStats} loading={loading} />
+                        </div>
+                    )}
+
+                    {activeTab === 'correlations' && (
+                        <div>
+                            <div className="mb-4">
+                                <h2 className="text-lg font-semibold text-gray-800">Correlation Analysis</h2>
+                                <p className="text-sm text-gray-600">Discover which factors affect test scores</p>
+                            </div>
+                            <CorrelationsSection correlations={correlations} loading={loading} />
+                        </div>
+                    )}
+
+                    {activeTab === 'export' && (
+                        <div>
+                            <div className="mb-4">
+                                <h2 className="text-lg font-semibold text-gray-800">Data Export</h2>
+                                <p className="text-sm text-gray-600">Download your analytics data for external analysis</p>
+                            </div>
+                            <ExportSection />
+                        </div>
+                    )}
+
+                    {activeTab === 'reports' && (
+                        <div>
+                            <div className="mb-4">
+                                <h2 className="text-lg font-semibold text-gray-800">Scheduled Reports</h2>
+                                <p className="text-sm text-gray-600">Configure automated analytics reports</p>
+                            </div>
+                            <ScheduledReportsSection reports={reports} loading={loading} onRefresh={loadData} />
+                        </div>
+                    )}
+                </div>
+            </ErrorBoundary>
+        );
+    }
+
+    // Render the analytics dashboard
+    const analyticsRoot = document.getElementById('analytics-root');
+    if (analyticsRoot) {
+        const root = ReactDOM.createRoot(analyticsRoot);
+        root.render(<AnalyticsDashboard />);
+    }
+</script>
+{% endblock %}

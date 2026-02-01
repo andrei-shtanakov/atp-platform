@@ -2,20 +2,27 @@
 
 This module provides endpoints for analyzing historical trends
 in test and suite performance over time.
+
+Permissions:
+    - GET /trends/suite: RESULTS_READ
+    - GET /trends/test: RESULTS_READ
 """
 
-from fastapi import APIRouter, Query
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from atp.dashboard.models import Agent, SuiteExecution, TestExecution
+from atp.dashboard.rbac import Permission, require_permission
 from atp.dashboard.schemas import (
     SuiteTrend,
     TestTrend,
     TrendDataPoint,
     TrendResponse,
 )
-from atp.dashboard.v2.dependencies import CurrentUser, DBSession
+from atp.dashboard.v2.dependencies import DBSession
 
 router = APIRouter(prefix="/trends", tags=["trends"])
 
@@ -23,7 +30,7 @@ router = APIRouter(prefix="/trends", tags=["trends"])
 @router.get("/suite", response_model=TrendResponse)
 async def get_suite_trends(
     session: DBSession,
-    user: CurrentUser,
+    _: Annotated[None, Depends(require_permission(Permission.RESULTS_READ))],
     suite_name: str,
     agent_name: str | None = None,
     metric: str = Query(
@@ -33,9 +40,10 @@ async def get_suite_trends(
 ) -> TrendResponse:
     """Get historical trends for a suite.
 
+    Requires RESULTS_READ permission.
+
     Args:
         session: Database session.
-        user: Current user (optional auth).
         suite_name: Name of the suite to analyze.
         agent_name: Optional agent name to filter by.
         metric: Metric to track (success_rate, score, or duration).
@@ -97,7 +105,7 @@ async def get_suite_trends(
 @router.get("/test", response_model=TrendResponse)
 async def get_test_trends(
     session: DBSession,
-    user: CurrentUser,
+    _: Annotated[None, Depends(require_permission(Permission.RESULTS_READ))],
     suite_name: str,
     test_id: str,
     agent_name: str | None = None,
@@ -106,9 +114,10 @@ async def get_test_trends(
 ) -> TrendResponse:
     """Get historical trends for a specific test.
 
+    Requires RESULTS_READ permission.
+
     Args:
         session: Database session.
-        user: Current user (optional auth).
         suite_name: Name of the suite containing the test.
         test_id: ID of the test to analyze.
         agent_name: Optional agent name to filter by.

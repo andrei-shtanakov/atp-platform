@@ -64,7 +64,9 @@ class ExecutorConfig:
     # Test command (using uv)
     test_command: str = "uv run pytest tests/ -v -m 'not slow'"
     lint_command: str = "uv run ruff check ."
+    lint_fix_command: str = "uv run ruff check . --fix"  # Lint auto-fix command
     run_lint_on_done: bool = True  # Run lint on completion
+    lint_blocking: bool = True  # Lint errors block task completion
 
 
 def load_config_from_yaml(config_path: Path = CONFIG_FILE) -> dict:
@@ -101,9 +103,11 @@ def load_config_from_yaml(config_path: Path = CONFIG_FILE) -> dict:
             "create_git_branch": pre_start.get("create_git_branch"),
             "run_tests_on_done": post_done.get("run_tests"),
             "run_lint_on_done": post_done.get("run_lint"),
+            "lint_blocking": post_done.get("lint_blocking"),
             "auto_commit": post_done.get("auto_commit"),
             "test_command": commands.get("test"),
             "lint_command": commands.get("lint"),
+            "lint_fix_command": commands.get("lint_fix"),
             "logs_dir": Path(paths["logs"]) if paths.get("logs") else None,
             "state_file": Path(paths["state"]) if paths.get("state") else None,
         }
@@ -290,8 +294,40 @@ class ExecutorState:
 # === Prompt Builder ===
 
 
-def build_task_prompt(task: Task, config: ExecutorConfig) -> str:
-    """Build prompt for Claude with task context"""
+def extract_test_failures(output: str) -> str:
+    """Extract relevant test failure info from pytest output."""
+    lines = output.split("\n")
+    result_lines = []
+    in_failure = False
+    failure_count = 0
+    max_failures = 5  # Limit to avoid huge prompts
+
+    for line in lines:
+        # Capture FAILED lines
+        if "FAILED" in line or "ERROR" in line:
+            result_lines.append(line)
+            failure_count += 1
+            if failure_count >= max_failures:
+                result_lines.append(f"... and more (showing first {max_failures})")
+                break
+        # Capture assertion errors
+        elif "AssertionError" in line or "assert" in line.lower():
+            result_lines.append(line)
+        # Capture short summary
+        elif "short test summary" in line.lower():
+            in_failure = True
+        elif in_failure and line.strip():
+            result_lines.append(line)
+
+    return "\n".join(result_lines[-50:]) if result_lines else output[-1500:]
+
+
+def build_task_prompt(
+    task: Task,
+    config: ExecutorConfig,
+    previous_attempts: list[TaskAttempt] | None = None,
+) -> str:
+    """Build prompt for Claude with task context and previous attempt info."""
 
     # Read specifications
     spec_dir = config.project_root / "spec"
@@ -380,6 +416,33 @@ When complete, respond with:
 
 Begin implementation:
 """
+
+    # Add previous attempts context if any failed
+    if previous_attempts:
+        failed_attempts = [a for a in previous_attempts if not a.success]
+        if failed_attempts:
+            attempts_section = "\n## ⚠️ PREVIOUS ATTEMPTS FAILED - FIX THESE ISSUES:\n\n"
+            for i, attempt in enumerate(failed_attempts, 1):
+                attempts_section += f"### Attempt {i} (failed):\n"
+                if attempt.error:
+                    attempts_section += f"**Error:** {attempt.error}\n\n"
+                if attempt.claude_output:
+                    # Extract test failures for clarity
+                    failures = extract_test_failures(attempt.claude_output)
+                    if failures:
+                        attempts_section += (
+                            f"**Test failures:**\n```\n{failures}\n```\n\n"
+                        )
+
+            attempts_section += (
+                "**IMPORTANT:** Review the errors above and fix the issues. "
+                "Do not repeat the same mistakes.\n\n"
+            )
+
+            # Insert before "Begin implementation:"
+            prompt = prompt.replace(
+                "Begin implementation:", attempts_section + "Begin implementation:"
+            )
 
     return prompt
 
@@ -486,12 +549,19 @@ def pre_start_hook(task: Task, config: ExecutorConfig) -> bool:
     return True
 
 
-def post_done_hook(task: Task, config: ExecutorConfig, success: bool) -> bool:
-    """Hook after task completion"""
+def post_done_hook(
+    task: Task, config: ExecutorConfig, success: bool
+) -> tuple[bool, str | None]:
+    """Hook after task completion.
+
+    Returns:
+        Tuple of (success, error_details).
+        error_details contains test/lint output on failure.
+    """
     print(f"🔧 Post-done hook for {task.id} (success={success})")
 
     if not success:
-        return False
+        return False, None
 
     # Run tests
     if config.run_tests_on_done:
@@ -504,8 +574,10 @@ def post_done_hook(task: Task, config: ExecutorConfig, success: bool) -> bool:
         )
         if result.returncode != 0:
             print("   ❌ Tests failed!")
+            # Combine stdout and stderr for full picture
+            test_output = result.stdout.decode() + "\n" + result.stderr.decode()
             print(result.stderr.decode()[:500])
-            return False
+            return False, f"Tests failed:\n{test_output}"
         print("   ✅ Tests passed")
 
     # Run lint
@@ -517,8 +589,39 @@ def post_done_hook(task: Task, config: ExecutorConfig, success: bool) -> bool:
             capture_output=True,
             cwd=config.project_root,
         )
+
         if result.returncode != 0:
-            print("   ⚠️  Lint warnings (non-blocking)")
+            # Step 1: Attempt auto-fix
+            print("   🔧 Attempting auto-fix...")
+            subprocess.run(
+                config.lint_fix_command,
+                shell=True,
+                capture_output=True,
+                cwd=config.project_root,
+            )
+
+            # Step 2: Re-check lint
+            recheck = subprocess.run(
+                config.lint_command,
+                shell=True,
+                capture_output=True,
+                cwd=config.project_root,
+            )
+
+            if recheck.returncode != 0:
+                # Step 3: Still failing — block or warn
+                if config.lint_blocking:
+                    lint_output = (
+                        recheck.stdout.decode() + "\n" + recheck.stderr.decode()
+                    )
+                    print("   ❌ Lint errors remain after auto-fix!")
+                    return False, f"Lint errors (not auto-fixable):\n{lint_output}"
+                else:
+                    print("   ⚠️  Lint warnings (non-blocking)")
+            else:
+                print("   ✅ Lint auto-fixed")
+        else:
+            print("   ✅ Lint passed")
 
     # Auto-commit
     if config.auto_commit:
@@ -571,7 +674,7 @@ def post_done_hook(task: Task, config: ExecutorConfig, success: bool) -> bool:
             )
             if result.returncode != 0:
                 print(f"   ⚠️  Failed to switch to {main_branch}")
-                return True
+                return True, None
 
             # Merge task branch
             result = subprocess.run(
@@ -601,7 +704,7 @@ def post_done_hook(task: Task, config: ExecutorConfig, success: bool) -> bool:
         except Exception as e:
             print(f"   Merge failed: {e}")
 
-    return True
+    return True, None
 
 
 # === Task Executor ===
@@ -624,8 +727,12 @@ def execute_task(task: Task, config: ExecutorConfig, state: ExecutorState) -> bo
     state.mark_running(task_id)
     update_task_status(TASKS_FILE, task_id, "in_progress")
 
-    # Build prompt
-    prompt = build_task_prompt(task, config)
+    # Get previous attempts for context (to inform Claude about past failures)
+    task_state = state.get_task_state(task_id)
+    previous_attempts = task_state.attempts if task_state.attempts else None
+
+    # Build prompt with previous attempt context
+    prompt = build_task_prompt(task, config, previous_attempts)
 
     # Save prompt to log
     config.logs_dir.mkdir(parents=True, exist_ok=True)
@@ -683,7 +790,7 @@ def execute_task(task: Task, config: ExecutorConfig, state: ExecutorState) -> bo
                 print("✅ Implicit success (return code 0, no TASK_FAILED)")
 
             # Post-done hook (tests, lint)
-            hook_success = post_done_hook(task, config, True)
+            hook_success, hook_error = post_done_hook(task, config, True)
 
             if hook_success:
                 state.record_attempt(task_id, True, duration, output=output)
@@ -693,11 +800,16 @@ def execute_task(task: Task, config: ExecutorConfig, state: ExecutorState) -> bo
                 return True
             else:
                 # Hook failed (tests didn't pass)
-                error = "Post-done hook failed (tests/lint)"
+                # Include detailed error info for next attempt
+                error = hook_error or "Post-done hook failed (tests/lint)"
+                # Combine Claude output with test failures for context
+                full_output = output
+                if hook_error:
+                    full_output = f"{output}\n\n=== TEST FAILURES ===\n{hook_error}"
                 state.record_attempt(
-                    task_id, False, duration, error=error, output=output
+                    task_id, False, duration, error=error, output=full_output
                 )
-                print(f"❌ {task_id} failed: {error}")
+                print(f"❌ {task_id} failed: tests/lint check")
                 return False
         else:
             # Claude reported failure
@@ -918,7 +1030,7 @@ def cmd_status(args, config: ExecutorConfig):
 
 
 def cmd_retry(args, config: ExecutorConfig):
-    """Retry failed task"""
+    """Retry failed task, preserving error context from previous attempts."""
 
     tasks = parse_tasks(TASKS_FILE)
     state = ExecutorState(config)
@@ -928,15 +1040,37 @@ def cmd_retry(args, config: ExecutorConfig):
         print(f"❌ Task {args.task_id} not found")
         return
 
-    # Reset state
     task_state = state.get_task_state(task.id)
-    task_state.attempts = []
+
+    # Handle --fresh flag
+    if hasattr(args, "fresh") and args.fresh:
+        print("🧹 Fresh start: clearing previous attempts")
+        task_state.attempts = []
+    else:
+        # Keep previous attempts for context (Claude will see past errors)
+        previous_attempts = len(task_state.attempts)
+        if previous_attempts > 0:
+            print(f"📋 Preserving {previous_attempts} previous attempt(s) for context")
+            # Show last error for reference
+            if task_state.last_error:
+                error_preview = task_state.last_error[:100]
+                print(f"   Last error: {error_preview}...")
+
+    # Only reset status and failure counter
     task_state.status = "pending"
     state.consecutive_failures = 0
     state._save()
 
     print(f"🔄 Retrying {task.id}...")
-    run_with_retries(task, config, state)
+
+    # Execute single attempt (not run_with_retries which has max_retries limit)
+    success = execute_task(task, config, state)
+
+    if success:
+        update_task_status(TASKS_FILE, task.id, "done")
+        mark_all_checklist_done(TASKS_FILE, task.id)
+    else:
+        update_task_status(TASKS_FILE, task.id, "blocked")
 
 
 def cmd_logs(args, config: ExecutorConfig):
@@ -1009,6 +1143,11 @@ def main():
     # retry
     retry_parser = subparsers.add_parser("retry", help="Retry failed task")
     retry_parser.add_argument("task_id", help="Task ID to retry")
+    retry_parser.add_argument(
+        "--fresh",
+        action="store_true",
+        help="Clear previous attempts (start fresh, no error context)",
+    )
 
     # logs
     logs_parser = subparsers.add_parser("logs", help="Show task logs")

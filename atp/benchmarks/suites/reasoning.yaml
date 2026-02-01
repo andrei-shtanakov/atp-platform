@@ -1,0 +1,730 @@
+# Reasoning Benchmark Suite
+# Tests agent capabilities in logical reasoning, problem solving, and mathematics
+name: reasoning
+category: reasoning
+version: "1.0.0"
+description: |
+  Benchmark suite for evaluating agent reasoning and problem-solving capabilities.
+  Includes logical puzzles, mathematical problems, and analytical challenges.
+default_timeout_seconds: 300
+default_max_steps: 30
+
+tests:
+  # Logical Reasoning Tests (8 tests)
+  - id: reasoning-logic-001
+    name: "Classic Logic Puzzle"
+    description: "Solve a constraint satisfaction problem"
+    task_description: |
+      Solve this logic puzzle:
+
+      Three friends - Alice, Bob, and Carol - each have a different pet
+      (dog, cat, fish) and a different favorite color (red, blue, green).
+
+      Clues:
+      1. Alice doesn't have a dog
+      2. The person with the cat likes blue
+      3. Bob doesn't like red
+      4. Carol has a fish
+      5. Alice likes green
+
+      Determine who has which pet and which color they like.
+      Show your reasoning step by step.
+    expected_artifacts:
+      - "*.md"
+      - "*.txt"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.md"
+      - type: contains
+        config:
+          pattern: "Alice"
+      - type: contains
+        config:
+          pattern: "Bob"
+      - type: contains
+        config:
+          pattern: "Carol"
+    metadata:
+      category: reasoning
+      difficulty: easy
+      estimated_time_seconds: 120
+      skills_tested:
+        - logical_deduction
+        - constraint_satisfaction
+        - systematic_reasoning
+      baseline_scores:
+        - model_name: gpt-4
+          score: 92.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 95.0
+          date: "2024-01-15"
+    tags:
+      - logic
+      - puzzle
+
+  - id: reasoning-logic-002
+    name: "Knights and Knaves"
+    description: "Solve a truth-teller puzzle"
+    task_description: |
+      On an island, people are either Knights (always tell truth) or
+      Knaves (always lie).
+
+      You meet three people: A, B, and C.
+
+      A says: "All of us are knaves."
+      B says: "Exactly one of us is a knight."
+      C says nothing.
+
+      Determine who is a knight and who is a knave.
+      Explain your reasoning clearly.
+    expected_artifacts:
+      - "*.md"
+      - "*.txt"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.md"
+      - type: contains
+        config:
+          pattern: "knight"
+    metadata:
+      category: reasoning
+      difficulty: medium
+      estimated_time_seconds: 150
+      skills_tested:
+        - propositional_logic
+        - proof_by_contradiction
+        - systematic_analysis
+      baseline_scores:
+        - model_name: gpt-4
+          score: 88.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 92.0
+          date: "2024-01-15"
+    tags:
+      - logic
+      - puzzle
+
+  - id: reasoning-logic-003
+    name: "Sequence Pattern Recognition"
+    description: "Find the pattern and next element"
+    task_description: |
+      Analyze each sequence, identify the pattern, and provide the next
+      three elements:
+
+      1. 2, 6, 12, 20, 30, ??, ??, ??
+      2. 1, 1, 2, 3, 5, 8, 13, ??, ??, ??
+      3. 3, 6, 11, 18, 27, ??, ??, ??
+      4. 1, 4, 9, 16, 25, 36, ??, ??, ??
+      5. 2, 3, 5, 7, 11, 13, ??, ??, ??
+
+      For each sequence, explain the pattern you identified.
+    expected_artifacts:
+      - "*.md"
+      - "*.txt"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.md"
+    metadata:
+      category: reasoning
+      difficulty: medium
+      estimated_time_seconds: 180
+      skills_tested:
+        - pattern_recognition
+        - mathematical_reasoning
+        - sequence_analysis
+      baseline_scores:
+        - model_name: gpt-4
+          score: 85.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 88.0
+          date: "2024-01-15"
+    tags:
+      - logic
+      - patterns
+
+  - id: reasoning-logic-004
+    name: "Syllogism Evaluation"
+    description: "Evaluate logical syllogisms"
+    task_description: |
+      For each syllogism, determine if the conclusion is valid, invalid, or
+      indeterminate. Explain why.
+
+      1. All mammals are warm-blooded.
+         All dogs are mammals.
+         Therefore: All dogs are warm-blooded.
+
+      2. Some programmers are introverts.
+         All introverts are thoughtful.
+         Therefore: All programmers are thoughtful.
+
+      3. No reptiles are mammals.
+         Some pets are reptiles.
+         Therefore: Some pets are not mammals.
+
+      4. All A are B.
+         All B are C.
+         Some C are D.
+         Therefore: Some A are D.
+
+      5. If it rains, the ground is wet.
+         The ground is wet.
+         Therefore: It rained.
+    expected_artifacts:
+      - "*.md"
+      - "*.txt"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.md"
+      - type: contains
+        config:
+          pattern: "valid"
+    metadata:
+      category: reasoning
+      difficulty: medium
+      estimated_time_seconds: 180
+      skills_tested:
+        - formal_logic
+        - syllogistic_reasoning
+        - fallacy_detection
+      baseline_scores:
+        - model_name: gpt-4
+          score: 82.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 86.0
+          date: "2024-01-15"
+    tags:
+      - logic
+      - syllogism
+
+  - id: reasoning-logic-005
+    name: "Scheduling Problem"
+    description: "Solve a scheduling constraint problem"
+    task_description: |
+      Schedule 5 meetings (A, B, C, D, E) in 5 time slots (9am, 10am, 11am, 1pm, 2pm).
+
+      Constraints:
+      1. Meeting A must be before meeting B
+      2. Meeting C must be at 11am or later
+      3. Meeting D cannot be adjacent to meeting E
+      4. Meeting B must be either at 10am or 2pm
+      5. Meeting E must be before meeting C
+      6. Meeting A cannot be at 9am
+
+      Find a valid schedule that satisfies all constraints.
+      Show your reasoning process.
+    expected_artifacts:
+      - "*.md"
+      - "*.txt"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.md"
+    metadata:
+      category: reasoning
+      difficulty: hard
+      estimated_time_seconds: 240
+      skills_tested:
+        - constraint_satisfaction
+        - scheduling
+        - systematic_search
+      baseline_scores:
+        - model_name: gpt-4
+          score: 75.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 80.0
+          date: "2024-01-15"
+    tags:
+      - logic
+      - scheduling
+
+  - id: reasoning-logic-006
+    name: "River Crossing Puzzle"
+    description: "Solve a classic river crossing problem"
+    task_description: |
+      A farmer needs to cross a river with a wolf, a goat, and a cabbage.
+      The boat can only carry the farmer and one item at a time.
+
+      Rules:
+      - The wolf will eat the goat if left alone together
+      - The goat will eat the cabbage if left alone together
+      - Items are safe when the farmer is present
+
+      Find the minimum number of crossings needed and describe each step.
+      Prove that your solution is optimal.
+    expected_artifacts:
+      - "*.md"
+      - "*.txt"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.md"
+      - type: contains
+        config:
+          pattern: "goat"
+    metadata:
+      category: reasoning
+      difficulty: medium
+      estimated_time_seconds: 150
+      skills_tested:
+        - state_space_search
+        - constraint_reasoning
+        - optimization
+      baseline_scores:
+        - model_name: gpt-4
+          score: 90.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 93.0
+          date: "2024-01-15"
+    tags:
+      - logic
+      - classic_puzzle
+
+  - id: reasoning-logic-007
+    name: "Proof Construction"
+    description: "Construct a logical proof"
+    task_description: |
+      Given the following premises, prove the conclusion using formal logic:
+
+      Premises:
+      1. If P then Q
+      2. If Q then R
+      3. If R then S
+      4. P or T
+      5. Not T
+
+      Conclusion: S
+
+      Write out each step of your proof, citing which rule of inference
+      you use at each step (modus ponens, disjunctive syllogism, etc.).
+    expected_artifacts:
+      - "*.md"
+      - "*.txt"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.md"
+      - type: contains
+        config:
+          pattern: "modus ponens"
+    metadata:
+      category: reasoning
+      difficulty: hard
+      estimated_time_seconds: 180
+      skills_tested:
+        - formal_proof
+        - inference_rules
+        - propositional_logic
+      baseline_scores:
+        - model_name: gpt-4
+          score: 80.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 85.0
+          date: "2024-01-15"
+    tags:
+      - logic
+      - proof
+
+  - id: reasoning-logic-008
+    name: "Causal Reasoning"
+    description: "Identify cause and effect relationships"
+    task_description: |
+      Analyze the following scenarios and identify:
+      - Direct causes
+      - Contributing factors
+      - Correlations that are NOT causal
+      - Potential confounding variables
+
+      Scenario 1:
+      A study shows that cities with more ice cream sales have higher
+      crime rates. Does ice cream cause crime?
+
+      Scenario 2:
+      After a company implemented a new training program, employee
+      productivity increased by 15%. However, they also upgraded their
+      computers at the same time. What can we conclude?
+
+      Scenario 3:
+      Countries with more doctors per capita have higher death rates.
+      Should we reduce the number of doctors?
+
+      Explain your reasoning for each scenario.
+    expected_artifacts:
+      - "*.md"
+      - "*.txt"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.md"
+      - type: contains
+        config:
+          pattern: "correlation"
+    metadata:
+      category: reasoning
+      difficulty: medium
+      estimated_time_seconds: 180
+      skills_tested:
+        - causal_reasoning
+        - critical_thinking
+        - statistical_literacy
+      baseline_scores:
+        - model_name: gpt-4
+          score: 85.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 88.0
+          date: "2024-01-15"
+    tags:
+      - logic
+      - causality
+
+  # Mathematical Reasoning Tests (7 tests)
+  - id: reasoning-math-001
+    name: "Word Problem - Algebra"
+    description: "Solve an algebraic word problem"
+    task_description: |
+      Solve the following word problem:
+
+      A train leaves Station A at 9:00 AM traveling at 60 mph toward Station B.
+      Another train leaves Station B at 10:00 AM traveling at 80 mph toward
+      Station A. The stations are 280 miles apart.
+
+      Questions:
+      1. At what time do the trains meet?
+      2. How far from Station A is the meeting point?
+      3. If the first train had left 30 minutes later, when would they meet?
+
+      Show all your work and equations.
+    expected_artifacts:
+      - "*.md"
+      - "*.txt"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.md"
+    metadata:
+      category: reasoning
+      difficulty: medium
+      estimated_time_seconds: 180
+      skills_tested:
+        - algebra
+        - word_problems
+        - equation_solving
+      baseline_scores:
+        - model_name: gpt-4
+          score: 88.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 91.0
+          date: "2024-01-15"
+    tags:
+      - math
+      - algebra
+
+  - id: reasoning-math-002
+    name: "Probability Problem"
+    description: "Calculate probabilities"
+    task_description: |
+      Solve these probability problems:
+
+      1. A bag contains 5 red balls, 3 blue balls, and 2 green balls.
+         If you draw 2 balls without replacement, what is the probability
+         that both balls are the same color?
+
+      2. In a class of 30 students, 18 play soccer, 15 play basketball,
+         and 10 play both. If a student is selected at random, what is
+         the probability they play neither sport?
+
+      3. You flip a fair coin 5 times. What is the probability of getting
+         exactly 3 heads?
+
+      4. Two dice are rolled. What is the probability that the sum is 7
+         given that at least one die shows a 4?
+
+      Show your calculations and explain your reasoning.
+    expected_artifacts:
+      - "*.md"
+      - "*.txt"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.md"
+      - type: contains
+        config:
+          pattern: "probability"
+    metadata:
+      category: reasoning
+      difficulty: medium
+      estimated_time_seconds: 240
+      skills_tested:
+        - probability
+        - combinatorics
+        - conditional_probability
+      baseline_scores:
+        - model_name: gpt-4
+          score: 82.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 86.0
+          date: "2024-01-15"
+    tags:
+      - math
+      - probability
+
+  - id: reasoning-math-003
+    name: "Optimization Problem"
+    description: "Solve an optimization problem"
+    task_description: |
+      A company wants to design a cylindrical container with a volume of
+      1000 cubic centimeters. The material for the top and bottom costs
+      $0.05 per square centimeter, and the material for the side costs
+      $0.03 per square centimeter.
+
+      Find the dimensions (radius and height) that minimize the total cost.
+
+      Provide:
+      1. The mathematical formulation
+      2. The calculus solution (derivatives, critical points)
+      3. The optimal dimensions
+      4. The minimum cost
+      5. Verification that this is indeed a minimum
+    expected_artifacts:
+      - "*.md"
+      - "*.txt"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.md"
+      - type: contains
+        config:
+          pattern: "derivative"
+    metadata:
+      category: reasoning
+      difficulty: hard
+      estimated_time_seconds: 300
+      skills_tested:
+        - calculus
+        - optimization
+        - mathematical_modeling
+      baseline_scores:
+        - model_name: gpt-4
+          score: 78.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 82.0
+          date: "2024-01-15"
+    tags:
+      - math
+      - calculus
+
+  - id: reasoning-math-004
+    name: "Combinatorics Challenge"
+    description: "Solve counting problems"
+    task_description: |
+      Solve these combinatorics problems:
+
+      1. How many ways can you arrange the letters in "MISSISSIPPI"?
+
+      2. How many 5-card hands contain exactly 2 pairs
+         (e.g., 2 kings, 2 queens, and one other card)?
+
+      3. In how many ways can 10 people be divided into 2 groups of 5?
+
+      4. How many paths are there from (0,0) to (5,5) on a grid if you
+         can only move right or up, and you must pass through (2,2)?
+
+      Show your reasoning and formulas used.
+    expected_artifacts:
+      - "*.md"
+      - "*.txt"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.md"
+    metadata:
+      category: reasoning
+      difficulty: hard
+      estimated_time_seconds: 300
+      skills_tested:
+        - combinatorics
+        - counting_principles
+        - factorial_calculations
+      baseline_scores:
+        - model_name: gpt-4
+          score: 75.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 80.0
+          date: "2024-01-15"
+    tags:
+      - math
+      - combinatorics
+
+  - id: reasoning-math-005
+    name: "Number Theory"
+    description: "Solve number theory problems"
+    task_description: |
+      Solve these number theory problems:
+
+      1. Find the GCD (greatest common divisor) of 2024 and 748 using
+         the Euclidean algorithm. Show each step.
+
+      2. Prove that for any integer n, n³ - n is divisible by 6.
+
+      3. Find the last two digits of 7^2024.
+
+      4. How many positive divisors does 2024 have?
+
+      5. Find all positive integers n such that n² + 1 is divisible by n + 1.
+
+      Provide complete solutions with proofs where appropriate.
+    expected_artifacts:
+      - "*.md"
+      - "*.txt"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.md"
+      - type: contains
+        config:
+          pattern: "GCD"
+    metadata:
+      category: reasoning
+      difficulty: hard
+      estimated_time_seconds: 360
+      skills_tested:
+        - number_theory
+        - modular_arithmetic
+        - proof_techniques
+      baseline_scores:
+        - model_name: gpt-4
+          score: 72.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 78.0
+          date: "2024-01-15"
+    tags:
+      - math
+      - number_theory
+
+  - id: reasoning-math-006
+    name: "Geometry Problem"
+    description: "Solve a geometry problem"
+    task_description: |
+      In triangle ABC:
+      - AB = 13
+      - BC = 14
+      - CA = 15
+
+      Find:
+      1. The area of the triangle
+      2. The length of the altitude from A to BC
+      3. The radius of the inscribed circle
+      4. The radius of the circumscribed circle
+      5. The length of the median from A to the midpoint of BC
+
+      Show all formulas used and calculations.
+    expected_artifacts:
+      - "*.md"
+      - "*.txt"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.md"
+      - type: contains
+        config:
+          pattern: "area"
+    metadata:
+      category: reasoning
+      difficulty: medium
+      estimated_time_seconds: 240
+      skills_tested:
+        - geometry
+        - trigonometry
+        - formula_application
+      baseline_scores:
+        - model_name: gpt-4
+          score: 80.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 84.0
+          date: "2024-01-15"
+    tags:
+      - math
+      - geometry
+
+  - id: reasoning-math-007
+    name: "Algorithm Complexity"
+    description: "Analyze algorithm complexity"
+    task_description: |
+      Analyze the time and space complexity of these algorithms:
+
+      1. ```python
+         def mystery1(n):
+             if n <= 1:
+                 return 1
+             return mystery1(n-1) + mystery1(n-2)
+         ```
+
+      2. ```python
+         def mystery2(arr):
+             n = len(arr)
+             for i in range(n):
+                 for j in range(i, n):
+                     for k in range(j, n):
+                         pass
+         ```
+
+      3. ```python
+         def mystery3(n):
+             if n <= 1:
+                 return
+             mystery3(n // 2)
+             mystery3(n // 2)
+             for i in range(n):
+                 pass
+         ```
+
+      For each, provide:
+      - Time complexity (Big O)
+      - Space complexity (Big O)
+      - Explanation of your analysis
+      - Suggestions for optimization (if applicable)
+    expected_artifacts:
+      - "*.md"
+      - "*.txt"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.md"
+      - type: contains
+        config:
+          pattern: "O("
+    metadata:
+      category: reasoning
+      difficulty: medium
+      estimated_time_seconds: 240
+      skills_tested:
+        - algorithm_analysis
+        - big_o_notation
+        - recursion_analysis
+      baseline_scores:
+        - model_name: gpt-4
+          score: 85.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 88.0
+          date: "2024-01-15"
+    tags:
+      - math
+      - algorithms

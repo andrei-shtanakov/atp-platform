@@ -1,0 +1,979 @@
+# Coding Benchmark Suite
+# Tests agent capabilities in code generation, review, and debugging
+name: coding
+category: coding
+version: "1.0.0"
+description: |
+  Comprehensive benchmark suite for evaluating agent coding capabilities.
+  Includes tests for code generation, code review, bug fixing, and refactoring.
+default_timeout_seconds: 300
+default_max_steps: 50
+
+tests:
+  # Code Generation Tests (7 tests)
+  - id: coding-gen-001
+    name: "Simple Function Generation"
+    description: "Generate a basic utility function from natural language"
+    task_description: |
+      Write a Python function called `is_palindrome` that checks if a given
+      string is a palindrome. The function should ignore case and non-alphanumeric
+      characters.
+    expected_artifacts:
+      - "*.py"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.py"
+      - type: contains
+        config:
+          pattern: "def is_palindrome"
+      - type: pytest
+        config:
+          test_code: |
+            def test_palindrome():
+                assert is_palindrome("racecar") == True
+                assert is_palindrome("A man a plan a canal Panama") == True
+                assert is_palindrome("hello") == False
+    metadata:
+      category: coding
+      difficulty: easy
+      estimated_time_seconds: 60
+      skills_tested:
+        - string_manipulation
+        - function_definition
+      baseline_scores:
+        - model_name: gpt-4
+          score: 95.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 96.0
+          date: "2024-01-15"
+    tags:
+      - generation
+      - python
+      - easy
+
+  - id: coding-gen-002
+    name: "Data Structure Implementation"
+    description: "Implement a basic data structure from specification"
+    task_description: |
+      Implement a Stack class in Python with the following methods:
+      - push(item): Add item to top of stack
+      - pop(): Remove and return top item (raise IndexError if empty)
+      - peek(): Return top item without removing (raise IndexError if empty)
+      - is_empty(): Return True if stack is empty
+      - size(): Return number of items in stack
+    expected_artifacts:
+      - "*.py"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.py"
+      - type: contains
+        config:
+          pattern: "class Stack"
+    metadata:
+      category: coding
+      difficulty: easy
+      estimated_time_seconds: 90
+      skills_tested:
+        - class_design
+        - data_structures
+      baseline_scores:
+        - model_name: gpt-4
+          score: 92.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 94.0
+          date: "2024-01-15"
+    tags:
+      - generation
+      - python
+      - data_structures
+
+  - id: coding-gen-003
+    name: "API Client Generation"
+    description: "Generate a simple HTTP API client"
+    task_description: |
+      Create a Python class called `WeatherAPIClient` that:
+      - Takes an API key in the constructor
+      - Has a method `get_weather(city)` that returns weather data
+      - Uses the requests library
+      - Handles basic error cases (connection errors, invalid responses)
+      - Returns a dictionary with temperature and conditions
+    expected_artifacts:
+      - "*.py"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.py"
+      - type: contains
+        config:
+          pattern: "class WeatherAPIClient"
+      - type: contains
+        config:
+          pattern: "def get_weather"
+    metadata:
+      category: coding
+      difficulty: medium
+      estimated_time_seconds: 120
+      skills_tested:
+        - api_integration
+        - error_handling
+        - class_design
+      baseline_scores:
+        - model_name: gpt-4
+          score: 88.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 90.0
+          date: "2024-01-15"
+    tags:
+      - generation
+      - python
+      - api
+
+  - id: coding-gen-004
+    name: "File Processing Script"
+    description: "Generate a script to process CSV files"
+    task_description: |
+      Write a Python script that:
+      - Reads a CSV file with columns: name, email, age
+      - Filters rows where age >= 18
+      - Sorts by name alphabetically
+      - Writes the result to a new CSV file
+      - Handles file not found and encoding errors gracefully
+    expected_artifacts:
+      - "*.py"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.py"
+      - type: contains
+        config:
+          pattern: "csv"
+    metadata:
+      category: coding
+      difficulty: medium
+      estimated_time_seconds: 150
+      skills_tested:
+        - file_io
+        - csv_processing
+        - error_handling
+      baseline_scores:
+        - model_name: gpt-4
+          score: 85.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 87.0
+          date: "2024-01-15"
+    tags:
+      - generation
+      - python
+      - file_processing
+
+  - id: coding-gen-005
+    name: "Recursive Algorithm"
+    description: "Implement a recursive solution"
+    task_description: |
+      Write a Python function `flatten_nested_list` that takes an arbitrarily
+      nested list and returns a flat list. For example:
+      flatten_nested_list([1, [2, [3, 4]], 5]) should return [1, 2, 3, 4, 5]
+    expected_artifacts:
+      - "*.py"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.py"
+      - type: contains
+        config:
+          pattern: "def flatten_nested_list"
+    metadata:
+      category: coding
+      difficulty: medium
+      estimated_time_seconds: 90
+      skills_tested:
+        - recursion
+        - list_processing
+      baseline_scores:
+        - model_name: gpt-4
+          score: 90.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 92.0
+          date: "2024-01-15"
+    tags:
+      - generation
+      - python
+      - algorithms
+
+  - id: coding-gen-006
+    name: "Async Function Generation"
+    description: "Generate asynchronous Python code"
+    task_description: |
+      Write an async Python function `fetch_all_urls` that:
+      - Takes a list of URLs
+      - Fetches all URLs concurrently using aiohttp
+      - Returns a list of response contents (strings)
+      - Handles errors for individual URLs without failing all requests
+    expected_artifacts:
+      - "*.py"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.py"
+      - type: contains
+        config:
+          pattern: "async def fetch_all_urls"
+    metadata:
+      category: coding
+      difficulty: hard
+      estimated_time_seconds: 180
+      skills_tested:
+        - async_programming
+        - error_handling
+        - concurrency
+      baseline_scores:
+        - model_name: gpt-4
+          score: 82.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 85.0
+          date: "2024-01-15"
+    tags:
+      - generation
+      - python
+      - async
+
+  - id: coding-gen-007
+    name: "Design Pattern Implementation"
+    description: "Implement a common design pattern"
+    task_description: |
+      Implement the Observer design pattern in Python with:
+      - A Subject class that maintains a list of observers and notifies them
+      - An Observer abstract base class with an update method
+      - Example concrete observer classes that print notifications
+    expected_artifacts:
+      - "*.py"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.py"
+      - type: contains
+        config:
+          pattern: "class Subject"
+      - type: contains
+        config:
+          pattern: "class Observer"
+    metadata:
+      category: coding
+      difficulty: hard
+      estimated_time_seconds: 180
+      skills_tested:
+        - design_patterns
+        - oop
+        - abstraction
+      baseline_scores:
+        - model_name: gpt-4
+          score: 80.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 83.0
+          date: "2024-01-15"
+    tags:
+      - generation
+      - python
+      - design_patterns
+
+  # Code Review Tests (6 tests)
+  - id: coding-review-001
+    name: "Security Vulnerability Detection"
+    description: "Identify security issues in code"
+    task_description: |
+      Review the following Python code and identify all security vulnerabilities:
+
+      ```python
+      import sqlite3
+      from flask import Flask, request
+
+      app = Flask(__name__)
+
+      @app.route('/user')
+      def get_user():
+          user_id = request.args.get('id')
+          conn = sqlite3.connect('users.db')
+          cursor = conn.execute(f"SELECT * FROM users WHERE id = {user_id}")
+          return str(cursor.fetchone())
+
+      @app.route('/login', methods=['POST'])
+      def login():
+          password = request.form['password']
+          return f"<html>Welcome! Your password is {password}</html>"
+      ```
+
+      List each vulnerability, explain why it's dangerous, and provide the fixed code.
+    expected_artifacts:
+      - "*.md"
+      - "*.txt"
+    assertions:
+      - type: contains
+        config:
+          pattern: "SQL injection"
+      - type: contains
+        config:
+          pattern: "XSS"
+    metadata:
+      category: coding
+      difficulty: medium
+      estimated_time_seconds: 120
+      skills_tested:
+        - security
+        - code_review
+        - vulnerability_detection
+      baseline_scores:
+        - model_name: gpt-4
+          score: 88.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 91.0
+          date: "2024-01-15"
+    tags:
+      - review
+      - security
+
+  - id: coding-review-002
+    name: "Performance Issue Detection"
+    description: "Find performance problems in code"
+    task_description: |
+      Review this Python code and identify all performance issues:
+
+      ```python
+      def process_data(items):
+          results = []
+          for item in items:
+              if item not in results:
+                  results.append(item)
+
+          sorted_results = []
+          for i in range(len(results)):
+              min_idx = i
+              for j in range(i+1, len(results)):
+                  if results[j] < results[min_idx]:
+                      min_idx = j
+              sorted_results.append(results[min_idx])
+              results[i], results[min_idx] = results[min_idx], results[i]
+
+          return sorted_results
+
+      def find_duplicates(lst):
+          duplicates = []
+          for i in range(len(lst)):
+              for j in range(i+1, len(lst)):
+                  if lst[i] == lst[j] and lst[i] not in duplicates:
+                      duplicates.append(lst[i])
+          return duplicates
+      ```
+
+      Explain each issue and provide optimized solutions.
+    expected_artifacts:
+      - "*.md"
+      - "*.txt"
+    assertions:
+      - type: contains
+        config:
+          pattern: "O(n"
+    metadata:
+      category: coding
+      difficulty: medium
+      estimated_time_seconds: 150
+      skills_tested:
+        - performance_analysis
+        - algorithm_optimization
+        - code_review
+      baseline_scores:
+        - model_name: gpt-4
+          score: 85.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 88.0
+          date: "2024-01-15"
+    tags:
+      - review
+      - performance
+
+  - id: coding-review-003
+    name: "Code Quality Assessment"
+    description: "Evaluate overall code quality"
+    task_description: |
+      Review this code for quality issues (naming, structure, best practices):
+
+      ```python
+      def f(x, y, z):
+          a = []
+          for i in x:
+              if i > y:
+                  a.append(i * z)
+          return a
+
+      class thing:
+          def __init__(self, D):
+              self.D = D
+              self.c = 0
+
+          def do(self, X):
+              self.c = self.c + 1
+              for k in self.D:
+                  if k == X:
+                      return self.D[k]
+              return None
+      ```
+
+      Provide specific suggestions and refactored code with proper naming,
+      docstrings, and type hints.
+    expected_artifacts:
+      - "*.py"
+      - "*.md"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.py"
+    metadata:
+      category: coding
+      difficulty: easy
+      estimated_time_seconds: 120
+      skills_tested:
+        - code_quality
+        - naming_conventions
+        - documentation
+      baseline_scores:
+        - model_name: gpt-4
+          score: 90.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 92.0
+          date: "2024-01-15"
+    tags:
+      - review
+      - quality
+
+  - id: coding-review-004
+    name: "Error Handling Review"
+    description: "Analyze error handling patterns"
+    task_description: |
+      Review the error handling in this code and suggest improvements:
+
+      ```python
+      import json
+      import requests
+
+      def fetch_and_process(url, output_file):
+          try:
+              response = requests.get(url)
+              data = json.loads(response.text)
+              result = data['items'][0]['value']
+              with open(output_file, 'w') as f:
+                  f.write(result)
+              return True
+          except:
+              return False
+      ```
+
+      Identify problems with the current error handling and provide a properly
+      refactored version with appropriate exception handling.
+    expected_artifacts:
+      - "*.py"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.py"
+      - type: contains
+        config:
+          pattern: "except"
+    metadata:
+      category: coding
+      difficulty: medium
+      estimated_time_seconds: 120
+      skills_tested:
+        - error_handling
+        - exception_design
+        - robustness
+      baseline_scores:
+        - model_name: gpt-4
+          score: 87.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 89.0
+          date: "2024-01-15"
+    tags:
+      - review
+      - error_handling
+
+  - id: coding-review-005
+    name: "Memory Leak Detection"
+    description: "Find potential memory issues"
+    task_description: |
+      Analyze this code for potential memory leaks or resource management issues:
+
+      ```python
+      import threading
+      import time
+
+      class DataProcessor:
+          _instances = []
+
+          def __init__(self):
+              self.cache = {}
+              self.callbacks = []
+              DataProcessor._instances.append(self)
+              self.thread = threading.Thread(target=self._background_task)
+              self.thread.start()
+
+          def _background_task(self):
+              while True:
+                  time.sleep(1)
+                  self._process_cache()
+
+          def _process_cache(self):
+              for key in list(self.cache.keys()):
+                  self.cache[key] = self.cache[key] * 2
+
+          def add_callback(self, func):
+              self.callbacks.append(func)
+
+          def process(self, data):
+              self.cache[id(data)] = data
+              return data
+      ```
+
+      Identify all memory-related issues and provide a corrected implementation.
+    expected_artifacts:
+      - "*.py"
+      - "*.md"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.py"
+    metadata:
+      category: coding
+      difficulty: hard
+      estimated_time_seconds: 180
+      skills_tested:
+        - memory_management
+        - resource_lifecycle
+        - threading
+      baseline_scores:
+        - model_name: gpt-4
+          score: 78.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 82.0
+          date: "2024-01-15"
+    tags:
+      - review
+      - memory
+
+  - id: coding-review-006
+    name: "API Design Review"
+    description: "Evaluate API design quality"
+    task_description: |
+      Review this REST API design and suggest improvements:
+
+      ```python
+      from flask import Flask, request, jsonify
+
+      app = Flask(__name__)
+      users = {}
+
+      @app.route('/getUser', methods=['GET'])
+      def getUser():
+          return jsonify(users.get(request.args.get('userId')))
+
+      @app.route('/createUser', methods=['GET'])
+      def createUser():
+          users[request.args.get('id')] = {
+              'name': request.args.get('name'),
+              'email': request.args.get('email')
+          }
+          return 'ok'
+
+      @app.route('/deleteUser', methods=['GET'])
+      def deleteUser():
+          del users[request.args.get('id')]
+          return 'deleted'
+      ```
+
+      Identify RESTful design violations and provide a properly designed API.
+    expected_artifacts:
+      - "*.py"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.py"
+      - type: contains
+        config:
+          pattern: "POST"
+      - type: contains
+        config:
+          pattern: "DELETE"
+    metadata:
+      category: coding
+      difficulty: medium
+      estimated_time_seconds: 150
+      skills_tested:
+        - api_design
+        - rest_principles
+        - http_methods
+      baseline_scores:
+        - model_name: gpt-4
+          score: 86.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 88.0
+          date: "2024-01-15"
+    tags:
+      - review
+      - api_design
+
+  # Bug Fixing Tests (7 tests)
+  - id: coding-fix-001
+    name: "Off-by-One Error Fix"
+    description: "Fix a classic off-by-one bug"
+    task_description: |
+      Fix the bug in this binary search implementation:
+
+      ```python
+      def binary_search(arr, target):
+          left, right = 0, len(arr)
+          while left < right:
+              mid = (left + right) // 2
+              if arr[mid] == target:
+                  return mid
+              elif arr[mid] < target:
+                  left = mid
+              else:
+                  right = mid
+          return -1
+      ```
+
+      The function sometimes enters an infinite loop. Find and fix the bug.
+    expected_artifacts:
+      - "*.py"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.py"
+      - type: contains
+        config:
+          pattern: "def binary_search"
+    metadata:
+      category: coding
+      difficulty: medium
+      estimated_time_seconds: 90
+      skills_tested:
+        - debugging
+        - algorithms
+        - edge_cases
+      baseline_scores:
+        - model_name: gpt-4
+          score: 88.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 90.0
+          date: "2024-01-15"
+    tags:
+      - bug_fix
+      - algorithms
+
+  - id: coding-fix-002
+    name: "Race Condition Fix"
+    description: "Fix a threading race condition"
+    task_description: |
+      Fix the race condition in this counter implementation:
+
+      ```python
+      import threading
+
+      class Counter:
+          def __init__(self):
+              self.count = 0
+
+          def increment(self):
+              current = self.count
+              self.count = current + 1
+
+          def get_count(self):
+              return self.count
+
+      # When used with multiple threads, counter.get_count()
+      # returns incorrect values
+      ```
+
+      Make this class thread-safe.
+    expected_artifacts:
+      - "*.py"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.py"
+      - type: contains
+        config:
+          pattern: "Lock"
+    metadata:
+      category: coding
+      difficulty: medium
+      estimated_time_seconds: 90
+      skills_tested:
+        - concurrency
+        - thread_safety
+        - debugging
+      baseline_scores:
+        - model_name: gpt-4
+          score: 85.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 88.0
+          date: "2024-01-15"
+    tags:
+      - bug_fix
+      - threading
+
+  - id: coding-fix-003
+    name: "Memory Corruption Fix"
+    description: "Fix list modification during iteration"
+    task_description: |
+      Fix the bug that causes unexpected behavior:
+
+      ```python
+      def remove_evens(numbers):
+          for num in numbers:
+              if num % 2 == 0:
+                  numbers.remove(num)
+          return numbers
+
+      # remove_evens([1, 2, 3, 4, 5, 6]) returns [1, 3, 5] correctly
+      # remove_evens([2, 4, 6, 8]) returns [4, 8] incorrectly
+      ```
+
+      Fix the function to correctly remove all even numbers.
+    expected_artifacts:
+      - "*.py"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.py"
+      - type: contains
+        config:
+          pattern: "def remove_evens"
+    metadata:
+      category: coding
+      difficulty: easy
+      estimated_time_seconds: 60
+      skills_tested:
+        - iteration
+        - list_operations
+        - debugging
+      baseline_scores:
+        - model_name: gpt-4
+          score: 92.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 94.0
+          date: "2024-01-15"
+    tags:
+      - bug_fix
+      - python
+
+  - id: coding-fix-004
+    name: "Null Reference Fix"
+    description: "Fix null/None handling issues"
+    task_description: |
+      Fix the crashes in this code:
+
+      ```python
+      def get_user_name(user_data):
+          return user_data['profile']['name'].upper()
+
+      def process_items(items):
+          total = 0
+          for item in items:
+              total += item['price'] * item['quantity']
+          return total
+
+      # Both functions crash with certain inputs
+      ```
+
+      Make both functions handle None/missing values gracefully.
+    expected_artifacts:
+      - "*.py"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.py"
+      - type: contains
+        config:
+          pattern: "None"
+    metadata:
+      category: coding
+      difficulty: easy
+      estimated_time_seconds: 90
+      skills_tested:
+        - null_safety
+        - defensive_programming
+        - error_handling
+      baseline_scores:
+        - model_name: gpt-4
+          score: 90.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 92.0
+          date: "2024-01-15"
+    tags:
+      - bug_fix
+      - error_handling
+
+  - id: coding-fix-005
+    name: "Async Deadlock Fix"
+    description: "Fix an async deadlock"
+    task_description: |
+      Fix the deadlock in this async code:
+
+      ```python
+      import asyncio
+
+      class AsyncCache:
+          def __init__(self):
+              self.cache = {}
+              self.lock = asyncio.Lock()
+
+          async def get_or_compute(self, key, compute_func):
+              async with self.lock:
+                  if key not in self.cache:
+                      self.cache[key] = await compute_func()
+                  return self.cache[key]
+
+          async def clear_and_recompute(self, key, compute_func):
+              async with self.lock:
+                  del self.cache[key]
+                  return await self.get_or_compute(key, compute_func)
+      ```
+
+      `clear_and_recompute` causes a deadlock. Fix it.
+    expected_artifacts:
+      - "*.py"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.py"
+      - type: contains
+        config:
+          pattern: "async"
+    metadata:
+      category: coding
+      difficulty: hard
+      estimated_time_seconds: 150
+      skills_tested:
+        - async_programming
+        - deadlock_prevention
+        - concurrency
+      baseline_scores:
+        - model_name: gpt-4
+          score: 75.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 80.0
+          date: "2024-01-15"
+    tags:
+      - bug_fix
+      - async
+
+  - id: coding-fix-006
+    name: "Recursion Depth Fix"
+    description: "Fix stack overflow in recursive function"
+    task_description: |
+      Fix the stack overflow in this function:
+
+      ```python
+      def factorial(n):
+          if n == 0:
+              return 1
+          return n * factorial(n - 1)
+
+      # factorial(10000) causes RecursionError
+      ```
+
+      Refactor to handle large inputs without stack overflow.
+    expected_artifacts:
+      - "*.py"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.py"
+      - type: contains
+        config:
+          pattern: "def factorial"
+    metadata:
+      category: coding
+      difficulty: medium
+      estimated_time_seconds: 90
+      skills_tested:
+        - recursion
+        - optimization
+        - iteration
+      baseline_scores:
+        - model_name: gpt-4
+          score: 88.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 90.0
+          date: "2024-01-15"
+    tags:
+      - bug_fix
+      - algorithms
+
+  - id: coding-fix-007
+    name: "Unicode Handling Fix"
+    description: "Fix unicode/encoding bugs"
+    task_description: |
+      Fix the unicode handling issues:
+
+      ```python
+      def count_characters(text):
+          return len(text)
+
+      def truncate(text, max_length):
+          return text[:max_length]
+
+      def reverse_string(text):
+          return text[::-1]
+
+      # These fail with emoji: "Hello 👋🏽 World"
+      # count_characters should return 13 (including emoji as 1)
+      # truncate to 7 should return "Hello 👋🏽"
+      # reverse should keep emoji intact
+      ```
+
+      Fix all functions to properly handle Unicode grapheme clusters.
+    expected_artifacts:
+      - "*.py"
+    assertions:
+      - type: artifact_exists
+        config:
+          pattern: "*.py"
+    metadata:
+      category: coding
+      difficulty: hard
+      estimated_time_seconds: 180
+      skills_tested:
+        - unicode
+        - string_processing
+        - internationalization
+      baseline_scores:
+        - model_name: gpt-4
+          score: 70.0
+          date: "2024-01-15"
+        - model_name: claude-3-opus
+          score: 75.0
+          date: "2024-01-15"
+    tags:
+      - bug_fix
+      - unicode

@@ -502,6 +502,50 @@ assertions:
       threshold: 0.9
 ```
 
+#### security
+
+**Description:** Check for security vulnerabilities in agent outputs.
+
+**Config:**
+- `checks` (list[string], required): Security check types to run
+- `sensitivity` (string, optional): Minimum severity to report (`info`, `low`, `medium`, `high`, `critical`)
+- `pii_types` (list[string], optional): PII types to check (`email`, `phone`, `ssn`, `credit_card`, `api_key`)
+- `injection_categories` (list[string], optional): Injection types (`injection`, `jailbreak`, `role_manipulation`)
+- `code_categories` (list[string], optional): Code safety types (`dangerous_import`, `dangerous_function`, `file_operation`, `network_operation`)
+- `secret_types` (list[string], optional): Secret types (`private_key`, `jwt_token`, `bearer_token`, `connection_string`, etc.)
+- `fail_on_warning` (bool, optional): Fail on medium severity findings (default: false)
+
+**Available checks:**
+- `pii_exposure` - Detect personally identifiable information
+- `prompt_injection` - Detect prompt injection and jailbreak attempts
+- `code_safety` - Detect dangerous code patterns
+- `secret_leak` - Detect leaked secrets and credentials
+
+**Example:**
+```yaml
+assertions:
+  - type: "security"
+    config:
+      checks:
+        - pii_exposure
+        - prompt_injection
+        - code_safety
+        - secret_leak
+      sensitivity: "medium"
+      fail_on_warning: true
+
+  - type: "security"
+    config:
+      checks:
+        - pii_exposure
+      pii_types:
+        - email
+        - ssn
+        - credit_card
+```
+
+> For detailed security evaluator documentation, see [Security Evaluator Guide](../guides/security-evaluator.md).
+
 ### Multiple Assertions
 
 ```yaml
@@ -513,6 +557,11 @@ assertions:
   - type: "behavior"
     config:
       check: "no_errors"
+
+  - type: "security"
+    config:
+      checks: [pii_exposure, secret_leak]
+      sensitivity: "high"
 
   - type: "llm_eval"
     config:

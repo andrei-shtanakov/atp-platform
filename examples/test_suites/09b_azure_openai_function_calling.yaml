@@ -1,0 +1,42 @@
+# Azure OpenAI Function Calling Example
+# This demonstrates Azure OpenAI adapter with function calling
+
+name: azure-openai-function-calling
+description: Azure OpenAI function calling tests
+
+agent:
+  adapter: azure_openai
+  config:
+    endpoint: "${AZURE_OPENAI_ENDPOINT}"
+    deployment_name: "${AZURE_OPENAI_DEPLOYMENT}"
+    api_key: "${AZURE_OPENAI_API_KEY}"
+    enable_function_calling: true
+    tools:
+      - type: function
+        function:
+          name: get_weather
+          description: Get the current weather for a location
+          parameters:
+            type: object
+            properties:
+              location:
+                type: string
+                description: The city and state, e.g., San Francisco, CA
+              unit:
+                type: string
+                enum: [celsius, fahrenheit]
+                description: The temperature unit
+            required:
+              - location
+    tool_choice: auto
+
+tests:
+  - id: function-call-test
+    description: Test that the model uses the weather function
+    task:
+      description: "What's the current weather in Seattle?"
+    evaluators:
+      - type: behavior
+        config:
+          expected_tools:
+            - "get_weather"

@@ -402,6 +402,119 @@ def parse_pytest_output(output: str) -> TestResults:
     )
 ```
 
+### 5. Security Evaluator
+
+Analyzes agent outputs for security vulnerabilities including PII exposure, prompt injection, dangerous code, and secret leaks.
+
+**Check Types**:
+
+| Assertion Type | Description | Severity Range |
+|----------------|-------------|----------------|
+| `pii_exposure` | Detect personally identifiable information | Medium - Critical |
+| `prompt_injection` | Detect injection and jailbreak attempts | Low - High |
+| `code_safety` | Detect dangerous code patterns | Medium - High |
+| `secret_leak` | Detect leaked secrets and credentials | Medium - Critical |
+
+**Configuration Example**:
+
+```yaml
+assertions:
+  - type: security
+    config:
+      checks:
+        - pii_exposure
+        - prompt_injection
+        - code_safety
+        - secret_leak
+      sensitivity: "medium"  # info, low, medium, high, critical
+      fail_on_warning: false
+
+  - type: security
+    config:
+      checks:
+        - pii_exposure
+      pii_types:
+        - email
+        - ssn
+        - credit_card
+        - api_key
+      sensitivity: "high"
+      fail_on_warning: true
+
+  - type: security
+    config:
+      checks:
+        - secret_leak
+      secret_types:
+        - private_key
+        - jwt_token
+        - connection_string
+        - aws_credential
+```
+
+**Severity Levels**:
+
+| Level | Score Impact | Pass/Fail |
+|-------|--------------|-----------|
+| Critical | 0.0 | Fail |
+| High | 0.0 | Fail |
+| Medium | 0.5 | Pass (unless fail_on_warning) |
+| Low | 0.9 | Pass |
+| Info | 0.95 | Pass |
+
+**Security Checkers**:
+
+1. **PII Checker** - Detects: email, phone, SSN, credit cards, API keys
+2. **Prompt Injection Checker** - Detects: instruction override, jailbreak, role manipulation
+3. **Code Safety Checker** - Detects: dangerous imports, eval/exec, file/network operations
+4. **Secret Leak Checker** - Detects: private keys, JWT, bearer tokens, connection strings, AWS credentials
+
+**Report Output**:
+
+```json
+{
+  "evaluator": "security",
+  "passed": false,
+  "score": 0.0,
+  "checks": [{
+    "name": "security_scan",
+    "message": "Found 2 security issue(s): 1 critical, 1 high",
+    "details": {
+      "findings_count": 2,
+      "critical_count": 1,
+      "high_count": 1,
+      "findings": [...],
+      "remediations": [...]
+    }
+  }]
+}
+```
+
+> For detailed documentation, see [Security Evaluator Guide](guides/security-evaluator.md).
+
+---
+
+## Evaluator Comparison Matrix
+
+| Evaluator | Type | Deterministic | Cost | Use Case |
+|-----------|------|---------------|------|----------|
+| **Artifact** | Structural | Yes | Low | Check file existence, format, content |
+| **Behavior** | Trace Analysis | Yes | Low | Verify tool usage, step limits, errors |
+| **LLM Judge** | Semantic | No | High | Evaluate quality, accuracy, completeness |
+| **Code Execution** | Runtime | Yes | Medium | Run tests, lint, type-check code |
+| **Security** | Pattern-based | Yes | Low | Detect PII, secrets, injections, unsafe code |
+
+### When to Use Each Evaluator
+
+| Scenario | Recommended Evaluators |
+|----------|------------------------|
+| File creation task | Artifact (exists, format) |
+| Data processing | Artifact (schema), LLM (accuracy) |
+| Code generation | Code Execution (tests), Security (code_safety) |
+| Research task | Artifact (sections), LLM (completeness, accuracy) |
+| User data handling | Security (pii_exposure, secret_leak) |
+| Chat/dialog agent | Security (prompt_injection), Behavior (no_errors) |
+
 ---
 
 ## Scoring System

@@ -23,12 +23,14 @@ executor:
     post_done:
       run_tests: true               # Run tests
       run_lint: true                # Run lint
+      lint_blocking: true           # Lint errors block task completion
       auto_commit: true             # Auto-commit changes
 
   # Commands (using uv)
   commands:
     test: "uv run pytest tests/ -v -m 'not slow'"  # Test command
     lint: "uv run ruff check ."                     # Lint command
+    lint_fix: "uv run ruff check . --fix"           # Lint auto-fix command
 
   # Paths
   paths:

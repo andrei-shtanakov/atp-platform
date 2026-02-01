@@ -637,5 +637,288 @@ class YAMLExportResponse(BaseModel):
     test_count: int
 
 
+# ==================== Cost Analytics Schemas ====================
+
+
+class CostRecordResponse(BaseModel):
+    """Schema for cost record response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    timestamp: datetime
+    provider: str
+    model: str
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float
+    test_id: str | None
+    suite_id: str | None
+    agent_name: str | None
+    metadata: dict[str, Any] | None = None
+
+
+class CostRecordList(BaseModel):
+    """Paginated list of cost records."""
+
+    total: int
+    items: list[CostRecordResponse]
+    limit: int
+    offset: int
+
+
+class CostBreakdownItem(BaseModel):
+    """Single item in a cost breakdown (by provider, model, agent, or suite)."""
+
+    name: str
+    total_cost: float
+    total_input_tokens: int
+    total_output_tokens: int
+    record_count: int
+    percentage: float = 0.0
+
+
+class CostTrendPoint(BaseModel):
+    """Single data point for cost trend over time."""
+
+    date: str
+    total_cost: float
+    total_tokens: int
+    record_count: int
+
+
+class CostSummaryResponse(BaseModel):
+    """Cost summary with breakdowns and trends."""
+
+    total_cost: float
+    total_input_tokens: int
+    total_output_tokens: int
+    total_records: int
+    by_provider: list[CostBreakdownItem]
+    by_model: list[CostBreakdownItem]
+    by_agent: list[CostBreakdownItem]
+    daily_trend: list[CostTrendPoint]
+
+
+# ==================== Budget Schemas ====================
+
+
+class BudgetCreate(BaseModel):
+    """Schema for creating a budget."""
+
+    name: str = Field(..., min_length=1, max_length=100)
+    period: str = Field(..., pattern="^(daily|weekly|monthly)$")
+    limit_usd: float = Field(..., gt=0)
+    alert_threshold: float = Field(default=0.8, ge=0.0, le=1.0)
+    scope: dict[str, Any] | None = None
+    alert_channels: list[str] | None = None
+    description: str | None = Field(None, max_length=1000)
+
+
+class BudgetUpdate(BaseModel):
+    """Schema for updating a budget."""
+
+    name: str | None = Field(None, min_length=1, max_length=100)
+    period: str | None = Field(None, pattern="^(daily|weekly|monthly)$")
+    limit_usd: float | None = Field(None, gt=0)
+    alert_threshold: float | None = Field(None, ge=0.0, le=1.0)
+    scope: dict[str, Any] | None = None
+    alert_channels: list[str] | None = None
+    description: str | None = None
+    is_active: bool | None = None
+
+
+class BudgetResponse(BaseModel):
+    """Schema for budget response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    period: str
+    limit_usd: float
+    alert_threshold: float
+    scope: dict[str, Any] | None = None
+    alert_channels: list[str] | None = None
+    description: str | None = None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class BudgetUsageResponse(BaseModel):
+    """Schema for budget usage response."""
+
+    budget_id: int
+    budget_name: str
+    period: str
+    period_start: datetime
+    spent: float
+    limit: float
+    remaining: float
+    percentage: float
+    is_over_threshold: bool
+    is_over_limit: bool
+
+
+class BudgetWithUsageResponse(BudgetResponse):
+    """Budget response including current usage."""
+
+    usage: BudgetUsageResponse | None = None
+
+
+class BudgetList(BaseModel):
+    """List of budgets with optional usage."""
+
+    items: list[BudgetWithUsageResponse]
+    total: int
+
+
+# ==================== Advanced Analytics Schemas ====================
+
+
+class TrendDataPointResponse(BaseModel):
+    """Single data point in a trend."""
+
+    date: str
+    value: float
+    count: int = 1
+
+
+class TrendAnalysisResponse(BaseModel):
+    """Trend analysis result."""
+
+    metric: str
+    direction: str
+    change_percent: float
+    start_value: float
+    end_value: float
+    average_value: float
+    std_deviation: float
+    data_points: list[TrendDataPointResponse]
+    period_days: int
+    confidence: float
+
+
+class ScoreTrendsResponse(BaseModel):
+    """Response for score trends API."""
+
+    suite_name: str | None = None
+    agent_name: str | None = None
+    trends: list[TrendAnalysisResponse]
+    period_start: datetime
+    period_end: datetime
+
+
+class AnomalyResultResponse(BaseModel):
+    """Detected anomaly response."""
+
+    anomaly_type: str
+    timestamp: datetime
+    metric_name: str
+    expected_value: float
+    actual_value: float
+    deviation_sigma: float
+    test_id: str | None = None
+    suite_id: str | None = None
+    agent_name: str | None = None
+    severity: str
+    details: dict[str, Any]
+
+
+class AnomalyDetectionResponseSchema(BaseModel):
+    """Response for anomaly detection API."""
+
+    anomalies: list[AnomalyResultResponse]
+    total_records_analyzed: int
+    anomaly_rate: float
+    period_start: datetime
+    period_end: datetime
+
+
+class CorrelationResultResponse(BaseModel):
+    """Correlation result response."""
+
+    factor_x: str
+    factor_y: str
+    correlation_coefficient: float
+    strength: str
+    sample_size: int
+    p_value: float | None = None
+    details: dict[str, Any]
+
+
+class CorrelationAnalysisResponseSchema(BaseModel):
+    """Response for correlation analysis API."""
+
+    correlations: list[CorrelationResultResponse]
+    sample_size: int
+    factors_analyzed: list[str]
+
+
+class ScheduledReportCreate(BaseModel):
+    """Schema for creating a scheduled report."""
+
+    name: str = Field(..., min_length=1, max_length=100)
+    frequency: str = Field(..., pattern="^(daily|weekly|monthly)$")
+    recipients: list[str] = Field(default_factory=list)
+    include_trends: bool = True
+    include_anomalies: bool = True
+    include_correlations: bool = False
+    filters: dict[str, Any] = Field(default_factory=dict)
+
+
+class ScheduledReportUpdate(BaseModel):
+    """Schema for updating a scheduled report."""
+
+    name: str | None = Field(None, min_length=1, max_length=100)
+    frequency: str | None = Field(None, pattern="^(daily|weekly|monthly)$")
+    recipients: list[str] | None = None
+    include_trends: bool | None = None
+    include_anomalies: bool | None = None
+    include_correlations: bool | None = None
+    filters: dict[str, Any] | None = None
+    is_active: bool | None = None
+
+
+class ScheduledReportResponse(BaseModel):
+    """Response for scheduled report."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    frequency: str
+    recipients: list[str]
+    include_trends: bool
+    include_anomalies: bool
+    include_correlations: bool
+    filters: dict[str, Any]
+    is_active: bool
+    last_run: datetime | None = None
+    next_run: datetime | None = None
+    created_at: datetime | None = None
+
+
+class ScheduledReportList(BaseModel):
+    """List of scheduled reports."""
+
+    items: list[ScheduledReportResponse]
+    total: int
+
+
+class ExportRequest(BaseModel):
+    """Request for data export."""
+
+    format: str = Field(default="csv", pattern="^(csv|excel)$")
+    suite_name: str | None = None
+    agent_name: str | None = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+    include_runs: bool = False
+    include_trends: bool = True
+    include_anomalies: bool = True
+
+
 # Update forward references
 SuiteExecutionDetail.model_rebuild()

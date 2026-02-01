@@ -1,10 +1,12 @@
 """LLM-as-Judge evaluator for semantic evaluation using Anthropic API."""
 
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
@@ -12,6 +14,9 @@ from atp.loader.models import Assertion, TestDefinition
 from atp.protocol import ATPEvent, ATPResponse
 
 from .base import EvalCheck, EvalResult, Evaluator
+
+if TYPE_CHECKING:
+    from atp.analytics.cost import CostTracker
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +98,9 @@ class LLMJudgeConfig(BaseModel):
     max_tokens: int = Field(1024, ge=1, description="Max tokens for response")
     num_runs: int = Field(1, ge=1, le=10, description="Number of evaluation runs")
     timeout: float = Field(60.0, gt=0, description="Timeout per request in seconds")
+    enable_cost_tracking: bool = Field(
+        True, description="Enable cost tracking via CostTracker"
+    )
 
 
 class LLMJudgeEvaluator(Evaluator):
@@ -112,15 +120,25 @@ class LLMJudgeEvaluator(Evaluator):
     - Error handling with rate limit retry
     """
 
-    def __init__(self, config: LLMJudgeConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: LLMJudgeConfig | None = None,
+        cost_tracker: CostTracker | None = None,
+    ) -> None:
         """Initialize the LLM Judge evaluator.
 
         Args:
             config: Optional configuration. If not provided, defaults are used.
+            cost_tracker: Optional CostTracker instance. If not provided and
+                enable_cost_tracking is True, uses the global tracker.
         """
         self._config = config or LLMJudgeConfig()
         self._client: Any = None
         self._total_cost = LLMJudgeCost(model=self._config.model)
+        self._cost_tracker = cost_tracker
+        self._test_id: str | None = None
+        self._suite_id: str | None = None
+        self._agent_name: str | None = None
 
     @property
     def name(self) -> str:
@@ -170,6 +188,11 @@ class LLMJudgeEvaluator(Evaluator):
         Returns:
             EvalResult containing check results.
         """
+        # Store context for cost tracking
+        self._test_id = task.id
+        self._suite_id = getattr(task, "suite_id", None)
+        self._agent_name = getattr(task, "agent", None)
+
         config = assertion.config
         criteria = config.get("criteria")
         custom_prompt = config.get("prompt")
@@ -387,10 +410,17 @@ Important:
                     timeout=self._config.timeout,
                 )
 
-                # Update cost tracking
+                # Update local cost tracking
                 self._total_cost.input_tokens += response.usage.input_tokens
                 self._total_cost.output_tokens += response.usage.output_tokens
                 self._total_cost.total_calls += 1
+
+                # Track cost via CostTracker if enabled
+                if self._config.enable_cost_tracking:
+                    await self._track_cost(
+                        input_tokens=response.usage.input_tokens,
+                        output_tokens=response.usage.output_tokens,
+                    )
 
                 # Parse response
                 return self._parse_response(response.content[0].text)
@@ -415,6 +445,40 @@ Important:
                     raise
 
         raise RuntimeError("Unexpected: exceeded max retries without returning")
+
+    async def _track_cost(self, input_tokens: int, output_tokens: int) -> None:
+        """Track cost via CostTracker.
+
+        Args:
+            input_tokens: Number of input tokens used.
+            output_tokens: Number of output tokens used.
+        """
+        try:
+            tracker = self._cost_tracker
+            if tracker is None:
+                from atp.analytics.cost import get_cost_tracker
+
+                tracker = await get_cost_tracker()
+
+            from datetime import datetime
+
+            from atp.analytics.cost import CostEvent
+
+            await tracker.track(
+                CostEvent(
+                    timestamp=datetime.now(),
+                    provider="anthropic",
+                    model=self._config.model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    test_id=self._test_id,
+                    suite_id=self._suite_id,
+                    agent_name=self._agent_name,
+                    metadata={"evaluator": "llm_judge"},
+                )
+            )
+        except Exception as e:
+            logger.warning(f"Failed to track cost: {e}")
 
     def _parse_response(self, text: str) -> LLMJudgeResponse:
         """Parse LLM response text into structured format.
