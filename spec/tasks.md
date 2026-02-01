@@ -888,7 +888,7 @@ Implement handoff mode for sequential agent execution.
 ---
 
 ### TASK-604: Multi-Agent Test Suite Format
-🟠 P1 | 🔄 IN_PROGRESS | Est: 2-3h
+🟠 P1 | ✅ DONE | Est: 2-3h
 
 **Description:**
 Extend test suite YAML format for multi-agent tests.
@@ -909,7 +909,7 @@ Extend test suite YAML format for multi-agent tests.
 ---
 
 ### TASK-605: Chaos Engineering Module
-🟡 P2 | ⬜ TODO | Est: 5-6h
+🟡 P2 | 🔄 IN_PROGRESS | Est: 5-6h
 
 **Description:**
 Implement chaos engineering for agent resilience testing.
