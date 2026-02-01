@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
+from atp.chaos import ChaosConfig, ChaosProfile
+
 
 class MultiAgentMode(str, Enum):
     """Mode for multi-agent test execution."""
@@ -180,6 +182,9 @@ class TestDefinition(BaseModel):
     handoff_config: HandoffConfig | None = Field(
         None, description="Configuration for handoff mode"
     )
+    chaos: "ChaosSettings | None" = Field(
+        None, description="Per-test chaos engineering settings (overrides suite-level)"
+    )
 
     @model_validator(mode="after")
     def validate_multi_agent_config(self) -> "TestDefinition":
@@ -257,6 +262,31 @@ class AgentConfig(BaseModel):
     )
 
 
+class ChaosSettings(BaseModel):
+    """Chaos engineering settings for test suite."""
+
+    profile: ChaosProfile | str | None = Field(
+        None, description="Predefined chaos profile name"
+    )
+    custom: ChaosConfig | None = Field(
+        None, description="Custom chaos configuration (overrides profile)"
+    )
+
+    def get_config(self) -> ChaosConfig | None:
+        """Get the effective chaos configuration.
+
+        Returns:
+            ChaosConfig from custom settings or profile, or None if disabled.
+        """
+        if self.custom is not None:
+            return self.custom
+        if self.profile is not None:
+            from atp.chaos import get_profile
+
+            return get_profile(self.profile)
+        return None
+
+
 class TestDefaults(BaseModel):
     """Default settings for all tests in a suite."""
 
@@ -267,6 +297,9 @@ class TestDefaults(BaseModel):
     )
     constraints: Constraints | None = Field(
         None, description="Default constraints for all tests"
+    )
+    chaos: ChaosSettings | None = Field(
+        None, description="Default chaos engineering settings"
     )
 
 
@@ -283,6 +316,9 @@ class TestSuite(BaseModel):
         default_factory=list, description="Agent configurations"
     )
     tests: list[TestDefinition] = Field(..., description="List of tests", min_length=1)
+    chaos: ChaosSettings | None = Field(
+        None, description="Suite-level chaos engineering settings"
+    )
 
     def apply_defaults(self) -> None:
         """Apply defaults to all tests that don't have explicit values."""
@@ -332,3 +368,29 @@ class TestSuite(BaseModel):
 
         # Create new suite with filtered tests
         return self.model_copy(update={"tests": filtered_tests})
+
+    def get_chaos_config(
+        self, test: TestDefinition | None = None
+    ) -> ChaosConfig | None:
+        """Get the effective chaos configuration for a test.
+
+        Args:
+            test: Optional test definition to check for per-test overrides.
+
+        Returns:
+            ChaosConfig from test, suite, or defaults (in that order),
+            or None if no chaos configuration is set.
+        """
+        # Per-test chaos settings take precedence
+        if test is not None and test.chaos is not None:
+            return test.chaos.get_config()
+
+        # Suite-level chaos settings
+        if self.chaos is not None:
+            return self.chaos.get_config()
+
+        # Default chaos settings
+        if self.defaults.chaos is not None:
+            return self.defaults.chaos.get_config()
+
+        return None
