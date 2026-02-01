@@ -1,0 +1,325 @@
+# ATP Test Suite: Multi-Agent Tests
+# Purpose: Demonstrate multi-agent testing capabilities
+# Modes: comparison, collaboration, handoff
+# Use case: Compare agent performance, test agent collaboration, test agent handoffs
+
+test_suite: "multi_agent_tests"
+version: "1.0"
+description: >
+  Multi-agent test suite demonstrating comparison, collaboration, and handoff modes.
+  These tests run the same task against multiple agents with different execution strategies.
+
+defaults:
+  runs_per_test: 1
+  timeout_seconds: 300
+  constraints:
+    max_steps: 20
+    timeout_seconds: 300
+  scoring:
+    quality_weight: 0.4
+    completeness_weight: 0.3
+    efficiency_weight: 0.2
+    cost_weight: 0.1
+
+agents:
+  - name: "gpt-4-agent"
+    type: "http"
+    config:
+      endpoint: "${GPT4_ENDPOINT:http://localhost:8001}"
+      timeout: 60
+      model: "gpt-4"
+
+  - name: "claude-agent"
+    type: "http"
+    config:
+      endpoint: "${CLAUDE_ENDPOINT:http://localhost:8002}"
+      timeout: 60
+      model: "claude-3-opus"
+
+  - name: "gemini-agent"
+    type: "http"
+    config:
+      endpoint: "${GEMINI_ENDPOINT:http://localhost:8003}"
+      timeout: 60
+      model: "gemini-pro"
+
+  - name: "code-reviewer"
+    type: "http"
+    config:
+      endpoint: "${REVIEWER_ENDPOINT:http://localhost:8004}"
+      timeout: 30
+
+  - name: "code-generator"
+    type: "http"
+    config:
+      endpoint: "${GENERATOR_ENDPOINT:http://localhost:8005}"
+      timeout: 60
+
+tests:
+  # ============================================================================
+  # COMPARISON MODE TESTS
+  # Run the same test against multiple agents and compare results
+  # ============================================================================
+
+  - id: "multi-001"
+    name: "Compare code generation quality"
+    description: "Compare three LLM agents on a code generation task"
+    tags: ["multi-agent", "comparison", "code-generation"]
+    mode: "comparison"
+    agents:
+      - "gpt-4-agent"
+      - "claude-agent"
+      - "gemini-agent"
+    comparison_config:
+      metrics: ["quality", "speed", "cost"]
+      determine_winner: true
+      parallel_execution: true
+    task:
+      description: >
+        Write a Python function that parses a JSON string and extracts all
+        email addresses found in any nested field. The function should:
+        1. Handle malformed JSON gracefully
+        2. Return a list of unique email addresses
+        3. Include type hints
+        4. Include docstring with examples
+      expected_artifacts: ["solution.py"]
+    constraints:
+      max_steps: 10
+      timeout_seconds: 120
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "solution.py"
+      - type: "llm_eval"
+        config:
+          criteria: "code_quality"
+          threshold: 0.8
+
+  - id: "multi-002"
+    name: "Compare reasoning capabilities"
+    tags: ["multi-agent", "comparison", "reasoning"]
+    mode: "comparison"
+    agents:
+      - "gpt-4-agent"
+      - "claude-agent"
+    comparison_config:
+      metrics: ["quality", "speed"]
+      determine_winner: true
+    task:
+      description: >
+        Analyze the following business scenario and provide recommendations:
+
+        A startup has $500K in funding, 3 engineers, and needs to decide between:
+        A) Building their own ML infrastructure
+        B) Using cloud ML services (AWS/GCP)
+        C) A hybrid approach
+
+        Provide a structured analysis with pros/cons and a clear recommendation.
+      expected_artifacts: ["analysis.md"]
+    constraints:
+      max_steps: 5
+      timeout_seconds: 90
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "analysis.md"
+      - type: "llm_eval"
+        config:
+          criteria: "reasoning_quality"
+          threshold: 0.7
+
+  # ============================================================================
+  # COLLABORATION MODE TESTS
+  # Agents work together on a shared task
+  # ============================================================================
+
+  - id: "multi-003"
+    name: "Collaborative code review"
+    description: "Multiple agents collaborate to review and improve code"
+    tags: ["multi-agent", "collaboration", "code-review"]
+    mode: "collaboration"
+    agents:
+      - "code-generator"
+      - "code-reviewer"
+      - "claude-agent"
+    collaboration_config:
+      max_turns: 5
+      turn_timeout_seconds: 60
+      require_consensus: false
+      allow_parallel_turns: false
+      coordinator_agent: "claude-agent"
+      termination_condition: "all_complete"
+    task:
+      description: >
+        Collaboratively develop and review a Python class for managing a
+        simple key-value cache with TTL (time-to-live) support.
+
+        Workflow:
+        1. code-generator: Create initial implementation
+        2. code-reviewer: Review and suggest improvements
+        3. claude-agent: Coordinate and make final decisions
+
+        The final output should be a well-tested, production-ready implementation.
+      expected_artifacts: ["cache.py", "test_cache.py"]
+    constraints:
+      max_steps: 15
+      timeout_seconds: 180
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "cache.py"
+      - type: "artifact_exists"
+        config:
+          path: "test_cache.py"
+      - type: "llm_eval"
+        config:
+          criteria: "code_quality"
+          threshold: 0.85
+
+  - id: "multi-004"
+    name: "Collaborative problem solving"
+    tags: ["multi-agent", "collaboration", "problem-solving"]
+    mode: "collaboration"
+    agents:
+      - "gpt-4-agent"
+      - "claude-agent"
+    collaboration_config:
+      max_turns: 3
+      require_consensus: true
+      termination_condition: "consensus"
+    task:
+      description: >
+        Work together to design an API schema for a task management system.
+        Both agents should contribute to the design and reach consensus on:
+        1. Resource endpoints
+        2. Request/response formats
+        3. Authentication approach
+
+        Document the agreed-upon design in a structured format.
+      expected_artifacts: ["api_design.yaml"]
+    constraints:
+      max_steps: 10
+      timeout_seconds: 150
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "api_design.yaml"
+      - type: "llm_eval"
+        config:
+          criteria: "completeness"
+          threshold: 0.8
+
+  # ============================================================================
+  # HANDOFF MODE TESTS
+  # Sequential agent execution with context passing
+  # ============================================================================
+
+  - id: "multi-005"
+    name: "Code generation pipeline"
+    description: "Sequential pipeline: generate -> review -> refine"
+    tags: ["multi-agent", "handoff", "pipeline"]
+    mode: "handoff"
+    agents:
+      - "code-generator"
+      - "code-reviewer"
+      - "claude-agent"
+    handoff_config:
+      handoff_trigger: "always"
+      context_accumulation: "append"
+      allow_backtrack: false
+      final_agent_decides: true
+      agent_timeout_seconds: 90
+      continue_on_failure: false
+    task:
+      description: >
+        Build a REST API client library in Python:
+
+        Stage 1 (code-generator): Create initial implementation with methods
+        for GET, POST, PUT, DELETE requests with retry logic.
+
+        Stage 2 (code-reviewer): Review the code, identify issues, and
+        provide specific improvement suggestions.
+
+        Stage 3 (claude-agent): Apply the review feedback and produce the
+        final polished implementation.
+      expected_artifacts: ["api_client.py"]
+    constraints:
+      max_steps: 15
+      timeout_seconds: 270
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "api_client.py"
+      - type: "llm_eval"
+        config:
+          criteria: "code_quality"
+          threshold: 0.85
+
+  - id: "multi-006"
+    name: "Document processing pipeline"
+    tags: ["multi-agent", "handoff", "document"]
+    mode: "handoff"
+    agents:
+      - "gpt-4-agent"
+      - "claude-agent"
+    handoff_config:
+      handoff_trigger: "on_success"
+      context_accumulation: "merge"
+      continue_on_failure: false
+    task:
+      description: >
+        Process a technical document through two stages:
+
+        Stage 1 (gpt-4-agent): Extract key concepts, definitions, and
+        create a structured summary.
+
+        Stage 2 (claude-agent): Take the summary and generate:
+        - A glossary of terms
+        - A FAQ section
+        - Action items if applicable
+      input_data:
+        document: |
+          # Microservices Architecture Best Practices
+
+          Microservices architecture is an approach where an application is
+          structured as a collection of loosely coupled services. Each service
+          is independently deployable and scalable.
+
+          Key principles:
+          1. Single Responsibility: Each service handles one business capability
+          2. Decentralized Data: Each service manages its own database
+          3. Smart Endpoints: Services communicate via well-defined APIs
+          4. Infrastructure Automation: CI/CD pipelines for each service
+      expected_artifacts: ["summary.md", "glossary.md", "faq.md"]
+    constraints:
+      max_steps: 10
+      timeout_seconds: 180
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "summary.md"
+      - type: "artifact_exists"
+        config:
+          path: "glossary.md"
+
+  # ============================================================================
+  # SINGLE AGENT TEST (for comparison baseline)
+  # ============================================================================
+
+  - id: "multi-007"
+    name: "Single agent baseline"
+    description: "Single agent test for baseline comparison"
+    tags: ["baseline", "single-agent"]
+    # No mode or agents specified - runs against default/first agent
+    task:
+      description: >
+        Write a Python function that validates email addresses using regex.
+        Include comprehensive test cases.
+      expected_artifacts: ["email_validator.py"]
+    constraints:
+      max_steps: 5
+      timeout_seconds: 60
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "email_validator.py"

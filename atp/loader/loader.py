@@ -186,6 +186,124 @@ class TestLoader:
                 if isinstance(test, dict) and "scoring" in test:
                     check_scoring_weights(test["scoring"], f"tests[{i}].scoring")
 
+        # Validate multi-agent test configurations
+        self._validate_multi_agent_tests(data, agent_names, errors)
+
         if errors:
             error_msg = "Semantic validation failed:\n  " + "\n  ".join(errors)
             raise ValidationError(error_msg, file_path=file_path)
+
+    def _validate_multi_agent_tests(
+        self, data: dict[str, Any], suite_agent_names: set[str], errors: list[str]
+    ) -> None:
+        """Validate multi-agent test configurations.
+
+        Args:
+            data: Test suite data
+            suite_agent_names: Set of agent names defined at suite level
+            errors: List to append error messages to
+        """
+        if "tests" not in data or not isinstance(data["tests"], list):
+            return
+
+        for i, test in enumerate(data["tests"]):
+            if not isinstance(test, dict):
+                continue
+
+            test_agents = test.get("agents")
+            mode = test.get("mode")
+            test_id = test.get("id", f"tests[{i}]")
+
+            # Validate test-level agents exist in suite-level agents
+            if test_agents is not None and isinstance(test_agents, list):
+                for agent_name in test_agents:
+                    if agent_name not in suite_agent_names:
+                        errors.append(
+                            f"Test '{test_id}': agent '{agent_name}' not defined "
+                            "in suite-level agents"
+                        )
+
+            # If mode is specified but no agents, that's an error
+            if mode is not None and test_agents is None:
+                errors.append(
+                    f"Test '{test_id}': 'mode' is set to '{mode}' but 'agents' "
+                    "is not specified"
+                )
+
+            # If multiple agents but no mode, that's an error
+            if (
+                test_agents is not None
+                and isinstance(test_agents, list)
+                and len(test_agents) > 1
+                and mode is None
+            ):
+                errors.append(
+                    f"Test '{test_id}': multiple agents specified but 'mode' "
+                    "is not set (must be: comparison, collaboration, or handoff)"
+                )
+
+            # Validate collaboration mode requires at least 2 agents
+            if (
+                mode == "collaboration"
+                and test_agents is not None
+                and isinstance(test_agents, list)
+                and len(test_agents) < 2
+            ):
+                errors.append(
+                    f"Test '{test_id}': collaboration mode requires at least 2 agents"
+                )
+
+            # Validate handoff mode requires at least 2 agents
+            if (
+                mode == "handoff"
+                and test_agents is not None
+                and isinstance(test_agents, list)
+                and len(test_agents) < 2
+            ):
+                errors.append(
+                    f"Test '{test_id}': handoff mode requires at least 2 agents"
+                )
+
+            # Validate coordinator_agent exists in test agents
+            collaboration_config = test.get("collaboration_config")
+            if collaboration_config is not None and isinstance(
+                collaboration_config, dict
+            ):
+                coordinator = collaboration_config.get("coordinator_agent")
+                if (
+                    coordinator is not None
+                    and test_agents is not None
+                    and isinstance(test_agents, list)
+                    and coordinator not in test_agents
+                ):
+                    errors.append(
+                        f"Test '{test_id}': coordinator_agent '{coordinator}' "
+                        "must be in the test's agents list"
+                    )
+
+            # Validate mode-specific configs don't conflict
+            has_comparison_config = test.get("comparison_config") is not None
+            has_collaboration_config = test.get("collaboration_config") is not None
+            has_handoff_config = test.get("handoff_config") is not None
+
+            if mode == "comparison" and (
+                has_collaboration_config or has_handoff_config
+            ):
+                errors.append(
+                    f"Test '{test_id}': comparison mode should not have "
+                    "collaboration_config or handoff_config"
+                )
+            elif mode == "collaboration" and (
+                has_comparison_config or has_handoff_config
+            ):
+                errors.append(
+                    f"Test '{test_id}': collaboration mode should not have "
+                    "comparison_config or handoff_config"
+                )
+            elif mode == "handoff" and (
+                has_comparison_config or has_collaboration_config
+            ):
+                errors.append(
+                    f"Test '{test_id}': handoff mode should not have "
+                    "comparison_config or collaboration_config"
+                )

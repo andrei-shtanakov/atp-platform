@@ -12,8 +12,9 @@ Complete reference for ATP test suite YAML format.
 6. [Constraints](#constraints)
 7. [Assertions](#assertions)
 8. [Scoring Weights](#scoring-weights)
-9. [Variable Substitution](#variable-substitution)
-10. [Complete Examples](#complete-examples)
+9. [Multi-Agent Tests](#multi-agent-tests)
+10. [Variable Substitution](#variable-substitution)
+11. [Complete Examples](#complete-examples)
 
 ## Test Suite Structure
 
@@ -640,6 +641,265 @@ scoring:
   completeness_weight: 0.2
   efficiency_weight: 0.2
   cost_weight: 0.3
+```
+
+## Multi-Agent Tests
+
+ATP supports running tests against multiple agents with different execution modes.
+
+### Multi-Agent Fields
+
+Tests can include additional fields for multi-agent execution:
+
+#### agents
+
+**Type:** `list[string]`
+**Required:** No (required when `mode` is set)
+**Description:** List of agent names to run this test against. Agent names must be defined in the suite-level `agents` section.
+
+**Example:**
+```yaml
+tests:
+  - id: "multi-001"
+    name: "Compare agents"
+    agents:
+      - "gpt-4-agent"
+      - "claude-agent"
+      - "gemini-agent"
+    mode: "comparison"
+    task:
+      description: "Generate a Python function"
+```
+
+#### mode
+
+**Type:** `string`
+**Required:** No (required when multiple agents are specified)
+**Values:** `"comparison"`, `"collaboration"`, `"handoff"`
+**Description:** Multi-agent execution mode.
+
+**Modes:**
+- `comparison` - Run the same test against multiple agents and compare results
+- `collaboration` - Agents work together on a shared task
+- `handoff` - Sequential agent execution with context passing
+
+### Comparison Mode
+
+Run the same test against multiple agents in parallel and compare results.
+
+**Use cases:**
+- Benchmark different LLM agents
+- Evaluate agent performance across metrics
+- A/B testing agents
+
+#### comparison_config
+
+**Type:** `ComparisonConfig`
+**Required:** No
+**Description:** Configuration for comparison mode.
+
+**Fields:**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `metrics` | `list[string]` | `["quality", "speed", "cost"]` | Metrics to compare |
+| `determine_winner` | `bool` | `true` | Determine and report winner |
+| `parallel_execution` | `bool` | `true` | Run agents in parallel |
+
+**Example:**
+```yaml
+tests:
+  - id: "compare-001"
+    name: "Compare code generation"
+    mode: "comparison"
+    agents:
+      - "gpt-4-agent"
+      - "claude-agent"
+    comparison_config:
+      metrics: ["quality", "speed", "cost"]
+      determine_winner: true
+      parallel_execution: true
+    task:
+      description: "Write a Python function to parse JSON"
+```
+
+### Collaboration Mode
+
+Agents work together on a shared task, exchanging messages and artifacts.
+
+**Use cases:**
+- Multi-agent workflows
+- Code review pipelines
+- Consensus-based decision making
+
+#### collaboration_config
+
+**Type:** `CollaborationConfig`
+**Required:** No
+**Description:** Configuration for collaboration mode.
+
+**Fields:**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `max_turns` | `int` | `10` | Maximum collaboration turns |
+| `turn_timeout_seconds` | `float` | `60.0` | Timeout per turn |
+| `require_consensus` | `bool` | `false` | Require all agents to agree |
+| `allow_parallel_turns` | `bool` | `false` | Allow parallel execution |
+| `coordinator_agent` | `string \| null` | `null` | Coordinating agent name |
+| `termination_condition` | `string` | `"all_complete"` | When to end collaboration |
+
+**Termination conditions:**
+- `all_complete` - All agents complete their tasks
+- `any_complete` - Any agent completes the task
+- `consensus` - All agents reach consensus
+- `max_turns` - Maximum turns reached
+
+**Example:**
+```yaml
+tests:
+  - id: "collab-001"
+    name: "Collaborative code review"
+    mode: "collaboration"
+    agents:
+      - "code-generator"
+      - "code-reviewer"
+      - "coordinator"
+    collaboration_config:
+      max_turns: 5
+      require_consensus: false
+      coordinator_agent: "coordinator"
+      termination_condition: "all_complete"
+    task:
+      description: "Develop and review a caching system"
+```
+
+### Handoff Mode
+
+Sequential agent execution where each agent passes context to the next.
+
+**Use cases:**
+- Pipeline workflows (generate -> review -> refine)
+- Staged processing
+- Multi-stage analysis
+
+#### handoff_config
+
+**Type:** `HandoffConfig`
+**Required:** No
+**Description:** Configuration for handoff mode.
+
+**Fields:**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `handoff_trigger` | `string` | `"always"` | When to trigger handoff |
+| `context_accumulation` | `string` | `"append"` | How to accumulate context |
+| `max_context_size` | `int \| null` | `null` | Max context size (chars) |
+| `allow_backtrack` | `bool` | `false` | Allow re-invoking previous agents |
+| `final_agent_decides` | `bool` | `true` | Final agent makes decision |
+| `agent_timeout_seconds` | `float` | `120.0` | Timeout per agent |
+| `continue_on_failure` | `bool` | `false` | Continue on agent failure |
+
+**Handoff triggers:**
+- `always` - Always handoff after each agent
+- `on_success` - Handoff only on success
+- `on_failure` - Handoff only on failure
+- `on_partial` - Handoff on partial completion
+- `explicit` - Agent must request handoff
+
+**Context accumulation modes:**
+- `append` - Append all previous outputs
+- `replace` - Only pass most recent output
+- `merge` - Merge artifacts, keep latest values
+- `summary` - Pass summarized context
+
+**Example:**
+```yaml
+tests:
+  - id: "handoff-001"
+    name: "Code generation pipeline"
+    mode: "handoff"
+    agents:
+      - "code-generator"
+      - "code-reviewer"
+      - "refiner"
+    handoff_config:
+      handoff_trigger: "always"
+      context_accumulation: "append"
+      final_agent_decides: true
+      agent_timeout_seconds: 90
+    task:
+      description: "Generate, review, and refine a REST API client"
+```
+
+### Multi-Agent Validation Rules
+
+1. **Mode requires agents**: When `mode` is set, `agents` must be specified
+2. **Multiple agents require mode**: When multiple agents are listed, `mode` is required
+3. **Collaboration/handoff need 2+ agents**: These modes require at least 2 agents
+4. **Config consistency**: Mode-specific configs must match the mode
+   - Comparison mode: Only `comparison_config` allowed
+   - Collaboration mode: Only `collaboration_config` allowed
+   - Handoff mode: Only `handoff_config` allowed
+5. **Coordinator must exist**: `coordinator_agent` must be in the agents list
+6. **Agents must be defined**: All agent names must be defined in suite-level `agents`
+
+### Complete Multi-Agent Example
+
+```yaml
+test_suite: "multi_agent_suite"
+version: "1.0"
+
+agents:
+  - name: "gpt-4-agent"
+    type: "http"
+    config:
+      endpoint: "${GPT4_ENDPOINT}"
+
+  - name: "claude-agent"
+    type: "http"
+    config:
+      endpoint: "${CLAUDE_ENDPOINT}"
+
+  - name: "reviewer"
+    type: "http"
+    config:
+      endpoint: "${REVIEWER_ENDPOINT}"
+
+tests:
+  # Comparison test
+  - id: "multi-001"
+    name: "Compare code generation"
+    mode: "comparison"
+    agents: ["gpt-4-agent", "claude-agent"]
+    comparison_config:
+      metrics: ["quality", "speed", "cost"]
+      determine_winner: true
+    task:
+      description: "Write a function to validate email addresses"
+
+  # Collaboration test
+  - id: "multi-002"
+    name: "Collaborative design"
+    mode: "collaboration"
+    agents: ["gpt-4-agent", "claude-agent"]
+    collaboration_config:
+      max_turns: 3
+      require_consensus: true
+    task:
+      description: "Design an API schema together"
+
+  # Handoff test
+  - id: "multi-003"
+    name: "Pipeline processing"
+    mode: "handoff"
+    agents: ["gpt-4-agent", "reviewer", "claude-agent"]
+    handoff_config:
+      handoff_trigger: "always"
+      context_accumulation: "append"
+    task:
+      description: "Generate code, review it, then refine it"
 ```
 
 ## Variable Substitution

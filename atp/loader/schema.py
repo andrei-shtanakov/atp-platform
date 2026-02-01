@@ -2,6 +2,68 @@
 
 from typing import Any
 
+# Reusable schema definitions for multi-agent configurations
+COLLABORATION_CONFIG_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "max_turns": {"type": "integer", "minimum": 1, "default": 10},
+        "turn_timeout_seconds": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 60,
+        },
+        "require_consensus": {"type": "boolean", "default": False},
+        "allow_parallel_turns": {"type": "boolean", "default": False},
+        "coordinator_agent": {"type": ["string", "null"]},
+        "termination_condition": {
+            "type": "string",
+            "enum": ["all_complete", "any_complete", "consensus", "max_turns"],
+            "default": "all_complete",
+        },
+    },
+    "additionalProperties": False,
+}
+
+HANDOFF_CONFIG_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "handoff_trigger": {
+            "type": "string",
+            "enum": ["always", "on_success", "on_failure", "on_partial", "explicit"],
+            "default": "always",
+        },
+        "context_accumulation": {
+            "type": "string",
+            "enum": ["append", "replace", "merge", "summary"],
+            "default": "append",
+        },
+        "max_context_size": {"type": ["integer", "null"], "minimum": 1},
+        "allow_backtrack": {"type": "boolean", "default": False},
+        "final_agent_decides": {"type": "boolean", "default": True},
+        "agent_timeout_seconds": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 120,
+        },
+        "continue_on_failure": {"type": "boolean", "default": False},
+    },
+    "additionalProperties": False,
+}
+
+COMPARISON_CONFIG_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "metrics": {
+            "type": "array",
+            "items": {"type": "string"},
+            "default": ["quality", "speed", "cost"],
+        },
+        "determine_winner": {"type": "boolean", "default": True},
+        "parallel_execution": {"type": "boolean", "default": True},
+    },
+    "additionalProperties": False,
+}
+
 TEST_SUITE_SCHEMA: dict[str, Any] = {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
@@ -159,6 +221,21 @@ TEST_SUITE_SCHEMA: dict[str, Any] = {
                         },
                         "additionalProperties": False,
                     },
+                    # Multi-agent fields
+                    "agents": {
+                        "type": "array",
+                        "items": {"type": "string", "minLength": 1},
+                        "minItems": 1,
+                        "description": "List of agent names to run this test against",
+                    },
+                    "mode": {
+                        "type": "string",
+                        "enum": ["comparison", "collaboration", "handoff"],
+                        "description": "Multi-agent execution mode",
+                    },
+                    "comparison_config": COMPARISON_CONFIG_SCHEMA,
+                    "collaboration_config": COLLABORATION_CONFIG_SCHEMA,
+                    "handoff_config": HANDOFF_CONFIG_SCHEMA,
                 },
                 "additionalProperties": False,
             },

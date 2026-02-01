@@ -202,3 +202,306 @@ class TestTestLoader:
 
         with pytest.raises(ValidationError, match="weights sum"):
             loader.load_string(yaml_content)
+
+
+class TestMultiAgentLoader:
+    """Test multi-agent test loading and validation."""
+
+    def test_load_comparison_mode_test(self):
+        """Test loading a comparison mode test."""
+        loader = TestLoader()
+        yaml_content = """
+        test_suite: "multi_agent"
+        agents:
+          - name: "agent-1"
+            type: "http"
+            config:
+              endpoint: "http://localhost:8001"
+          - name: "agent-2"
+            type: "http"
+            config:
+              endpoint: "http://localhost:8002"
+        tests:
+          - id: "test-001"
+            name: "Compare agents"
+            agents:
+              - "agent-1"
+              - "agent-2"
+            mode: "comparison"
+            comparison_config:
+              metrics: ["quality", "speed"]
+              determine_winner: true
+            task:
+              description: "Test task"
+        """
+
+        suite = loader.load_string(yaml_content)
+
+        assert len(suite.tests) == 1
+        test = suite.tests[0]
+        assert test.mode.value == "comparison"
+        assert test.agents == ["agent-1", "agent-2"]
+        assert test.comparison_config is not None
+        assert test.comparison_config.metrics == ["quality", "speed"]
+
+    def test_load_collaboration_mode_test(self):
+        """Test loading a collaboration mode test."""
+        loader = TestLoader()
+        yaml_content = """
+        test_suite: "multi_agent"
+        agents:
+          - name: "generator"
+          - name: "reviewer"
+          - name: "coordinator"
+        tests:
+          - id: "test-001"
+            name: "Collaborate"
+            agents:
+              - "generator"
+              - "reviewer"
+              - "coordinator"
+            mode: "collaboration"
+            collaboration_config:
+              max_turns: 5
+              coordinator_agent: "coordinator"
+            task:
+              description: "Collaborative task"
+        """
+
+        suite = loader.load_string(yaml_content)
+
+        test = suite.tests[0]
+        assert test.mode.value == "collaboration"
+        assert test.collaboration_config.max_turns == 5
+        assert test.collaboration_config.coordinator_agent == "coordinator"
+
+    def test_load_handoff_mode_test(self):
+        """Test loading a handoff mode test."""
+        loader = TestLoader()
+        yaml_content = """
+        test_suite: "multi_agent"
+        agents:
+          - name: "stage-1"
+          - name: "stage-2"
+        tests:
+          - id: "test-001"
+            name: "Pipeline"
+            agents:
+              - "stage-1"
+              - "stage-2"
+            mode: "handoff"
+            handoff_config:
+              handoff_trigger: "on_success"
+              context_accumulation: "merge"
+            task:
+              description: "Pipeline task"
+        """
+
+        suite = loader.load_string(yaml_content)
+
+        test = suite.tests[0]
+        assert test.mode.value == "handoff"
+        assert test.handoff_config.handoff_trigger.value == "on_success"
+        assert test.handoff_config.context_accumulation.value == "merge"
+
+    def test_agent_not_in_suite_raises_error(self):
+        """Test that referencing undefined agent raises error."""
+        loader = TestLoader()
+        yaml_content = """
+        test_suite: "multi_agent"
+        agents:
+          - name: "agent-1"
+        tests:
+          - id: "test-001"
+            name: "Test"
+            agents:
+              - "agent-1"
+              - "unknown-agent"
+            mode: "comparison"
+            task:
+              description: "Task"
+        """
+
+        with pytest.raises(ValidationError, match="not defined"):
+            loader.load_string(yaml_content)
+
+    def test_mode_without_agents_raises_error(self):
+        """Test that mode without agents raises error."""
+        loader = TestLoader()
+        yaml_content = """
+        test_suite: "multi_agent"
+        agents:
+          - name: "agent-1"
+        tests:
+          - id: "test-001"
+            name: "Test"
+            mode: "comparison"
+            task:
+              description: "Task"
+        """
+
+        with pytest.raises(ValidationError, match="agents"):
+            loader.load_string(yaml_content)
+
+    def test_multiple_agents_without_mode_raises_error(self):
+        """Test that multiple agents without mode raises error."""
+        loader = TestLoader()
+        yaml_content = """
+        test_suite: "multi_agent"
+        agents:
+          - name: "agent-1"
+          - name: "agent-2"
+        tests:
+          - id: "test-001"
+            name: "Test"
+            agents:
+              - "agent-1"
+              - "agent-2"
+            task:
+              description: "Task"
+        """
+
+        with pytest.raises(ValidationError, match="mode"):
+            loader.load_string(yaml_content)
+
+    def test_collaboration_requires_two_agents(self):
+        """Test that collaboration mode requires at least 2 agents."""
+        loader = TestLoader()
+        yaml_content = """
+        test_suite: "multi_agent"
+        agents:
+          - name: "agent-1"
+        tests:
+          - id: "test-001"
+            name: "Test"
+            agents:
+              - "agent-1"
+            mode: "collaboration"
+            task:
+              description: "Task"
+        """
+
+        with pytest.raises(ValidationError, match="at least 2 agents"):
+            loader.load_string(yaml_content)
+
+    def test_handoff_requires_two_agents(self):
+        """Test that handoff mode requires at least 2 agents."""
+        loader = TestLoader()
+        yaml_content = """
+        test_suite: "multi_agent"
+        agents:
+          - name: "agent-1"
+        tests:
+          - id: "test-001"
+            name: "Test"
+            agents:
+              - "agent-1"
+            mode: "handoff"
+            task:
+              description: "Task"
+        """
+
+        with pytest.raises(ValidationError, match="at least 2 agents"):
+            loader.load_string(yaml_content)
+
+    def test_coordinator_not_in_test_agents_raises_error(self):
+        """Test that coordinator_agent must be in test's agents list."""
+        loader = TestLoader()
+        yaml_content = """
+        test_suite: "multi_agent"
+        agents:
+          - name: "agent-1"
+          - name: "agent-2"
+          - name: "coordinator"
+        tests:
+          - id: "test-001"
+            name: "Test"
+            agents:
+              - "agent-1"
+              - "agent-2"
+            mode: "collaboration"
+            collaboration_config:
+              coordinator_agent: "coordinator"
+            task:
+              description: "Task"
+        """
+
+        with pytest.raises(ValidationError, match="coordinator_agent"):
+            loader.load_string(yaml_content)
+
+    def test_conflicting_mode_config_raises_error(self):
+        """Test that conflicting mode configs raise error."""
+        loader = TestLoader()
+        yaml_content = """
+        test_suite: "multi_agent"
+        agents:
+          - name: "agent-1"
+          - name: "agent-2"
+        tests:
+          - id: "test-001"
+            name: "Test"
+            agents:
+              - "agent-1"
+              - "agent-2"
+            mode: "comparison"
+            collaboration_config:
+              max_turns: 5
+            task:
+              description: "Task"
+        """
+
+        with pytest.raises(ValidationError, match="should not have"):
+            loader.load_string(yaml_content)
+
+    def test_single_agent_without_mode_succeeds(self):
+        """Test that single agent without mode succeeds."""
+        loader = TestLoader()
+        yaml_content = """
+        test_suite: "multi_agent"
+        agents:
+          - name: "agent-1"
+        tests:
+          - id: "test-001"
+            name: "Test"
+            agents:
+              - "agent-1"
+            task:
+              description: "Task"
+        """
+
+        suite = loader.load_string(yaml_content)
+
+        test = suite.tests[0]
+        assert test.agents == ["agent-1"]
+        assert test.mode is None
+
+    def test_mixed_single_and_multi_agent_tests(self):
+        """Test suite with both single and multi-agent tests."""
+        loader = TestLoader()
+        yaml_content = """
+        test_suite: "mixed"
+        agents:
+          - name: "agent-1"
+          - name: "agent-2"
+        tests:
+          - id: "single-001"
+            name: "Single agent test"
+            task:
+              description: "Single task"
+          - id: "multi-001"
+            name: "Multi agent test"
+            agents:
+              - "agent-1"
+              - "agent-2"
+            mode: "comparison"
+            task:
+              description: "Multi task"
+        """
+
+        suite = loader.load_string(yaml_content)
+
+        assert len(suite.tests) == 2
+        assert suite.tests[0].mode is None
+        assert suite.tests[0].agents is None
+        assert suite.tests[1].mode.value == "comparison"
+        assert suite.tests[1].agents == ["agent-1", "agent-2"]

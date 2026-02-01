@@ -5,7 +5,13 @@ from pydantic import ValidationError
 
 from atp.loader.models import (
     Assertion,
+    CollaborationConfig,
+    ComparisonConfig,
     Constraints,
+    ContextAccumulationMode,
+    HandoffConfig,
+    HandoffTrigger,
+    MultiAgentMode,
     ScoringWeights,
     TaskDefinition,
     TestDefaults,
@@ -483,3 +489,307 @@ class TestTestSuite:
         assert filtered.test_suite == "sample"
         assert filtered.version == "2.0"
         assert filtered.description == "Test suite description"
+
+
+class TestMultiAgentMode:
+    """Test MultiAgentMode enum."""
+
+    def test_comparison_mode(self):
+        """Test comparison mode value."""
+        assert MultiAgentMode.COMPARISON.value == "comparison"
+
+    def test_collaboration_mode(self):
+        """Test collaboration mode value."""
+        assert MultiAgentMode.COLLABORATION.value == "collaboration"
+
+    def test_handoff_mode(self):
+        """Test handoff mode value."""
+        assert MultiAgentMode.HANDOFF.value == "handoff"
+
+
+class TestCollaborationConfig:
+    """Test CollaborationConfig model."""
+
+    def test_default_values(self):
+        """Test default collaboration config values."""
+        config = CollaborationConfig()
+
+        assert config.max_turns == 10
+        assert config.turn_timeout_seconds == 60.0
+        assert config.require_consensus is False
+        assert config.allow_parallel_turns is False
+        assert config.coordinator_agent is None
+        assert config.termination_condition == "all_complete"
+
+    def test_custom_values(self):
+        """Test custom collaboration config values."""
+        config = CollaborationConfig(
+            max_turns=5,
+            turn_timeout_seconds=30.0,
+            require_consensus=True,
+            coordinator_agent="lead-agent",
+            termination_condition="consensus",
+        )
+
+        assert config.max_turns == 5
+        assert config.turn_timeout_seconds == 30.0
+        assert config.require_consensus is True
+        assert config.coordinator_agent == "lead-agent"
+        assert config.termination_condition == "consensus"
+
+    def test_invalid_max_turns(self):
+        """Test that max_turns must be >= 1."""
+        with pytest.raises(ValidationError):
+            CollaborationConfig(max_turns=0)
+
+    def test_invalid_timeout(self):
+        """Test that turn_timeout_seconds must be > 0."""
+        with pytest.raises(ValidationError):
+            CollaborationConfig(turn_timeout_seconds=0)
+
+
+class TestHandoffConfig:
+    """Test HandoffConfig model."""
+
+    def test_default_values(self):
+        """Test default handoff config values."""
+        config = HandoffConfig()
+
+        assert config.handoff_trigger == HandoffTrigger.ALWAYS
+        assert config.context_accumulation == ContextAccumulationMode.APPEND
+        assert config.max_context_size is None
+        assert config.allow_backtrack is False
+        assert config.final_agent_decides is True
+        assert config.agent_timeout_seconds == 120.0
+        assert config.continue_on_failure is False
+
+    def test_custom_values(self):
+        """Test custom handoff config values."""
+        config = HandoffConfig(
+            handoff_trigger=HandoffTrigger.ON_SUCCESS,
+            context_accumulation=ContextAccumulationMode.MERGE,
+            max_context_size=10000,
+            allow_backtrack=True,
+            agent_timeout_seconds=60.0,
+        )
+
+        assert config.handoff_trigger == HandoffTrigger.ON_SUCCESS
+        assert config.context_accumulation == ContextAccumulationMode.MERGE
+        assert config.max_context_size == 10000
+        assert config.allow_backtrack is True
+
+    def test_handoff_triggers(self):
+        """Test all handoff trigger values."""
+        assert HandoffTrigger.ALWAYS.value == "always"
+        assert HandoffTrigger.ON_SUCCESS.value == "on_success"
+        assert HandoffTrigger.ON_FAILURE.value == "on_failure"
+        assert HandoffTrigger.ON_PARTIAL.value == "on_partial"
+        assert HandoffTrigger.EXPLICIT.value == "explicit"
+
+    def test_context_accumulation_modes(self):
+        """Test all context accumulation modes."""
+        assert ContextAccumulationMode.APPEND.value == "append"
+        assert ContextAccumulationMode.REPLACE.value == "replace"
+        assert ContextAccumulationMode.MERGE.value == "merge"
+        assert ContextAccumulationMode.SUMMARY.value == "summary"
+
+
+class TestComparisonConfig:
+    """Test ComparisonConfig model."""
+
+    def test_default_values(self):
+        """Test default comparison config values."""
+        config = ComparisonConfig()
+
+        assert config.metrics == ["quality", "speed", "cost"]
+        assert config.determine_winner is True
+        assert config.parallel_execution is True
+
+    def test_custom_values(self):
+        """Test custom comparison config values."""
+        config = ComparisonConfig(
+            metrics=["quality", "tokens"],
+            determine_winner=False,
+            parallel_execution=False,
+        )
+
+        assert config.metrics == ["quality", "tokens"]
+        assert config.determine_winner is False
+        assert config.parallel_execution is False
+
+
+class TestMultiAgentTestDefinition:
+    """Test multi-agent fields in TestDefinition."""
+
+    def test_single_agent_no_mode(self):
+        """Test that single agent doesn't require mode."""
+        test = TestDefinition(
+            id="test-001",
+            name="Single agent test",
+            task=TaskDefinition(description="Task"),
+            agents=["agent-1"],
+        )
+
+        assert test.agents == ["agent-1"]
+        assert test.mode is None
+        assert test.is_multi_agent is False
+
+    def test_comparison_mode(self):
+        """Test test with comparison mode."""
+        test = TestDefinition(
+            id="test-001",
+            name="Comparison test",
+            task=TaskDefinition(description="Task"),
+            agents=["agent-1", "agent-2"],
+            mode=MultiAgentMode.COMPARISON,
+        )
+
+        assert test.mode == MultiAgentMode.COMPARISON
+        assert test.is_multi_agent is True
+
+    def test_collaboration_mode(self):
+        """Test test with collaboration mode."""
+        test = TestDefinition(
+            id="test-001",
+            name="Collaboration test",
+            task=TaskDefinition(description="Task"),
+            agents=["agent-1", "agent-2"],
+            mode=MultiAgentMode.COLLABORATION,
+            collaboration_config=CollaborationConfig(max_turns=5),
+        )
+
+        assert test.mode == MultiAgentMode.COLLABORATION
+        assert test.collaboration_config is not None
+        assert test.collaboration_config.max_turns == 5
+        assert test.is_multi_agent is True
+
+    def test_handoff_mode(self):
+        """Test test with handoff mode."""
+        test = TestDefinition(
+            id="test-001",
+            name="Handoff test",
+            task=TaskDefinition(description="Task"),
+            agents=["agent-1", "agent-2", "agent-3"],
+            mode=MultiAgentMode.HANDOFF,
+            handoff_config=HandoffConfig(handoff_trigger=HandoffTrigger.ON_SUCCESS),
+        )
+
+        assert test.mode == MultiAgentMode.HANDOFF
+        assert test.handoff_config is not None
+        assert test.handoff_config.handoff_trigger == HandoffTrigger.ON_SUCCESS
+        assert test.is_multi_agent is True
+
+    def test_mode_without_agents_raises_error(self):
+        """Test that mode without agents raises validation error."""
+        with pytest.raises(ValidationError, match="agents"):
+            TestDefinition(
+                id="test-001",
+                name="Invalid test",
+                task=TaskDefinition(description="Task"),
+                mode=MultiAgentMode.COMPARISON,
+            )
+
+    def test_multiple_agents_without_mode_raises_error(self):
+        """Test that multiple agents without mode raises validation error."""
+        with pytest.raises(ValidationError, match="mode"):
+            TestDefinition(
+                id="test-001",
+                name="Invalid test",
+                task=TaskDefinition(description="Task"),
+                agents=["agent-1", "agent-2"],
+            )
+
+    def test_comparison_mode_with_collaboration_config_raises_error(self):
+        """Test that comparison mode with collaboration config raises error."""
+        with pytest.raises(ValidationError, match="collaboration_config"):
+            TestDefinition(
+                id="test-001",
+                name="Invalid test",
+                task=TaskDefinition(description="Task"),
+                agents=["agent-1", "agent-2"],
+                mode=MultiAgentMode.COMPARISON,
+                collaboration_config=CollaborationConfig(),
+            )
+
+    def test_comparison_mode_with_handoff_config_raises_error(self):
+        """Test that comparison mode with handoff config raises error."""
+        with pytest.raises(ValidationError, match="handoff_config"):
+            TestDefinition(
+                id="test-001",
+                name="Invalid test",
+                task=TaskDefinition(description="Task"),
+                agents=["agent-1", "agent-2"],
+                mode=MultiAgentMode.COMPARISON,
+                handoff_config=HandoffConfig(),
+            )
+
+    def test_collaboration_mode_with_comparison_config_raises_error(self):
+        """Test that collaboration mode with comparison config raises error."""
+        with pytest.raises(ValidationError, match="comparison_config"):
+            TestDefinition(
+                id="test-001",
+                name="Invalid test",
+                task=TaskDefinition(description="Task"),
+                agents=["agent-1", "agent-2"],
+                mode=MultiAgentMode.COLLABORATION,
+                comparison_config=ComparisonConfig(),
+            )
+
+    def test_handoff_mode_with_comparison_config_raises_error(self):
+        """Test that handoff mode with comparison config raises error."""
+        with pytest.raises(ValidationError, match="comparison_config"):
+            TestDefinition(
+                id="test-001",
+                name="Invalid test",
+                task=TaskDefinition(description="Task"),
+                agents=["agent-1", "agent-2"],
+                mode=MultiAgentMode.HANDOFF,
+                comparison_config=ComparisonConfig(),
+            )
+
+    def test_coordinator_must_be_in_agents(self):
+        """Test that coordinator_agent must be in agents list."""
+        with pytest.raises(ValidationError, match="coordinator_agent"):
+            TestDefinition(
+                id="test-001",
+                name="Invalid test",
+                task=TaskDefinition(description="Task"),
+                agents=["agent-1", "agent-2"],
+                mode=MultiAgentMode.COLLABORATION,
+                collaboration_config=CollaborationConfig(
+                    coordinator_agent="unknown-agent"
+                ),
+            )
+
+    def test_coordinator_in_agents_list_succeeds(self):
+        """Test that valid coordinator_agent succeeds."""
+        test = TestDefinition(
+            id="test-001",
+            name="Valid test",
+            task=TaskDefinition(description="Task"),
+            agents=["agent-1", "agent-2", "coordinator"],
+            mode=MultiAgentMode.COLLABORATION,
+            collaboration_config=CollaborationConfig(coordinator_agent="coordinator"),
+        )
+
+        assert test.collaboration_config.coordinator_agent == "coordinator"
+
+    def test_is_multi_agent_property(self):
+        """Test is_multi_agent property."""
+        # Single agent without mode
+        single = TestDefinition(
+            id="test-001",
+            name="Single",
+            task=TaskDefinition(description="Task"),
+        )
+        assert single.is_multi_agent is False
+
+        # With mode set
+        with_mode = TestDefinition(
+            id="test-002",
+            name="With mode",
+            task=TaskDefinition(description="Task"),
+            agents=["agent-1", "agent-2"],
+            mode=MultiAgentMode.COMPARISON,
+        )
+        assert with_mode.is_multi_agent is True
