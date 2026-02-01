@@ -53,6 +53,13 @@ from .security import (
     SecurityFinding,
     Severity,
 )
+from .style import (
+    StyleConfig,
+    StyleEvaluator,
+    StyleMetrics,
+    TextAnalyzer,
+    ToneType,
+)
 
 __all__ = [
     "EvalCheck",
@@ -98,4 +105,9 @@ __all__ = [
     "PerformanceMetricType",
     "RegressionResult",
     "RegressionStatus",
+    "StyleEvaluator",
+    "StyleConfig",
+    "StyleMetrics",
+    "TextAnalyzer",
+    "ToneType",
 ]

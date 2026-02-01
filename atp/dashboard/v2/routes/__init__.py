@@ -23,6 +23,7 @@ Each module handles a specific domain of functionality:
 - tenants: Tenant management (admin-only CRUD, quotas, settings)
 - roles: Role-based access control management
 - audit: Audit logging (query, filter, export, retention)
+- websocket: Real-time updates via WebSocket (TASK-801)
 """
 
 from fastapi import APIRouter
@@ -47,6 +48,7 @@ from atp.dashboard.v2.routes.tests import router as tests_router
 from atp.dashboard.v2.routes.timeline import router as timeline_router
 from atp.dashboard.v2.routes.traces import router as traces_router
 from atp.dashboard.v2.routes.trends import router as trends_router
+from atp.dashboard.v2.routes.websocket import router as websocket_router
 
 # Create the main API router that aggregates all sub-routers
 router = APIRouter()
@@ -72,6 +74,7 @@ router.include_router(tenants_router)
 router.include_router(roles_router)
 router.include_router(sso_router)
 router.include_router(audit_router)
+router.include_router(websocket_router)
 
 __all__ = [
     "router",
@@ -95,4 +98,5 @@ __all__ = [
     "timeline_router",
     "traces_router",
     "trends_router",
+    "websocket_router",
 ]
