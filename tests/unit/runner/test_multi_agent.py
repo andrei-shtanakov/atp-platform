@@ -1728,3 +1728,841 @@ class TestCollaborationAllCompleteTermination:
             result.collaboration_result.collaboration_metrics.termination_reason
             == "all_agents_completed"
         )
+
+
+# ===========================================================================
+# Handoff Mode Tests
+# ===========================================================================
+
+
+class TestHandoffConfig:
+    """Tests for HandoffConfig model."""
+
+    def test_default_config(self) -> None:
+        """HandoffConfig has sensible defaults."""
+        from atp.runner.multi_agent import (
+            ContextAccumulationMode,
+            HandoffConfig,
+            HandoffTrigger,
+        )
+
+        config = HandoffConfig()
+
+        assert config.handoff_trigger == HandoffTrigger.ALWAYS
+        assert config.context_accumulation == ContextAccumulationMode.APPEND
+        assert config.max_context_size is None
+        assert config.allow_backtrack is False
+        assert config.final_agent_decides is True
+        assert config.agent_timeout_seconds == 120.0
+        assert config.continue_on_failure is False
+
+    def test_custom_config(self) -> None:
+        """HandoffConfig can be customized."""
+        from atp.runner.multi_agent import (
+            ContextAccumulationMode,
+            HandoffConfig,
+            HandoffTrigger,
+        )
+
+        config = HandoffConfig(
+            handoff_trigger=HandoffTrigger.ON_SUCCESS,
+            context_accumulation=ContextAccumulationMode.MERGE,
+            max_context_size=5000,
+            allow_backtrack=True,
+            final_agent_decides=False,
+            agent_timeout_seconds=60.0,
+            continue_on_failure=True,
+        )
+
+        assert config.handoff_trigger == HandoffTrigger.ON_SUCCESS
+        assert config.context_accumulation == ContextAccumulationMode.MERGE
+        assert config.max_context_size == 5000
+        assert config.allow_backtrack is True
+        assert config.final_agent_decides is False
+        assert config.agent_timeout_seconds == 60.0
+        assert config.continue_on_failure is True
+
+
+class TestHandoffContext:
+    """Tests for HandoffContext model."""
+
+    def test_create_context(self) -> None:
+        """HandoffContext can be created with required fields."""
+        from atp.runner.multi_agent import HandoffContext
+
+        ctx = HandoffContext(original_task="Test task")
+
+        assert ctx.original_task == "Test task"
+        assert ctx.previous_outputs == []
+        assert ctx.agent_sequence == []
+        assert ctx.current_position == 0
+        assert ctx.accumulated_artifacts == {}
+        assert ctx.handoff_notes == []
+
+    def test_add_output(self) -> None:
+        """HandoffContext.add_output adds outputs correctly."""
+        from atp.runner.multi_agent import AgentHandoffOutput, HandoffContext
+
+        ctx = HandoffContext(
+            original_task="Test task",
+            agent_sequence=["agent-1", "agent-2"],
+        )
+
+        output = AgentHandoffOutput(
+            agent_name="agent-1",
+            sequence_position=0,
+            artifacts=[{"name": "result", "data": "value"}],
+        )
+
+        ctx.add_output(output)
+
+        assert len(ctx.previous_outputs) == 1
+        assert ctx.previous_outputs[0] is output
+        assert "result" in ctx.accumulated_artifacts
+
+    def test_get_last_output(self) -> None:
+        """HandoffContext.get_last_output returns most recent output."""
+        from atp.runner.multi_agent import AgentHandoffOutput, HandoffContext
+
+        ctx = HandoffContext(original_task="Test task")
+
+        assert ctx.get_last_output() is None
+
+        output1 = AgentHandoffOutput(agent_name="agent-1", sequence_position=0)
+        output2 = AgentHandoffOutput(agent_name="agent-2", sequence_position=1)
+
+        ctx.previous_outputs = [output1, output2]
+
+        assert ctx.get_last_output() is output2
+
+    def test_get_successful_outputs(self) -> None:
+        """HandoffContext.get_successful_outputs filters correctly."""
+        from atp.runner.multi_agent import AgentHandoffOutput, HandoffContext
+
+        ctx = HandoffContext(original_task="Test task")
+
+        output1 = AgentHandoffOutput(agent_name="agent-1", sequence_position=0)
+        output2 = AgentHandoffOutput(
+            agent_name="agent-2", sequence_position=1, error="Failed"
+        )
+        output3 = AgentHandoffOutput(agent_name="agent-3", sequence_position=2)
+
+        ctx.previous_outputs = [output1, output2, output3]
+
+        successful = ctx.get_successful_outputs()
+
+        assert len(successful) == 2
+        assert output1 in successful
+        assert output3 in successful
+        assert output2 not in successful
+
+    def test_add_handoff_note(self) -> None:
+        """HandoffContext.add_handoff_note adds notes correctly."""
+        from atp.runner.multi_agent import HandoffContext
+
+        ctx = HandoffContext(original_task="Test task")
+
+        ctx.add_handoff_note("First note")
+        ctx.add_handoff_note("Second note")
+
+        assert len(ctx.handoff_notes) == 2
+        assert "First note" in ctx.handoff_notes
+        assert "Second note" in ctx.handoff_notes
+
+
+class TestHandoffMetrics:
+    """Tests for HandoffMetrics model."""
+
+    def test_default_metrics(self) -> None:
+        """HandoffMetrics has correct defaults."""
+        from atp.runner.multi_agent import HandoffMetrics
+
+        metrics = HandoffMetrics()
+
+        assert metrics.total_agents == 0
+        assert metrics.agents_executed == 0
+        assert metrics.successful_handoffs == 0
+        assert metrics.failed_handoffs == 0
+        assert metrics.total_duration_seconds == 0.0
+        assert metrics.duration_per_agent == {}
+        assert metrics.agent_contributions == {}
+        assert metrics.total_tokens == 0
+        assert metrics.tokens_per_agent == {}
+        assert metrics.total_cost_usd == 0.0
+        assert metrics.cost_per_agent == {}
+        assert metrics.termination_reason is None
+        assert metrics.final_agent is None
+
+    def test_custom_metrics(self) -> None:
+        """HandoffMetrics can store all metric values."""
+        from atp.runner.multi_agent import HandoffMetrics
+
+        metrics = HandoffMetrics(
+            total_agents=3,
+            agents_executed=2,
+            successful_handoffs=1,
+            failed_handoffs=0,
+            total_duration_seconds=5.5,
+            duration_per_agent={"agent-1": 2.0, "agent-2": 3.5},
+            agent_contributions={"agent-1": 0.4, "agent-2": 0.6},
+            total_tokens=500,
+            tokens_per_agent={"agent-1": 200, "agent-2": 300},
+            total_cost_usd=0.05,
+            cost_per_agent={"agent-1": 0.02, "agent-2": 0.03},
+            termination_reason="chain_completed",
+            final_agent="agent-2",
+        )
+
+        assert metrics.total_agents == 3
+        assert metrics.agents_executed == 2
+        assert metrics.successful_handoffs == 1
+        assert metrics.total_tokens == 500
+        assert metrics.final_agent == "agent-2"
+
+
+class TestHandoffTurnResult:
+    """Tests for HandoffTurnResult model."""
+
+    def test_successful_turn(self) -> None:
+        """HandoffTurnResult tracks successful turn."""
+        from atp.runner.multi_agent import HandoffTurnResult
+
+        response = ATPResponse(
+            task_id="test-task",
+            status=ResponseStatus.COMPLETED,
+        )
+        turn_result = HandoffTurnResult(
+            agent_name="agent-1",
+            sequence_position=0,
+            response=response,
+        )
+
+        assert turn_result.agent_name == "agent-1"
+        assert turn_result.sequence_position == 0
+        assert turn_result.success is True
+        assert turn_result.error is None
+
+    def test_failed_turn(self) -> None:
+        """HandoffTurnResult tracks failed turn."""
+        from atp.runner.multi_agent import HandoffTurnResult
+
+        turn_result = HandoffTurnResult(
+            agent_name="agent-1",
+            sequence_position=0,
+            error="Something went wrong",
+        )
+
+        assert turn_result.success is False
+        assert turn_result.error == "Something went wrong"
+
+    def test_handoff_triggered_flag(self) -> None:
+        """HandoffTurnResult tracks handoff trigger state."""
+        from atp.runner.multi_agent import HandoffTurnResult
+
+        turn_result = HandoffTurnResult(
+            agent_name="agent-1",
+            sequence_position=0,
+            handoff_triggered=True,
+        )
+
+        assert turn_result.handoff_triggered is True
+
+
+class TestHandoffResult:
+    """Tests for HandoffResult model."""
+
+    def test_empty_result(self, test_definition: TestDefinition) -> None:
+        """HandoffResult with no turns."""
+        from atp.runner.multi_agent import HandoffContext, HandoffResult
+
+        ctx = HandoffContext(original_task="Test task")
+        result = HandoffResult(
+            test=test_definition,
+            handoff_context=ctx,
+        )
+
+        assert result.test is test_definition
+        assert result.turn_results == []
+        assert result.total_agents_executed == 0
+        # Empty result is not successful (no successful turns)
+        assert result.success is False
+
+    def test_successful_result(self, test_definition: TestDefinition) -> None:
+        """HandoffResult with successful turns."""
+        from atp.runner.multi_agent import (
+            HandoffContext,
+            HandoffResult,
+            HandoffTurnResult,
+        )
+
+        ctx = HandoffContext(original_task="Test task")
+        turn = HandoffTurnResult(
+            agent_name="agent-1",
+            sequence_position=0,
+            response=ATPResponse(
+                task_id="test",
+                status=ResponseStatus.COMPLETED,
+            ),
+        )
+
+        result = HandoffResult(
+            test=test_definition,
+            handoff_context=ctx,
+            turn_results=[turn],
+            final_response=ATPResponse(
+                task_id="test",
+                status=ResponseStatus.COMPLETED,
+            ),
+        )
+
+        assert result.success is True
+        assert result.total_agents_executed == 1
+
+    def test_result_with_error(self, test_definition: TestDefinition) -> None:
+        """HandoffResult with error."""
+        from atp.runner.multi_agent import HandoffContext, HandoffResult
+
+        ctx = HandoffContext(original_task="Test task")
+        result = HandoffResult(
+            test=test_definition,
+            handoff_context=ctx,
+            error="Handoff failed",
+        )
+
+        assert result.success is False
+        assert result.error == "Handoff failed"
+
+    def test_get_result_for_agent(self, test_definition: TestDefinition) -> None:
+        """HandoffResult.get_result_for_agent works correctly."""
+        from atp.runner.multi_agent import (
+            HandoffContext,
+            HandoffResult,
+            HandoffTurnResult,
+        )
+
+        ctx = HandoffContext(original_task="Test task")
+        turn1 = HandoffTurnResult(agent_name="agent-1", sequence_position=0)
+        turn2 = HandoffTurnResult(agent_name="agent-2", sequence_position=1)
+
+        result = HandoffResult(
+            test=test_definition,
+            handoff_context=ctx,
+            turn_results=[turn1, turn2],
+        )
+
+        assert result.get_result_for_agent("agent-1") is turn1
+        assert result.get_result_for_agent("agent-2") is turn2
+        assert result.get_result_for_agent("nonexistent") is None
+
+    def test_get_successful_and_failed_agents(
+        self, test_definition: TestDefinition
+    ) -> None:
+        """HandoffResult tracks successful and failed agents."""
+        from atp.runner.multi_agent import (
+            HandoffContext,
+            HandoffResult,
+            HandoffTurnResult,
+        )
+
+        ctx = HandoffContext(original_task="Test task")
+        turn1 = HandoffTurnResult(
+            agent_name="agent-1",
+            sequence_position=0,
+            response=ATPResponse(task_id="test", status=ResponseStatus.COMPLETED),
+        )
+        turn2 = HandoffTurnResult(
+            agent_name="agent-2", sequence_position=1, error="Failed"
+        )
+
+        result = HandoffResult(
+            test=test_definition,
+            handoff_context=ctx,
+            turn_results=[turn1, turn2],
+        )
+
+        assert result.get_successful_agents() == ["agent-1"]
+        assert result.get_failed_agents() == ["agent-2"]
+
+
+class TestMultiAgentTestResultHandoff:
+    """Tests for MultiAgentTestResult in handoff mode."""
+
+    def test_handoff_mode_result(self, test_definition: TestDefinition) -> None:
+        """MultiAgentTestResult supports handoff mode."""
+        from atp.runner.multi_agent import (
+            HandoffContext,
+            HandoffResult,
+            HandoffTurnResult,
+        )
+
+        ctx = HandoffContext(original_task="Test task")
+        turn = HandoffTurnResult(
+            agent_name="agent-1",
+            sequence_position=0,
+            response=ATPResponse(task_id="test", status=ResponseStatus.COMPLETED),
+        )
+        handoff_result = HandoffResult(
+            test=test_definition,
+            handoff_context=ctx,
+            turn_results=[turn],
+            final_response=ATPResponse(
+                task_id="test",
+                status=ResponseStatus.COMPLETED,
+            ),
+        )
+
+        result = MultiAgentTestResult(
+            test=test_definition,
+            mode=MultiAgentMode.HANDOFF,
+            handoff_result=handoff_result,
+        )
+
+        assert result.mode == MultiAgentMode.HANDOFF
+        assert result.handoff_result is handoff_result
+        assert result.all_succeeded is True
+        assert result.any_succeeded is True
+        assert result.agent_names == ["agent-1"]
+
+
+class TestMultiAgentOrchestratorHandoff:
+    """Tests for MultiAgentOrchestrator in handoff mode."""
+
+    @pytest.mark.anyio
+    async def test_basic_handoff_execution(
+        self,
+        test_definition: TestDefinition,
+        agent_configs: list[AgentConfig],
+    ) -> None:
+        """Test basic handoff mode execution."""
+        from atp.runner.multi_agent import HandoffConfig
+
+        handoff_config = HandoffConfig()
+
+        async with MultiAgentOrchestrator(
+            agents=agent_configs,
+            mode=MultiAgentMode.HANDOFF,
+            handoff_config=handoff_config,
+        ) as orchestrator:
+            result = await orchestrator.run_single_test(test_definition)
+
+        assert result.mode == MultiAgentMode.HANDOFF
+        assert result.handoff_result is not None
+        assert result.handoff_result.total_agents_executed == 2
+        assert result.all_succeeded is True
+
+    @pytest.mark.anyio
+    async def test_handoff_with_on_success_trigger(
+        self,
+        test_definition: TestDefinition,
+        agent_configs: list[AgentConfig],
+    ) -> None:
+        """Test handoff with ON_SUCCESS trigger."""
+        from atp.runner.multi_agent import HandoffConfig, HandoffTrigger
+
+        handoff_config = HandoffConfig(
+            handoff_trigger=HandoffTrigger.ON_SUCCESS,
+        )
+
+        async with MultiAgentOrchestrator(
+            agents=agent_configs,
+            mode=MultiAgentMode.HANDOFF,
+            handoff_config=handoff_config,
+        ) as orchestrator:
+            result = await orchestrator.run_single_test(test_definition)
+
+        assert result.handoff_result is not None
+        # Both agents should execute since first agent succeeds
+        assert result.handoff_result.total_agents_executed == 2
+
+    @pytest.mark.anyio
+    async def test_handoff_with_on_failure_trigger(
+        self,
+        test_definition: TestDefinition,
+    ) -> None:
+        """Test handoff with ON_FAILURE trigger."""
+        from atp.runner.multi_agent import HandoffConfig, HandoffTrigger
+
+        agents = [
+            AgentConfig(name="agent-1", adapter=MockAdapter(name="agent-1")),
+            AgentConfig(name="agent-2", adapter=MockAdapter(name="agent-2")),
+        ]
+
+        handoff_config = HandoffConfig(
+            handoff_trigger=HandoffTrigger.ON_FAILURE,
+        )
+
+        async with MultiAgentOrchestrator(
+            agents=agents,
+            mode=MultiAgentMode.HANDOFF,
+            handoff_config=handoff_config,
+        ) as orchestrator:
+            result = await orchestrator.run_single_test(test_definition)
+
+        assert result.handoff_result is not None
+        # Only first agent should execute since it succeeds
+        # and ON_FAILURE trigger doesn't fire
+        assert result.handoff_result.total_agents_executed == 1
+        assert (
+            result.handoff_result.handoff_metrics.termination_reason
+            == "handoff_not_triggered"
+        )
+
+    @pytest.mark.anyio
+    async def test_handoff_context_passing(
+        self,
+        test_definition: TestDefinition,
+        agent_configs: list[AgentConfig],
+    ) -> None:
+        """Test that context is passed between agents."""
+        from atp.runner.multi_agent import HandoffConfig
+
+        handoff_config = HandoffConfig()
+
+        async with MultiAgentOrchestrator(
+            agents=agent_configs,
+            mode=MultiAgentMode.HANDOFF,
+            handoff_config=handoff_config,
+        ) as orchestrator:
+            result = await orchestrator.run_single_test(test_definition)
+
+        assert result.handoff_result is not None
+        ctx = result.handoff_result.handoff_context
+
+        # Context should have outputs from both agents
+        assert len(ctx.previous_outputs) == 2
+        assert ctx.previous_outputs[0].agent_name == "agent-1"
+        assert ctx.previous_outputs[1].agent_name == "agent-2"
+
+    @pytest.mark.anyio
+    async def test_handoff_agent_failure_stops_chain(
+        self,
+        test_definition: TestDefinition,
+    ) -> None:
+        """Test that agent failure stops the handoff chain."""
+        from atp.runner.multi_agent import HandoffConfig
+
+        agents = [
+            AgentConfig(
+                name="fail-agent",
+                adapter=MockAdapter(
+                    name="fail",
+                    response=ATPResponse(
+                        task_id="test",
+                        status=ResponseStatus.FAILED,
+                        error="Agent failed",
+                    ),
+                ),
+            ),
+            AgentConfig(name="never-runs", adapter=MockAdapter(name="never")),
+        ]
+
+        handoff_config = HandoffConfig(continue_on_failure=False)
+
+        async with MultiAgentOrchestrator(
+            agents=agents,
+            mode=MultiAgentMode.HANDOFF,
+            handoff_config=handoff_config,
+        ) as orchestrator:
+            result = await orchestrator.run_single_test(test_definition)
+
+        assert result.handoff_result is not None
+        # Only first agent should execute
+        assert result.handoff_result.total_agents_executed == 1
+        assert (
+            result.handoff_result.handoff_metrics.termination_reason == "agent_failed"
+        )
+
+    @pytest.mark.anyio
+    async def test_handoff_continue_on_failure(
+        self,
+        test_definition: TestDefinition,
+    ) -> None:
+        """Test that handoff can continue on failure if configured."""
+        from atp.runner.multi_agent import HandoffConfig
+
+        agents = [
+            AgentConfig(
+                name="fail-agent",
+                adapter=MockAdapter(
+                    name="fail",
+                    response=ATPResponse(
+                        task_id="test",
+                        status=ResponseStatus.FAILED,
+                        error="Agent failed",
+                    ),
+                ),
+            ),
+            AgentConfig(name="success-agent", adapter=MockAdapter(name="success")),
+        ]
+
+        handoff_config = HandoffConfig(continue_on_failure=True)
+
+        async with MultiAgentOrchestrator(
+            agents=agents,
+            mode=MultiAgentMode.HANDOFF,
+            handoff_config=handoff_config,
+        ) as orchestrator:
+            result = await orchestrator.run_single_test(test_definition)
+
+        assert result.handoff_result is not None
+        # Both agents should execute
+        assert result.handoff_result.total_agents_executed == 2
+        assert result.handoff_result.get_failed_agents() == ["fail-agent"]
+        assert result.handoff_result.get_successful_agents() == ["success-agent"]
+
+    @pytest.mark.anyio
+    async def test_handoff_timeout(self, test_definition: TestDefinition) -> None:
+        """Test that agent timeout is enforced in handoff mode."""
+        from atp.runner.multi_agent import HandoffConfig
+
+        slow_adapter = MockAdapter(name="slow", delay=2.0)
+        agents = [AgentConfig(name="slow-agent", adapter=slow_adapter)]
+
+        handoff_config = HandoffConfig(agent_timeout_seconds=0.1)
+
+        async with MultiAgentOrchestrator(
+            agents=agents,
+            mode=MultiAgentMode.HANDOFF,
+            handoff_config=handoff_config,
+        ) as orchestrator:
+            result = await orchestrator.run_single_test(test_definition)
+
+        assert result.handoff_result is not None
+        turn_result = result.handoff_result.turn_results[0]
+        assert turn_result.error is not None
+        assert "timeout" in turn_result.error.lower()
+
+    @pytest.mark.anyio
+    async def test_handoff_metrics_calculation(
+        self, test_definition: TestDefinition
+    ) -> None:
+        """Test that handoff metrics are calculated correctly."""
+        from atp.runner.multi_agent import HandoffConfig
+
+        agents = [
+            AgentConfig(
+                name="agent-1",
+                adapter=MockAdapter(
+                    name="agent-1",
+                    metrics=Metrics(total_tokens=100, cost_usd=0.01),
+                ),
+            ),
+            AgentConfig(
+                name="agent-2",
+                adapter=MockAdapter(
+                    name="agent-2",
+                    metrics=Metrics(total_tokens=200, cost_usd=0.02),
+                ),
+            ),
+        ]
+
+        handoff_config = HandoffConfig()
+
+        async with MultiAgentOrchestrator(
+            agents=agents,
+            mode=MultiAgentMode.HANDOFF,
+            handoff_config=handoff_config,
+        ) as orchestrator:
+            result = await orchestrator.run_single_test(test_definition)
+
+        assert result.handoff_result is not None
+        metrics = result.handoff_result.handoff_metrics
+
+        assert metrics.total_agents == 2
+        assert metrics.agents_executed == 2
+        assert metrics.total_tokens == 300
+        assert abs(metrics.total_cost_usd - 0.03) < 0.001
+        assert metrics.termination_reason == "chain_completed"
+        assert metrics.final_agent == "agent-2"
+
+    @pytest.mark.anyio
+    async def test_handoff_agent_contributions(
+        self, test_definition: TestDefinition
+    ) -> None:
+        """Test that agent contributions are calculated."""
+        from atp.runner.multi_agent import HandoffConfig
+
+        agents = [
+            AgentConfig(name="agent-1", adapter=MockAdapter(name="agent-1")),
+            AgentConfig(name="agent-2", adapter=MockAdapter(name="agent-2")),
+        ]
+
+        handoff_config = HandoffConfig()
+
+        async with MultiAgentOrchestrator(
+            agents=agents,
+            mode=MultiAgentMode.HANDOFF,
+            handoff_config=handoff_config,
+        ) as orchestrator:
+            result = await orchestrator.run_single_test(test_definition)
+
+        assert result.handoff_result is not None
+        contributions = result.handoff_result.handoff_metrics.agent_contributions
+
+        assert "agent-1" in contributions
+        assert "agent-2" in contributions
+        # Both agents succeeded, so both should have contributions
+        assert contributions["agent-1"] > 0
+        assert contributions["agent-2"] > 0
+
+    @pytest.mark.anyio
+    async def test_handoff_suite_execution(
+        self,
+        test_suite: TestSuite,
+        agent_configs: list[AgentConfig],
+    ) -> None:
+        """Test running a suite in handoff mode."""
+        from atp.runner.multi_agent import HandoffConfig
+
+        handoff_config = HandoffConfig()
+
+        async with MultiAgentOrchestrator(
+            agents=agent_configs,
+            mode=MultiAgentMode.HANDOFF,
+            handoff_config=handoff_config,
+        ) as orchestrator:
+            result = await orchestrator.run_suite(test_suite)
+
+        assert result.mode == MultiAgentMode.HANDOFF
+        assert result.total_tests == 2
+        # Each test should have handoff result
+        for test_result in result.test_results:
+            assert test_result.handoff_result is not None
+
+
+class TestHandoffProgressEvents:
+    """Tests for progress events in handoff mode."""
+
+    @pytest.mark.anyio
+    async def test_handoff_progress_events(
+        self,
+        test_definition: TestDefinition,
+        agent_configs: list[AgentConfig],
+    ) -> None:
+        """Test that progress events are emitted during handoff."""
+        from atp.runner.multi_agent import HandoffConfig
+
+        events: list[ProgressEvent] = []
+
+        handoff_config = HandoffConfig()
+
+        async with MultiAgentOrchestrator(
+            agents=agent_configs,
+            mode=MultiAgentMode.HANDOFF,
+            handoff_config=handoff_config,
+            progress_callback=events.append,
+        ) as orchestrator:
+            await orchestrator.run_single_test(test_definition)
+
+        event_types = [e.event_type for e in events]
+
+        assert ProgressEventType.TEST_STARTED in event_types
+        assert ProgressEventType.RUN_STARTED in event_types
+        assert ProgressEventType.RUN_COMPLETED in event_types
+        assert (
+            ProgressEventType.TEST_COMPLETED in event_types
+            or ProgressEventType.TEST_FAILED in event_types
+        )
+
+
+class TestHandoffConvenienceFunctions:
+    """Tests for handoff convenience functions."""
+
+    @pytest.mark.anyio
+    async def test_run_handoff(
+        self,
+        test_definition: TestDefinition,
+        agent_configs: list[AgentConfig],
+    ) -> None:
+        """Test run_handoff convenience function."""
+        from atp.runner.multi_agent import HandoffConfig, run_handoff
+
+        handoff_config = HandoffConfig()
+
+        result = await run_handoff(
+            agents=agent_configs,
+            test=test_definition,
+            handoff_config=handoff_config,
+        )
+
+        assert isinstance(result, MultiAgentTestResult)
+        assert result.mode == MultiAgentMode.HANDOFF
+        assert result.handoff_result is not None
+        assert result.handoff_result.total_agents_executed == 2
+
+    @pytest.mark.anyio
+    async def test_run_suite_handoff(
+        self,
+        test_suite: TestSuite,
+        agent_configs: list[AgentConfig],
+    ) -> None:
+        """Test run_suite_handoff convenience function."""
+        from atp.runner.multi_agent import HandoffConfig, run_suite_handoff
+
+        handoff_config = HandoffConfig()
+
+        result = await run_suite_handoff(
+            agents=agent_configs,
+            suite=test_suite,
+            handoff_config=handoff_config,
+        )
+
+        assert isinstance(result, MultiAgentSuiteResult)
+        assert result.mode == MultiAgentMode.HANDOFF
+        assert result.total_tests == 2
+
+
+class TestHandoffTriggerTypes:
+    """Tests for different handoff trigger types."""
+
+    def test_trigger_enum_values(self) -> None:
+        """Test HandoffTrigger enum values."""
+        from atp.runner.multi_agent import HandoffTrigger
+
+        assert HandoffTrigger.ALWAYS.value == "always"
+        assert HandoffTrigger.ON_SUCCESS.value == "on_success"
+        assert HandoffTrigger.ON_FAILURE.value == "on_failure"
+        assert HandoffTrigger.ON_PARTIAL.value == "on_partial"
+        assert HandoffTrigger.EXPLICIT.value == "explicit"
+
+
+class TestContextAccumulationModes:
+    """Tests for different context accumulation modes."""
+
+    def test_accumulation_enum_values(self) -> None:
+        """Test ContextAccumulationMode enum values."""
+        from atp.runner.multi_agent import ContextAccumulationMode
+
+        assert ContextAccumulationMode.APPEND.value == "append"
+        assert ContextAccumulationMode.REPLACE.value == "replace"
+        assert ContextAccumulationMode.MERGE.value == "merge"
+        assert ContextAccumulationMode.SUMMARY.value == "summary"
+
+    @pytest.mark.anyio
+    async def test_replace_context_accumulation(
+        self, test_definition: TestDefinition
+    ) -> None:
+        """Test REPLACE context accumulation mode."""
+        from atp.runner.multi_agent import (
+            ContextAccumulationMode,
+            HandoffConfig,
+        )
+
+        agents = [
+            AgentConfig(name="agent-1", adapter=MockAdapter(name="agent-1")),
+            AgentConfig(name="agent-2", adapter=MockAdapter(name="agent-2")),
+        ]
+
+        handoff_config = HandoffConfig(
+            context_accumulation=ContextAccumulationMode.REPLACE
+        )
+
+        async with MultiAgentOrchestrator(
+            agents=agents,
+            mode=MultiAgentMode.HANDOFF,
+            handoff_config=handoff_config,
+        ) as orchestrator:
+            result = await orchestrator.run_single_test(test_definition)
+
+        assert result.handoff_result is not None
+        assert result.handoff_result.success is True
