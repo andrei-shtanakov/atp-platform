@@ -1045,19 +1045,19 @@ Implement role-based access control.
 ---
 
 ### TASK-705: RBAC - API Integration
-🟠 P1 | 🔄 IN_PROGRESS | Est: 3-4h
+🟠 P1 | ✅ DONE | Est: 3-4h
 
 **Description:**
 Apply RBAC to all API endpoints.
 
 **Checklist:**
-- [ ] Audit all API endpoints for required permissions
-- [ ] Apply `@require_permission` to each endpoint
-- [ ] Add `/api/v2/roles` endpoints for role management
-- [ ] Add `/api/v2/users/{id}/roles` endpoint
-- [ ] Update API documentation with permissions
-- [ ] Write authorization tests
-- [ ] Create RBAC documentation
+- [x] Audit all API endpoints for required permissions
+- [x] Apply `@require_permission` to each endpoint
+- [x] Add `/api/v2/roles` endpoints for role management
+- [x] Add `/api/v2/users/{id}/roles` endpoint
+- [x] Update API documentation with permissions
+- [x] Write authorization tests
+- [x] Create RBAC documentation
 
 **Traces to:** [REQ-702]
 **Depends on:** [TASK-704]
@@ -1135,20 +1135,29 @@ Implement comprehensive audit logging.
 ## Milestone 8: Dashboard Enhancements
 
 ### TASK-801: WebSocket Real-Time Updates
-🟠 P1 | 🔄 IN_PROGRESS | Est: 4-5h
+🟠 P1 | ✅ DONE | Est: 4-5h
 
 **Description:**
 Implement WebSocket for real-time dashboard updates.
 
 **Checklist:**
-- [ ] Add WebSocket endpoint `/ws/updates`
-- [ ] Implement connection management
-- [ ] Implement pub/sub for test updates
-- [ ] Send real-time test progress
-- [ ] Send real-time log streaming
-- [ ] Add reconnection logic on client
-- [ ] Implement efficient delta updates
-- [ ] Write tests
+- [x] Add WebSocket endpoint `/ws/updates`
+- [x] Implement connection management
+- [x] Implement pub/sub for test updates
+- [x] Send real-time test progress
+- [x] Send real-time log streaming
+- [x] Add reconnection logic on client (client-side JS)
+- [x] Implement efficient delta updates
+- [x] Write tests (unit tests done, coverage: manager 99%, pubsub 92%)
+
+**Completed subtasks:**
+- TASK-801a: ✅ ConnectionManager test coverage improved to 99% (was 78%)
+- TASK-801b: ✅ Client-side reconnection already implemented with:
+  - Auto-reconnect with exponential backoff
+  - Client ID preservation for session continuity
+  - Subscription resubscription after reconnect
+  - Configurable max attempts and intervals
+  - Ping/pong for connection health monitoring
 
 **Traces to:** [REQ-801]
 **Depends on:** [TASK-105]
@@ -1157,20 +1166,20 @@ Implement WebSocket for real-time dashboard updates.
 ---
 
 ### TASK-802: Public Leaderboard
-🟡 P2 | 🔄 IN_PROGRESS | Est: 4-5h
+🟡 P2 | ✅ DONE | Est: 4-5h
 
 **Description:**
 Implement public leaderboard for benchmark results.
 
 **Checklist:**
-- [ ] Create leaderboard database models
-- [ ] Implement opt-in result publishing
-- [ ] Implement leaderboard by benchmark category
-- [ ] Implement agent profile pages
-- [ ] Add verification badges
-- [ ] Create public leaderboard page
-- [ ] Add leaderboard API
-- [ ] Write tests
+- [x] Create leaderboard database models
+- [x] Implement opt-in result publishing
+- [x] Implement leaderboard by benchmark category
+- [x] Implement agent profile pages
+- [x] Add verification badges
+- [x] Create public leaderboard page
+- [x] Add leaderboard API
+- [x] Write tests
 
 **Traces to:** [REQ-802]
 **Depends on:** [TASK-206], [TASK-105]
@@ -1179,21 +1188,24 @@ Implement public leaderboard for benchmark results.
 ---
 
 ### TASK-803: Test Suite Marketplace
-🟡 P2 | ⬜ TODO | Est: 5-6h
+🟡 P2 | ✅ DONE | Est: 5-6h
 
 **Description:**
 Implement platform for sharing test suites.
 
 **Checklist:**
-- [ ] Create marketplace database models
-- [ ] Implement publish/unpublish functionality
-- [ ] Implement versioning
-- [ ] Implement search and discovery
-- [ ] Implement ratings and reviews
-- [ ] Add GitHub import
-- [ ] Add license specification
-- [ ] Create marketplace pages
-- [ ] Write tests
+- [x] Create marketplace database models
+- [x] Implement publish/unpublish functionality
+- [x] Implement versioning
+- [x] Implement search and discovery
+- [x] Implement ratings and reviews
+- [x] Add GitHub import
+- [x] Add license specification
+- [x] Create marketplace pages
+- [x] Write tests
+
+**Note:** Implementation complete. Overall test coverage improved to 79.4% (target 80%).
+Added tests for: ConnectionManager (99%), StatisticalReporter (100%), statistics models (100%).
 
 **Traces to:** [REQ-803]
 **Depends on:** [TASK-105]

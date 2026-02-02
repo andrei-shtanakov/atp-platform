@@ -334,6 +334,26 @@ class TestMinToolCalls:
         assert "below" in result.checks[0].message.lower()
 
 
+class TestMinToolCallsNoLimit:
+    """Tests for min_tool_calls with no limit specified."""
+
+    @pytest.mark.anyio
+    async def test_min_tool_calls_no_limit(
+        self,
+        evaluator: BehaviorEvaluator,
+        sample_task: TestDefinition,
+        successful_response: ATPResponse,
+        trace_with_tools: list[ATPEvent],
+    ) -> None:
+        """Test min_tool_calls passes when no limit specified."""
+        assertion = Assertion(type="min_tool_calls", config={})
+        result = await evaluator.evaluate(
+            sample_task, successful_response, trace_with_tools, assertion
+        )
+        assert result.passed is True
+        assert "no minimum" in result.checks[0].message.lower()
+
+
 class TestNoErrors:
     """Tests for no_errors assertion type."""
 
@@ -491,6 +511,28 @@ class TestBehaviorCombined:
         assert result.passed is False
         assert result.passed_checks == 1
         assert result.failed_checks == 1
+
+    @pytest.mark.anyio
+    async def test_behavior_combined_with_min_and_forbidden(
+        self,
+        evaluator: BehaviorEvaluator,
+        sample_task: TestDefinition,
+        successful_response: ATPResponse,
+        trace_with_tools: list[ATPEvent],
+    ) -> None:
+        """Test behavior assertion with min_tool_calls and forbidden_tools."""
+        assertion = Assertion(
+            type="behavior",
+            config={
+                "min_tool_calls": 2,
+                "forbidden_tools": ["dangerous_tool"],
+            },
+        )
+        result = await evaluator.evaluate(
+            sample_task, successful_response, trace_with_tools, assertion
+        )
+        assert result.passed is True
+        assert result.total_checks == 2  # min_tool_calls + forbidden_tools
 
     @pytest.mark.anyio
     async def test_behavior_empty_config(

@@ -399,3 +399,19 @@ class TestConsoleReporter:
 
         assert "2 failed" in result
         assert "0.0%" in result
+
+    def test_supports_color_with_none_output(self) -> None:
+        """Test that color is not supported when output is None."""
+        reporter = ConsoleReporter(output=None, use_colors=True)
+        assert reporter._supports_color() is False
+
+    def test_supports_color_without_isatty(self) -> None:
+        """Test that color is not supported when output lacks isatty."""
+
+        class NoIsattyOutput:
+            def write(self, s: str) -> int:
+                return len(s)
+
+        output = NoIsattyOutput()
+        reporter = ConsoleReporter(output=output, use_colors=True)  # type: ignore
+        assert reporter._supports_color() is False

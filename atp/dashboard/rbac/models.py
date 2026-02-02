@@ -95,6 +95,14 @@ class Permission(str, Enum):
     AUDIT_EXPORT = "audit:export"
     AUDIT_MANAGE = "audit:manage"  # For retention policy management
 
+    # Marketplace permissions (TASK-803)
+    MARKETPLACE_READ = "marketplace:read"
+    MARKETPLACE_WRITE = "marketplace:write"
+    MARKETPLACE_DELETE = "marketplace:delete"
+    MARKETPLACE_PUBLISH = "marketplace:publish"
+    MARKETPLACE_REVIEW = "marketplace:review"
+    MARKETPLACE_ADMIN = "marketplace:admin"  # Feature/verify suites
+
 
 class RolePermissions(BaseModel):
     """Permissions configuration for a role.
@@ -145,6 +153,12 @@ DEVELOPER_PERMISSIONS: frozenset[Permission] = frozenset(
         Permission.ANALYTICS_EXPORT,
         # Roles: R (can see roles but not modify)
         Permission.ROLES_READ,
+        # Marketplace: R + publish + review
+        Permission.MARKETPLACE_READ,
+        Permission.MARKETPLACE_WRITE,
+        Permission.MARKETPLACE_DELETE,
+        Permission.MARKETPLACE_PUBLISH,
+        Permission.MARKETPLACE_REVIEW,
     ]
 )
 
@@ -166,6 +180,9 @@ ANALYST_PERMISSIONS: frozenset[Permission] = frozenset(
         Permission.ANALYTICS_EXPORT,
         # Roles: R
         Permission.ROLES_READ,
+        # Marketplace: R + review
+        Permission.MARKETPLACE_READ,
+        Permission.MARKETPLACE_REVIEW,
     ]
 )
 
@@ -185,6 +202,8 @@ VIEWER_PERMISSIONS: frozenset[Permission] = frozenset(
         Permission.ANALYTICS_READ,
         # Roles: R
         Permission.ROLES_READ,
+        # Marketplace: R
+        Permission.MARKETPLACE_READ,
     ]
 )
 

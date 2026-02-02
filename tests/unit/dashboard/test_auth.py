@@ -1,6 +1,6 @@
 """Tests for ATP Dashboard authentication module."""
 
-from datetime import timedelta
+from datetime import UTC, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -266,6 +266,33 @@ class TestCreateUser:
 
         assert user.is_admin is True
 
+    @pytest.mark.anyio
+    async def test_create_user_existing_email(self) -> None:
+        """Test creating user with existing email (but different username)."""
+        existing_user = User(
+            id=1,
+            username="otheruser",
+            email="existing@example.com",
+            hashed_password="hashed",
+        )
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+
+        # First call (username) returns None, second (email) returns existing
+        mock_result.scalar_one_or_none.side_effect = [None, existing_user]
+        mock_session.execute.return_value = mock_result
+
+        with pytest.raises(
+            ValueError, match="Email 'existing@example.com' already exists"
+        ):
+            await create_user(
+                mock_session,
+                username="newuser",
+                email="existing@example.com",
+                password="password123",
+            )
+
 
 class TestGetCurrentUser:
     """Tests for current user retrieval from token."""
@@ -280,6 +307,19 @@ class TestGetCurrentUser:
     async def test_get_current_user_invalid_token(self) -> None:
         """Test getting current user with invalid token."""
         user = await get_current_user("invalid_token")
+        assert user is None
+
+    @pytest.mark.anyio
+    async def test_get_current_user_token_missing_username(self) -> None:
+        """Test getting current user with token missing username claim."""
+        # Create a token without the 'sub' claim
+        from datetime import datetime, timedelta
+
+        expire = datetime.now(UTC) + timedelta(minutes=15)
+        payload = {"user_id": 1, "exp": expire}  # Missing 'sub' claim
+        token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+        user = await get_current_user(token)
         assert user is None
 
     @pytest.mark.anyio

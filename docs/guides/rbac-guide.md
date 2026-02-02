@@ -71,6 +71,21 @@ Roles are named collections of permissions. Users are assigned roles, and inheri
 | `budgets:write` | Create and update budgets |
 | `budgets:delete` | Delete budgets |
 
+### Marketplace Permissions
+| Permission | Description |
+|------------|-------------|
+| `marketplace:read` | View marketplace suites |
+| `marketplace:write` | Publish, update, and review suites |
+| `marketplace:delete` | Delete own suites and reviews |
+| `marketplace:admin` | Feature, verify, and moderate suites |
+
+### Public Leaderboard Permissions
+| Permission | Description |
+|------------|-------------|
+| `leaderboard:read` | View public leaderboard |
+| `leaderboard:write` | Publish results, manage agent profiles |
+| `leaderboard:admin` | Manage categories, add verification badges |
+
 ### Administrative Permissions
 | Permission | Description |
 |------------|-------------|
@@ -98,6 +113,8 @@ baselines:read, baselines:write
 settings:read
 budgets:read, budgets:write
 analytics:read, analytics:write, analytics:delete, analytics:export
+marketplace:read, marketplace:write
+leaderboard:read, leaderboard:write
 roles:read
 ```
 
@@ -109,6 +126,8 @@ results:read
 baselines:read
 budgets:read
 analytics:read, analytics:write, analytics:export
+marketplace:read
+leaderboard:read
 roles:read
 ```
 
@@ -120,6 +139,8 @@ results:read
 baselines:read
 budgets:read
 analytics:read
+marketplace:read
+leaderboard:read
 roles:read
 ```
 

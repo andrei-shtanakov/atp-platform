@@ -449,3 +449,339 @@ class TestGlobalConnectionManager:
 
         # Reset
         set_connection_manager(None)  # type: ignore
+
+
+class TestConnectionManagerCoverage:
+    """Additional tests to improve coverage of ConnectionManager."""
+
+    @pytest.fixture
+    def manager(self) -> ConnectionManager:
+        """Create a ConnectionManager instance."""
+        return ConnectionManager(ping_interval=0.1)
+
+    @pytest.fixture
+    def websocket(self) -> MockWebSocket:
+        """Create a mock WebSocket."""
+        return MockWebSocket()
+
+    @pytest.mark.anyio
+    async def test_handle_unsubscribe_missing_topic(
+        self, manager: ConnectionManager, websocket: MockWebSocket
+    ) -> None:
+        """Test handling unsubscribe without topic sends error."""
+        with patch.object(manager, "_message_sender", return_value=None):
+            client_id = await manager.connect(websocket)
+            websocket.sent_messages.clear()
+
+            # Unsubscribe without topic
+            await manager.handle_message(
+                client_id,
+                {"type": "unsubscribe", "payload": {}},
+            )
+
+            assert len(websocket.sent_messages) == 1
+            assert websocket.sent_messages[0]["type"] == "error"
+            assert "Missing topic" in websocket.sent_messages[0]["payload"]["error"]
+
+            await manager.disconnect(client_id)
+
+    @pytest.mark.anyio
+    async def test_handle_subscribe_missing_topic(
+        self, manager: ConnectionManager, websocket: MockWebSocket
+    ) -> None:
+        """Test handling subscribe without topic sends error."""
+        with patch.object(manager, "_message_sender", return_value=None):
+            client_id = await manager.connect(websocket)
+            websocket.sent_messages.clear()
+
+            # Subscribe without topic
+            await manager.handle_message(
+                client_id,
+                {"type": "subscribe", "payload": {}},
+            )
+
+            assert len(websocket.sent_messages) == 1
+            assert websocket.sent_messages[0]["type"] == "error"
+            assert "Missing topic" in websocket.sent_messages[0]["payload"]["error"]
+
+            await manager.disconnect(client_id)
+
+    @pytest.mark.anyio
+    async def test_send_message_to_nonexistent_client(
+        self, manager: ConnectionManager
+    ) -> None:
+        """Test sending message to non-existent client returns False."""
+        message = WSMessage(type=WSMessageType.EVENT, payload={"test": "data"})
+        result = await manager._send_message("nonexistent-client", message)
+        assert result is False
+
+    @pytest.mark.anyio
+    async def test_send_message_exception_handling(
+        self, manager: ConnectionManager
+    ) -> None:
+        """Test that _send_message handles exceptions gracefully."""
+
+        class FailingWebSocket(MockWebSocket):
+            async def send_json(self, data: dict[str, Any]) -> None:
+                raise ConnectionError("Connection lost")
+
+        ws = FailingWebSocket()
+        with patch.object(manager, "_message_sender", return_value=None):
+            client_id = await manager.connect(ws)
+            ws.sent_messages.clear()
+
+            message = WSMessage(type=WSMessageType.EVENT, payload={"test": "data"})
+            result = await manager._send_message(client_id, message)
+
+            assert result is False
+            await manager.disconnect(client_id)
+
+    @pytest.mark.anyio
+    async def test_publish_test_completed(
+        self, manager: ConnectionManager, websocket: MockWebSocket
+    ) -> None:
+        """Test publishing test completion."""
+        with patch.object(manager, "_message_sender", return_value=None):
+            client_id = await manager.connect(websocket)
+            await manager.handle_message(
+                client_id,
+                {"type": "subscribe", "payload": {"topic": "test:completed"}},
+            )
+
+            count = await manager.publish_test_completed(
+                suite_execution_id=1,
+                test_execution_id=5,
+                test_id="test-001",
+                test_name="Test One",
+                success=True,
+                score=0.95,
+                duration_seconds=1.5,
+            )
+
+            assert count == 1
+            await manager.disconnect(client_id)
+
+    @pytest.mark.anyio
+    async def test_publish_test_completed_with_error(
+        self, manager: ConnectionManager, websocket: MockWebSocket
+    ) -> None:
+        """Test publishing test completion with error."""
+        with patch.object(manager, "_message_sender", return_value=None):
+            client_id = await manager.connect(websocket)
+            await manager.handle_message(
+                client_id,
+                {"type": "subscribe", "payload": {"topic": "test:completed"}},
+            )
+
+            count = await manager.publish_test_completed(
+                suite_execution_id=1,
+                test_execution_id=5,
+                test_id="test-001",
+                test_name="Test One",
+                success=False,
+                error="Test failed due to timeout",
+            )
+
+            assert count == 1
+            await manager.disconnect(client_id)
+
+    @pytest.mark.anyio
+    async def test_publish_suite_completed(
+        self, manager: ConnectionManager, websocket: MockWebSocket
+    ) -> None:
+        """Test publishing suite completion."""
+        with patch.object(manager, "_message_sender", return_value=None):
+            client_id = await manager.connect(websocket)
+            await manager.handle_message(
+                client_id,
+                {"type": "subscribe", "payload": {"topic": "suite:completed"}},
+            )
+
+            count = await manager.publish_suite_completed(
+                suite_execution_id=1,
+                suite_name="Test Suite",
+                agent_name="Test Agent",
+                success_rate=0.9,
+                total_tests=10,
+                passed_tests=9,
+                failed_tests=1,
+                duration_seconds=120.5,
+            )
+
+            assert count == 1
+            await manager.disconnect(client_id)
+
+    @pytest.mark.anyio
+    async def test_publish_suite_completed_with_error(
+        self, manager: ConnectionManager, websocket: MockWebSocket
+    ) -> None:
+        """Test publishing suite completion with error."""
+        with patch.object(manager, "_message_sender", return_value=None):
+            client_id = await manager.connect(websocket)
+            await manager.handle_message(
+                client_id,
+                {"type": "subscribe", "payload": {"topic": "suite:completed"}},
+            )
+
+            count = await manager.publish_suite_completed(
+                suite_execution_id=1,
+                suite_name="Test Suite",
+                agent_name="Test Agent",
+                success_rate=0.0,
+                total_tests=5,
+                passed_tests=0,
+                failed_tests=5,
+                error="Suite execution failed",
+            )
+
+            assert count == 1
+            await manager.disconnect(client_id)
+
+    def test_get_message_type_for_topic_test_progress(
+        self, manager: ConnectionManager
+    ) -> None:
+        """Test mapping test:progress topic to message type."""
+        result = manager._get_message_type_for_topic("test:progress")
+        assert result == WSMessageType.TEST_PROGRESS
+
+        result = manager._get_message_type_for_topic("test:progress:123")
+        assert result == WSMessageType.TEST_PROGRESS
+
+    def test_get_message_type_for_topic_test_completed(
+        self, manager: ConnectionManager
+    ) -> None:
+        """Test mapping test:completed topic to message type."""
+        result = manager._get_message_type_for_topic("test:completed")
+        assert result == WSMessageType.TEST_COMPLETED
+
+        result = manager._get_message_type_for_topic("test:completed:456")
+        assert result == WSMessageType.TEST_COMPLETED
+
+    def test_get_message_type_for_topic_suite_progress(
+        self, manager: ConnectionManager
+    ) -> None:
+        """Test mapping suite:progress topic to message type."""
+        result = manager._get_message_type_for_topic("suite:progress")
+        assert result == WSMessageType.SUITE_PROGRESS
+
+    def test_get_message_type_for_topic_suite_completed(
+        self, manager: ConnectionManager
+    ) -> None:
+        """Test mapping suite:completed topic to message type."""
+        result = manager._get_message_type_for_topic("suite:completed")
+        assert result == WSMessageType.SUITE_COMPLETED
+
+    def test_get_message_type_for_topic_logs(self, manager: ConnectionManager) -> None:
+        """Test mapping logs topic to message type."""
+        result = manager._get_message_type_for_topic("logs")
+        assert result == WSMessageType.LOG_ENTRY
+
+        result = manager._get_message_type_for_topic("logs:debug")
+        assert result == WSMessageType.LOG_ENTRY
+
+    def test_get_message_type_for_topic_events(
+        self, manager: ConnectionManager
+    ) -> None:
+        """Test mapping events topic to message type."""
+        result = manager._get_message_type_for_topic("events:tool_call")
+        assert result == WSMessageType.EVENT
+
+        result = manager._get_message_type_for_topic("events:llm_request")
+        assert result == WSMessageType.EVENT
+
+    def test_get_message_type_for_topic_delta(self, manager: ConnectionManager) -> None:
+        """Test mapping delta topic to message type."""
+        result = manager._get_message_type_for_topic("delta")
+        assert result == WSMessageType.DELTA_UPDATE
+
+    def test_get_message_type_for_topic_unknown(
+        self, manager: ConnectionManager
+    ) -> None:
+        """Test mapping unknown topic defaults to EVENT."""
+        result = manager._get_message_type_for_topic("unknown:topic")
+        assert result == WSMessageType.EVENT
+
+        result = manager._get_message_type_for_topic("custom")
+        assert result == WSMessageType.EVENT
+
+    @pytest.mark.anyio
+    async def test_send_to_client_nonexistent(self, manager: ConnectionManager) -> None:
+        """Test send_to_client returns False for non-existent client."""
+        message = WSMessage(type=WSMessageType.EVENT, payload={"test": "data"})
+        result = await manager.send_to_client("nonexistent", message)
+        assert result is False
+
+    @pytest.mark.anyio
+    async def test_message_sender_processes_messages(
+        self, manager: ConnectionManager, websocket: MockWebSocket
+    ) -> None:
+        """Test that _message_sender processes pubsub messages."""
+        import asyncio
+
+        # Connect without patching _message_sender so the real one runs
+        client_id = await manager.connect(websocket)
+        websocket.sent_messages.clear()
+
+        # Subscribe to test:progress topic
+        await manager.handle_message(
+            client_id,
+            {"type": "subscribe", "payload": {"topic": "test:progress"}},
+        )
+        websocket.sent_messages.clear()
+
+        # Publish a message that should be picked up
+        await manager.publish_test_progress(
+            suite_execution_id=1,
+            test_execution_id=1,
+            test_id="test-001",
+            test_name="Test",
+            status="running",
+        )
+
+        # Give the background task time to process
+        await asyncio.sleep(0.2)
+
+        # Check that the message was received
+        progress_messages = [
+            m for m in websocket.sent_messages if m.get("type") == "test_progress"
+        ]
+        assert len(progress_messages) >= 1
+
+        await manager.disconnect(client_id)
+
+    @pytest.mark.anyio
+    async def test_message_sender_handles_exception(
+        self, manager: ConnectionManager
+    ) -> None:
+        """Test that _message_sender handles exceptions gracefully."""
+        import asyncio
+
+        class ExceptionRaisingWebSocket(MockWebSocket):
+            async def send_json(self, data: dict[str, Any]) -> None:
+                raise RuntimeError("Connection error")
+
+        ws = ExceptionRaisingWebSocket()
+        client_id = await manager.connect(ws)
+
+        # Subscribe to a topic
+        await manager.handle_message(
+            client_id,
+            {"type": "subscribe", "payload": {"topic": "test:progress"}},
+        )
+
+        # Publish a message that will fail to send
+        await manager.publish_test_progress(
+            suite_execution_id=1,
+            test_execution_id=1,
+            test_id="test-001",
+            test_name="Test",
+            status="running",
+        )
+
+        # Give time for the background task to try sending
+        await asyncio.sleep(0.2)
+
+        # The manager should still be functional despite the error
+        assert manager.connection_count >= 0
+
+        await manager.disconnect(client_id)

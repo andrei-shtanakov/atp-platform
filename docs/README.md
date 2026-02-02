@@ -112,14 +112,34 @@ Complete reference for ATP features:
    - Authentication
    - Python client examples
 
-3. **[Configuration Reference](reference/configuration.md)**
+3. **[Marketplace API Reference](reference/marketplace-api.md)**
+   - Test suite publishing and discovery
+   - Search and filtering
+   - Ratings and reviews
+   - Version management
+   - GitHub import
+
+4. **[Public Leaderboard API Reference](reference/public-leaderboard-api.md)**
+   - Agent performance rankings
+   - Benchmark categories
+   - Agent profiles
+   - Result publishing
+   - Historical trends
+
+5. **[Dashboard v2 Migration Guide](reference/dashboard-migration.md)**
+   - v1 to v2 architecture changes
+   - Route migration patterns
+   - Service layer patterns
+   - Dependency injection
+
+6. **[Configuration Reference](reference/configuration.md)**
    - YAML structure
    - Configuration options
    - Environment variables
    - Default values
    - Complete examples
 
-4. **[Test Format Reference](reference/test-format.md)**
+7. **[Test Format Reference](reference/test-format.md)**
    - Test suite structure
    - Task definition
    - Constraints
@@ -127,7 +147,7 @@ Complete reference for ATP features:
    - Scoring weights
    - Validation rules
 
-5. **[Adapter Configuration](reference/adapters.md)**
+8. **[Adapter Configuration](reference/adapters.md)**
    - HTTP adapter
    - Docker adapter
    - CLI adapter
@@ -135,20 +155,20 @@ Complete reference for ATP features:
    - CrewAI adapter
    - Custom adapters
 
-6. **[Troubleshooting Guide](reference/troubleshooting.md)**
+9. **[Troubleshooting Guide](reference/troubleshooting.md)**
    - Common errors
    - Debugging techniques
    - Performance issues
    - Known limitations
    - Solutions and workarounds
 
-7. **[FAQ](reference/faq.md)**
-   - General questions
-   - Installation and setup
-   - Test suite creation
-   - Configuration
-   - Execution and results
-   - Advanced topics
+10. **[FAQ](reference/faq.md)**
+    - General questions
+    - Installation and setup
+    - Test suite creation
+    - Configuration
+    - Execution and results
+    - Advanced topics
 
 ### 🎓 Guides and Best Practices
 
@@ -164,7 +184,21 @@ Learn how to use ATP effectively:
    - CI/CD integration
    - Performance optimization
 
-2. **[Migration Guide](guides/migration.md)**
+2. **[RBAC Guide](guides/rbac-guide.md)**
+   - Permissions and roles
+   - Default role configuration
+   - Custom role creation
+   - API integration
+   - Best practices
+
+3. **[WebSocket Guide](guides/websocket-guide.md)**
+   - Real-time updates
+   - Topics and subscriptions
+   - Message types
+   - JavaScript client library
+   - React hooks integration
+
+4. **[Migration Guide](guides/migration.md)**
    - Migrating from custom solutions
    - Migration strategies
    - Step-by-step process
@@ -172,7 +206,7 @@ Learn how to use ATP effectively:
    - Common challenges
    - Success criteria
 
-3. **[Video Tutorials](guides/video-tutorials.md)** (Planned)
+5. **[Video Tutorials](guides/video-tutorials.md)** (Planned)
    - Tutorial series structure
    - Beginner series
    - Intermediate series
@@ -209,8 +243,10 @@ Technical documentation:
 
 1. [Architecture](03-architecture.md)
 2. [API Reference](reference/api-reference.md)
-3. [Integration Guide](06-integration.md)
-4. [Best Practices](guides/best-practices.md)
+3. [Dashboard API Reference](reference/dashboard-api.md)
+4. [WebSocket Guide](guides/websocket-guide.md)
+5. [Integration Guide](06-integration.md)
+6. [Best Practices](guides/best-practices.md)
 
 ### For DevOps Engineers
 
@@ -274,6 +310,18 @@ Strategy and planning:
 **...understand the architecture**
 → [Architecture](03-architecture.md)
 → [ATP Protocol](04-protocol.md)
+
+**...use real-time dashboard updates**
+→ [WebSocket Guide](guides/websocket-guide.md)
+
+**...share test suites with others**
+→ [Marketplace API Reference](reference/marketplace-api.md)
+
+**...compare agent performance publicly**
+→ [Public Leaderboard API Reference](reference/public-leaderboard-api.md)
+
+**...manage user permissions**
+→ [RBAC Guide](guides/rbac-guide.md)
 
 ---
 

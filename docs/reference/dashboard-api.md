@@ -131,6 +131,12 @@ The dashboard uses RBAC to control access to API endpoints. Each endpoint requir
 | `budgets:read` | ✓ | ✓ | ✓ | ✓ |
 | `budgets:write` | ✓ | ✓ | - | - |
 | `budgets:delete` | ✓ | - | - | - |
+| `marketplace:read` | ✓ | ✓ | ✓ | ✓ |
+| `marketplace:write` | ✓ | ✓ | - | - |
+| `marketplace:admin` | ✓ | - | - | - |
+| `leaderboard:read` | ✓ | ✓ | ✓ | ✓ |
+| `leaderboard:write` | ✓ | ✓ | - | - |
+| `leaderboard:admin` | ✓ | - | - | - |
 | `users:read` | ✓ | - | - | - |
 | `users:write` | ✓ | - | - | - |
 | `roles:read` | ✓ | - | - | - |
@@ -1371,8 +1377,19 @@ http://localhost:8000/redoc     # ReDoc
 
 ---
 
+## Additional API Documentation
+
+The following features have dedicated API reference documentation:
+
+- **[WebSocket Real-Time Updates](../guides/websocket-guide.md)** — Real-time test progress, events, and logs via WebSocket
+- **[Test Suite Marketplace](marketplace-api.md)** — Publishing, discovering, and installing test suites
+- **[Public Leaderboard](public-leaderboard-api.md)** — Agent rankings, benchmark categories, and result publishing
+
+---
+
 ## See Also
 
 - [API Reference](api-reference.md) — Python API reference
+- [RBAC Guide](../guides/rbac-guide.md) — Role-based access control
 - [Architecture](../03-architecture.md) — System architecture
 - [Usage Guide](../guides/usage.md) — Common workflows

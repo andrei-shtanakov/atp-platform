@@ -633,3 +633,281 @@ class SuiteDefinition(Base):
     def agent_count(self) -> int:
         """Return the number of agents in this suite."""
         return len(self.agents_json) if self.agents_json else 0
+
+
+# ==================== Test Suite Marketplace Models (TASK-803) ====================
+
+
+class MarketplaceSuite(Base):
+    """Published test suite in the marketplace.
+
+    Represents a test suite that has been published to the marketplace
+    for sharing and discovery by other users.
+    """
+
+    __tablename__ = "marketplace_suites"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(100), nullable=False, default=DEFAULT_TENANT_ID, index=True
+    )
+
+    # Basic information
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    slug: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    short_description: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # Publisher info
+    publisher_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=False
+    )
+    publisher_name: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    # Categorization
+    category: Mapped[str] = mapped_column(
+        String(100), nullable=False, default="general", index=True
+    )
+    tags: Mapped[list[str]] = mapped_column(JSON, default=list)
+
+    # License
+    license_type: Mapped[str] = mapped_column(String(50), nullable=False, default="MIT")
+    license_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # Source information
+    source_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="local"
+    )  # local, github
+    github_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    github_branch: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    github_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # Status
+    is_published: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    is_featured: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+
+    # Statistics (denormalized for performance)
+    total_downloads: Mapped[int] = mapped_column(Integer, default=0)
+    total_installs: Mapped[int] = mapped_column(Integer, default=0)
+    average_rating: Mapped[float | None] = mapped_column(Float, nullable=True)
+    total_ratings: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Current version info (denormalized)
+    latest_version: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="1.0.0"
+    )
+    latest_version_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.now, onupdate=datetime.now
+    )
+    published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # Relationships
+    publisher: Mapped["User"] = relationship(foreign_keys=[publisher_id])
+    versions: Mapped[list["MarketplaceSuiteVersion"]] = relationship(
+        back_populates="marketplace_suite",
+        cascade="all, delete-orphan",
+        order_by="desc(MarketplaceSuiteVersion.created_at)",
+    )
+    reviews: Mapped[list["MarketplaceSuiteReview"]] = relationship(
+        back_populates="marketplace_suite",
+        cascade="all, delete-orphan",
+    )
+
+    # Indexes
+    __table_args__ = (
+        Index("idx_marketplace_suite_slug", "slug"),
+        Index("idx_marketplace_suite_category", "category"),
+        Index("idx_marketplace_suite_published", "is_published"),
+        Index("idx_marketplace_suite_featured", "is_featured"),
+        Index("idx_marketplace_suite_rating", "average_rating"),
+        Index("idx_marketplace_suite_downloads", "total_downloads"),
+        Index("idx_marketplace_suite_tenant", "tenant_id"),
+        Index("idx_marketplace_suite_publisher", "publisher_id"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"MarketplaceSuite(id={self.id}, name={self.name!r}, "
+            f"version={self.latest_version})"
+        )
+
+
+class MarketplaceSuiteVersion(Base):
+    """Version of a marketplace test suite.
+
+    Stores different versions of a test suite, enabling versioning
+    and allowing users to download specific versions.
+    """
+
+    __tablename__ = "marketplace_suite_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    marketplace_suite_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("marketplace_suites.id"), nullable=False
+    )
+
+    # Version info
+    version: Mapped[str] = mapped_column(String(20), nullable=False)
+    version_major: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    version_minor: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    version_patch: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # Changelog
+    changelog: Mapped[str | None] = mapped_column(Text, nullable=True)
+    breaking_changes: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Suite content (stored as JSON)
+    suite_content: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    test_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    # File info
+    file_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    # Statistics
+    downloads: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Status
+    is_latest: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    is_deprecated: Mapped[bool] = mapped_column(Boolean, default=False)
+    deprecation_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    released_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # Relationships
+    marketplace_suite: Mapped["MarketplaceSuite"] = relationship(
+        back_populates="versions"
+    )
+
+    # Indexes
+    __table_args__ = (
+        UniqueConstraint(
+            "marketplace_suite_id", "version", name="uq_marketplace_version"
+        ),
+        Index("idx_marketplace_version_suite", "marketplace_suite_id"),
+        Index("idx_marketplace_version_latest", "is_latest"),
+        Index(
+            "idx_marketplace_version_semver",
+            "version_major",
+            "version_minor",
+            "version_patch",
+        ),
+    )
+
+    def __repr__(self) -> str:
+        return f"MarketplaceSuiteVersion(id={self.id}, version={self.version!r})"
+
+
+class MarketplaceSuiteReview(Base):
+    """Review and rating for a marketplace test suite.
+
+    Allows users to rate and review test suites they have used.
+    """
+
+    __tablename__ = "marketplace_suite_reviews"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    marketplace_suite_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("marketplace_suites.id"), nullable=False
+    )
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=False
+    )
+
+    # Rating (1-5 stars)
+    rating: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # Review content
+    title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    content: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Version reviewed
+    version_reviewed: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    # Moderation
+    is_approved: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_flagged: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Helpfulness votes
+    helpful_count: Mapped[int] = mapped_column(Integer, default=0)
+    not_helpful_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.now, onupdate=datetime.now
+    )
+
+    # Relationships
+    marketplace_suite: Mapped["MarketplaceSuite"] = relationship(
+        back_populates="reviews"
+    )
+    user: Mapped["User"] = relationship()
+
+    # Indexes
+    __table_args__ = (
+        UniqueConstraint(
+            "marketplace_suite_id", "user_id", name="uq_marketplace_review_user"
+        ),
+        Index("idx_marketplace_review_suite", "marketplace_suite_id"),
+        Index("idx_marketplace_review_user", "user_id"),
+        Index("idx_marketplace_review_rating", "rating"),
+        Index("idx_marketplace_review_approved", "is_approved"),
+    )
+
+    def __repr__(self) -> str:
+        return f"MarketplaceSuiteReview(id={self.id}, rating={self.rating})"
+
+
+class MarketplaceSuiteInstall(Base):
+    """Record of a user installing a marketplace test suite.
+
+    Tracks installations for analytics and to prevent duplicate reviews.
+    """
+
+    __tablename__ = "marketplace_suite_installs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(100), nullable=False, default=DEFAULT_TENANT_ID, index=True
+    )
+    marketplace_suite_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("marketplace_suites.id"), nullable=False
+    )
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=False
+    )
+
+    # Version installed
+    version_installed: Mapped[str] = mapped_column(String(20), nullable=False)
+    version_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("marketplace_suite_versions.id"), nullable=True
+    )
+
+    # Installation status
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Timestamps
+    installed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    uninstalled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # Relationships
+    marketplace_suite: Mapped["MarketplaceSuite"] = relationship()
+    user: Mapped["User"] = relationship()
+    version: Mapped["MarketplaceSuiteVersion | None"] = relationship()
+
+    # Indexes
+    __table_args__ = (
+        Index("idx_marketplace_install_suite", "marketplace_suite_id"),
+        Index("idx_marketplace_install_user", "user_id"),
+        Index("idx_marketplace_install_active", "is_active"),
+        Index("idx_marketplace_install_tenant", "tenant_id"),
+    )

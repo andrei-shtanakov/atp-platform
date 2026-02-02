@@ -38,7 +38,12 @@ atp/dashboard/
 │   │   ├── timeline.py   # Event timeline
 │   │   ├── leaderboard.py# Performance matrix
 │   │   ├── definitions.py# Suite definitions
-│   │   └── templates.py  # Template discovery
+│   │   ├── templates.py  # Template discovery
+│   │   ├── websocket.py  # WebSocket real-time updates
+│   │   ├── marketplace.py# Test suite marketplace
+│   │   ├── public_leaderboard.py # Public benchmark leaderboard
+│   │   ├── saml.py       # SAML SSO authentication
+│   │   └── audit.py      # Audit logging
 │   ├── services/         # Business logic layer
 │   │   ├── test_service.py
 │   │   ├── agent_service.py

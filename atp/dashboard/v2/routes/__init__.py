@@ -15,6 +15,7 @@ Each module handles a specific domain of functionality:
 - timeline: Event timeline visualization
 - leaderboard: Performance leaderboard matrix
 - public_leaderboard: Public leaderboard with agent profiles (TASK-802)
+- marketplace: Test suite marketplace (TASK-803)
 - definitions: Suite definition CRUD and YAML export
 - templates: Test template discovery
 - traces: Debug endpoint for OpenTelemetry traces (dev mode only)
@@ -42,6 +43,7 @@ from atp.dashboard.v2.routes.definitions import router as definitions_router
 from atp.dashboard.v2.routes.experiments import router as experiments_router
 from atp.dashboard.v2.routes.home import router as home_router
 from atp.dashboard.v2.routes.leaderboard import router as leaderboard_router
+from atp.dashboard.v2.routes.marketplace import router as marketplace_router
 from atp.dashboard.v2.routes.metrics import router as metrics_router
 from atp.dashboard.v2.routes.public_leaderboard import (
     router as public_leaderboard_router,
@@ -71,6 +73,7 @@ router.include_router(trends_router)
 router.include_router(comparison_router)
 router.include_router(leaderboard_router)
 router.include_router(public_leaderboard_router)
+router.include_router(marketplace_router)
 router.include_router(timeline_router)
 router.include_router(definitions_router)
 router.include_router(templates_router)
@@ -100,6 +103,7 @@ __all__ = [
     "experiments_router",
     "home_router",
     "leaderboard_router",
+    "marketplace_router",
     "metrics_router",
     "public_leaderboard_router",
     "roles_router",

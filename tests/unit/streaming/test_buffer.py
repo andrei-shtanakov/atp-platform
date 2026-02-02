@@ -332,6 +332,26 @@ class TestEventReplayIterator:
         assert len(items1) == 1
         assert len(items2) == 1
 
+    @pytest.mark.anyio
+    async def test_replay_with_delay(self) -> None:
+        """Test replaying events with delay between items."""
+        import time
+
+        buffer = EventBuffer()
+        buffer.add(make_event(sequence=0))
+        buffer.add(make_event(sequence=1))
+
+        # Use a small delay (10ms) to test the sleep path
+        iterator = EventReplayIterator(buffer, delay_ms=10, include_response=False)
+
+        start_time = time.perf_counter()
+        items = [item async for item in iterator]
+        elapsed = time.perf_counter() - start_time
+
+        assert len(items) == 2
+        # Should have had at least 2 delays of 10ms each
+        assert elapsed >= 0.02  # 20ms minimum
+
 
 class TestBufferingEventIterator:
     """Tests for BufferingEventIterator."""

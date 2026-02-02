@@ -257,3 +257,64 @@ class TestTestRunStatistics:
         assert d["score"]["stability"]["level"] == "moderate"
         assert "duration_seconds" in d
         assert d["duration_seconds"]["mean"] == 2.5
+
+    def test_to_dict_with_all_stats(self) -> None:
+        """Test to_dict with all optional stats (steps, tokens, cost)."""
+        stability = StabilityAssessment(
+            level=StabilityLevel.STABLE,
+            cv=0.05,
+            message="Consistent",
+        )
+
+        steps_stats = StatisticalResult(
+            mean=15.0,
+            std=2.0,
+            min=12.0,
+            max=20.0,
+            median=15.0,
+            confidence_interval=(13.0, 17.0),
+            n_runs=5,
+            coefficient_of_variation=0.13,
+        )
+
+        tokens_stats = StatisticalResult(
+            mean=1500.0,
+            std=200.0,
+            min=1200.0,
+            max=1800.0,
+            median=1500.0,
+            confidence_interval=(1300.0, 1700.0),
+            n_runs=5,
+            coefficient_of_variation=0.13,
+        )
+
+        cost_stats = StatisticalResult(
+            mean=0.015,
+            std=0.002,
+            min=0.012,
+            max=0.018,
+            median=0.015,
+            confidence_interval=(0.013, 0.017),
+            n_runs=5,
+            coefficient_of_variation=0.13,
+        )
+
+        stats = TestRunStatistics(
+            test_id="test-005",
+            n_runs=5,
+            successful_runs=5,
+            success_rate=1.0,
+            steps_stats=steps_stats,
+            tokens_stats=tokens_stats,
+            cost_stats=cost_stats,
+            overall_stability=stability,
+        )
+
+        d = stats.to_dict()
+
+        assert "steps" in d
+        assert d["steps"]["mean"] == 15.0
+        assert "tokens" in d
+        assert d["tokens"]["mean"] == 1500.0
+        assert "cost_usd" in d
+        assert d["cost_usd"]["mean"] == 0.015

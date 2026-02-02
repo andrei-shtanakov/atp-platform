@@ -1353,5 +1353,312 @@ class VerificationBadgeRequest(BaseModel):
     )
 
 
+# ==================== Test Suite Marketplace Schemas (TASK-803) ====================
+
+
+class MarketplaceSuiteCreate(BaseModel):
+    """Schema for publishing a test suite to the marketplace."""
+
+    name: str = Field(..., min_length=1, max_length=255)
+    slug: str = Field(
+        ..., min_length=1, max_length=255, pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$"
+    )
+    description: str | None = Field(None, max_length=10000)
+    short_description: str | None = Field(None, max_length=500)
+    category: str = Field(default="general", max_length=100)
+    tags: list[str] = Field(default_factory=list)
+    license_type: str = Field(default="MIT", max_length=50)
+    license_url: str | None = Field(None, max_length=500)
+    source_type: str = Field(default="local", pattern=r"^(local|github)$")
+    github_url: str | None = Field(None, max_length=500)
+    github_branch: str | None = Field(None, max_length=100)
+    github_path: str | None = Field(None, max_length=500)
+    # Initial version content
+    version: str = Field(default="1.0.0", max_length=20)
+    changelog: str | None = Field(None, max_length=5000)
+    suite_content: dict[str, Any] = Field(default_factory=dict)
+
+
+class MarketplaceSuiteUpdate(BaseModel):
+    """Schema for updating a marketplace suite."""
+
+    name: str | None = Field(None, min_length=1, max_length=255)
+    description: str | None = None
+    short_description: str | None = Field(None, max_length=500)
+    category: str | None = Field(None, max_length=100)
+    tags: list[str] | None = None
+    license_type: str | None = Field(None, max_length=50)
+    license_url: str | None = None
+    github_url: str | None = None
+    github_branch: str | None = None
+    github_path: str | None = None
+    is_published: bool | None = None
+
+
+class MarketplaceSuiteResponse(BaseModel):
+    """Schema for marketplace suite response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    slug: str
+    description: str | None
+    short_description: str | None
+    publisher_id: int
+    publisher_name: str
+    category: str
+    tags: list[str]
+    license_type: str
+    license_url: str | None
+    source_type: str
+    github_url: str | None
+    github_branch: str | None
+    github_path: str | None
+    is_published: bool
+    is_featured: bool
+    is_verified: bool
+    total_downloads: int
+    total_installs: int
+    average_rating: float | None
+    total_ratings: int
+    latest_version: str
+    created_at: datetime
+    updated_at: datetime
+    published_at: datetime | None
+
+
+class MarketplaceSuiteSummary(BaseModel):
+    """Summary of a marketplace suite for list views."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    slug: str
+    short_description: str | None
+    publisher_name: str
+    category: str
+    tags: list[str]
+    license_type: str
+    is_published: bool
+    is_featured: bool
+    is_verified: bool
+    total_downloads: int
+    average_rating: float | None
+    total_ratings: int
+    latest_version: str
+    updated_at: datetime
+
+
+class MarketplaceSuiteList(BaseModel):
+    """Paginated list of marketplace suites."""
+
+    items: list[MarketplaceSuiteSummary]
+    total: int
+    limit: int
+    offset: int
+
+
+class MarketplaceSuiteDetail(MarketplaceSuiteResponse):
+    """Detailed marketplace suite with versions and reviews."""
+
+    versions: list["MarketplaceSuiteVersionResponse"] = Field(default_factory=list)
+    recent_reviews: list["MarketplaceSuiteReviewResponse"] = Field(default_factory=list)
+    test_count: int = 0
+
+
+# ==================== Marketplace Version Schemas ====================
+
+
+class MarketplaceSuiteVersionCreate(BaseModel):
+    """Schema for creating a new version."""
+
+    version: str = Field(..., min_length=1, max_length=20)
+    changelog: str | None = Field(None, max_length=5000)
+    breaking_changes: bool = False
+    suite_content: dict[str, Any] = Field(default_factory=dict)
+
+
+class MarketplaceSuiteVersionResponse(BaseModel):
+    """Schema for version response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    marketplace_suite_id: int
+    version: str
+    version_major: int
+    version_minor: int
+    version_patch: int
+    changelog: str | None
+    breaking_changes: bool
+    test_count: int
+    file_size_bytes: int | None
+    downloads: int
+    is_latest: bool
+    is_deprecated: bool
+    deprecation_message: str | None
+    created_at: datetime
+    released_at: datetime | None
+
+
+class MarketplaceSuiteVersionList(BaseModel):
+    """List of versions."""
+
+    items: list[MarketplaceSuiteVersionResponse]
+    total: int
+
+
+class MarketplaceSuiteVersionUpdate(BaseModel):
+    """Schema for updating a version."""
+
+    changelog: str | None = None
+    is_deprecated: bool | None = None
+    deprecation_message: str | None = None
+
+
+# ==================== Marketplace Review Schemas ====================
+
+
+class MarketplaceSuiteReviewCreate(BaseModel):
+    """Schema for creating a review."""
+
+    rating: int = Field(..., ge=1, le=5)
+    title: str | None = Field(None, max_length=200)
+    content: str | None = Field(None, max_length=5000)
+    version_reviewed: str | None = Field(None, max_length=20)
+
+
+class MarketplaceSuiteReviewUpdate(BaseModel):
+    """Schema for updating a review."""
+
+    rating: int | None = Field(None, ge=1, le=5)
+    title: str | None = Field(None, max_length=200)
+    content: str | None = None
+
+
+class MarketplaceSuiteReviewResponse(BaseModel):
+    """Schema for review response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    marketplace_suite_id: int
+    user_id: int
+    username: str = ""
+    rating: int
+    title: str | None
+    content: str | None
+    version_reviewed: str | None
+    is_approved: bool
+    helpful_count: int
+    not_helpful_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class MarketplaceSuiteReviewList(BaseModel):
+    """Paginated list of reviews."""
+
+    items: list[MarketplaceSuiteReviewResponse]
+    total: int
+    limit: int
+    offset: int
+    average_rating: float | None
+    rating_distribution: dict[int, int] = Field(default_factory=dict)
+
+
+# ==================== Marketplace Install Schemas ====================
+
+
+class MarketplaceSuiteInstallResponse(BaseModel):
+    """Schema for install response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    marketplace_suite_id: int
+    user_id: int
+    version_installed: str
+    is_active: bool
+    installed_at: datetime
+    updated_at: datetime | None
+
+
+class MarketplaceSuiteInstallList(BaseModel):
+    """List of installs."""
+
+    items: list[MarketplaceSuiteInstallResponse]
+    total: int
+
+
+# ==================== Marketplace Search/Filter Schemas ====================
+
+
+class MarketplaceSearchParams(BaseModel):
+    """Search parameters for marketplace."""
+
+    query: str | None = Field(None, max_length=200)
+    category: str | None = Field(None, max_length=100)
+    tags: list[str] | None = None
+    license_type: str | None = Field(None, max_length=50)
+    verified_only: bool = False
+    featured_only: bool = False
+    min_rating: float | None = Field(None, ge=0, le=5)
+    sort_by: str = Field(
+        default="downloads",
+        pattern=r"^(downloads|rating|updated|name|created)$",
+    )
+    sort_order: str = Field(default="desc", pattern=r"^(asc|desc)$")
+
+
+class MarketplaceCategoryStats(BaseModel):
+    """Statistics for a marketplace category."""
+
+    category: str
+    count: int
+    total_downloads: int
+    average_rating: float | None
+
+
+class MarketplaceStats(BaseModel):
+    """Overall marketplace statistics."""
+
+    total_suites: int
+    total_downloads: int
+    total_installs: int
+    total_reviews: int
+    categories: list[MarketplaceCategoryStats]
+    top_tags: list[tuple[str, int]]
+
+
+# ==================== GitHub Import Schemas ====================
+
+
+class GitHubImportRequest(BaseModel):
+    """Schema for importing a test suite from GitHub."""
+
+    github_url: str = Field(..., max_length=500)
+    branch: str = Field(default="main", max_length=100)
+    path: str = Field(default="", max_length=500)
+    name: str | None = Field(None, max_length=255)
+    slug: str | None = Field(None, max_length=255)
+    description: str | None = Field(None, max_length=10000)
+    category: str = Field(default="general", max_length=100)
+    tags: list[str] = Field(default_factory=list)
+    license_type: str = Field(default="MIT", max_length=50)
+
+
+class GitHubImportResponse(BaseModel):
+    """Response for GitHub import."""
+
+    success: bool
+    marketplace_suite: MarketplaceSuiteResponse | None = None
+    error: str | None = None
+    files_imported: list[str] = Field(default_factory=list)
+
+
 # Update forward references
 SuiteExecutionDetail.model_rebuild()
+MarketplaceSuiteDetail.model_rebuild()
