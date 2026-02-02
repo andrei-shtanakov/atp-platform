@@ -117,7 +117,7 @@ class TestPIIDetectionIntegration:
     ) -> None:
         """Test that API keys are detected."""
         # Use a valid Stripe API key pattern that matches the detection regex
-        response = make_response("Use this API key: " + "sk_live_" + "a" * 24 + "1234")
+        response = make_response("Use this API key: " + "sk_live_" + "aB1" * 8 + "1234")
         assertion = Assertion(
             type="security",
             config={

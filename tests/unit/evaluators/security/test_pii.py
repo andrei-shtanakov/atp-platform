@@ -191,7 +191,7 @@ class TestAPIKeyDetection:
     def test_detect_stripe_key(self, checker: PIIChecker) -> None:
         """Test detecting Stripe API key."""
         # Stripe keys need 24+ chars after the prefix
-        content = "API Key: " + "sk_test_" + "x" * 24
+        content = "API Key: " + "sk_test_" + "aB1" * 8
         findings = checker.check(content, enabled_types=["api_key"])
         assert len(findings) == 1
 
