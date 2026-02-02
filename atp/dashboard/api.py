@@ -67,6 +67,7 @@ from atp.dashboard.schemas import (
     SuiteExecutionList,
     SuiteExecutionSummary,
     SuiteTrend,
+    SuiteUpdateRequest,
     TaskCreate,
     TemplateListResponse,
     TemplateResponse,
@@ -1802,6 +1803,67 @@ async def delete_suite_definition(
 
     await session.delete(suite_def)
     await session.commit()
+
+
+@router.patch(
+    "/suite-definitions/{suite_id}",
+    response_model=SuiteDefinitionResponse,
+    tags=["suite-definitions"],
+)
+async def update_suite_definition(
+    session: SessionDep,
+    suite_id: int,
+    suite_data: SuiteUpdateRequest,
+    user: RequiredUser,
+) -> SuiteDefinitionResponse:
+    """Update a suite definition.
+
+    Requires authentication. Only updates fields that are provided.
+
+    Args:
+        session: Database session.
+        suite_id: Suite definition ID.
+        suite_data: Fields to update.
+        user: Authenticated user.
+
+    Returns:
+        The updated suite definition.
+
+    Raises:
+        HTTPException: If suite not found or name conflict.
+    """
+    suite_def = await session.get(SuiteDefinition, suite_id)
+    if suite_def is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Suite definition {suite_id} not found",
+        )
+
+    # Check for name conflict if name is being changed
+    if suite_data.name is not None and suite_data.name != suite_def.name:
+        stmt = select(SuiteDefinition).where(SuiteDefinition.name == suite_data.name)
+        result = await session.execute(stmt)
+        if result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Suite '{suite_data.name}' already exists",
+            )
+        suite_def.name = suite_data.name
+
+    # Update other fields if provided
+    if suite_data.version is not None:
+        suite_def.version = suite_data.version
+    if suite_data.description is not None:
+        suite_def.description = suite_data.description
+    if suite_data.defaults is not None:
+        suite_def.defaults_json = suite_data.defaults.model_dump()
+    if suite_data.agents is not None:
+        suite_def.agents_json = [a.model_dump() for a in suite_data.agents]
+
+    await session.commit()
+    await session.refresh(suite_def)
+
+    return _build_suite_definition_response(suite_def)
 
 
 @router.get(

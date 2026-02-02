@@ -541,6 +541,20 @@ class SuiteCreateRequest(BaseModel):
     )
 
 
+class SuiteUpdateRequest(BaseModel):
+    """Schema for updating a test suite definition."""
+
+    name: str | None = Field(
+        None, min_length=1, max_length=255, description="Suite name"
+    )
+    version: str | None = Field(None, max_length=20, description="Suite version")
+    description: str | None = Field(None, max_length=2000, description="Description")
+    defaults: TestDefaultsCreate | None = Field(None, description="Default settings")
+    agents: list[AgentConfigCreate] | None = Field(
+        None, description="Agent configurations"
+    )
+
+
 class TestResponse(BaseModel):
     """Schema for test response in suite."""
 
