@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ATP Platform Architecture</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+    <script>
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'default',
+            securityLevel: 'loose',
+            flowchart: { useMaxWidth: true, htmlLabels: true },
+            sequence: { useMaxWidth: true },
+            er: { useMaxWidth: true }
+        });
+    </script>
+    <style>
+        :root {
+            --primary: #4F46E5;
+            --secondary: #10B981;
+            --accent: #F59E0B;
+            --bg: #F9FAFB;
+            --card-bg: #FFFFFF;
+            --text: #1F2937;
+            --text-muted: #6B7280;
+            --border: #E5E7EB;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        header {
+            text-align: center;
+            padding: 3rem 0;
+            background: linear-gradient(135deg, var(--primary), #7C3AED);
+            color: white;
+            margin-bottom: 2rem;
+            border-radius: 0 0 2rem 2rem;
+        }
+
+        header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .badge {
+            display: inline-block;
+            background: rgba(255,255,255,0.2);
+            padding: 0.25rem 0.75rem;
+            border-radius: 1rem;
+            font-size: 0.875rem;
+            margin-top: 1rem;
+        }
+
+        nav {
+            background: var(--card-bg);
+            padding: 1rem;
+            border-radius: 1rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            justify-content: center;
+        }
+
+        nav a {
+            color: var(--text);
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            transition: all 0.2s;
+            font-size: 0.9rem;
+        }
+
+        nav a:hover {
+            background: var(--primary);
+            color: white;
+        }
+
+        section {
+            background: var(--card-bg);
+            border-radius: 1rem;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        section h2 {
+            color: var(--primary);
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        section h2::before {
+            content: '';
+            width: 4px;
+            height: 1.5rem;
+            background: var(--primary);
+            border-radius: 2px;
+        }
+
+        section > p {
+            color: var(--text-muted);
+            margin-bottom: 1.5rem;
+        }
+
+        .mermaid {
+            background: #FAFAFA;
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            border: 1px solid var(--border);
+            overflow-x: auto;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 2rem;
+        }
+
+        .info-box {
+            background: linear-gradient(135deg, #EEF2FF, #E0E7FF);
+            border: 1px solid #C7D2FE;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            margin-top: 1rem;
+        }
+
+        .info-box h4 {
+            color: var(--primary);
+            margin-bottom: 0.5rem;
+        }
+
+        .info-box ul {
+            margin-left: 1.5rem;
+            color: var(--text-muted);
+        }
+
+        .info-box li {
+            margin: 0.25rem 0;
+        }
+
+        code {
+            background: #F3F4F6;
+            padding: 0.125rem 0.375rem;
+            border-radius: 0.25rem;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 0.875rem;
+        }
+
+        .tag {
+            display: inline-block;
+            background: var(--secondary);
+            color: white;
+            padding: 0.125rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            margin-right: 0.25rem;
+        }
+
+        .tag.orange { background: var(--accent); }
+        .tag.purple { background: #8B5CF6; }
+        .tag.blue { background: #3B82F6; }
+
+        footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-muted);
+            font-size: 0.875rem;
+        }
+
+        @media (max-width: 768px) {
+            .container { padding: 1rem; }
+            header h1 { font-size: 1.75rem; }
+            section { padding: 1rem; }
+            .grid-2 { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>ATP Platform Architecture</h1>
+            <p>Agent Test Platform - Framework-Agnostic Testing for AI Agents</p>
+            <span class="badge">Version 1.0</span>
+        </div>
+    </header>
+
+    <div class="container">
+        <nav>
+            <a href="#overview">Overview</a>
+            <a href="#dataflow">Data Flow</a>
+            <a href="#protocol">Protocol</a>
+            <a href="#adapters">Adapters</a>
+            <a href="#components">Components</a>
+            <a href="#example">Example Flow</a>
+        </nav>
+
+        <!-- Section 1: Architecture Overview -->
+        <section id="overview">
+            <h2>Architecture Overview</h2>
+            <p>High-level view of ATP Platform and its interactions with external systems.</p>
+
+            <div class="mermaid">
+C4Context
+    title ATP Platform - System Context
+
+    Person(user, "Developer", "Creates test suites and reviews results")
+    Person(ci, "CI/CD System", "Automated testing pipeline")
+
+    System_Boundary(atp, "ATP Platform") {
+        System(cli, "ATP CLI", "Command-line interface for running tests")
+        System(dashboard, "Web Dashboard", "UI for viewing results and managing tests")
+        System(runner, "Test Runner", "Orchestrates test execution")
+        SystemDb(db, "SQLite DB", "Stores results and definitions")
+    }
+
+    System_Ext(agent, "AI Agent", "Agent being tested (black box)")
+    System_Ext(testsite, "Test Site", "Target system for agent tasks")
+    System_Ext(llm, "LLM Provider", "For LLM-as-Judge evaluation")
+
+    Rel(user, cli, "Runs tests", "YAML config")
+    Rel(user, dashboard, "Views results", "HTTP")
+    Rel(ci, cli, "Automated tests", "CLI")
+
+    Rel(cli, runner, "Executes")
+    Rel(runner, agent, "ATP Protocol", "stdin/stdout or HTTP")
+    Rel(agent, testsite, "Performs tasks", "HTTP")
+    Rel(runner, db, "Stores results")
+    Rel(dashboard, db, "Reads data")
+    Rel(runner, llm, "LLM evaluation", "API")
+            </div>
+
+            <div class="info-box">
+                <h4>Key Principle</h4>
+                <p><strong>Agent = Black Box with Contract</strong></p>
+                <ul>
+                    <li>ATP doesn't care how the agent is implemented internally</li>
+                    <li>Agents communicate via a standardized protocol (ATPRequest/ATPResponse)</li>
+                    <li>Supports any framework: LangGraph, CrewAI, AutoGen, custom code</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- Section 2: Data Flow -->
+        <section id="dataflow">
+            <h2>Data Flow</h2>
+            <p>How test definitions flow through the system to produce evaluation results.</p>
+
+            <div class="mermaid">
+flowchart LR
+    subgraph Input
+        YAML[("Test Suite<br/>(YAML)")]
+    end
+
+    subgraph "ATP Core"
+        Loader["Loader<br/>📄"]
+        Runner["Runner<br/>⚡"]
+        Sandbox["Sandbox<br/>🔒"]
+    end
+
+    subgraph Adapters
+        CLI["CLI Adapter<br/>stdin/stdout"]
+        HTTP["HTTP Adapter<br/>REST API"]
+        Docker["Docker Adapter<br/>Container"]
+    end
+
+    subgraph "Agent (Black Box)"
+        Agent["AI Agent<br/>🤖"]
+    end
+
+    subgraph Evaluation
+        Evaluators["Evaluators<br/>✓"]
+        Scoring["Score<br/>Aggregator"]
+    end
+
+    subgraph Output
+        Report["Report<br/>📊"]
+        DB[("Database")]
+    end
+
+    YAML --> Loader
+    Loader --> Runner
+    Runner --> Sandbox
+    Sandbox --> CLI & HTTP & Docker
+    CLI & HTTP & Docker --> Agent
+    Agent --> |"ATPResponse<br/>+ Events"| Evaluators
+    Evaluators --> Scoring
+    Scoring --> Report
+    Scoring --> DB
+
+    style YAML fill:#E0E7FF,stroke:#4F46E5
+    style Agent fill:#DCFCE7,stroke:#10B981
+    style Report fill:#FEF3C7,stroke:#F59E0B
+    style DB fill:#FCE7F3,stroke:#EC4899
+            </div>
+
+            <div class="grid-2">
+                <div class="info-box">
+                    <h4>Events Stream (stderr)</h4>
+                    <ul>
+                        <li><code>progress</code> - Task progress updates</li>
+                        <li><code>tool_call</code> - Tool invocations</li>
+                        <li><code>llm_request</code> - LLM API calls</li>
+                        <li><code>reasoning</code> - Agent thoughts</li>
+                        <li><code>error</code> - Error notifications</li>
+                    </ul>
+                </div>
+                <div class="info-box">
+                    <h4>Evaluator Types</h4>
+                    <ul>
+                        <li><span class="tag">artifact</span> File existence, schema validation</li>
+                        <li><span class="tag orange">behavior</span> Tool usage, error handling</li>
+                        <li><span class="tag purple">llm_judge</span> Quality assessment by LLM</li>
+                        <li><span class="tag blue">code_exec</span> pytest, npm, lint checks</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 3: Protocol Messages -->
+        <section id="protocol">
+            <h2>Protocol Messages</h2>
+            <p>The ATP Protocol defines the contract between the platform and agents.</p>
+
+            <div class="mermaid">
+classDiagram
+    class ATPRequest {
+        +String version
+        +String task_id
+        +Task task
+        +Constraints constraints
+        +Context context
+    }
+
+    class Task {
+        +String description
+        +List expected_artifacts
+        +Object metadata
+    }
+
+    class Constraints {
+        +int max_steps
+        +int timeout_seconds
+        +List allowed_tools
+        +List forbidden_tools
+    }
+
+    class Context {
+        +Object environment
+        +List artifacts
+        +String working_directory
+    }
+
+    class ATPResponse {
+        +String version
+        +String task_id
+        +Status status
+        +List artifacts
+        +Metrics metrics
+        +String error
+    }
+
+    class Artifact {
+        +String type
+        +String path
+        +String content
+        +String content_type
+    }
+
+    class Metrics {
+        +int total_steps
+        +float wall_time_seconds
+        +int tokens_used
+        +float cost
+    }
+
+    class ATPEvent {
+        +String version
+        +String task_id
+        +String timestamp
+        +int sequence
+        +String event_type
+        +Object payload
+    }
+
+    class Status {
+        &lt;&lt;enumeration&gt;&gt;
+        completed
+        partial
+        failed
+        timeout
+    }
+
+    ATPRequest --> Task
+    ATPRequest --> Constraints
+    ATPRequest --> Context
+    ATPResponse --> Artifact
+    ATPResponse --> Metrics
+    ATPResponse --> Status
+    Context --> Artifact
+            </div>
+
+            <div class="info-box">
+                <h4>Communication Pattern</h4>
+                <pre style="background:#1F2937;color:#F9FAFB;padding:1rem;border-radius:0.5rem;overflow-x:auto;margin-top:0.5rem">
+<span style="color:#10B981"># CLI Adapter (stdin/stdout)</span>
+echo '{"task_id": "t1", "task": {"description": "Find laptops"}}' | python agent.py
+
+<span style="color:#10B981"># HTTP Adapter (REST API)</span>
+curl -X POST http://agent:8000/execute -d '{"task_id": "t1", ...}'
+
+<span style="color:#10B981"># Events stream on stderr (JSONL)</span>
+{"event_type": "progress", "payload": {"message": "Starting search", "percentage": 0}}
+{"event_type": "tool_call", "payload": {"tool": "http_get", "status": "completed"}}</pre>
+            </div>
+        </section>
+
+        <!-- Section 4: Adapter Types -->
+        <section id="adapters">
+            <h2>Adapter Types</h2>
+            <p>Adapters translate between ATP Protocol and specific agent implementations.</p>
+
+            <div class="mermaid">
+flowchart TB
+    subgraph "ATP Runner"
+        Runner["Test Runner"]
+    end
+
+    subgraph "Built-in Adapters"
+        CLI["CLI Adapter<br/><small>stdin/stdout JSON</small>"]
+        HTTP["HTTP Adapter<br/><small>REST API calls</small>"]
+        Docker["Docker Adapter<br/><small>Container execution</small>"]
+    end
+
+    subgraph "Framework Adapters"
+        LG["LangGraph<br/><small>State graphs</small>"]
+        CA["CrewAI<br/><small>Multi-agent crews</small>"]
+        AG["AutoGen<br/><small>Conversational agents</small>"]
+    end
+
+    subgraph "Agent Implementations"
+        PyAgent["Python Script<br/>🐍"]
+        Container["Docker Container<br/>🐳"]
+        Service["HTTP Service<br/>🌐"]
+        LGAgent["LangGraph Agent<br/>📊"]
+        CrewAgent["CrewAI Crew<br/>👥"]
+        AGAgent["AutoGen Agent<br/>💬"]
+    end
+
+    Runner --> CLI & HTTP & Docker
+    Runner --> LG & CA & AG
+
+    CLI --> PyAgent
+    Docker --> Container
+    HTTP --> Service
+    LG --> LGAgent
+    CA --> CrewAgent
+    AG --> AGAgent
+
+    style Runner fill:#4F46E5,color:#fff
+    style CLI fill:#E0E7FF,stroke:#4F46E5
+    style HTTP fill:#E0E7FF,stroke:#4F46E5
+    style Docker fill:#E0E7FF,stroke:#4F46E5
+    style LG fill:#DCFCE7,stroke:#10B981
+    style CA fill:#DCFCE7,stroke:#10B981
+    style AG fill:#DCFCE7,stroke:#10B981
+            </div>
+
+            <div class="grid-2">
+                <div class="info-box">
+                    <h4>CLI Adapter Usage</h4>
+                    <pre style="background:#1F2937;color:#F9FAFB;padding:0.75rem;border-radius:0.5rem;font-size:0.8rem">agents:
+  - name: "search-agent"
+    type: "cli"
+    config:
+      command: "python"
+      args: ["agent.py"]
+      environment:
+        TEST_SITE_URL: "http://localhost:9876"</pre>
+                </div>
+                <div class="info-box">
+                    <h4>Docker Adapter Usage</h4>
+                    <pre style="background:#1F2937;color:#F9FAFB;padding:0.75rem;border-radius:0.5rem;font-size:0.8rem">agents:
+  - name: "containerized-agent"
+    type: "docker"
+    config:
+      image: "atp-search-agent:latest"
+      network: "host"
+      environment:
+        TEST_SITE_URL: "http://localhost:9876"</pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 5: Component Structure -->
+        <section id="components">
+            <h2>Component Structure</h2>
+            <p>Internal modules of the ATP Platform.</p>
+
+            <div class="mermaid">
+flowchart TB
+    subgraph "atp/"
+        subgraph "Core Modules"
+            protocol["protocol/<br/><small>Request, Response, Event models</small>"]
+            core["core/<br/><small>Config, exceptions, security</small>"]
+        end
+
+        subgraph "Execution"
+            loader["loader/<br/><small>YAML/JSON parsing</small>"]
+            runner["runner/<br/><small>Test orchestration, sandbox</small>"]
+            adapters["adapters/<br/><small>CLI, HTTP, Docker, frameworks</small>"]
+        end
+
+        subgraph "Evaluation"
+            evaluators["evaluators/<br/><small>Artifact, behavior, LLM-judge</small>"]
+            scoring["scoring/<br/><small>Score aggregation</small>"]
+            baseline["baseline/<br/><small>Regression detection</small>"]
+        end
+
+        subgraph "Output"
+            reporters["reporters/<br/><small>Console, JSON, HTML, JUnit</small>"]
+            dashboard["dashboard/<br/><small>FastAPI web interface</small>"]
+        end
+
+        subgraph "Infrastructure"
+            streaming["streaming/<br/><small>Event buffering</small>"]
+            statistics["statistics/<br/><small>Mean, CI, stability</small>"]
+            cli_mod["cli/<br/><small>CLI entry point</small>"]
+        end
+    end
+
+    cli_mod --> loader
+    loader --> runner
+    runner --> adapters
+    adapters --> protocol
+    runner --> evaluators
+    evaluators --> scoring
+    scoring --> baseline
+    scoring --> reporters
+    scoring --> dashboard
+    runner --> streaming
+    baseline --> statistics
+
+    style protocol fill:#E0E7FF,stroke:#4F46E5
+    style runner fill:#DCFCE7,stroke:#10B981
+    style evaluators fill:#FEF3C7,stroke:#F59E0B
+    style dashboard fill:#FCE7F3,stroke:#EC4899
+            </div>
+
+            <div class="info-box">
+                <h4>Evaluator Registry</h4>
+                <table style="width:100%;border-collapse:collapse;margin-top:0.5rem">
+                    <tr style="border-bottom:1px solid #E5E7EB">
+                        <th style="text-align:left;padding:0.5rem">Evaluator</th>
+                        <th style="text-align:left;padding:0.5rem">Assertion Types</th>
+                    </tr>
+                    <tr style="border-bottom:1px solid #E5E7EB">
+                        <td style="padding:0.5rem"><code>artifact</code></td>
+                        <td style="padding:0.5rem">artifact_exists, contains, schema, sections</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #E5E7EB">
+                        <td style="padding:0.5rem"><code>behavior</code></td>
+                        <td style="padding:0.5rem">must_use_tools, max_tool_calls, no_errors, forbidden_tools</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #E5E7EB">
+                        <td style="padding:0.5rem"><code>llm_judge</code></td>
+                        <td style="padding:0.5rem">llm_eval</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #E5E7EB">
+                        <td style="padding:0.5rem"><code>code_exec</code></td>
+                        <td style="padding:0.5rem">pytest, npm, custom_command, lint</td>
+                    </tr>
+                    <tr>
+                        <td style="padding:0.5rem"><code>security</code></td>
+                        <td style="padding:0.5rem">security</td>
+                    </tr>
+                </table>
+            </div>
+        </section>
+
+        <!-- Section 6: Example Flow -->
+        <section id="example">
+            <h2>Example: Web Search Agent Test</h2>
+            <p>Complete flow of testing the search agent against the test site.</p>
+
+            <div class="mermaid">
+sequenceDiagram
+    autonumber
+    participant User
+    participant CLI as ATP CLI
+    participant Runner
+    participant Adapter as CLI Adapter
+    participant Agent as Search Agent
+    participant Site as Test Site<br/>(port 9876)
+    participant Eval as Evaluators
+    participant DB as Dashboard DB
+
+    User->>CLI: atp test web_search.yaml
+    CLI->>Runner: Load test suite
+
+    loop For each test
+        Runner->>Adapter: Execute test
+        Adapter->>Agent: ATPRequest (stdin)
+
+        Agent->>Site: GET /api/products?category=laptop
+        Site-->>Agent: JSON product list
+
+        Agent-->>Adapter: ATPEvent (stderr): progress
+        Agent-->>Adapter: ATPEvent (stderr): tool_call
+        Agent-->>Adapter: ATPResponse (stdout)
+
+        Adapter-->>Runner: Response + Events
+        Runner->>Eval: Evaluate results
+        Eval-->>Runner: Assertion results
+    end
+
+    Runner->>DB: Store results
+    Runner-->>CLI: Test report
+    CLI-->>User: Summary + Details
+
+    Note over User,DB: Results visible in Dashboard at localhost:8080
+            </div>
+
+            <div class="grid-2">
+                <div class="info-box">
+                    <h4>Test Site (port 9876)</h4>
+                    <ul>
+                        <li><code>/</code> - Homepage</li>
+                        <li><code>/catalog</code> - Product catalog (HTML)</li>
+                        <li><code>/api/products</code> - Products API (JSON)</li>
+                        <li><code>/api/company</code> - Company info</li>
+                        <li><code>/about</code>, <code>/contact</code> - Static pages</li>
+                    </ul>
+                    <pre style="background:#1F2937;color:#F9FAFB;padding:0.5rem;border-radius:0.5rem;margin-top:0.5rem;font-size:0.75rem">podman run -d -p 9876:9876 atp-test-site</pre>
+                </div>
+                <div class="info-box">
+                    <h4>Search Agent</h4>
+                    <ul>
+                        <li>Parses task description for parameters</li>
+                        <li>Fetches data via HTTP (JSON API or HTML scraping)</li>
+                        <li>Emits progress events to stderr</li>
+                        <li>Returns structured results as artifacts</li>
+                    </ul>
+                    <pre style="background:#1F2937;color:#F9FAFB;padding:0.5rem;border-radius:0.5rem;margin-top:0.5rem;font-size:0.75rem">podman run -i --network=host atp-search-agent</pre>
+                </div>
+            </div>
+        </section>
+
+        <footer>
+            <p>ATP Platform Architecture Diagram | Generated with Mermaid.js</p>
+            <p style="margin-top:0.5rem">
+                <a href="https://github.com" style="color:var(--primary)">GitHub</a> |
+                <a href="#overview" style="color:var(--primary)">Back to Top</a>
+            </p>
+        </footer>
+    </div>
+</body>
+</html>

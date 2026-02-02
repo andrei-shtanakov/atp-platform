@@ -1,0 +1,105 @@
+test_suite: "web_search_tests"
+version: "1.0"
+description: "Tests for web search agents on the ATP test site"
+
+# Default settings for all tests
+defaults:
+  constraints:
+    max_steps: 20
+    timeout_seconds: 60
+
+agents:
+  - name: "search-agent"
+    type: "cli"
+    config:
+      command: "uv"
+      args: ["run", "python", "examples/search_agent/agent.py"]
+      environment:
+        TEST_SITE_URL: "http://localhost:9876"
+
+tests:
+  # Test 1: Find laptops under $1000
+  - id: "search-001"
+    name: "Find laptops under $1000"
+    task:
+      description: |
+        Go to http://localhost:9876/catalog.
+        Find all laptops with price under $1000.
+        Return a JSON list with name, price, and URL for each item.
+        Sort results by price ascending.
+      expected_artifacts: ["laptops.json"]
+    constraints:
+      max_steps: 10
+      timeout_seconds: 30
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "laptops.json"
+
+  # Test 2: Find all accessories
+  - id: "search-002"
+    name: "Find all accessories"
+    task:
+      description: |
+        Search the catalog for all accessories.
+        Return a JSON list with name and price for each accessory.
+      expected_artifacts: ["accessories.json"]
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "accessories.json"
+
+  # Test 3: Get company founding year
+  - id: "search-003"
+    name: "Find company founding year"
+    task:
+      description: |
+        Navigate to the About page and find when the company was founded.
+        Return the founding year.
+      expected_artifacts: ["company_info.json"]
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "company_info.json"
+
+  # Test 4: Get contact email
+  - id: "search-004"
+    name: "Find contact email"
+    task:
+      description: |
+        Navigate to the Contact page and extract the support email address.
+      expected_artifacts: ["contact_info.json"]
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "contact_info.json"
+
+  # Test 5: Find expensive laptops (over $1000)
+  - id: "search-005"
+    name: "Find laptops over $1000"
+    task:
+      description: |
+        Find all laptops with price over $1000.
+        Sort by price descending.
+      expected_artifacts: ["expensive_laptops.json"]
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "expensive_laptops.json"
+
+  # Test 6: Multi-step navigation
+  - id: "search-006"
+    name: "Multi-page information extraction"
+    task:
+      description: |
+        Starting from http://localhost:9876:
+        1. Navigate to the About section and find the company founding year
+        2. Navigate to the Contact page and extract the support email
+        Return both values in a JSON file.
+      expected_artifacts: ["company_info.json"]
+    constraints:
+      max_steps: 15
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "company_info.json"

@@ -454,6 +454,49 @@ tests:
       max_tokens: 10000
 ```
 
+## Web Search Agent Demo
+
+Test a web search agent against a mock e-commerce site:
+
+```bash
+# 1. Start the test site (port 9876)
+# Using Docker Compose (v2):
+docker compose -f tests/fixtures/test_site/docker-compose.yml up -d
+
+# Or using Podman Compose:
+podman-compose -f tests/fixtures/test_site/docker-compose.yml up -d
+
+# Or using legacy docker-compose:
+docker-compose -f tests/fixtures/test_site/docker-compose.yml up -d
+
+# 2. Verify it's running
+curl http://localhost:9876/health
+# {"status":"ok","products_count":10}
+
+# 3. Run the web search tests
+uv run atp test examples/test_suites/web_search.yaml \
+  --adapter=cli \
+  --adapter-config='command=uv' \
+  --adapter-config='args=["run", "python", "examples/search_agent/agent.py"]' \
+  --adapter-config='environment={"TEST_SITE_URL": "http://localhost:9876"}'
+
+# 4. View results in dashboard
+uv run atp dashboard --port 8080
+# Open http://localhost:8080
+
+# 5. Stop the test site when done
+docker compose -f tests/fixtures/test_site/docker-compose.yml down
+# Or: podman-compose -f tests/fixtures/test_site/docker-compose.yml down
+```
+
+The test suite includes 6 tests:
+- Find laptops under $1000
+- Find all accessories
+- Get company founding year
+- Get contact email
+- Find expensive laptops
+- Multi-page information extraction
+
 ## Troubleshooting
 
 See [Troubleshooting Guide](../reference/troubleshooting.md) for common issues and solutions.

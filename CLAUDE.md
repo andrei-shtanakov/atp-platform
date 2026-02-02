@@ -108,12 +108,16 @@ tests/             # Test suite
 ├── contract/      # Protocol contract tests
 ├── e2e/           # End-to-end tests (~10%)
 └── fixtures/      # Test fixtures and sample data
+    └── test_site/ # Test e-commerce site for web search agents (port 9876)
 
 examples/
 ├── test_suites/   # Sample test suite YAML files
+├── search_agent/  # Web search agent for testing (no API keys required)
 ├── ci/            # CI/CD templates (GitHub, GitLab, Jenkins, Azure, CircleCI)
 ├── demo_agent.py  # File operations agent (no API keys required)
-└── openai_agent.py # OpenAI-powered agent with tool calling
+├── openai_agent.py # OpenAI-powered agent with tool calling
+├── mcp_agent.py   # MCP-capable agent with OpenAI
+└── mcp_simple_agent.py # Simple MCP agent without LLM
 ```
 
 ## Code Style
