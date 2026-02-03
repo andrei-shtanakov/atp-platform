@@ -204,8 +204,8 @@ def version_cmd() -> None:
 @click.option(
     "--runs",
     type=int,
-    default=1,
-    help="Number of runs per test",
+    default=None,
+    help="Number of runs per test (default: from suite defaults or 1)",
 )
 @click.option(
     "--fail-fast",
@@ -249,7 +249,7 @@ def test_cmd(
     parallel: int,
     adapter: str,
     adapter_config: tuple[str, ...],
-    runs: int,
+    runs: int | None,
     fail_fast: bool,
     sandbox: bool,
     verbose: bool,
@@ -290,15 +290,10 @@ def test_cmd(
     # Apply config defaults
     verbose = verbose or config_ctx.verbose
     parallel = parallel or config_ctx.get_default("parallel_workers", 1)
-    runs = runs or config_ctx.get_default("runs_per_test", 1)
 
-    # Validate options
+    # Validate parallel option early
     if parallel < 1:
         click.echo("Error: --parallel must be at least 1", err=True)
-        sys.exit(EXIT_ERROR)
-
-    if runs < 1:
-        click.echo("Error: --runs must be at least 1", err=True)
         sys.exit(EXIT_ERROR)
 
     try:
@@ -323,6 +318,15 @@ def test_cmd(
                 tags_str = ", ".join(test.tags) if test.tags else "no tags"
                 click.echo(f"  - {test.id}: {test.name} [{tags_str}]")
             return
+
+        # Apply runs_per_test fallback: CLI > config > suite defaults
+        if runs is None:
+            runs = config_ctx.get_default("runs_per_test", None)
+        if runs is None:
+            runs = suite.defaults.runs_per_test
+        if runs < 1:
+            click.echo("Error: --runs must be at least 1", err=True)
+            sys.exit(EXIT_ERROR)
 
         # Merge adapter config from config file with CLI options
         config_dict: dict[str, Any] = {}
@@ -421,8 +425,8 @@ def test_cmd(
 @click.option(
     "--runs",
     type=int,
-    default=1,
-    help="Number of runs per test",
+    default=None,
+    help="Number of runs per test (default: from suite defaults or 1)",
 )
 @click.option(
     "--fail-fast",
@@ -466,7 +470,7 @@ def run(
     adapter: str,
     adapter_config: tuple[str, ...],
     agent_name: str,
-    runs: int,
+    runs: int | None,
     fail_fast: bool,
     sandbox: bool,
     verbose: bool,
@@ -482,15 +486,10 @@ def run(
     # Apply config defaults
     verbose = verbose or config_ctx.verbose
     parallel = parallel or config_ctx.get_default("parallel_workers", 1)
-    runs = runs or config_ctx.get_default("runs_per_test", 1)
 
-    # Validate parallel option
+    # Validate parallel option early
     if parallel < 1:
         click.echo("Error: --parallel must be at least 1", err=True)
-        sys.exit(EXIT_FAILURE)
-
-    if runs < 1:
-        click.echo("Error: --runs must be at least 1", err=True)
         sys.exit(EXIT_FAILURE)
 
     try:
@@ -515,6 +514,15 @@ def run(
                 tags_str = ", ".join(test.tags) if test.tags else "no tags"
                 click.echo(f"  - {test.id}: {test.name} [{tags_str}]")
             return
+
+        # Apply runs_per_test fallback: CLI > config > suite defaults
+        if runs is None:
+            runs = config_ctx.get_default("runs_per_test", None)
+        if runs is None:
+            runs = suite.defaults.runs_per_test
+        if runs < 1:
+            click.echo("Error: --runs must be at least 1", err=True)
+            sys.exit(EXIT_FAILURE)
 
         # Parse adapter config
         config_dict: dict[str, Any] = {}

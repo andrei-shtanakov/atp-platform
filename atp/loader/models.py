@@ -120,11 +120,16 @@ class Constraints(BaseModel):
 
     max_steps: int | None = Field(None, description="Maximum number of steps allowed")
     max_tokens: int | None = Field(None, description="Maximum tokens allowed")
-    timeout_seconds: int = Field(300, description="Timeout in seconds")
+    timeout_seconds: int | None = Field(None, description="Timeout in seconds")
     allowed_tools: list[str] | None = Field(
         None, description="List of allowed tools, None means all allowed"
     )
     budget_usd: float | None = Field(None, description="Budget limit in USD")
+
+    @property
+    def effective_timeout_seconds(self) -> int:
+        """Get the effective timeout, defaulting to 300 if not set."""
+        return self.timeout_seconds if self.timeout_seconds is not None else 300
 
 
 class Assertion(BaseModel):
@@ -329,7 +334,8 @@ class TestSuite(BaseModel):
                     test.constraints.max_steps = self.defaults.constraints.max_steps
                 if test.constraints.max_tokens is None:
                     test.constraints.max_tokens = self.defaults.constraints.max_tokens
-                if test.constraints.timeout_seconds == 300:  # default value
+                # Only apply default timeout if not explicitly set (None means not set)
+                if test.constraints.timeout_seconds is None:
                     test.constraints.timeout_seconds = (
                         self.defaults.constraints.timeout_seconds
                     )
@@ -340,9 +346,9 @@ class TestSuite(BaseModel):
                 if test.constraints.budget_usd is None:
                     test.constraints.budget_usd = self.defaults.constraints.budget_usd
 
-            # Apply default scoring weights if not specified
+            # Apply default scoring (deep copy to avoid sharing mutable object)
             if test.scoring is None:
-                test.scoring = self.defaults.scoring
+                test.scoring = self.defaults.scoring.model_copy(deep=True)
 
     def filter_by_tags(self, tag_filter: str | None) -> "TestSuite":
         """Filter tests by tag expressions.

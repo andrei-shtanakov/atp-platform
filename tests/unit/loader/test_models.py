@@ -58,7 +58,8 @@ class TestConstraints:
 
         assert constraints.max_steps is None
         assert constraints.max_tokens is None
-        assert constraints.timeout_seconds == 300
+        assert constraints.timeout_seconds is None
+        assert constraints.effective_timeout_seconds == 300
         assert constraints.allowed_tools is None
         assert constraints.budget_usd is None
 
@@ -146,7 +147,8 @@ class TestTestDefinition:
         assert test.name == "Basic test"
         assert test.description is None
         assert test.tags == []
-        assert test.constraints.timeout_seconds == 300
+        assert test.constraints.timeout_seconds is None
+        assert test.constraints.effective_timeout_seconds == 300
         assert test.assertions == []
         assert test.scoring is None
 

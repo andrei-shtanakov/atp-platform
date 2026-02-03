@@ -612,7 +612,7 @@ class TestOrchestrator:
             )
 
             request = self._create_request(test, workspace_path)
-            timeout = float(test.constraints.timeout_seconds)
+            timeout = float(test.constraints.effective_timeout_seconds)
             set_span_attribute("atp.task.id", request.task_id)
             set_span_attribute("atp.timeout_seconds", timeout)
 
