@@ -323,6 +323,39 @@ async def list_categories(
     return list(result.scalars().all())
 
 
+@router.get("/installed", response_model=MarketplaceSuiteInstallList)
+async def list_installed_suites(
+    session: DBSession,
+    user: RequiredUser,
+) -> MarketplaceSuiteInstallList:
+    """List suites installed by the current user.
+
+    Requires authentication.
+
+    Args:
+        session: Database session.
+        user: Current user.
+
+    Returns:
+        List of installed suites.
+    """
+    stmt = (
+        select(MarketplaceSuiteInstall)
+        .where(
+            MarketplaceSuiteInstall.user_id == user.id,
+            MarketplaceSuiteInstall.is_active.is_(True),
+        )
+        .order_by(desc(MarketplaceSuiteInstall.installed_at))
+    )
+    result = await session.execute(stmt)
+    installs = list(result.scalars().all())
+
+    return MarketplaceSuiteInstallList(
+        items=[MarketplaceSuiteInstallResponse.model_validate(i) for i in installs],
+        total=len(installs),
+    )
+
+
 @router.get("/{slug}", response_model=MarketplaceSuiteDetail)
 async def get_marketplace_suite(
     session: DBSession,
@@ -379,7 +412,9 @@ async def get_marketplace_suite(
 
     recent_reviews = [
         MarketplaceSuiteReviewResponse(
-            **MarketplaceSuiteReviewResponse.model_validate(r).model_dump(),
+            **MarketplaceSuiteReviewResponse.model_validate(r).model_dump(
+                exclude={"username"}
+            ),
             username=r.user.username if r.user else "Unknown",
         )
         for r in suite.reviews[:5]  # Limit to 5 most recent
@@ -528,7 +563,9 @@ async def list_suite_reviews(
     return MarketplaceSuiteReviewList(
         items=[
             MarketplaceSuiteReviewResponse(
-                **MarketplaceSuiteReviewResponse.model_validate(r).model_dump(),
+                **MarketplaceSuiteReviewResponse.model_validate(r).model_dump(
+                    exclude={"username"}
+                ),
                 username=r.user.username if r.user else "Unknown",
             )
             for r in reviews
@@ -1082,7 +1119,9 @@ async def create_review(
     cache.invalidate_prefix("stats")
 
     return MarketplaceSuiteReviewResponse(
-        **MarketplaceSuiteReviewResponse.model_validate(review).model_dump(),
+        **MarketplaceSuiteReviewResponse.model_validate(review).model_dump(
+            exclude={"username"}
+        ),
         username=user.username,
     )
 
@@ -1149,7 +1188,9 @@ async def update_review(
     await session.commit()
 
     return MarketplaceSuiteReviewResponse(
-        **MarketplaceSuiteReviewResponse.model_validate(review).model_dump(),
+        **MarketplaceSuiteReviewResponse.model_validate(review).model_dump(
+            exclude={"username"}
+        ),
         username=user.username,
     )
 
@@ -1356,39 +1397,6 @@ async def uninstall_suite(
     cache.invalidate_prefix("stats")
 
 
-@router.get("/installed", response_model=MarketplaceSuiteInstallList)
-async def list_installed_suites(
-    session: DBSession,
-    user: RequiredUser,
-) -> MarketplaceSuiteInstallList:
-    """List suites installed by the current user.
-
-    Requires authentication.
-
-    Args:
-        session: Database session.
-        user: Current user.
-
-    Returns:
-        List of installed suites.
-    """
-    stmt = (
-        select(MarketplaceSuiteInstall)
-        .where(
-            MarketplaceSuiteInstall.user_id == user.id,
-            MarketplaceSuiteInstall.is_active.is_(True),
-        )
-        .order_by(desc(MarketplaceSuiteInstall.installed_at))
-    )
-    result = await session.execute(stmt)
-    installs = list(result.scalars().all())
-
-    return MarketplaceSuiteInstallList(
-        items=[MarketplaceSuiteInstallResponse.model_validate(i) for i in installs],
-        total=len(installs),
-    )
-
-
 @router.post("/import/github", response_model=GitHubImportResponse)
 async def import_from_github(
     session: DBSession,
@@ -1550,6 +1558,8 @@ async def flag_review(
     await session.commit()
 
     return MarketplaceSuiteReviewResponse(
-        **MarketplaceSuiteReviewResponse.model_validate(review).model_dump(),
+        **MarketplaceSuiteReviewResponse.model_validate(review).model_dump(
+            exclude={"username"}
+        ),
         username=review.user.username if review.user else "Unknown",
     )

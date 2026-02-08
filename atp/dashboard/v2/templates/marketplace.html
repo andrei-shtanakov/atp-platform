@@ -1,0 +1,308 @@
+{% extends "base.html" %}
+
+{% block title %}ATP Dashboard - Marketplace{% endblock %}
+
+{% block content %}
+<!-- Marketplace page content rendered by React -->
+<div id="marketplace-root"></div>
+{% endblock %}
+
+{% block scripts %}
+<script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // Star rating display component
+    function StarRating({ rating, count }) {
+        const stars = [];
+        for (let i = 1; i <= 5; i++) {
+            const fill = i <= Math.round(rating || 0);
+            stars.push(
+                <svg key={i} className={`w-4 h-4 ${fill ? 'text-yellow-400' : 'text-gray-300'}`}
+                     fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                </svg>
+            );
+        }
+        return (
+            <div className="flex items-center gap-1">
+                {stars}
+                {count !== undefined && (
+                    <span className="text-sm text-gray-500 ml-1">({count})</span>
+                )}
+            </div>
+        );
+    }
+
+    // Suite card component
+    function SuiteCard({ suite }) {
+        return (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5 hover:shadow-md transition-shadow">
+                <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                            <h3 className="text-lg font-semibold text-gray-900 truncate">
+                                <a href={`/marketplace/${suite.slug}`}
+                                   className="hover:text-blue-600">{suite.name}</a>
+                            </h3>
+                            {suite.is_verified && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                    Verified
+                                </span>
+                            )}
+                            {suite.is_featured && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                                    Featured
+                                </span>
+                            )}
+                        </div>
+                        <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+                            {suite.short_description || 'No description'}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-4 text-sm text-gray-500">
+                    <span>{suite.publisher_name}</span>
+                    <span className="px-2 py-0.5 bg-gray-100 rounded text-xs">{suite.category}</span>
+                    <span>v{suite.latest_version}</span>
+                    <span className="px-2 py-0.5 bg-gray-100 rounded text-xs">{suite.license_type}</span>
+                </div>
+
+                <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+                    <StarRating rating={suite.average_rating} count={suite.total_ratings} />
+                    <div className="flex items-center gap-3 text-sm text-gray-500">
+                        <span title="Downloads">
+                            <svg className="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            {suite.total_downloads}
+                        </span>
+                    </div>
+                </div>
+
+                {suite.tags && suite.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                        {suite.tags.slice(0, 4).map((tag, i) => (
+                            <span key={i} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">
+                                {tag}
+                            </span>
+                        ))}
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    // Search and filter bar
+    function SearchBar({ params, onSearch, categories }) {
+        const [query, setQuery] = useState(params.query || '');
+
+        const handleSubmit = (e) => {
+            e.preventDefault();
+            onSearch({ ...params, query });
+        };
+
+        return (
+            <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
+                <div className="flex flex-col md:flex-row gap-3">
+                    <div className="flex-1">
+                        <input
+                            type="text"
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            placeholder="Search test suites..."
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                    </div>
+                    <select
+                        value={params.category || ''}
+                        onChange={(e) => onSearch({ ...params, category: e.target.value || null })}
+                        className="px-3 py-2 border border-gray-300 rounded-lg bg-white"
+                    >
+                        <option value="">All Categories</option>
+                        {categories.map(c => (
+                            <option key={c} value={c}>{c}</option>
+                        ))}
+                    </select>
+                    <select
+                        value={params.sort_by || 'downloads'}
+                        onChange={(e) => onSearch({ ...params, sort_by: e.target.value })}
+                        className="px-3 py-2 border border-gray-300 rounded-lg bg-white"
+                    >
+                        <option value="downloads">Most Downloads</option>
+                        <option value="rating">Highest Rated</option>
+                        <option value="updated">Recently Updated</option>
+                        <option value="created">Newest</option>
+                        <option value="name">Name</option>
+                    </select>
+                    <button type="submit"
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                        Search
+                    </button>
+                </div>
+            </form>
+        );
+    }
+
+    // Stats banner
+    function StatsBanner({ stats }) {
+        if (!stats) return null;
+        return (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div className="bg-white rounded-lg shadow-sm border p-4 text-center">
+                    <p className="text-2xl font-bold text-gray-900">{stats.total_suites}</p>
+                    <p className="text-sm text-gray-500">Test Suites</p>
+                </div>
+                <div className="bg-white rounded-lg shadow-sm border p-4 text-center">
+                    <p className="text-2xl font-bold text-gray-900">{stats.total_downloads.toLocaleString()}</p>
+                    <p className="text-sm text-gray-500">Downloads</p>
+                </div>
+                <div className="bg-white rounded-lg shadow-sm border p-4 text-center">
+                    <p className="text-2xl font-bold text-gray-900">{stats.total_installs.toLocaleString()}</p>
+                    <p className="text-sm text-gray-500">Installs</p>
+                </div>
+                <div className="bg-white rounded-lg shadow-sm border p-4 text-center">
+                    <p className="text-2xl font-bold text-gray-900">{stats.total_reviews}</p>
+                    <p className="text-sm text-gray-500">Reviews</p>
+                </div>
+            </div>
+        );
+    }
+
+    // Marketplace page
+    function MarketplacePage() {
+        const [suites, setSuites] = useState([]);
+        const [total, setTotal] = useState(0);
+        const [stats, setStats] = useState(null);
+        const [categories, setCategories] = useState([]);
+        const [loading, setLoading] = useState(true);
+        const [params, setParams] = useState({
+            query: null,
+            category: null,
+            sort_by: 'downloads',
+            sort_order: 'desc',
+            limit: 20,
+            offset: 0,
+        });
+
+        const fetchSuites = async (searchParams) => {
+            setLoading(true);
+            try {
+                const queryParts = [];
+                if (searchParams.query) queryParts.push(`query=${encodeURIComponent(searchParams.query)}`);
+                if (searchParams.category) queryParts.push(`category=${encodeURIComponent(searchParams.category)}`);
+                if (searchParams.sort_by) queryParts.push(`sort_by=${searchParams.sort_by}`);
+                if (searchParams.sort_order) queryParts.push(`sort_order=${searchParams.sort_order}`);
+                queryParts.push(`limit=${searchParams.limit}`);
+                queryParts.push(`offset=${searchParams.offset}`);
+
+                const response = await fetch(`/api/marketplace?${queryParts.join('&')}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    setSuites(data.items || []);
+                    setTotal(data.total || 0);
+                }
+            } catch (err) {
+                console.error('Failed to fetch suites:', err);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        const fetchStats = async () => {
+            try {
+                const response = await fetch('/api/marketplace/stats');
+                if (response.ok) {
+                    setStats(await response.json());
+                }
+            } catch (err) {
+                console.error('Failed to fetch stats:', err);
+            }
+        };
+
+        const fetchCategories = async () => {
+            try {
+                const response = await fetch('/api/marketplace/categories');
+                if (response.ok) {
+                    setCategories(await response.json());
+                }
+            } catch (err) {
+                console.error('Failed to fetch categories:', err);
+            }
+        };
+
+        useEffect(() => {
+            fetchStats();
+            fetchCategories();
+        }, []);
+
+        useEffect(() => {
+            fetchSuites(params);
+        }, [params]);
+
+        const handleSearch = (newParams) => {
+            setParams({ ...newParams, offset: 0 });
+        };
+
+        const totalPages = Math.ceil(total / params.limit);
+        const currentPage = Math.floor(params.offset / params.limit) + 1;
+
+        return (
+            <div className="container mx-auto px-4 py-6">
+                <div className="flex justify-between items-center mb-6">
+                    <div>
+                        <h1 className="text-2xl font-bold text-gray-900">Test Suite Marketplace</h1>
+                        <p className="text-sm text-gray-500 mt-1">Discover and share test suites</p>
+                    </div>
+                </div>
+
+                <StatsBanner stats={stats} />
+                <SearchBar params={params} onSearch={handleSearch} categories={categories} />
+
+                {loading ? (
+                    <div className="text-center py-12 text-gray-500">Loading...</div>
+                ) : suites.length === 0 ? (
+                    <div className="text-center py-12 bg-white rounded-lg shadow-sm border">
+                        <p className="text-gray-500 text-lg">No test suites found</p>
+                        <p className="text-gray-400 text-sm mt-1">Try adjusting your search or filters</p>
+                    </div>
+                ) : (
+                    <>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                            {suites.map(suite => (
+                                <SuiteCard key={suite.id} suite={suite} />
+                            ))}
+                        </div>
+
+                        {totalPages > 1 && (
+                            <div className="flex justify-center gap-2">
+                                <button
+                                    onClick={() => setParams(p => ({ ...p, offset: Math.max(0, p.offset - p.limit) }))}
+                                    disabled={currentPage === 1}
+                                    className="px-3 py-1 rounded border bg-white disabled:opacity-50"
+                                >
+                                    Previous
+                                </button>
+                                <span className="px-3 py-1 text-gray-600">
+                                    Page {currentPage} of {totalPages}
+                                </span>
+                                <button
+                                    onClick={() => setParams(p => ({ ...p, offset: p.offset + p.limit }))}
+                                    disabled={currentPage >= totalPages}
+                                    className="px-3 py-1 rounded border bg-white disabled:opacity-50"
+                                >
+                                    Next
+                                </button>
+                            </div>
+                        )}
+                    </>
+                )}
+            </div>
+        );
+    }
+
+    // Mount the marketplace page
+    const root = ReactDOM.createRoot(document.getElementById('marketplace-root'));
+    root.render(<MarketplacePage />);
+</script>
+{% endblock %}

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+from authlib.jose.errors import DecodeError, ExpiredTokenError, InvalidClaimError
 
 from atp.dashboard.auth.sso.oidc import (
     ConfigurationError,
@@ -443,6 +444,409 @@ class TestSSOManager:
         with pytest.raises(TokenValidationError, match="Email claim"):
             sso_manager.extract_user_info(id_token_claims)
 
+    def test_extract_user_info_with_username_claim(self) -> None:
+        """Test user info extraction with custom username_claim."""
+        config = SSOConfig(
+            provider=OIDCProvider.GENERIC,
+            client_id="test-client-id",
+            client_secret="test-client-secret",
+            issuer_url="https://example.com",
+            redirect_uri="https://app.example.com/callback",
+            username_claim="custom_username",
+        )
+        manager = SSOManager(config)
+
+        id_token_claims = {
+            "sub": "user-123",
+            "email": "user@example.com",
+            "custom_username": "custom_user",
+        }
+
+        user_info = manager.extract_user_info(id_token_claims)
+        assert user_info.preferred_username == "custom_user"
+
+    def test_extract_user_info_groups_as_string(self, sso_manager: SSOManager) -> None:
+        """Test groups extraction when groups claim is a string."""
+        id_token_claims = {
+            "sub": "user-123",
+            "email": "user@example.com",
+            "groups": "admins",
+        }
+
+        user_info = sso_manager.extract_user_info(id_token_claims)
+        assert user_info.groups == ["admins"]
+
+    @pytest.mark.anyio
+    async def test_close(self, sso_manager: SSOManager) -> None:
+        """Test closing SSO manager HTTP client."""
+        mock_client = AsyncMock()
+        mock_client.is_closed = False
+        sso_manager._http_client = mock_client
+
+        await sso_manager.close()
+        mock_client.aclose.assert_called_once()
+
+    @pytest.mark.anyio
+    async def test_close_no_client(self, sso_manager: SSOManager) -> None:
+        """Test closing when no HTTP client exists."""
+        await sso_manager.close()  # Should not raise
+
+    @pytest.mark.anyio
+    async def test_fetch_jwks_success(
+        self,
+        sso_manager: SSOManager,
+        discovery_document: dict[str, Any],
+    ) -> None:
+        """Test fetching JWKS successfully."""
+        sso_manager._discovery = OIDCDiscoveryDocument(**discovery_document)
+
+        jwks_data = {"keys": [{"kid": "key-1", "kty": "RSA"}]}
+        mock_response = MagicMock()
+        mock_response.json.return_value = jwks_data
+        mock_response.raise_for_status = MagicMock()
+
+        with patch.object(
+            httpx.AsyncClient,
+            "get",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ):
+            result = await sso_manager._fetch_jwks()
+            assert result == jwks_data
+
+    @pytest.mark.anyio
+    async def test_fetch_jwks_cached(
+        self,
+        sso_manager: SSOManager,
+    ) -> None:
+        """Test that cached JWKS is returned."""
+        cached = {"keys": [{"kid": "cached"}]}
+        sso_manager._jwks = cached
+        result = await sso_manager._fetch_jwks()
+        assert result == cached
+
+    @pytest.mark.anyio
+    async def test_fetch_jwks_error(
+        self,
+        sso_manager: SSOManager,
+        discovery_document: dict[str, Any],
+    ) -> None:
+        """Test error when fetching JWKS fails."""
+        sso_manager._discovery = OIDCDiscoveryDocument(**discovery_document)
+
+        with patch.object(
+            httpx.AsyncClient,
+            "get",
+            new_callable=AsyncMock,
+            side_effect=httpx.HTTPError("Connection failed"),
+        ):
+            with pytest.raises(ConfigurationError, match="Failed to fetch JWKS"):
+                await sso_manager._fetch_jwks()
+
+    @pytest.mark.anyio
+    async def test_validate_id_token_success(
+        self,
+        sso_manager: SSOManager,
+    ) -> None:
+        """Test successful ID token validation."""
+        mock_claims = MagicMock()
+        mock_claims.validate = MagicMock()
+        mock_claims.get.return_value = "test-nonce"
+        mock_claims.__iter__ = MagicMock(return_value=iter(["sub", "email"]))
+        mock_claims.__getitem__ = lambda s, k: {"sub": "u1", "email": "e"}[k]
+
+        mock_jwks = MagicMock()
+
+        with (
+            patch.object(
+                sso_manager, "_fetch_jwks", new_callable=AsyncMock
+            ) as mock_fetch,
+            patch(
+                "atp.dashboard.auth.sso.oidc.JsonWebKey.import_key_set",
+                return_value=mock_jwks,
+            ),
+            patch("atp.dashboard.auth.sso.oidc.JsonWebToken") as mock_jwt_cls,
+        ):
+            mock_fetch.return_value = {"keys": []}
+            mock_jwt_instance = MagicMock()
+            mock_jwt_instance.decode.return_value = mock_claims
+            mock_jwt_cls.return_value = mock_jwt_instance
+
+            result = await sso_manager.validate_id_token(
+                "fake.id.token", nonce="test-nonce"
+            )
+            assert isinstance(result, dict)
+            mock_claims.validate.assert_called_once()
+
+    @pytest.mark.anyio
+    async def test_validate_id_token_nonce_mismatch(
+        self,
+        sso_manager: SSOManager,
+    ) -> None:
+        """Test ID token validation with nonce mismatch."""
+        mock_claims = MagicMock()
+        mock_claims.validate = MagicMock()
+        mock_claims.get.return_value = "wrong-nonce"
+
+        mock_jwks = MagicMock()
+
+        with (
+            patch.object(
+                sso_manager, "_fetch_jwks", new_callable=AsyncMock
+            ) as mock_fetch,
+            patch(
+                "atp.dashboard.auth.sso.oidc.JsonWebKey.import_key_set",
+                return_value=mock_jwks,
+            ),
+            patch("atp.dashboard.auth.sso.oidc.JsonWebToken") as mock_jwt_cls,
+        ):
+            mock_fetch.return_value = {"keys": []}
+            mock_jwt_instance = MagicMock()
+            mock_jwt_instance.decode.return_value = mock_claims
+            mock_jwt_cls.return_value = mock_jwt_instance
+
+            with pytest.raises(TokenValidationError, match="Nonce mismatch"):
+                await sso_manager.validate_id_token(
+                    "fake.id.token", nonce="expected-nonce"
+                )
+
+    @pytest.mark.anyio
+    async def test_validate_id_token_expired(
+        self,
+        sso_manager: SSOManager,
+    ) -> None:
+        """Test ID token validation with expired token."""
+        with (
+            patch.object(
+                sso_manager, "_fetch_jwks", new_callable=AsyncMock
+            ) as mock_fetch,
+            patch(
+                "atp.dashboard.auth.sso.oidc.JsonWebKey.import_key_set",
+            ),
+            patch("atp.dashboard.auth.sso.oidc.JsonWebToken") as mock_jwt_cls,
+        ):
+            mock_fetch.return_value = {"keys": []}
+            mock_jwt_instance = MagicMock()
+            mock_jwt_instance.decode.side_effect = ExpiredTokenError()
+            mock_jwt_cls.return_value = mock_jwt_instance
+
+            with pytest.raises(TokenValidationError, match="expired"):
+                await sso_manager.validate_id_token("fake.id.token")
+
+    @pytest.mark.anyio
+    async def test_validate_id_token_invalid_claim(
+        self,
+        sso_manager: SSOManager,
+    ) -> None:
+        """Test ID token validation with invalid claims."""
+        with (
+            patch.object(
+                sso_manager, "_fetch_jwks", new_callable=AsyncMock
+            ) as mock_fetch,
+            patch(
+                "atp.dashboard.auth.sso.oidc.JsonWebKey.import_key_set",
+            ),
+            patch("atp.dashboard.auth.sso.oidc.JsonWebToken") as mock_jwt_cls,
+        ):
+            mock_fetch.return_value = {"keys": []}
+            mock_jwt_instance = MagicMock()
+            mock_jwt_instance.decode.side_effect = InvalidClaimError("iss")
+            mock_jwt_cls.return_value = mock_jwt_instance
+
+            with pytest.raises(TokenValidationError, match="Invalid token claim"):
+                await sso_manager.validate_id_token("fake.id.token")
+
+    @pytest.mark.anyio
+    async def test_validate_id_token_decode_error(
+        self,
+        sso_manager: SSOManager,
+    ) -> None:
+        """Test ID token validation with decode error."""
+        with (
+            patch.object(
+                sso_manager, "_fetch_jwks", new_callable=AsyncMock
+            ) as mock_fetch,
+            patch(
+                "atp.dashboard.auth.sso.oidc.JsonWebKey.import_key_set",
+            ),
+            patch("atp.dashboard.auth.sso.oidc.JsonWebToken") as mock_jwt_cls,
+        ):
+            mock_fetch.return_value = {"keys": []}
+            mock_jwt_instance = MagicMock()
+            mock_jwt_instance.decode.side_effect = DecodeError("bad")
+            mock_jwt_cls.return_value = mock_jwt_instance
+
+            with pytest.raises(TokenValidationError, match="Failed to decode"):
+                await sso_manager.validate_id_token("fake.id.token")
+
+    @pytest.mark.anyio
+    async def test_get_userinfo_success(
+        self,
+        sso_manager: SSOManager,
+        discovery_document: dict[str, Any],
+    ) -> None:
+        """Test successful userinfo fetch."""
+        sso_manager._discovery = OIDCDiscoveryDocument(**discovery_document)
+
+        userinfo = {"sub": "user-123", "email": "user@example.com"}
+        mock_response = MagicMock()
+        mock_response.json.return_value = userinfo
+        mock_response.raise_for_status = MagicMock()
+
+        with patch.object(
+            httpx.AsyncClient,
+            "get",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ):
+            result = await sso_manager.get_userinfo("access-token")
+            assert result == userinfo
+
+    @pytest.mark.anyio
+    async def test_get_userinfo_no_endpoint(
+        self,
+        sso_manager: SSOManager,
+    ) -> None:
+        """Test error when userinfo endpoint not available."""
+        sso_manager._discovery = OIDCDiscoveryDocument(
+            issuer="https://example.com",
+            authorization_endpoint="https://example.com/authorize",
+            token_endpoint="https://example.com/token",
+            jwks_uri="https://example.com/jwks",
+            userinfo_endpoint=None,
+        )
+
+        with pytest.raises(ConfigurationError, match="Userinfo endpoint"):
+            await sso_manager.get_userinfo("access-token")
+
+    @pytest.mark.anyio
+    async def test_get_userinfo_http_error(
+        self,
+        sso_manager: SSOManager,
+        discovery_document: dict[str, Any],
+    ) -> None:
+        """Test error when userinfo request fails."""
+        sso_manager._discovery = OIDCDiscoveryDocument(**discovery_document)
+
+        with patch.object(
+            httpx.AsyncClient,
+            "get",
+            new_callable=AsyncMock,
+            side_effect=httpx.HTTPError("Request failed"),
+        ):
+            with pytest.raises(TokenValidationError, match="Failed to fetch userinfo"):
+                await sso_manager.get_userinfo("access-token")
+
+    @pytest.mark.anyio
+    async def test_authenticate_success(
+        self,
+        sso_manager: SSOManager,
+    ) -> None:
+        """Test full authentication flow."""
+        token_response = TokenResponse(
+            access_token="access-token",
+            token_type="Bearer",
+            id_token="id-token",
+        )
+        id_token_claims = {
+            "sub": "user-123",
+            "email": "user@example.com",
+            "name": "Test User",
+            "groups": ["admins"],
+        }
+        userinfo_claims = {"sub": "user-123", "email": "user@example.com"}
+
+        with (
+            patch.object(
+                sso_manager,
+                "exchange_code",
+                new_callable=AsyncMock,
+                return_value=token_response,
+            ),
+            patch.object(
+                sso_manager,
+                "validate_id_token",
+                new_callable=AsyncMock,
+                return_value=id_token_claims,
+            ),
+            patch.object(
+                sso_manager,
+                "get_userinfo",
+                new_callable=AsyncMock,
+                return_value=userinfo_claims,
+            ),
+        ):
+            user_info, roles = await sso_manager.authenticate(
+                code="auth-code",
+                state="state",
+                expected_state="state",
+                nonce="nonce",
+            )
+            assert user_info.email == "user@example.com"
+            assert "admin" in roles
+
+    @pytest.mark.anyio
+    async def test_authenticate_no_id_token(
+        self,
+        sso_manager: SSOManager,
+    ) -> None:
+        """Test authenticate raises when no ID token in response."""
+        token_response = TokenResponse(
+            access_token="access-token",
+            token_type="Bearer",
+            id_token=None,
+        )
+
+        with patch.object(
+            sso_manager,
+            "exchange_code",
+            new_callable=AsyncMock,
+            return_value=token_response,
+        ):
+            with pytest.raises(TokenValidationError, match="No ID token"):
+                await sso_manager.authenticate(code="auth-code")
+
+    @pytest.mark.anyio
+    async def test_authenticate_userinfo_fails_gracefully(
+        self,
+        sso_manager: SSOManager,
+    ) -> None:
+        """Test authenticate continues when userinfo fetch fails."""
+        token_response = TokenResponse(
+            access_token="access-token",
+            token_type="Bearer",
+            id_token="id-token",
+        )
+        id_token_claims = {
+            "sub": "user-123",
+            "email": "user@example.com",
+            "groups": [],
+        }
+
+        with (
+            patch.object(
+                sso_manager,
+                "exchange_code",
+                new_callable=AsyncMock,
+                return_value=token_response,
+            ),
+            patch.object(
+                sso_manager,
+                "validate_id_token",
+                new_callable=AsyncMock,
+                return_value=id_token_claims,
+            ),
+            patch.object(
+                sso_manager,
+                "get_userinfo",
+                new_callable=AsyncMock,
+                side_effect=ConfigurationError("No endpoint"),
+            ),
+        ):
+            user_info, roles = await sso_manager.authenticate(code="auth-code")
+            assert user_info.email == "user@example.com"
+            assert roles == ["viewer"]
+
 
 class TestOIDCDiscoveryDocument:
     """Tests for OIDCDiscoveryDocument model."""
@@ -673,3 +1077,20 @@ class TestRoleAssignment:
 
         # Should not add since role not found
         mock_session.add.assert_not_called()
+
+    @pytest.mark.anyio
+    async def test_assign_sso_roles_error(self) -> None:
+        """Test error handling in role assignment."""
+        mock_user = MagicMock()
+        mock_user.id = 1
+        mock_user.tenant_id = "default"
+
+        mock_session = AsyncMock()
+        mock_session.execute.side_effect = Exception("Database error")
+
+        with pytest.raises(UserProvisioningError, match="Failed to assign"):
+            await assign_sso_roles(
+                session=mock_session,
+                user=mock_user,
+                role_names=["admin"],
+            )
