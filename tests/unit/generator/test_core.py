@@ -189,7 +189,7 @@ class TestTestGeneratorCreateCustomTest:
         assert test.task.description == "Do something"
         assert test.tags == []
         assert test.assertions == []
-        assert test.constraints.timeout_seconds == 300
+        assert test.constraints.timeout_seconds is None
 
     def test_create_custom_test_with_constraints(self) -> None:
         """Test creating custom test with constraints."""

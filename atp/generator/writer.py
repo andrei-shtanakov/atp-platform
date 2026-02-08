@@ -231,8 +231,7 @@ def _constraints_to_dict(constraints: Any) -> dict[str, Any]:
         result["max_steps"] = constraints.max_steps
     if constraints.max_tokens is not None:
         result["max_tokens"] = constraints.max_tokens
-    # Only include timeout if not default
-    if constraints.timeout_seconds != 300:
+    if constraints.timeout_seconds is not None:
         result["timeout_seconds"] = constraints.timeout_seconds
     if constraints.allowed_tools is not None:
         result["allowed_tools"] = constraints.allowed_tools

@@ -36,6 +36,7 @@ dependencies = [
     "authlib>=1.6.6",
     "python3-saml>=1.16.0",
     "beautifulsoup4>=4.14.3",
+    "spec-runner>=0.1.4",
 ]
 
 [project.scripts]
@@ -105,11 +106,6 @@ select = ["E", "F", "I", "UP"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = [
-    "--cov=atp",
-    "--cov-report=term-missing",
-    "--cov-report=html",
-    "--cov-report=xml",
-    "--cov-fail-under=80",
     "-v",
 ]
 
@@ -151,5 +147,6 @@ dev = [
     "pytest-mock>=3.15.1",
     "rich>=14.3.1",
     "ruff>=0.14.14",
+    "spec-runner>=0.1.4",
     "textual>=7.5.0",
 ]

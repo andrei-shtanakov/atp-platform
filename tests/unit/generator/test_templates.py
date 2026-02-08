@@ -29,7 +29,7 @@ class TestTestTemplateDataclass:
         assert template.description == "A test template"
         assert template.category == "testing"
         assert template.task_template == "Do something with {item}"
-        assert template.default_constraints.timeout_seconds == 300
+        assert template.default_constraints.timeout_seconds is None
         assert template.default_assertions == []
         assert template.tags == []
 
