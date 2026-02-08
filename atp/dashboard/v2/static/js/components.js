@@ -258,6 +258,7 @@ function Navigation({ currentView, onViewChange, isLoggedIn, onLogout }) {
     const tabs = [
         { id: 'dashboard', label: 'Dashboard' },
         { id: 'suites', label: 'Suites' },
+        { id: 'games', label: 'Games' },
         { id: 'compare', label: 'Compare' },
         { id: 'leaderboard', label: 'Leaderboard' },
         { id: 'timeline', label: 'Timeline' },

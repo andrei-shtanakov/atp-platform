@@ -1,0 +1,4 @@
+# file: /Users/Andrei_Shtanakov/labs/atp-platform/game-environments/game_envs/analysis/population.py
+# hypothesis_version: 6.151.5
+
+[0.0, 1e-06, 0.0001, 0.1, 1.0, 100, 'converged', 'dominant_strategy', 'ess_strategies', 'fitness', 'frequencies', 'generation', 'snapshots']

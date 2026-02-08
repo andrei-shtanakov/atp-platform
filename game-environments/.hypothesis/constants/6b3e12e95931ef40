@@ -1,0 +1,4 @@
+# file: /Users/Andrei_Shtanakov/labs/atp-platform/game-environments/game_envs/analysis/cooperation.py
+# hypothesis_version: 6.151.5
+
+[0.0, 0.5, 1.0, 'c', 'cooperate', 'cooperation_rate', 'prob_c_given_c', 'prob_c_given_d', 'reciprocity_index']

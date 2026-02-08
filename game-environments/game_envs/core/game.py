@@ -12,6 +12,7 @@ from game_envs.core.action import ActionSpace
 from game_envs.core.communication import (
     CommunicationChannel,
     CommunicationMode,
+    InformationSet,
 )
 from game_envs.core.history import GameHistory
 from game_envs.core.state import Message, Observation, StepResult
@@ -176,22 +177,59 @@ class Game(ABC):
         """Whether the game has ended."""
         ...
 
+    def get_information_set(
+        self,
+        player_id: str,
+    ) -> InformationSet | None:
+        """Get the information set for a player.
+
+        Returns None for full observability (default).
+        Override in subclasses for games with partial
+        observability (e.g., sealed-bid auctions where
+        bids are hidden).
+        """
+        return None
+
     def observe(self, player_id: str) -> Observation:
         """Get the observation for a player.
 
         Default implementation provides full observability.
         Override for games with partial observability.
+        Uses get_information_set() to filter state and
+        history when available.
         """
         messages = self._get_pending_messages(player_id)
+        info_set = self.get_information_set(player_id)
+
+        game_state: dict[str, Any] = {}
+        if info_set is not None:
+            game_state = info_set.filter_state(game_state)
+
+        history = self._history.for_player(player_id)
+        if info_set is not None:
+            history = info_set.filter_history(history)
+
         return Observation(
             player_id=player_id,
-            game_state={},
+            game_state=game_state,
             available_actions=self.action_space(player_id).to_list(),
-            history=self._history.for_player(player_id),
+            history=history,
             round_number=self._current_round,
             total_rounds=self.config.num_rounds,
             messages=messages,
         )
+
+    def _reset_base(self) -> None:
+        """Reset shared base state (history, channel, round).
+
+        Call from subclass reset() to clear history and
+        communication channel state.
+        """
+        self._current_round = 0
+        self._history.clear()
+        if self._channel is not None:
+            self._channel.clear()
+            self._channel._player_ids = list(self.player_ids)
 
     @property
     def channel(self) -> CommunicationChannel | None:

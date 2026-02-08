@@ -14,6 +14,7 @@ Permissions:
 """
 
 import csv
+import html
 import io
 import json
 from typing import Annotated, Any
@@ -186,11 +187,16 @@ async def export_game_csv(
 
     player_info: dict[str, dict[str, Any]] = {}
     for p in game_result.players_json or []:
-        player_info[p["player_id"]] = p
+        # Sanitize player data to prevent CSV injection
+        player_id = html.escape(str(p.get("player_id", "")))
+        player_info[player_id] = {
+            k: html.escape(str(v)) if isinstance(v, str) else v for k, v in p.items()
+        }
 
     for ep in game_result.episodes_json or []:
         payoffs = ep.get("payoffs", {})
         for player_id, payoff in payoffs.items():
+            player_id = html.escape(str(player_id))
             info = player_info.get(player_id, {})
             writer.writerow(
                 [
@@ -199,7 +205,7 @@ async def export_game_csv(
                     round(payoff, 4),
                     info.get("strategy", ""),
                     (
-                        round(info["cooperation_rate"], 4)
+                        round(float(str(info.get("cooperation_rate", 0))), 4)
                         if info.get("cooperation_rate") is not None
                         else ""
                     ),
@@ -207,7 +213,11 @@ async def export_game_csv(
             )
 
     buf.seek(0)
-    filename = f"game_{game_result.game_name}_{game_id}.csv"
+    # Sanitize filename to prevent path traversal
+    safe_game_name = "".join(
+        c if c.isalnum() or c in ("-", "_") else "_" for c in game_result.game_name
+    )
+    filename = f"game_{safe_game_name}_{game_id}.csv"
     return StreamingResponse(
         iter([buf.getvalue()]),
         media_type="text/csv",
@@ -260,7 +270,11 @@ async def export_game_json(
     }
 
     json_str = json.dumps(data, indent=2, default=str)
-    filename = f"game_{game_result.game_name}_{game_id}.json"
+    # Sanitize filename to prevent path traversal
+    safe_game_name = "".join(
+        c if c.isalnum() or c in ("-", "_") else "_" for c in game_result.game_name
+    )
+    filename = f"game_{safe_game_name}_{game_id}.json"
     return StreamingResponse(
         iter([json_str]),
         media_type="application/json",

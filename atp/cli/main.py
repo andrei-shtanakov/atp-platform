@@ -13,6 +13,7 @@ from atp import __version__
 from atp.cli.commands.benchmark import benchmark_command
 from atp.cli.commands.budget import budget_command
 from atp.cli.commands.experiment import experiment_command
+from atp.cli.commands.game import game_command
 from atp.cli.commands.generate import generate_command
 from atp.cli.commands.init import init_command
 from atp.cli.commands.plugins import plugins_command
@@ -297,6 +298,18 @@ def test_cmd(
         sys.exit(EXIT_ERROR)
 
     try:
+        # Detect game suite by checking YAML type field
+        if _is_game_suite(suite_file):
+            result = asyncio.run(
+                _run_game_suite_from_test_cmd(
+                    suite_file=suite_file,
+                    verbose=verbose,
+                    output_format=output,
+                    output_file=output_file,
+                )
+            )
+            sys.exit(EXIT_SUCCESS if result else EXIT_FAILURE)
+
         # Load test suite
         loader = TestLoader()
         suite = loader.load_file(suite_file)
@@ -1673,6 +1686,52 @@ cli.add_command(experiment_command)
 cli.add_command(init_command)
 cli.add_command(generate_command)
 cli.add_command(plugins_command)
+cli.add_command(game_command)
+
+
+def _is_game_suite(suite_file: Path) -> bool:
+    """Check if a suite file is a game suite by inspecting its type field.
+
+    Args:
+        suite_file: Path to the YAML suite file.
+
+    Returns:
+        True if the file contains ``type: game_suite``.
+    """
+    try:
+        with open(suite_file) as f:
+            data = yaml.safe_load(f)
+        return isinstance(data, dict) and data.get("type") == "game_suite"
+    except Exception:
+        return False
+
+
+async def _run_game_suite_from_test_cmd(
+    suite_file: Path,
+    verbose: bool,
+    output_format: str,
+    output_file: Path | None,
+) -> bool:
+    """Run a game suite via the test command.
+
+    Args:
+        suite_file: Path to the game suite YAML.
+        verbose: Verbose output flag.
+        output_format: Output format.
+        output_file: Optional output file.
+
+    Returns:
+        True if the suite ran successfully.
+    """
+    from atp.cli.commands.game import _run_game_suite
+
+    return await _run_game_suite(
+        suite_file=suite_file,
+        episodes=None,
+        verbose=verbose,
+        output_format=output_format,
+        output_file=output_file,
+    )
 
 
 def main() -> None:

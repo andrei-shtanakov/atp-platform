@@ -28,20 +28,21 @@ class TestATPSettings:
 
     def test_default_values(self) -> None:
         """Test default configuration values."""
-        settings = ATPSettings(_skip_file_loading=True)
-        assert settings.log_level == "INFO"
-        assert settings.parallel_workers == 4
-        assert settings.default_timeout == 300
-        assert settings.anthropic_api_key is None
-        assert settings.openai_api_key is None
-        assert settings.default_llm_model == "claude-sonnet-4-20250514"
-        assert settings.dashboard_host == "127.0.0.1"
-        assert settings.dashboard_port == 8080
-        assert settings.dashboard_debug is False
-        assert settings.database_url is None
-        assert settings.fail_fast is False
-        assert settings.sandbox_enabled is False
-        assert settings.runs_per_test == 1
+        with patch.dict(os.environ, {}, clear=True):
+            settings = ATPSettings(_env_file=None, _skip_file_loading=True)
+            assert settings.log_level == "INFO"
+            assert settings.parallel_workers == 4
+            assert settings.default_timeout == 300
+            assert settings.anthropic_api_key is None
+            assert settings.openai_api_key is None
+            assert settings.default_llm_model == "claude-sonnet-4-20250514"
+            assert settings.dashboard_host == "127.0.0.1"
+            assert settings.dashboard_port == 8080
+            assert settings.dashboard_debug is False
+            assert settings.database_url is None
+            assert settings.fail_fast is False
+            assert settings.sandbox_enabled is False
+            assert settings.runs_per_test == 1
 
     def test_custom_values(self) -> None:
         """Test configuration with custom values."""

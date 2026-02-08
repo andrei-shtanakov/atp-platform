@@ -1,0 +1,30 @@
+type: game_suite
+name: Auction Strategy Battery
+version: "1.0"
+
+game:
+  type: auction
+  variant: one_shot
+  config:
+    auction_type: first_price
+    num_items: 1
+    min_bid: 0.0
+    max_bid: 100.0
+
+agents:
+  - name: truthful_bidder
+    adapter: builtin
+    strategy: truthful_bidder
+
+  - name: shade_bidder
+    adapter: builtin
+    strategy: shade_bidder
+
+evaluation:
+  episodes: 100
+  metrics:
+    - type: average_payoff
+      weight: 1.0
+  thresholds:
+    average_payoff:
+      min: 0.0

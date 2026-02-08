@@ -1,0 +1,57 @@
+# ATP Executor Configuration
+# Settings for automatic task execution via Claude CLI
+
+executor:
+  # Retry policy
+  max_retries: 3                    # Max attempts per task
+  retry_delay_seconds: 5            # Delay between attempts
+  max_consecutive_failures: 2       # Stop after N consecutive failures
+
+  # Timeout
+  task_timeout_minutes: 30          # Timeout per task
+
+  # Spec prefix (e.g. "phase5-" for phase5-tasks.md)
+  spec_prefix: ""
+
+  # Claude CLI
+  claude_command: "claude"          # Command (claude, claude-code, etc.)
+  claude_model: ""                  # Model (empty = default)
+
+  # Hooks
+  hooks:
+    pre_start:
+      create_git_branch: true       # Create branch task/TASK-XXX
+
+    post_done:
+      run_tests: true               # Run tests
+      run_lint: true                # Run lint
+      auto_commit: false            # Auto-commit changes
+
+  # Commands
+  commands:
+    test: "make test-fast"          # Test command
+    lint: "make lint"               # Lint command
+
+  # Paths
+  paths:
+    root: "."                       # Project root directory
+    logs: "spec/.executor-logs"     # Logs directory
+    state: "spec/.executor-state.json"  # State file
+
+# Task execution order (optional override)
+# By default, priority from tasks.md + dependencies is used
+execution_order:
+  # You can specify an explicit order:
+  # - TASK-100
+  # - TASK-001
+  # - TASK-004
+
+# Skip tasks (won't be executed automatically)
+skip_tasks:
+  # - TASK-021  # Web Dashboard - manual
+  # - TASK-024  # Documentation - manual
+
+# Environment variables for Claude
+environment:
+  # ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
+  # PROJECT_ROOT: "."

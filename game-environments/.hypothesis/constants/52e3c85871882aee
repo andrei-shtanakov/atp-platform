@@ -1,0 +1,4 @@
+# file: /Users/Andrei_Shtanakov/labs/atp-platform/game-environments/game_envs/core/communication.py
+# hypothesis_version: 6.151.5
+
+['free', 'hidden_state_keys', 'idle', 'mode', 'no_communication', 'phase', 'player_id', 'player_ids', 'post_action', 'pre_action', 'round_messages', 'visible_players', 'visible_state_keys']

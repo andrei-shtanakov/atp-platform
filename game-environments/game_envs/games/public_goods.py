@@ -14,6 +14,7 @@ from game_envs.core.state import (
     RoundResult,
     StepResult,
 )
+from game_envs.games.registry import register_game
 
 
 class PGStage(StrEnum):
@@ -66,6 +67,7 @@ class PGConfig(GameConfig):
             )
 
 
+@register_game("public_goods", PGConfig)
 class PublicGoodsGame(Game):
     """N-player Public Goods Game (one-shot or repeated).
 
@@ -156,9 +158,8 @@ class PublicGoodsGame(Game):
 
     def reset(self) -> StepResult:
         """Reset game to initial state."""
-        self._current_round = 0
+        self._reset_base()
         self._terminal = False
-        self._history.clear()
         self._cumulative = {pid: 0.0 for pid in self.player_ids}
         self._stage = PGStage.CONTRIBUTE
         self._round_contributions = {}
@@ -286,10 +287,11 @@ class PublicGoodsGame(Game):
         for pid in self.player_ids:
             self._cumulative[pid] += discounted[pid]
 
+        current_round_number = self._current_round
         self._current_round += 1
 
         rr = RoundResult(
-            round_number=self._current_round,
+            round_number=current_round_number,
             actions=actions,
             payoffs=payoffs,
         )
@@ -341,6 +343,7 @@ class PublicGoodsGame(Game):
             history=self._history.for_player(player_id),
             round_number=self._current_round,
             total_rounds=self.config.num_rounds,
+            messages=self._get_pending_messages(player_id),
         )
 
     def get_payoffs(self) -> dict[str, float]:
@@ -350,3 +353,57 @@ class PublicGoodsGame(Game):
     @property
     def is_terminal(self) -> bool:
         return self._terminal
+
+    def to_prompt(self) -> str:
+        """Describe the public goods scenario for LLM agents."""
+        c = self._pg_config
+        n = c.num_players
+        lines = [
+            f"This is a {n}-player Public Goods Game.",
+            "",
+            "Rules:",
+            f"- Each player receives an endowment of {c.endowment}.",
+            "- You simultaneously choose how much to "
+            "contribute to a shared public pool "
+            f"(between 0 and {c.endowment}).",
+            f"- The total contributions are multiplied by "
+            f"{c.multiplier} and divided equally among "
+            f"all {n} players.",
+            "",
+            "Payoff formula:",
+            f"  payoff = {c.endowment} - your_contribution"
+            f" + {c.multiplier} * total_contributions"
+            f" / {n}",
+        ]
+        if self._has_punishment:
+            lines.extend(
+                [
+                    "",
+                    "Punishment stage:",
+                    "- After contributions are revealed, you "
+                    "may spend part of your endowment to "
+                    "punish other players.",
+                    f"- Each unit spent on punishment costs "
+                    f"you {c.punishment_cost} and reduces "
+                    f"each target's payoff by "
+                    f"{c.punishment_effect}.",
+                    "- Punishment spending is distributed "
+                    "equally among all other players.",
+                ]
+            )
+        lines.extend(
+            [
+                "",
+                "Strategy note: In a one-shot game, the "
+                "dominant strategy is to contribute nothing "
+                "(free ride), but the social optimum is "
+                "achieved when everyone contributes fully.",
+            ]
+        )
+        if c.num_rounds > 1:
+            lines.append(f"\nThis game is repeated for {c.num_rounds} rounds.")
+            if c.discount_factor < 1.0:
+                lines.append(
+                    f"Future payoffs are discounted by {c.discount_factor} per round."
+                )
+        return "\n".join(lines)

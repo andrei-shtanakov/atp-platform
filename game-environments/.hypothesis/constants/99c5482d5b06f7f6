@@ -1,0 +1,4 @@
+# file: /Users/Andrei_Shtanakov/labs/atp-platform/game-environments/game_envs/games/prisoners_dilemma.py
+# hypothesis_version: 6.151.5
+
+[0.0, 1.0, 3.0, 5.0, "Prisoner's Dilemma", 'cooperate', 'defect', 'game', 'mutual_cooperation', 'mutual_defection', 'payoff_matrix', 'player_0', 'player_1', 'prisoners_dilemma', 'sucker', 'temptation', 'your_role']

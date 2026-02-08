@@ -132,6 +132,15 @@ class TestPrisonersDilemmaOneShot:
         result = game.step({"player_0": COOPERATE, "player_1": DEFECT})
         assert result.payoffs == {"player_0": 0.0, "player_1": 5.0}
 
+    def test_invalid_action_raises(self) -> None:
+        game = PrisonersDilemma()
+        game.reset()
+        with pytest.raises(ValueError, match="Invalid action for player_0"):
+            game.step({"player_0": "invalid", "player_1": COOPERATE})
+        game.reset()
+        with pytest.raises(ValueError, match="Invalid action for player_1"):
+            game.step({"player_0": COOPERATE, "player_1": "invalid"})
+
     def test_step_after_terminal_raises(self) -> None:
         game = PrisonersDilemma()
         game.reset()

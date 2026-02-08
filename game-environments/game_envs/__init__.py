@@ -1,5 +1,11 @@
 """Game environments for agent evaluation."""
 
+from game_envs.analysis.cooperation import (
+    CooperationMetrics,
+    conditional_cooperation,
+    cooperation_rate,
+    reciprocity_index,
+)
 from game_envs.analysis.exploitability import (
     EmpiricalStrategy,
     ExploitabilityResult,
@@ -7,8 +13,24 @@ from game_envs.analysis.exploitability import (
     compute_exploitability,
     compute_exploitability_from_game,
 )
+from game_envs.analysis.fairness import (
+    FairnessMetrics,
+    envy_freeness,
+    gini_coefficient,
+    proportionality,
+    utilitarian_welfare,
+)
 from game_envs.analysis.models import NashEquilibrium
 from game_envs.analysis.nash_solver import NashSolver
+from game_envs.analysis.population import (
+    MoranProcess,
+    PopulationDynamics,
+    PopulationResult,
+    PopulationSimulator,
+    PopulationSnapshot,
+    ReplicatorDynamics,
+    is_ess,
+)
 from game_envs.core.action import (
     ActionSpace,
     ContinuousActionSpace,
@@ -61,23 +83,25 @@ from game_envs.strategies import (
 
 __all__ = [
     "ActionSpace",
-    "CommunicationChannel",
-    "CommunicationMode",
-    "EmpiricalStrategy",
-    "ExploitabilityResult",
     "AlwaysCooperate",
     "AlwaysDefect",
     "Auction",
     "AuctionConfig",
     "BlottoConfig",
     "ColonelBlotto",
-    "CongestionConfig",
-    "CongestionGame",
+    "CommunicationChannel",
+    "CommunicationMode",
     "ConcentratedAllocation",
     "ConditionalCooperator",
+    "CongestionConfig",
+    "CongestionGame",
     "ContinuousActionSpace",
+    "CooperationMetrics",
     "DiscreteActionSpace",
+    "EmpiricalStrategy",
     "EpsilonGreedy",
+    "ExploitabilityResult",
+    "FairnessMetrics",
     "FreeRider",
     "FullContributor",
     "Game",
@@ -89,6 +113,7 @@ __all__ = [
     "GrimTrigger",
     "InformationSet",
     "Message",
+    "MoranProcess",
     "MoveOrder",
     "NashEquilibrium",
     "NashMixed",
@@ -97,11 +122,16 @@ __all__ = [
     "PDConfig",
     "PGConfig",
     "Pavlov",
+    "PopulationDynamics",
+    "PopulationResult",
+    "PopulationSimulator",
+    "PopulationSnapshot",
     "PrisonersDilemma",
     "PublicGoodsGame",
     "Punisher",
     "RandomBidder",
     "RandomStrategy",
+    "ReplicatorDynamics",
     "RouteDefinition",
     "RoundResult",
     "SelfishRouter",
@@ -117,15 +147,19 @@ __all__ = [
     "compute_best_response",
     "compute_exploitability",
     "compute_exploitability_from_game",
+    "conditional_cooperation",
+    "cooperation_rate",
+    "envy_freeness",
+    "gini_coefficient",
+    "is_ess",
+    "proportionality",
+    "reciprocity_index",
     "register_game",
+    "utilitarian_welfare",
 ]
 
-# Register built-in games
-GameRegistry.register("auction", Auction, AuctionConfig)
-GameRegistry.register("colonel_blotto", ColonelBlotto, BlottoConfig)
-GameRegistry.register("congestion", CongestionGame, CongestionConfig)
-GameRegistry.register("prisoners_dilemma", PrisonersDilemma, PDConfig)
-GameRegistry.register("public_goods", PublicGoodsGame, PGConfig)
+# Built-in games are auto-registered via @register_game decorators
+# on their class definitions (see game_envs/games/*.py)
 
 # Register built-in strategies
 StrategyRegistry.register("always_cooperate", AlwaysCooperate)

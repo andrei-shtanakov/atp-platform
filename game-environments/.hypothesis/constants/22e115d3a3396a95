@@ -1,0 +1,4 @@
+# file: /Users/Andrei_Shtanakov/labs/atp-platform/game-environments/game_envs/games/congestion.py
+# hypothesis_version: 6.151.5
+
+[0.0, 0.5, 1.0, 2.0, 'base_cost', 'coefficient', 'congestion', 'game', 'latency_formula', 'num_players', 'payoff_rule', 'route_A', 'route_B', 'routes', 'your_role']

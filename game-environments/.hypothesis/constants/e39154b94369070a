@@ -1,0 +1,4 @@
+# file: /Users/Andrei_Shtanakov/labs/atp-platform/game-environments/game_envs/games/auction.py
+# hypothesis_version: 6.151.5
+
+[0.0, 2.0, 6.0, 100.0, 'First-Price', 'Rules:', 'auction', 'auction_type', 'bid_range', 'first-price', 'first_price', 'game', 'last_price', 'last_winner', 'normal', 'num_bidders', 'payment_rule', 'price', 'reserve_price', 'second_price', 'uniform', 'value', 'winner', 'your_private_value', 'your_role']

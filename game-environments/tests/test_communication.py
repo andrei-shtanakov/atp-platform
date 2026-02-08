@@ -577,3 +577,280 @@ class TestMessageTimestamp:
         data = {"sender": "p0", "content": "hi", "round_number": 0}
         msg = Message.from_dict(data)
         assert msg.timestamp == 0.0
+
+
+# ── InformationSet.filter_history ─────────────────────
+
+
+class TestInformationSetFilterHistory:
+    """Tests for InformationSet.filter_history method."""
+
+    def test_full_observability_returns_all(self) -> None:
+        """No visible_players = full history."""
+        from game_envs.core.state import RoundResult
+
+        info_set = InformationSet(player_id="p0")
+        history = [
+            RoundResult(
+                round_number=0,
+                actions={"p0": "C", "p1": "D"},
+                payoffs={"p0": 0.0, "p1": 5.0},
+            ),
+        ]
+        result = info_set.filter_history(history)
+        assert len(result) == 1
+        assert "p0" in result[0].actions
+        assert "p1" in result[0].actions
+
+    def test_visible_players_filters_actions(self) -> None:
+        """Only visible players' actions/payoffs shown."""
+        from game_envs.core.state import RoundResult
+
+        info_set = InformationSet(
+            player_id="p0",
+            visible_players=["p0"],
+        )
+        history = [
+            RoundResult(
+                round_number=0,
+                actions={"p0": "C", "p1": "D"},
+                payoffs={"p0": 0.0, "p1": 5.0},
+            ),
+        ]
+        result = info_set.filter_history(history)
+        assert len(result) == 1
+        assert "p0" in result[0].actions
+        assert "p1" not in result[0].actions
+        assert "p0" in result[0].payoffs
+        assert "p1" not in result[0].payoffs
+
+    def test_filter_history_preserves_messages(self) -> None:
+        """Messages from visible players are kept."""
+        from game_envs.core.state import RoundResult
+
+        info_set = InformationSet(
+            player_id="p0",
+            visible_players=["p0"],
+        )
+        history = [
+            RoundResult(
+                round_number=0,
+                actions={"p0": "C", "p1": "D"},
+                payoffs={"p0": 0.0, "p1": 5.0},
+                messages=[
+                    Message(
+                        sender="p0",
+                        content="my msg",
+                        round_number=0,
+                    ),
+                    Message(
+                        sender="p1",
+                        content="hidden",
+                        round_number=0,
+                    ),
+                ],
+            ),
+        ]
+        result = info_set.filter_history(history)
+        # p0's own messages kept, p1's filtered out
+        assert len(result[0].messages) == 1
+        assert result[0].messages[0].sender == "p0"
+
+    def test_filter_history_empty(self) -> None:
+        """Empty history returns empty list."""
+        info_set = InformationSet(
+            player_id="p0",
+            visible_players=["p0"],
+        )
+        assert info_set.filter_history([]) == []
+
+    def test_filter_history_multi_round(self) -> None:
+        """Filtering works across multiple rounds."""
+        from game_envs.core.state import RoundResult
+
+        info_set = InformationSet(
+            player_id="p0",
+            visible_players=["p0"],
+        )
+        history = [
+            RoundResult(
+                round_number=i,
+                actions={"p0": "C", "p1": "D", "p2": "C"},
+                payoffs={"p0": 1.0, "p1": 2.0, "p2": 3.0},
+            )
+            for i in range(3)
+        ]
+        result = info_set.filter_history(history)
+        assert len(result) == 3
+        for rr in result:
+            assert set(rr.actions.keys()) == {"p0"}
+            assert set(rr.payoffs.keys()) == {"p0"}
+
+
+# ── Game.get_information_set ──────────────────────────
+
+
+class TestGameGetInformationSet:
+    """Tests for Game.get_information_set method."""
+
+    def test_default_returns_none(self) -> None:
+        """Default Game has no information set (full obs)."""
+        from tests.conftest import StubGame
+
+        game = StubGame()
+        assert game.get_information_set("player_0") is None
+
+    def test_auction_returns_info_set(self) -> None:
+        """Auction provides partial observability."""
+        from game_envs.games.auction import Auction, AuctionConfig
+
+        game = Auction(AuctionConfig(seed=42))
+        game.reset()
+        info_set = game.get_information_set("player_0")
+        assert info_set is not None
+        assert info_set.player_id == "player_0"
+        assert info_set.visible_players == ["player_0"]
+
+    def test_auction_observe_uses_info_set(self) -> None:
+        """Auction.observe() filters history via info set."""
+        from game_envs.games.auction import Auction, AuctionConfig
+
+        config = AuctionConfig(num_players=2, seed=42)
+        game = Auction(config)
+        game.reset()
+
+        # Play a round
+        game.step({"player_0": 30.0, "player_1": 50.0})
+
+        # Observation has filtered history
+        obs = game.observe("player_0")
+        assert len(obs.history) == 1
+        # Only own bid visible in observation
+        assert "player_0" in obs.history[0].actions
+        assert "player_1" not in obs.history[0].actions
+
+
+# ── Reset clears communication channel ────────────────
+
+
+class TestResetClearsChannel:
+    """Verify that game reset clears communication state."""
+
+    def test_pd_reset_clears_channel(self) -> None:
+        """PD reset() clears communication messages."""
+        config = PDConfig(
+            num_rounds=3,
+            communication=True,
+            seed=42,
+        )
+        game = PrisonersDilemma(config)
+        game.reset()
+
+        # Send some messages
+        game.channel.begin_round(0)
+        game.send_message("player_0", "hello")
+        assert len(game.channel.get_all_messages()) == 1
+
+        # Reset should clear messages
+        game.reset()
+        assert game.channel.get_all_messages() == []
+
+    def test_auction_reset_clears_channel(self) -> None:
+        """Auction reset() clears channel if configured."""
+        from game_envs.games.auction import Auction, AuctionConfig
+
+        config = AuctionConfig(
+            communication_mode=CommunicationMode.FREE,
+            seed=42,
+        )
+        game = Auction(config)
+        game.reset()
+
+        game.send_message("player_0", "msg")
+        assert len(game.channel.get_all_messages()) == 1
+
+        game.reset()
+        assert game.channel.get_all_messages() == []
+
+    def test_stub_game_reset_clears_channel(self) -> None:
+        """StubGame._reset_base() clears channel."""
+        from tests.conftest import StubGame
+
+        cfg = GameConfig(
+            communication_mode=CommunicationMode.FREE,
+            num_rounds=2,
+        )
+        game = StubGame(config=cfg)
+        game.reset()
+        game.send_message("player_0", "msg")
+        assert len(game.channel.get_all_messages()) == 1
+
+        game.reset()
+        assert game.channel.get_all_messages() == []
+
+    def test_reset_no_channel_no_error(self) -> None:
+        """Reset without channel doesn't raise."""
+        game = PrisonersDilemma(PDConfig(seed=42))
+        game.reset()
+        assert game.channel is None
+        # Second reset should be fine
+        game.reset()
+
+
+# ── Post-action communication in PD ──────────────────
+
+
+class TestPDPostActionCommunication:
+    """PD with post-action communication mode."""
+
+    def test_post_action_messages(self) -> None:
+        """Messages exchanged after actions are revealed."""
+        config = PDConfig(
+            num_rounds=2,
+            communication_mode=CommunicationMode.POST_ACTION,
+            seed=42,
+        )
+        game = PrisonersDilemma(config)
+        game.reset()
+
+        # Round 0: play first, then communicate
+        game.channel.begin_round(0)
+        # Cannot send before actions in post_action mode
+        assert not game.channel.can_send()
+
+        game.step({"player_0": "cooperate", "player_1": "defect"})
+
+        # Now allow post-action messages
+        game.channel.end_actions(0)
+        assert game.channel.can_send()
+        game.send_message("player_0", "Why did you defect?")
+
+        obs = game.observe("player_1")
+        assert len(obs.messages) == 1
+        assert "defect" in obs.messages[0].content
+
+        game.channel.end_round()
+
+    def test_message_observation_serialization(self) -> None:
+        """Observation with messages serializes correctly."""
+        config = PDConfig(
+            communication=True,
+            seed=42,
+        )
+        game = PrisonersDilemma(config)
+        game.reset()
+
+        game.channel.begin_round(0)
+        game.send_message("player_0", "test msg")
+
+        obs = game.observe("player_1")
+        data = obs.to_dict()
+        assert len(data["messages"]) == 1
+        assert data["messages"][0]["sender"] == "player_0"
+        assert data["messages"][0]["content"] == "test msg"
+
+        from game_envs.core.state import Observation
+
+        restored = Observation.from_dict(data)
+        assert len(restored.messages) == 1
+        assert restored.messages[0].sender == "player_0"

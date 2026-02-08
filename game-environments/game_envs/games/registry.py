@@ -93,9 +93,38 @@ class GameRegistry:
         return game_class(config=config, **kwargs)
 
     @classmethod
-    def list_games(cls) -> list[str]:
-        """List all registered game names."""
-        return sorted(cls._registry)
+    def list_games(
+        cls,
+        with_metadata: bool = False,
+    ) -> list[str] | list[dict[str, Any]]:
+        """List all registered game names.
+
+        Args:
+            with_metadata: If True, return a list of dicts
+                with name, description, game_type, and
+                move_order for each game.
+
+        Returns:
+            Sorted list of game names, or list of metadata
+            dicts when ``with_metadata=True``.
+        """
+        names = sorted(cls._registry)
+        if not with_metadata:
+            return names
+        result: list[dict[str, Any]] = []
+        for name in names:
+            game_class = cls._registry[name]
+            game = game_class()
+            result.append(
+                {
+                    "name": name,
+                    "description": (game_class.__doc__ or "").strip().split("\n")[0],
+                    "game_type": str(game.game_type),
+                    "move_order": str(game.move_order),
+                    "num_players": len(game.player_ids),
+                }
+            )
+        return result
 
     @classmethod
     def game_info(cls, name: str) -> dict[str, Any]:

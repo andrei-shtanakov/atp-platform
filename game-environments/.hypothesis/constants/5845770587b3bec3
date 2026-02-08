@@ -1,0 +1,4 @@
+# file: /Users/Andrei_Shtanakov/labs/atp-platform/game-environments/game_envs/core/action.py
+# hypothesis_version: 6.151.5
+
+[0.0, 1e-09, 100.0, 'fields', 'max_value', 'min_value', 'total', 'value']

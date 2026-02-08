@@ -200,9 +200,14 @@ atp-platform-ru/
 │   ├── mock_tools/           # Mock tool server for testing
 │   ├── performance/          # Profiling, caching, optimization
 │   └── dashboard/            # Web interface (FastAPI)
+├── game-environments/        # Standalone game theory library (Phase 5)
+│   └── game_envs/            # Games, strategies, analysis (Nash, exploitability)
+├── atp-games/                # ATP plugin for game-theoretic evaluation (Phase 5)
+│   └── atp_games/            # GameRunner, evaluators, YAML suites, tournaments
 ├── docs/                     # Documentation
 ├── examples/                 # Example test suites and CI configs
 │   ├── test_suites/          # Sample test suites
+│   ├── games/                # Game-theoretic evaluation examples
 │   └── ci/                   # CI/CD templates
 ├── tests/                    # Test suite (80%+ coverage)
 │   ├── unit/                 # Unit tests
@@ -301,10 +306,20 @@ uv run atp list suite.yaml      # List tests in a suite
 - [Security](docs/security.md) - Security model
 - [Architecture Decision Records](docs/adr/) - Key design decisions
 
+### Game-Theoretic Evaluation
+
+- [game-environments README](game-environments/README.md) - Game library: API, game dev guide, strategies, analysis tools
+- [atp-games README](atp-games/README.md) - ATP plugin: quick start, YAML reference, evaluators, tournaments
+
 ### Examples
 
 See [examples/](examples/) for:
 - [Test Suites](examples/test_suites/) - Sample test definitions
+- [Game Examples](examples/games/) - Game-theoretic evaluation ([README](examples/games/README.md), no API keys needed):
+  - `basic_usage.py` - Run games, strategies, and tournaments
+  - `custom_game.py` - Create a new game from scratch
+  - `llm_agent_eval.py` - Evaluate agents on game battery
+  - `population_dynamics.py` - Evolutionary simulation
 - [CI/CD Templates](examples/ci/) - GitHub Actions, GitLab CI, Jenkins, Azure, CircleCI
 - [Demo Agents](examples/) - Ready-to-run example agents:
   - `demo_agent.py` - Simple file operations agent (no API keys needed)
@@ -365,6 +380,66 @@ MIT License - see [LICENSE](LICENSE) for details.
 - **Documentation**: [docs/](docs/)
 - **Examples**: [examples/](examples/)
 
+## Phase 5: Game-Theoretic Evaluation
+
+ATP includes a game-theoretic evaluation framework for testing agent strategic reasoning, cooperation, and equilibrium play in multi-agent games.
+
+### Packages
+
+| Package | Description | Docs |
+|---|---|---|
+| [`game-environments`](game-environments/) | Standalone game theory library (zero ATP dependency) | [README](game-environments/README.md) |
+| [`atp-games`](atp-games/) | ATP plugin for game-theoretic evaluation | [README](atp-games/README.md) |
+
+### Built-in Games
+
+Five canonical games with known Nash equilibria for rigorous evaluation:
+
+- **Prisoner's Dilemma** -- cooperation vs defection with configurable payoff matrix
+- **Public Goods Game** -- N-player contribution with multiplier and optional punishment
+- **Auction** -- first-price and second-price sealed-bid with private values
+- **Colonel Blotto** -- resource allocation across multiple battlefields
+- **Congestion Game** -- network routing with latency-dependent costs
+
+### Game-Theoretic Evaluators
+
+- **PayoffEvaluator** -- average payoff, distribution, social welfare, Pareto efficiency
+- **ExploitabilityEvaluator** -- best-response gap, empirical strategy extraction
+- **CooperationEvaluator** -- cooperation rate, conditional cooperation, reciprocity
+- **EquilibriumEvaluator** -- Nash distance, convergence detection, equilibrium classification
+
+### Quick Start (Games)
+
+```bash
+# Run a built-in game suite
+uv run atp test --suite=game:prisoners_dilemma.yaml
+
+# Or use programmatically
+```
+
+```python
+from game_envs import PrisonersDilemma, PDConfig, TitForTat, AlwaysDefect
+from atp_games import GameRunner, GameRunConfig, BuiltinAdapter
+import asyncio
+
+async def main():
+    game = PrisonersDilemma(PDConfig(num_rounds=50))
+    agents = {
+        "player_0": BuiltinAdapter(TitForTat()),
+        "player_1": BuiltinAdapter(AlwaysDefect()),
+    }
+    runner = GameRunner()
+    result = await runner.run_game(
+        game=game, agents=agents,
+        config=GameRunConfig(episodes=20, base_seed=42),
+    )
+    print(result.average_payoffs)
+
+asyncio.run(main())
+```
+
+See [examples/games/](examples/games/) for more examples.
+
 ## Status
 
 **Current Status**: GA (General Availability)
@@ -373,6 +448,7 @@ All core features implemented:
 - ✅ MVP: Protocol, Adapters, Runner, Evaluators, Reporters, CLI
 - ✅ Beta: Framework adapters, Statistics, LLM-Judge, Baseline, HTML reports, CI/CD
 - ✅ GA: Dashboard, Security hardening, Performance optimization
+- ✅ Phase 5: Game-theoretic evaluation (game-environments + atp-games)
 
 ### Specifications Directory
 

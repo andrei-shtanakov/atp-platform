@@ -614,3 +614,62 @@ class TestVerificationOnKnownGames:
                 found_match = True
                 break
         assert found_match
+
+    def test_all_solvers_agree_on_pd(self) -> None:
+        """All solvers should converge to (Defect, Defect) in PD."""
+        se = NashSolver.support_enumeration(PD_P1, PD_P2)
+        lh = NashSolver.lemke_howson(PD_P1, PD_P2)
+        fp = NashSolver.fictitious_play(
+            [PD_P1, PD_P2],
+            max_iterations=10000,
+        )
+        rd = NashSolver.replicator_dynamics(
+            [PD_P1, PD_P2],
+            max_steps=10000,
+        )
+
+        for eq in [se[0], lh, fp, rd]:
+            assert eq.strategies["player_0"][1] > 0.8
+            assert eq.strategies["player_1"][1] > 0.8
+
+    def test_1x1_game(self) -> None:
+        """1x1 game has trivial NE."""
+        p1 = np.array([[5.0]])
+        p2 = np.array([[3.0]])
+        eqs = NashSolver.support_enumeration(p1, p2)
+        assert len(eqs) == 1
+        eq = eqs[0]
+        np.testing.assert_array_almost_equal(
+            eq.strategies["player_0"],
+            [1.0],
+        )
+        np.testing.assert_array_almost_equal(
+            eq.strategies["player_1"],
+            [1.0],
+        )
+        assert eq.payoffs["player_0"] == pytest.approx(5.0)
+        assert eq.payoffs["player_1"] == pytest.approx(3.0)
+
+    def test_asymmetric_game(self) -> None:
+        """Non-square (2x3) payoff matrices."""
+        p1 = np.array([[3.0, 0.0, 2.0], [1.0, 4.0, 0.0]])
+        p2 = np.array([[1.0, 4.0, 0.0], [3.0, 0.0, 2.0]])
+        eqs = NashSolver.support_enumeration(p1, p2)
+        # Should find at least one NE
+        assert len(eqs) >= 1
+        for eq in eqs:
+            assert eq.strategies["player_0"].sum() == pytest.approx(
+                1.0,
+                abs=1e-10,
+            )
+            assert eq.strategies["player_1"].sum() == pytest.approx(
+                1.0,
+                abs=1e-10,
+            )
+
+    def test_zero_sum_game_payoffs_sum_to_zero(self) -> None:
+        """In a zero-sum game, NE payoffs should sum to ~0."""
+        eqs = NashSolver.support_enumeration(RPS_P1, RPS_P2)
+        for eq in eqs:
+            total = eq.payoffs["player_0"] + eq.payoffs["player_1"]
+            assert total == pytest.approx(0.0, abs=1e-6)

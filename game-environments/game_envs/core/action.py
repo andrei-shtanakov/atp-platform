@@ -161,9 +161,12 @@ class StructuredActionSpace(ActionSpace):
         if total is not None:
             # Generate random allocation summing to total
             n = len(fields)
+            available = total - n * min_val
+            if available < 0:
+                available = 0
             weights = [r.random() for _ in range(n)]
             weight_sum = sum(weights)
-            values = [max(min_val, w / weight_sum * total) for w in weights]
+            values = [min_val + w / weight_sum * available for w in weights]
             # Adjust to ensure exact sum
             diff = total - sum(values)
             values[0] += diff

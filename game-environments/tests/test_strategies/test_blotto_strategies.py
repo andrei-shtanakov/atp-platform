@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from game_envs.core.state import Observation
+from game_envs.games.colonel_blotto import BlottoConfig, ColonelBlotto
 from game_envs.strategies.blotto_strategies import (
     ConcentratedAllocation,
     NashMixed,
@@ -133,3 +134,49 @@ class TestNashMixed:
 
     def test_name(self) -> None:
         assert NashMixed().name == "nash_mixed"
+
+
+class TestBlottoIntegration:
+    """Integration tests with actual ColonelBlotto game."""
+
+    def test_uniform_vs_concentrated(self) -> None:
+        """Uniform vs Concentrated: verify valid game play."""
+        game = ColonelBlotto(BlottoConfig(num_rounds=1, seed=42))
+        game.reset()
+
+        uniform = UniformAllocation()
+        conc = ConcentratedAllocation()
+
+        obs_0 = game.observe("player_0")
+        obs_1 = game.observe("player_1")
+
+        a0 = uniform.choose_action(obs_0)
+        a1 = conc.choose_action(obs_1)
+
+        result = game.step({"player_0": a0, "player_1": a1})
+        # Both payoffs should be valid fractions
+        assert 0.0 <= result.payoffs["player_0"] <= 1.0
+        assert 0.0 <= result.payoffs["player_1"] <= 1.0
+        # Payoffs sum to 1.0 (zero-sum in terms of wins)
+        total = result.payoffs["player_0"] + result.payoffs["player_1"]
+        assert total == pytest.approx(1.0)
+
+    def test_nash_mixed_produces_valid_actions(self) -> None:
+        """NashMixed produces valid allocations for the game."""
+        game = ColonelBlotto(BlottoConfig(num_battlefields=5, num_rounds=3, seed=42))
+        game.reset()
+        nash0 = NashMixed(seed=10)
+        nash1 = NashMixed(seed=20)
+
+        while not game.is_terminal:
+            obs_0 = game.observe("player_0")
+            obs_1 = game.observe("player_1")
+            a0 = nash0.choose_action(obs_0)
+            a1 = nash1.choose_action(obs_1)
+            # Verify allocations are valid
+            assert game.action_space("player_0").contains(a0)
+            assert game.action_space("player_1").contains(a1)
+            game.step({"player_0": a0, "player_1": a1})
+
+        payoffs = game.get_payoffs()
+        assert all(p >= 0.0 for p in payoffs.values())

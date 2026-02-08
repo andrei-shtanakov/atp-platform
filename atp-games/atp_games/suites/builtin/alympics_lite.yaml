@@ -1,0 +1,142 @@
+# Alympics Lite Benchmark Suite
+#
+# Standardised battery covering all 5 canonical games with fixed configs.
+# Used by `atp benchmark --suite=alympics` for quick agent evaluation.
+#
+# Composite scoring categories:
+#   strategic  (30%): PD, auction, blotto, congestion
+#   cooperation(25%): PD, public goods
+#   fairness   (25%): public goods, auction, congestion
+#   robustness (20%): all 5 games
+#
+# Each game section defines standardised parameters and baseline strategies.
+
+games:
+  - name: Repeated Prisoner's Dilemma
+    type: prisoners_dilemma
+    variant: repeated
+    config:
+      num_rounds: 100
+      noise: 0.0
+      discount_factor: 1.0
+      seed: 42
+    agents:
+      - name: tit_for_tat
+        adapter: builtin
+        strategy: tit_for_tat
+      - name: always_defect
+        adapter: builtin
+        strategy: always_defect
+    episodes: 20
+
+  - name: Public Goods Game
+    type: public_goods
+    variant: repeated
+    config:
+      num_rounds: 50
+      num_players: 4
+      endowment: 10.0
+      multiplier: 2.0
+      seed: 42
+    agents:
+      - name: full_contributor
+        adapter: builtin
+        strategy: full_contributor
+      - name: free_rider
+        adapter: builtin
+        strategy: free_rider
+      - name: conditional_cooperator
+        adapter: builtin
+        strategy: conditional_cooperator
+      - name: punisher
+        adapter: builtin
+        strategy: punisher
+    episodes: 20
+
+  - name: First-Price Auction
+    type: auction
+    variant: one_shot
+    config:
+      auction_type: first_price
+      min_bid: 0.0
+      max_bid: 100.0
+      seed: 42
+    agents:
+      - name: truthful_bidder
+        adapter: builtin
+        strategy: truthful_bidder
+      - name: shade_bidder
+        adapter: builtin
+        strategy: shade_bidder
+    episodes: 50
+
+  - name: Colonel Blotto
+    type: colonel_blotto
+    variant: one_shot
+    config:
+      num_battlefields: 5
+      total_troops: 100
+      seed: 42
+    agents:
+      - name: uniform_allocation
+        adapter: builtin
+        strategy: uniform_allocation
+      - name: concentrated_allocation
+        adapter: builtin
+        strategy: concentrated_allocation
+    episodes: 20
+
+  - name: Congestion Game
+    type: congestion
+    variant: one_shot
+    config:
+      num_players: 4
+      seed: 42
+    agents:
+      - name: selfish_router
+        adapter: builtin
+        strategy: selfish_router
+      - name: social_optimum
+        adapter: builtin
+        strategy: social_optimum
+      - name: epsilon_greedy
+        adapter: builtin
+        strategy: epsilon_greedy
+      - name: selfish_router_2
+        adapter: builtin
+        strategy: selfish_router
+    episodes: 20
+
+evaluation:
+  metrics:
+    - type: average_payoff
+      weight: 1.0
+    - type: cooperation_rate
+      weight: 0.5
+    - type: fairness
+      weight: 0.5
+    - type: exploitability
+      weight: 0.5
+      config:
+        epsilon: 0.15
+
+scoring:
+  categories:
+    strategic:
+      weight: 0.30
+      games: [prisoners_dilemma, auction, colonel_blotto, congestion]
+    cooperation:
+      weight: 0.25
+      games: [prisoners_dilemma, public_goods]
+    fairness:
+      weight: 0.25
+      games: [public_goods, auction, congestion]
+    robustness:
+      weight: 0.20
+      games: [prisoners_dilemma, public_goods, auction, colonel_blotto, congestion]
+  baselines:
+    prisoners_dilemma: {min: 1.0, max: 3.0}
+    public_goods: {min: 0.0, max: 10.0}
+    auction: {min: 0.0, max: 50.0}
+    colonel_blotto: {min: 0.0, max: 1.0}
+    congestion: {min: -20.0, max: -1.0}

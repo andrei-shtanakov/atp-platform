@@ -4,22 +4,22 @@ on:
   push:
     branches: [main, master, develop, "task/*"]
     paths:
-      - "atp/**"
-      - "tests/**"
-      - "pyproject.toml"
+      - "atp-games/**"
   pull_request:
     branches: [main, master]
     paths:
-      - "atp/**"
-      - "tests/**"
-      - "pyproject.toml"
+      - "atp-games/**"
+
+defaults:
+  run:
+    working-directory: atp-games
 
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.12"]
+        python-version: ["3.12", "3.13"]
 
     steps:
       - uses: actions/checkout@v4
@@ -34,8 +34,12 @@ jobs:
         with:
           version: "latest"
 
+      - name: Install game-environments from source
+        working-directory: game-environments
+        run: uv sync --dev
+
       - name: Install dependencies
-        run: uv sync --all-extras --dev
+        run: uv sync --dev
 
       - name: Run ruff format check
         run: uv run ruff format --check .
@@ -50,15 +54,16 @@ jobs:
       - name: Run tests with coverage
         run: |
           uv run pytest tests/ -v \
-            --cov=atp \
+            --cov=atp_games \
             --cov-report=term-missing \
             --cov-report=xml \
             --cov-fail-under=80
 
       - name: Upload coverage to Codecov
+        if: matrix.python-version == '3.12'
         uses: codecov/codecov-action@v4
         with:
-          file: ./coverage.xml
+          file: atp-games/coverage.xml
           flags: atp-games
           fail_ci_if_error: false
         continue-on-error: true
@@ -91,7 +96,7 @@ jobs:
   publish:
     needs: [test, lint]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/atp-platform-v')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/atp-games-v')
     permissions:
       id-token: write
 
@@ -113,3 +118,5 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: atp-games/dist/

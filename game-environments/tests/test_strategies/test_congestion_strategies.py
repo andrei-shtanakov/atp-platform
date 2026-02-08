@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
+
 from game_envs.core.state import Observation, RoundResult
+from game_envs.games.congestion import CongestionConfig, CongestionGame
 from game_envs.strategies.congestion_strategies import (
     EpsilonGreedy,
     SelfishRouter,
@@ -136,8 +139,6 @@ class TestEpsilonGreedy:
         assert s.choose_action(obs) == "route_b"
 
     def test_invalid_epsilon(self) -> None:
-        import pytest
-
         with pytest.raises(ValueError, match="epsilon must be"):
             EpsilonGreedy(epsilon=1.5)
 
@@ -150,3 +151,52 @@ class TestEpsilonGreedy:
         obs = _make_obs()
         action = s.choose_action(obs)
         assert action in ("route_a", "route_b", "route_c")
+
+
+class TestCongestionIntegration:
+    """Integration tests with actual CongestionGame."""
+
+    def test_selfish_routers_all_pick_cheapest(self) -> None:
+        """All selfish routers choose the lowest-cost route."""
+        game = CongestionGame(CongestionConfig(num_players=3, num_rounds=1))
+        game.reset()
+
+        strategies = {pid: SelfishRouter() for pid in game.player_ids}
+        actions = {}
+        for pid, strat in strategies.items():
+            obs = game.observe(pid)
+            actions[pid] = strat.choose_action(obs)
+
+        # All should pick route_A (lowest base_cost=1.0)
+        for pid in game.player_ids:
+            assert actions[pid] == "route_A"
+
+        result = game.step(actions)
+        # Payoffs should be negative latency
+        for pid in game.player_ids:
+            assert result.payoffs[pid] < 0
+
+    def test_repeated_game_with_strategies(self) -> None:
+        """Run a repeated congestion game with mixed strategies."""
+        game = CongestionGame(CongestionConfig(num_players=3, num_rounds=5, seed=42))
+        game.reset()
+
+        strategies: dict[str, SelfishRouter | SocialOptimum | EpsilonGreedy] = {
+            "player_0": SelfishRouter(),
+            "player_1": SocialOptimum(),
+            "player_2": EpsilonGreedy(epsilon=0.2, seed=42),
+        }
+
+        while not game.is_terminal:
+            actions = {}
+            for pid, strat in strategies.items():
+                obs = game.observe(pid)
+                action = strat.choose_action(obs)
+                assert game.action_space(pid).contains(action)
+                actions[pid] = action
+            game.step(actions)
+
+        payoffs = game.get_payoffs()
+        # All payoffs should be negative (costs)
+        for pid in game.player_ids:
+            assert payoffs[pid] < 0

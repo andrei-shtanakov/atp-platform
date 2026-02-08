@@ -6,6 +6,7 @@ tournament standings, and cross-play heatmaps.
 """
 
 import csv
+import html
 import io
 import json
 import sys
@@ -298,7 +299,7 @@ class GameHTMLReporter(Reporter):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{self._title}</title>
+    <title>{html.escape(self._title)}</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
     <style>
         :root {{
@@ -387,11 +388,11 @@ class GameHTMLReporter(Reporter):
 </head>
 <body>
 <div class="container">
-    <h1>{self._title}</h1>
+    <h1>{html.escape(self._title)}</h1>
 
     <div class="summary">
         <div class="metric">
-            <div class="value">{report.game_name}</div>
+            <div class="value">{html.escape(report.game_name)}</div>
             <div class="label">Game</div>
         </div>
         <div class="metric">
@@ -428,9 +429,9 @@ class GameHTMLReporter(Reporter):
                 f"{p.cooperation_rate:.2%}" if p.cooperation_rate is not None else "N/A"
             )
             expl = f"{p.exploitability:.4f}" if p.exploitability is not None else "N/A"
-            strategy = p.strategy or "N/A"
+            strategy = html.escape(p.strategy or "N/A")
             rows += f"""<tr>
-                <td>{p.player_id}</td>
+                <td>{html.escape(p.player_id)}</td>
                 <td>{strategy}</td>
                 <td>{p.average_payoff:.2f}</td>
                 <td>{p.total_payoff:.2f}</td>
@@ -457,7 +458,7 @@ class GameHTMLReporter(Reporter):
         if not report.payoff_matrix:
             return ""
         players = list(report.payoff_matrix.keys())
-        header = "".join(f"<th>{p}</th>" for p in players)
+        header = "".join(f"<th>{html.escape(p)}</th>" for p in players)
         rows = ""
         all_values = [v for row in report.payoff_matrix.values() for v in row.values()]
         min_val = min(all_values) if all_values else 0
@@ -477,7 +478,7 @@ class GameHTMLReporter(Reporter):
                     f'style="background:rgba({r},{g},{b},0.3)">'
                     f"{val:.2f}</td>"
                 )
-            rows += f"<tr><th>{row_player}</th>{cells}</tr>"
+            rows += f"<tr><th>{html.escape(row_player)}</th>{cells}</tr>"
 
         return f"""
     <h2>Payoff Matrix</h2>
@@ -512,8 +513,9 @@ class GameHTMLReporter(Reporter):
         for i, s in enumerate(sorted(strategies)):
             data = json.dumps([d.get(s, 0) for d in report.strategy_timeline])
             color = colors[i % len(colors)]
+            label = json.dumps(s)
             datasets.append(
-                f'{{label:"{s}",data:{data},borderColor:"{color}",fill:false}}'
+                f'{{label:{label},data:{data},borderColor:"{color}",fill:false}}'
             )
         datasets_str = ",".join(datasets)
         return f"""
@@ -594,7 +596,7 @@ class GameHTMLReporter(Reporter):
         for s in report.tournament_standings:
             rows += f"""<tr>
                 <td>{s.rank}</td>
-                <td><strong>{s.agent}</strong></td>
+                <td><strong>{html.escape(s.agent)}</strong></td>
                 <td>{s.wins}</td>
                 <td>{s.losses}</td>
                 <td>{s.draws}</td>
@@ -620,7 +622,7 @@ class GameHTMLReporter(Reporter):
         if not report.cross_play_matrix:
             return ""
         agents = list(report.cross_play_matrix.keys())
-        header = "".join(f"<th>{a}</th>" for a in agents)
+        header = "".join(f"<th>{html.escape(a)}</th>" for a in agents)
 
         all_values = [
             v for row in report.cross_play_matrix.values() for v in row.values()
@@ -643,7 +645,7 @@ class GameHTMLReporter(Reporter):
                     f'style="background:rgba({r},{g},{b},0.3)">'
                     f"{val:.2f}</td>"
                 )
-            rows += f"<tr><th>{row_agent}</th>{cells}</tr>"
+            rows += f"<tr><th>{html.escape(row_agent)}</th>{cells}</tr>"
 
         return f"""
     <h2>Cross-Play Matrix</h2>

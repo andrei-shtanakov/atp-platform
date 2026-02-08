@@ -11,6 +11,8 @@ from game_envs.core.action import DiscreteActionSpace
 from game_envs.core.game import Game, GameConfig, GameType, MoveOrder
 from game_envs.core.state import GameState, StepResult
 from game_envs.games.auction import Auction, AuctionConfig
+from game_envs.games.colonel_blotto import BlottoConfig, ColonelBlotto
+from game_envs.games.congestion import CongestionConfig, CongestionGame
 from game_envs.games.prisoners_dilemma import (
     PDConfig,
     PrisonersDilemma,
@@ -165,6 +167,31 @@ class TestGameRegistry:
 
     def test_list_games_empty(self) -> None:
         assert GameRegistry.list_games() == []
+
+    def test_list_games_with_metadata(self) -> None:
+        """list_games(with_metadata=True) returns dicts."""
+        GameRegistry.register("dummy", _DummyGame)
+        result = GameRegistry.list_games(with_metadata=True)
+        assert len(result) == 1
+        entry = result[0]
+        assert entry["name"] == "dummy"
+        assert "description" in entry
+        assert entry["game_type"] == "normal_form"
+        assert entry["move_order"] == "simultaneous"
+        assert entry["num_players"] == 1
+
+    def test_list_games_with_metadata_sorted(self) -> None:
+        """Metadata list is sorted by name."""
+        GameRegistry.register("zz_game", _DummyGame)
+        GameRegistry.register("aa_game", _DummyGame)
+        result = GameRegistry.list_games(with_metadata=True)
+        names = [e["name"] for e in result]
+        assert names == ["aa_game", "zz_game"]
+
+    def test_list_games_with_metadata_empty(self) -> None:
+        """Empty registry returns empty metadata list."""
+        result = GameRegistry.list_games(with_metadata=True)
+        assert result == []
 
     def test_clear(self) -> None:
         GameRegistry.register("dummy", _DummyGame, _DummyConfig)
@@ -375,11 +402,25 @@ class TestBuiltinRegistration:
         assert "public_goods" in GameRegistry.list_games()
         assert GameRegistry.get("public_goods") is PublicGoodsGame
 
+    def test_colonel_blotto_registered(self) -> None:
+        import game_envs  # noqa: F401
+
+        assert "colonel_blotto" in GameRegistry.list_games()
+        assert GameRegistry.get("colonel_blotto") is ColonelBlotto
+
+    def test_congestion_registered(self) -> None:
+        import game_envs  # noqa: F401
+
+        assert "congestion" in GameRegistry.list_games()
+        assert GameRegistry.get("congestion") is CongestionGame
+
     def test_all_builtins_listed(self) -> None:
         import game_envs  # noqa: F401
 
         games = GameRegistry.list_games()
         assert "auction" in games
+        assert "colonel_blotto" in games
+        assert "congestion" in games
         assert "prisoners_dilemma" in games
         assert "public_goods" in games
 
@@ -390,6 +431,8 @@ class TestBuiltinRegistration:
         assert GameRegistry._config_classes["prisoners_dilemma"] is PDConfig
         assert GameRegistry._config_classes["auction"] is AuctionConfig
         assert GameRegistry._config_classes["public_goods"] is PGConfig
+        assert GameRegistry._config_classes["colonel_blotto"] is BlottoConfig
+        assert GameRegistry._config_classes["congestion"] is CongestionConfig
 
     def test_create_pd_from_dict(self) -> None:
         """Create PD game from dict config."""
@@ -415,6 +458,39 @@ class TestBuiltinRegistration:
         )
         assert isinstance(game, Auction)
         assert game.config.num_players == 3
+
+    def test_create_blotto_from_dict(self) -> None:
+        """Create Colonel Blotto game from dict config."""
+        import game_envs  # noqa: F401
+
+        game = GameRegistry.create(
+            "colonel_blotto",
+            config={"num_battlefields": 5, "total_troops": 50},
+        )
+        assert isinstance(game, ColonelBlotto)
+        assert game.config.num_battlefields == 5  # type: ignore[union-attr]
+
+    def test_create_congestion_from_dict(self) -> None:
+        """Create Congestion game from dict config."""
+        import game_envs  # noqa: F401
+
+        game = GameRegistry.create("congestion", config={})
+        assert isinstance(game, CongestionGame)
+
+    def test_list_builtins_with_metadata(self) -> None:
+        """list_games(with_metadata=True) for builtins."""
+        import game_envs  # noqa: F401
+
+        result = GameRegistry.list_games(with_metadata=True)
+        assert len(result) == 5
+        names = [e["name"] for e in result]
+        assert "prisoners_dilemma" in names
+        assert "auction" in names
+        for entry in result:
+            assert "description" in entry
+            assert "game_type" in entry
+            assert "move_order" in entry
+            assert "num_players" in entry
 
     def test_game_info_for_builtins(self) -> None:
         """game_info works for all built-in games."""

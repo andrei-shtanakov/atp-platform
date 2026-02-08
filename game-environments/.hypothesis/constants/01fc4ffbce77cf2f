@@ -1,0 +1,4 @@
+# file: /Users/Andrei_Shtanakov/labs/atp-platform/game-environments/game_envs/analysis/nash_solver.py
+# hypothesis_version: 6.151.5
+
+[0.0, 1e-15, 1e-10, 1e-06, 0.01, 1.0, 100, 1000, 10000, 'fictitious_play', 'inf', 'lemke_howson', 'player_0', 'player_1', 'replicator_dynamics', 'support_enumeration']

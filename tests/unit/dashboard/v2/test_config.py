@@ -13,7 +13,8 @@ class TestDashboardConfig:
 
     def test_default_values(self) -> None:
         """Test default configuration values."""
-        config = DashboardConfig()
+        with patch.dict(os.environ, {}, clear=True):
+            config = DashboardConfig(_env_file=None)
         assert config.database_url is None
         assert config.database_echo is False
         assert config.secret_key == "atp-dashboard-dev-secret-key-change-in-prod"
@@ -89,7 +90,8 @@ class TestDashboardConfig:
 
     def test_to_dict_no_database_url(self) -> None:
         """Test to_dict when database_url is None."""
-        config = DashboardConfig()
+        with patch.dict(os.environ, {}, clear=True):
+            config = DashboardConfig(_env_file=None)
         result = config.to_dict()
         assert result["database_url"] is None
 

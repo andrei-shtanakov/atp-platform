@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
-from game_envs.core.state import Message
+from game_envs.core.state import Message, RoundResult
 
 
 class CommunicationMode(StrEnum):
@@ -169,6 +169,7 @@ class CommunicationChannel:
         return {
             "mode": str(self.mode),
             "player_ids": list(self._player_ids),
+            "phase": self._phase,
             "round_messages": {
                 str(k): [m.to_dict() for m in v]
                 for k, v in self._round_messages.items()
@@ -182,6 +183,7 @@ class CommunicationChannel:
             mode=CommunicationMode(data["mode"]),
             player_ids=data.get("player_ids", []),
         )
+        channel._phase = data.get("phase", "idle")
         for round_str, msgs in data.get("round_messages", {}).items():
             round_num = int(round_str)
             channel._round_messages[round_num] = [Message.from_dict(m) for m in msgs]
@@ -234,6 +236,45 @@ class InformationSet:
         for key in self.hidden_state_keys:
             filtered.pop(key, None)
 
+        return filtered
+
+    def filter_history(
+        self,
+        history: list[RoundResult],
+    ) -> list[RoundResult]:
+        """Filter history based on visible players.
+
+        If visible_players is set, only actions and payoffs
+        for those players are included. Messages are filtered
+        to only show messages from visible players or the
+        player themselves.
+
+        Args:
+            history: Full round history list.
+
+        Returns:
+            Filtered history with only visible information.
+        """
+        if self.visible_players is None:
+            return list(history)
+
+        filtered: list[RoundResult] = []
+        for rr in history:
+            actions = {k: v for k, v in rr.actions.items() if k in self.visible_players}
+            payoffs = {k: v for k, v in rr.payoffs.items() if k in self.visible_players}
+            messages = [
+                m
+                for m in rr.messages
+                if m.sender in self.visible_players or m.sender == self.player_id
+            ]
+            filtered.append(
+                RoundResult(
+                    round_number=rr.round_number,
+                    actions=actions,
+                    payoffs=payoffs,
+                    messages=messages,
+                )
+            )
         return filtered
 
     def to_dict(self) -> dict[str, Any]:

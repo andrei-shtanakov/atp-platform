@@ -1,0 +1,4 @@
+# file: /Users/Andrei_Shtanakov/labs/atp-platform/game-environments/game_envs/games/registry.py
+# hypothesis_version: 6.151.5
+
+[', ', '__name__', 'action_spaces', 'config_schema', 'default', 'description', 'game_type', 'move_order', 'name', 'num_players', 'player_ids', 'type']

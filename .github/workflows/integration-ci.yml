@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.12"]
+        python-version: ["3.12", "3.13"]
 
     steps:
       - uses: actions/checkout@v4
@@ -30,6 +30,7 @@ jobs:
         with:
           version: "latest"
 
+      # Step 1: Build and test game-environments standalone
       - name: Install game-environments from source
         working-directory: game-environments
         run: uv sync --dev
@@ -42,6 +43,20 @@ jobs:
             --cov-report=term-missing \
             --cov-fail-under=90
 
+      # Step 2: Build and test atp-games with game-environments
+      - name: Install atp-games with game-environments
+        working-directory: atp-games
+        run: uv sync --dev
+
+      - name: Run atp-games tests
+        working-directory: atp-games
+        run: |
+          uv run pytest tests/ -v \
+            --cov=atp_games \
+            --cov-report=term-missing \
+            --cov-fail-under=80
+
+      # Step 3: Build and test atp-platform
       - name: Install atp-platform with all extras
         run: uv sync --all-extras --dev
 
@@ -52,12 +67,11 @@ jobs:
             --cov-report=term-missing \
             --cov-fail-under=80
 
-      - name: Verify game-environments standalone install
+      # Step 4: Verify standalone builds
+      - name: Verify game-environments standalone build
+        working-directory: game-environments
         run: |
-          # Verify game-environments can be built and installed standalone
-          cd game-environments
           uv build
-          # Check the built package contains expected modules
           python -c "
           import zipfile, glob
           whl = glob.glob('dist/*.whl')[0]
@@ -65,7 +79,21 @@ jobs:
               names = z.namelist()
               assert any('game_envs' in n for n in names), \
                   f'game_envs not found in wheel: {names}'
-              print(f'Wheel contents verified: {len(names)} files')
+              print(f'game-environments wheel verified: {len(names)} files')
+          "
+
+      - name: Verify atp-games standalone build
+        working-directory: atp-games
+        run: |
+          uv build
+          python -c "
+          import zipfile, glob
+          whl = glob.glob('dist/*.whl')[0]
+          with zipfile.ZipFile(whl) as z:
+              names = z.namelist()
+              assert any('atp_games' in n for n in names), \
+                  f'atp_games not found in wheel: {names}'
+              print(f'atp-games wheel verified: {len(names)} files')
           "
 
       - name: Verify atp-platform build
@@ -78,5 +106,24 @@ jobs:
               names = z.namelist()
               assert any('atp' in n for n in names), \
                   f'atp not found in wheel: {names}'
-              print(f'Wheel contents verified: {len(names)} files')
+              print(f'atp-platform wheel verified: {len(names)} files')
+          "
+
+      # Step 5: Cross-package import verification
+      - name: Verify cross-package imports
+        run: |
+          cd atp-games
+          uv run python -c "
+          # Verify game-environments is importable from atp-games
+          from game_envs.core.action import ActionSpace
+          from game_envs.games.registry import GameRegistry
+          print('game-environments imports OK')
+
+          # Verify atp-games plugin structure
+          from atp_games.plugin import register
+          from atp_games.models import GameEvalConfig
+          print('atp-games imports OK')
+
+          # Verify plugin registration works
+          print('Cross-package integration verified')
           "

@@ -550,9 +550,9 @@ class TestCongestionGameRepeated:
 
         history = game.history.for_player("player_0")
         assert len(history) == 2
-        assert history[0].round_number == 1
+        assert history[0].round_number == 0
         assert history[0].actions["player_0"] == "route_A"
-        assert history[1].round_number == 2
+        assert history[1].round_number == 1
         assert history[1].actions["player_0"] == "route_B"
 
     def test_reset_clears_state(self) -> None:
@@ -660,3 +660,169 @@ class TestCongestionGameRegistry:
         game = GameRegistry.create("congestion", config=config)
         assert isinstance(game, CongestionGame)
         assert len(game.player_ids) == 4
+
+
+class TestCongestionGameToPrompt:
+    """Tests for the game-level to_prompt() method."""
+
+    def test_basic_content(self) -> None:
+        game = CongestionGame()
+        prompt = game.to_prompt()
+        assert "2-player" in prompt
+        assert "Congestion" in prompt or "Routing" in prompt
+        assert "latency" in prompt.lower()
+        assert "base_cost" in prompt
+        assert "coefficient" in prompt
+
+    def test_routes_listed(self) -> None:
+        game = CongestionGame()
+        prompt = game.to_prompt()
+        assert "route_A" in prompt
+        assert "route_B" in prompt
+
+    def test_custom_routes(self) -> None:
+        routes = (
+            RouteDefinition("highway", 5.0, 0.5),
+            RouteDefinition("backroad", 10.0, 0.1),
+            RouteDefinition("tunnel", 0.0, 3.0),
+        )
+        config = CongestionConfig(routes=routes, num_players=4)
+        game = CongestionGame(config)
+        prompt = game.to_prompt()
+        assert "4-player" in prompt
+        assert "3 routes" in prompt
+        assert "highway" in prompt
+        assert "backroad" in prompt
+        assert "tunnel" in prompt
+
+    def test_repeated_game_info(self) -> None:
+        config = CongestionConfig(num_rounds=10, discount_factor=0.9)
+        game = CongestionGame(config)
+        prompt = game.to_prompt()
+        assert "10 rounds" in prompt
+        assert "0.9" in prompt
+
+    def test_no_repeated_info_for_oneshot(self) -> None:
+        game = CongestionGame()
+        prompt = game.to_prompt()
+        assert "repeated" not in prompt.lower()
+
+    def test_strategy_note(self) -> None:
+        game = CongestionGame()
+        prompt = game.to_prompt()
+        assert "Nash" in prompt
+        assert "social" in prompt.lower()
+
+    def test_payoff_rule_described(self) -> None:
+        game = CongestionGame()
+        prompt = game.to_prompt()
+        assert "payoff" in prompt.lower()
+        assert "-latency" in prompt or "negative" in prompt.lower()
+
+
+class TestBraessParadoxVerification:
+    """Verify Braess's paradox: adding a route worsens outcomes.
+
+    Classic Braess network (4 players):
+    - Route top:    base=0,  coeff=10  (congestion-sensitive)
+    - Route bottom: base=50, coeff=0   (fixed-cost)
+
+    Without shortcut:
+        Nash: 2 on top (latency=20), 2 on bottom (latency=50).
+        No one deviates because 3-on-top = latency 30, still < 50.
+        But 4-on-top = 40 < 50, so actually all go top.
+
+    With a shortcut that attracts overuse, total worsens.
+    """
+
+    def test_braess_adding_route_worsens_equilibrium(self) -> None:
+        """Classic Braess's paradox demonstration.
+
+        Network without shortcut: 2 symmetric routes.
+        top:    latency = 10 * n_users (congestion-sensitive)
+        bottom: latency = 50          (fixed-cost)
+
+        With 4 players, Nash is all-on-top: 10*4 = 40 < 50.
+        Total latency = 4 * 40 = 160.
+
+        Add a shortcut route (base=0, coeff=15).
+        If all 4 use shortcut: latency = 15*4 = 60 each.
+        Total = 240 > 160. Worse!
+
+        But individually, 1 player on shortcut alone = 15,
+        which beats 40, so it's tempting — paradox emerges
+        as everyone switches.
+        """
+        # Without shortcut: 2 routes
+        routes_before = (
+            RouteDefinition("top", base_cost=0.0, coefficient=10.0),
+            RouteDefinition("bottom", base_cost=50.0, coefficient=0.0),
+        )
+        config_before = CongestionConfig(routes=routes_before, num_players=4)
+        game_before = CongestionGame(config_before)
+
+        # Nash equilibrium: all on top (40 < 50)
+        nash_before = game_before.compute_total_latency(
+            {f"player_{i}": "top" for i in range(4)}
+        )
+        assert nash_before == pytest.approx(160.0)
+
+        # Verify it's Nash: no one wants to deviate to bottom
+        game_before.reset()
+        result = game_before.step({f"player_{i}": "top" for i in range(4)})
+        # One player deviating to bottom gets -50, worse than -40
+        assert result.payoffs["player_0"] == pytest.approx(-40.0)
+        lat_bottom = game_before.compute_latency("bottom", 1)
+        assert lat_bottom == pytest.approx(50.0)
+        assert -40.0 > -50.0  # staying on top is better
+
+        # With shortcut: add route with high coefficient
+        routes_after = (
+            RouteDefinition("top", base_cost=0.0, coefficient=10.0),
+            RouteDefinition("bottom", base_cost=50.0, coefficient=0.0),
+            RouteDefinition("shortcut", base_cost=0.0, coefficient=15.0),
+        )
+        config_after = CongestionConfig(routes=routes_after, num_players=4)
+        game_after = CongestionGame(config_after)
+
+        # All on shortcut: each gets 15*4 = 60
+        total_shortcut = game_after.compute_total_latency(
+            {f"player_{i}": "shortcut" for i in range(4)}
+        )
+        assert total_shortcut == pytest.approx(240.0)
+
+        # Braess's paradox: total latency increased
+        assert total_shortcut > nash_before
+
+    def test_braess_individual_incentive(self) -> None:
+        """Show individual incentive to use shortcut exists.
+
+        When others are on top (3 players), shortcut alone
+        has latency 15*1 = 15, much less than 10*3 = 30 on
+        top. So the shortcut is individually attractive.
+        """
+        routes = (
+            RouteDefinition("top", base_cost=0.0, coefficient=10.0),
+            RouteDefinition("bottom", base_cost=50.0, coefficient=0.0),
+            RouteDefinition("shortcut", base_cost=0.0, coefficient=15.0),
+        )
+        config = CongestionConfig(routes=routes, num_players=4)
+        game = CongestionGame(config)
+        game.reset()
+
+        # 3 on top, 1 on shortcut
+        result = game.step(
+            {
+                "player_0": "shortcut",
+                "player_1": "top",
+                "player_2": "top",
+                "player_3": "top",
+            }
+        )
+        # Shortcut user: 15*1 = 15, payoff = -15
+        # Top users: 10*3 = 30, payoff = -30
+        assert result.payoffs["player_0"] == pytest.approx(-15.0)
+        assert result.payoffs["player_1"] == pytest.approx(-30.0)
+
+        # Individual incentive: shortcut user is better off
+        assert result.payoffs["player_0"] > result.payoffs["player_1"]

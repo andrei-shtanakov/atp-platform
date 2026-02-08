@@ -19,6 +19,7 @@
             <div class="hidden md:flex items-center gap-1">
                 {{ nav_link("Dashboard", "/", current_page == "home") }}
                 {{ nav_link("Suites", "/suites", current_page == "suites") }}
+                {{ nav_link("Games", "/games", current_page == "games") }}
                 {{ nav_link("Compare", "/comparison", current_page == "comparison") }}
                 {{ nav_link("Leaderboard", "/leaderboard", current_page == "leaderboard") }}
                 {{ nav_link("Timeline", "/timeline", current_page == "timeline") }}
@@ -61,6 +62,7 @@
             <div class="flex flex-col gap-1">
                 {{ mobile_nav_link("Dashboard", "/", current_page == "home") }}
                 {{ mobile_nav_link("Suites", "/suites", current_page == "suites") }}
+                {{ mobile_nav_link("Games", "/games", current_page == "games") }}
                 {{ mobile_nav_link("Compare", "/comparison", current_page == "comparison") }}
                 {{ mobile_nav_link("Leaderboard", "/leaderboard", current_page == "leaderboard") }}
                 {{ mobile_nav_link("Timeline", "/timeline", current_page == "timeline") }}

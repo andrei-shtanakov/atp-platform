@@ -13,6 +13,7 @@ from game_envs.core.state import (
     RoundResult,
     StepResult,
 )
+from game_envs.games.registry import register_game
 
 
 @dataclass(frozen=True)
@@ -65,6 +66,7 @@ class CongestionConfig(GameConfig):
             raise ValueError("route names must be unique")
 
 
+@register_game("congestion", CongestionConfig)
 class CongestionGame(Game):
     """N-player Congestion Game (routing game).
 
@@ -128,9 +130,8 @@ class CongestionGame(Game):
 
     def reset(self) -> StepResult:
         """Reset game to initial state."""
-        self._current_round = 0
+        self._reset_base()
         self._terminal = False
-        self._history.clear()
         self._cumulative = {pid: 0.0 for pid in self.player_ids}
         state = GameState(
             round_number=0,
@@ -191,10 +192,11 @@ class CongestionGame(Game):
         for pid in self.player_ids:
             self._cumulative[pid] += discounted[pid]
 
+        current_round_number = self._current_round
         self._current_round += 1
 
         rr = RoundResult(
-            round_number=self._current_round,
+            round_number=current_round_number,
             actions=actions,
             payoffs=payoffs,
         )
@@ -245,6 +247,7 @@ class CongestionGame(Game):
             history=self._history.for_player(player_id),
             round_number=self._current_round,
             total_rounds=self.config.num_rounds,
+            messages=self._get_pending_messages(player_id),
         )
 
     def get_payoffs(self) -> dict[str, float]:
@@ -274,6 +277,44 @@ class CongestionGame(Game):
         route_map = {r.name: r for r in self._cg_config.routes}
         rd = route_map[route_name]
         return rd.base_cost + rd.coefficient * num_users
+
+    def to_prompt(self) -> str:
+        """Describe the congestion/routing scenario for LLM agents."""
+        c = self._cg_config
+        n = c.num_players
+        lines = [
+            f"This is a {n}-player Congestion (Routing) Game.",
+            "",
+            "Rules:",
+            f"- There are {len(c.routes)} routes from source to destination.",
+            "- All players simultaneously choose a route.",
+            "- The cost (latency) of a route depends on how many players choose it:",
+            "    latency(route) = base_cost + coefficient * num_users_on_route",
+            "- Your payoff = -latency (lower latency is better).",
+            "",
+            "Available routes:",
+        ]
+        for r in c.routes:
+            lines.append(
+                f"  - {r.name}: base_cost={r.base_cost}, coefficient={r.coefficient}"
+            )
+        lines.extend(
+            [
+                "",
+                "Strategy note: At Nash equilibrium, no "
+                "player can reduce their latency by "
+                "unilaterally switching routes. The social "
+                "optimum (minimum total latency) may differ "
+                "from the Nash flow.",
+            ]
+        )
+        if c.num_rounds > 1:
+            lines.append(f"\nThis game is repeated for {c.num_rounds} rounds.")
+            if c.discount_factor < 1.0:
+                lines.append(
+                    f"Future payoffs are discounted by {c.discount_factor} per round."
+                )
+        return "\n".join(lines)
 
     def compute_total_latency(
         self,

@@ -1,0 +1,33 @@
+type: game_suite
+name: Prisoner's Dilemma Evaluation
+version: "1.0"
+
+game:
+  type: prisoners_dilemma
+  variant: repeated
+  config:
+    num_rounds: 100
+    noise: 0.0
+    discount_factor: 1.0
+
+agents:
+  - name: tit_for_tat
+    adapter: builtin
+    strategy: tit_for_tat
+
+  - name: always_defect
+    adapter: builtin
+    strategy: always_defect
+
+evaluation:
+  episodes: 50
+  metrics:
+    - type: average_payoff
+      weight: 1.0
+    - type: exploitability
+      weight: 0.5
+      config:
+        epsilon: 0.15
+  thresholds:
+    average_payoff:
+      min: 1.0

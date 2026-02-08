@@ -63,9 +63,8 @@ class StubGame(Game):
         return DiscreteActionSpace(["A", "B"])
 
     def reset(self) -> StepResult:
+        self._reset_base()
         self._terminal = False
-        self._current_round = 0
-        self._history.clear()
         self._cumulative_payoffs = {pid: 0.0 for pid in self.player_ids}
         state = GameState(
             round_number=0,

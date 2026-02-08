@@ -149,14 +149,8 @@ class NashSolver:
                 entering = leaving
             else:
                 # Pivot in player 1's tableau
-                col = entering - m + m  # Column in tableau
-                # The column for label `entering` (m..m+n-1)
-                # maps to column m + (entering - m) = entering
-                # but in tab1, columns are [I_m | B | 1]
-                # so label (m+j) corresponds to column m+j
-                tab_col = entering - m + m  # = entering
-                # Actually: labels m..m+n-1 -> columns m..m+n-1
-                # in tab1 which has cols 0..m-1 (I), m..m+n-1 (B)
+                # Labels m..m+n-1 map to columns m..m+n-1 in tab1
+                # tab1 has columns: [I_m | B | 1] where I_m is 0..m-1, B is m..m+n-1
                 tab_col = entering
 
                 ratios = tab1[:, m + n] / np.maximum(
@@ -247,6 +241,7 @@ class NashSolver:
 
         # Initialize action counts uniformly
         counts: list[np.ndarray] = [np.ones(num_actions[i]) for i in range(num_players)]
+        max_change = float("inf")
 
         for iteration in range(1, max_iterations + 1):
             old_strategies = [c / c.sum() for c in counts]
@@ -295,7 +290,7 @@ class NashSolver:
             strategies=strategies,
             payoffs=payoffs,
             support=support,
-            epsilon=max_change if iteration < max_iterations else epsilon,
+            epsilon=max_change,
         )
 
     @staticmethod

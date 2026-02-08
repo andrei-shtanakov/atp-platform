@@ -1,0 +1,4 @@
+# file: /Users/Andrei_Shtanakov/labs/atp-platform/game-environments/game_envs/analysis/fairness.py
+# hypothesis_version: 6.151.5
+
+[0.0, 1.0, 2.0, 'envy_free', 'envy_pairs', 'gini', 'proportionality', 'utilitarian_welfare']

@@ -465,8 +465,8 @@ class TestColonelBlottoRepeated:
 
         history = game.history.for_player("player_0")
         assert len(history) == 2
-        assert history[0].round_number == 1
-        assert history[1].round_number == 2
+        assert history[0].round_number == 0
+        assert history[1].round_number == 1
 
     def test_reset_clears_state(self) -> None:
         config = BlottoConfig(num_battlefields=3, total_troops=6)

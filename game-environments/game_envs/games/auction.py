@@ -7,6 +7,7 @@ from enum import StrEnum
 from typing import Any
 
 from game_envs.core.action import ContinuousActionSpace
+from game_envs.core.communication import InformationSet
 from game_envs.core.game import Game, GameConfig, GameType, MoveOrder
 from game_envs.core.state import (
     GameState,
@@ -14,6 +15,7 @@ from game_envs.core.state import (
     RoundResult,
     StepResult,
 )
+from game_envs.games.registry import register_game
 
 
 class AuctionType(StrEnum):
@@ -90,6 +92,7 @@ class AuctionConfig(GameConfig):
             )
 
 
+@register_game("auction", AuctionConfig)
 class Auction(Game):
     """Sealed-bid auction game.
 
@@ -173,9 +176,8 @@ class Auction(Game):
 
     def reset(self) -> StepResult:
         """Reset and draw new private values."""
-        self._current_round = 0
+        self._reset_base()
         self._terminal = False
-        self._history.clear()
         self._cumulative = {pid: 0.0 for pid in self.player_ids}
         # Draw private values for all players
         self._private_values = {
@@ -239,6 +241,7 @@ class Auction(Game):
         for pid in self.player_ids:
             self._cumulative[pid] += discounted[pid]
 
+        current_round_number = self._current_round
         self._current_round += 1
 
         # Record round result (bids visible after round)
@@ -247,7 +250,7 @@ class Auction(Game):
             "price": price,
         }
         rr = RoundResult(
-            round_number=self._current_round,
+            round_number=current_round_number,
             actions=bids,
             payoffs=payoffs,
         )
@@ -282,6 +285,20 @@ class Auction(Game):
             info=info,
         )
 
+    def get_information_set(
+        self,
+        player_id: str,
+    ) -> InformationSet:
+        """Auction uses partial observability.
+
+        Each player can only see their own actions and
+        payoffs in history. Other players' bids are hidden.
+        """
+        return InformationSet(
+            player_id=player_id,
+            visible_players=[player_id],
+        )
+
     def observe(self, player_id: str) -> Observation:
         """Partial observability: player sees own value only."""
         c = self._auction_config
@@ -299,13 +316,17 @@ class Auction(Game):
         else:
             game_state["payment_rule"] = "Winner pays the second-highest bid"
 
+        info_set = self.get_information_set(player_id)
+        filtered_history = info_set.filter_history(self._history.for_player(player_id))
+
         return Observation(
             player_id=player_id,
             game_state=game_state,
             available_actions=self.action_space(player_id).to_list(),
-            history=self._history.for_player(player_id),
+            history=filtered_history,
             round_number=self._current_round,
             total_rounds=self.config.num_rounds,
+            messages=self._get_pending_messages(player_id),
         )
 
     def get_payoffs(self) -> dict[str, float]:

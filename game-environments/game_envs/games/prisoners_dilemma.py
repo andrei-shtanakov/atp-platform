@@ -13,6 +13,7 @@ from game_envs.core.state import (
     RoundResult,
     StepResult,
 )
+from game_envs.games.registry import register_game
 
 COOPERATE = "cooperate"
 DEFECT = "defect"
@@ -62,6 +63,7 @@ class PDConfig(GameConfig):
             )
 
 
+@register_game("prisoners_dilemma", PDConfig)
 class PrisonersDilemma(Game):
     """Classic Prisoner's Dilemma (one-shot or repeated).
 
@@ -112,9 +114,8 @@ class PrisonersDilemma(Game):
 
     def reset(self) -> StepResult:
         """Reset game to initial state."""
-        self._current_round = 0
+        self._reset_base()
         self._terminal = False
-        self._history.clear()
         self._cumulative = {pid: 0.0 for pid in self.player_ids}
         state = GameState(
             round_number=0,
@@ -138,8 +139,13 @@ class PrisonersDilemma(Game):
         if self._terminal:
             raise RuntimeError("Game is already terminal")
 
-        a0 = actions["player_0"]
-        a1 = actions["player_1"]
+        # Validate actions
+        a0 = actions.get("player_0")
+        a1 = actions.get("player_1")
+        if a0 not in (COOPERATE, DEFECT):
+            raise ValueError(f"Invalid action for player_0: {a0}")
+        if a1 not in (COOPERATE, DEFECT):
+            raise ValueError(f"Invalid action for player_1: {a1}")
 
         # Apply noise (trembling hand)
         if self._pd_config.noise > 0:
@@ -149,6 +155,9 @@ class PrisonersDilemma(Game):
                 a1 = DEFECT if a1 == COOPERATE else COOPERATE
 
         payoffs = self._compute_payoffs(a0, a1)
+
+        # Record round number before incrementing
+        current_round_number = self._current_round
 
         # Apply discount factor for repeated games
         discount = self._pd_config.discount_factor**self._current_round
@@ -160,7 +169,7 @@ class PrisonersDilemma(Game):
 
         # Record round with actual (possibly noised) actions
         rr = RoundResult(
-            round_number=self._current_round,
+            round_number=current_round_number,
             actions={"player_0": a0, "player_1": a1},
             payoffs=payoffs,
         )

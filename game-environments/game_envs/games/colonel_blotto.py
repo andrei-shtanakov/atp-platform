@@ -13,6 +13,7 @@ from game_envs.core.state import (
     RoundResult,
     StepResult,
 )
+from game_envs.games.registry import register_game
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,7 @@ class BlottoConfig(GameConfig):
             raise ValueError(f"total_troops must be >= 1, got {self.total_troops}")
 
 
+@register_game("colonel_blotto", BlottoConfig)
 class ColonelBlotto(Game):
     """Two-player Colonel Blotto game (one-shot or repeated).
 
@@ -110,9 +112,8 @@ class ColonelBlotto(Game):
 
     def reset(self) -> StepResult:
         """Reset game to initial state."""
-        self._current_round = 0
+        self._reset_base()
         self._terminal = False
-        self._history.clear()
         self._cumulative = {pid: 0.0 for pid in self.player_ids}
         state = GameState(
             round_number=0,
@@ -152,10 +153,11 @@ class ColonelBlotto(Game):
         for pid in self.player_ids:
             self._cumulative[pid] += discounted[pid]
 
+        current_round_number = self._current_round
         self._current_round += 1
 
         rr = RoundResult(
-            round_number=self._current_round,
+            round_number=current_round_number,
             actions=actions,
             payoffs=payoffs,
         )
@@ -205,11 +207,14 @@ class ColonelBlotto(Game):
     def observe(self, player_id: str) -> Observation:
         """Get observation with game-specific state info."""
         c = self._blotto_config
+        fields = self._battlefield_fields()
         game_state: dict[str, Any] = {
             "game": self.name,
             "your_role": player_id,
             "num_battlefields": c.num_battlefields,
             "total_troops": c.total_troops,
+            "fields": fields,
+            "total_units": float(c.total_troops),
             "payoff_rule": (
                 "Win a battlefield by assigning more troops "
                 "than your opponent. Ties split the "
@@ -224,6 +229,7 @@ class ColonelBlotto(Game):
             history=self._history.for_player(player_id),
             round_number=self._current_round,
             total_rounds=self.config.num_rounds,
+            messages=self._get_pending_messages(player_id),
         )
 
     def get_payoffs(self) -> dict[str, float]:

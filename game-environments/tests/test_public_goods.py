@@ -391,9 +391,9 @@ class TestPublicGoodsGameRepeated:
 
         history = game.history.for_player("player_0")
         assert len(history) == 2
-        assert history[0].round_number == 1
+        assert history[0].round_number == 0
         assert history[0].actions["player_0"] == 5.0
-        assert history[1].round_number == 2
+        assert history[1].round_number == 1
 
     def test_reset_clears_state(self) -> None:
         game = PublicGoodsGame()
@@ -579,6 +579,38 @@ class TestPublicGoodsGameObserve:
         obs = game.observe("player_0")
         assert obs.game_state["stage"] == PGStage.PUNISH
         assert obs.game_state["contributions"]["player_0"] == 10.0
+
+    def test_game_to_prompt_basic(self) -> None:
+        game = PublicGoodsGame()
+        game.reset()
+        prompt = game.to_prompt()
+        assert "Public Goods Game" in prompt
+        assert "endowment of 20.0" in prompt
+        assert "multiplied by 1.6" in prompt
+        assert "free ride" in prompt
+        assert "social optimum" in prompt
+
+    def test_game_to_prompt_punishment(self) -> None:
+        config = PGConfig(
+            num_players=3,
+            multiplier=1.5,
+            punishment_cost=1.0,
+            punishment_effect=3.0,
+        )
+        game = PublicGoodsGame(config)
+        game.reset()
+        prompt = game.to_prompt()
+        assert "Punishment stage" in prompt
+        assert "1.0" in prompt
+        assert "3.0" in prompt
+
+    def test_game_to_prompt_repeated(self) -> None:
+        config = PGConfig(num_rounds=5, discount_factor=0.9)
+        game = PublicGoodsGame(config)
+        game.reset()
+        prompt = game.to_prompt()
+        assert "repeated for 5 rounds" in prompt
+        assert "discounted by 0.9" in prompt
 
     def test_serialization_roundtrip(self) -> None:
         game = PublicGoodsGame()

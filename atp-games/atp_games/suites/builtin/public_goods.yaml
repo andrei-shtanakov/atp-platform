@@ -1,0 +1,38 @@
+type: game_suite
+name: Public Goods Evaluation
+version: "1.0"
+
+game:
+  type: public_goods
+  variant: repeated
+  config:
+    num_rounds: 50
+    num_players: 4
+    endowment: 10.0
+    multiplier: 2.0
+
+agents:
+  - name: full_contributor
+    adapter: builtin
+    strategy: full_contributor
+
+  - name: free_rider
+    adapter: builtin
+    strategy: free_rider
+
+  - name: conditional_cooperator
+    adapter: builtin
+    strategy: conditional_cooperator
+
+  - name: punisher
+    adapter: builtin
+    strategy: punisher
+
+evaluation:
+  episodes: 30
+  metrics:
+    - type: average_payoff
+      weight: 1.0
+  thresholds:
+    average_payoff:
+      min: 0.0

@@ -911,3 +911,140 @@ class MarketplaceSuiteInstall(Base):
         Index("idx_marketplace_install_active", "is_active"),
         Index("idx_marketplace_install_tenant", "tenant_id"),
     )
+
+
+# ==================== Game-Theoretic Evaluation Models (TASK-920) ==============
+
+
+class GameResult(Base):
+    """Game evaluation result.
+
+    Stores results from game-theoretic evaluations including
+    payoff matrices, strategy timelines, and cooperation dynamics.
+    """
+
+    __tablename__ = "game_results"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        default=DEFAULT_TENANT_ID,
+        index=True,
+    )
+
+    # Game identification
+    game_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    game_type: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="normal_form"
+    )
+
+    # Game configuration
+    num_players: Mapped[int] = mapped_column(Integer, default=2)
+    num_rounds: Mapped[int] = mapped_column(Integer, default=1)
+    num_episodes: Mapped[int] = mapped_column(Integer, default=1)
+
+    # Status
+    status: Mapped[str] = mapped_column(
+        String(20), default="running"
+    )  # running, completed, failed
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # JSON data fields
+    players_json: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSON, nullable=True
+    )
+    payoff_matrix_json: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON, nullable=True
+    )
+    strategy_timeline_json: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSON, nullable=True
+    )
+    cooperation_dynamics_json: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSON, nullable=True
+    )
+    episodes_json: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSON, nullable=True
+    )
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
+    # Indexes
+    __table_args__ = (
+        Index("idx_game_result_name", "game_name"),
+        Index("idx_game_result_type", "game_type"),
+        Index("idx_game_result_status", "status"),
+        Index("idx_game_result_created", "created_at"),
+        Index("idx_game_result_tenant", "tenant_id"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"GameResult(id={self.id}, game={self.game_name!r}, status={self.status!r})"
+        )
+
+
+class TournamentResult(Base):
+    """Tournament evaluation result.
+
+    Stores results from round-robin or elimination tournaments
+    including standings, matchups, and cross-play matrices.
+    """
+
+    __tablename__ = "tournament_results"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        default=DEFAULT_TENANT_ID,
+        index=True,
+    )
+
+    # Tournament identification
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    game_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    tournament_type: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="round_robin"
+    )  # round_robin, single_elimination, double_elimination
+
+    # Configuration
+    num_agents: Mapped[int] = mapped_column(Integer, default=2)
+    episodes_per_matchup: Mapped[int] = mapped_column(Integer, default=50)
+
+    # Status
+    status: Mapped[str] = mapped_column(
+        String(20), default="running"
+    )  # running, completed, failed
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # JSON data fields
+    standings_json: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSON, nullable=True
+    )
+    matchups_json: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSON, nullable=True
+    )
+    cross_play_matrix_json: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON, nullable=True
+    )
+
+    # Indexes
+    __table_args__ = (
+        Index("idx_tournament_name", "name"),
+        Index("idx_tournament_game", "game_name"),
+        Index("idx_tournament_status", "status"),
+        Index("idx_tournament_created", "created_at"),
+        Index("idx_tournament_tenant", "tenant_id"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"TournamentResult(id={self.id}, name={self.name!r}, "
+            f"game={self.game_name!r})"
+        )

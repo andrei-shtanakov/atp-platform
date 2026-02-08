@@ -1673,6 +1673,134 @@ class GitHubImportResponse(BaseModel):
     files_imported: list[str] = Field(default_factory=list)
 
 
+# ==================== Game Evaluation Schemas (TASK-920) ====================
+
+
+class GamePlayerResponse(BaseModel):
+    """Per-player result in a game evaluation."""
+
+    player_id: str
+    strategy: str | None = None
+    average_payoff: float = 0.0
+    total_payoff: float = 0.0
+    cooperation_rate: float | None = None
+    exploitability: float | None = None
+
+
+class GameResultSummary(BaseModel):
+    """Summary of a game evaluation result."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    game_name: str
+    game_type: str
+    num_players: int
+    num_rounds: int
+    num_episodes: int
+    status: str
+    created_at: datetime
+    completed_at: datetime | None = None
+
+
+class GameResultDetail(BaseModel):
+    """Detailed game evaluation result."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    game_name: str
+    game_type: str
+    num_players: int
+    num_rounds: int
+    num_episodes: int
+    status: str
+    created_at: datetime
+    completed_at: datetime | None = None
+    players: list[GamePlayerResponse] = Field(default_factory=list)
+    payoff_matrix: dict[str, Any] | None = None
+    strategy_timeline: list[dict[str, Any]] | None = None
+    cooperation_dynamics: list[dict[str, Any]] | None = None
+    episodes: list[dict[str, Any]] | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class GameResultList(BaseModel):
+    """Paginated list of game results."""
+
+    total: int
+    items: list[GameResultSummary]
+    limit: int
+    offset: int
+
+
+class MatchupResponse(BaseModel):
+    """Result of a specific agent matchup."""
+
+    player_1: str
+    player_2: str
+    player_1_avg_payoff: float
+    player_2_avg_payoff: float
+    episodes: int
+    winner: str | None = None
+
+
+class TournamentStandingResponse(BaseModel):
+    """Tournament standing for one agent."""
+
+    rank: int
+    agent: str
+    wins: int = 0
+    losses: int = 0
+    draws: int = 0
+    total_payoff: float = 0.0
+    average_payoff: float = 0.0
+
+
+class TournamentResultSummary(BaseModel):
+    """Summary of a tournament result."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    game_name: str
+    tournament_type: str
+    num_agents: int
+    episodes_per_matchup: int
+    status: str
+    created_at: datetime
+    completed_at: datetime | None = None
+
+
+class TournamentResultDetail(BaseModel):
+    """Detailed tournament result."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    game_name: str
+    tournament_type: str
+    num_agents: int
+    episodes_per_matchup: int
+    status: str
+    created_at: datetime
+    completed_at: datetime | None = None
+    standings: list[TournamentStandingResponse] = Field(default_factory=list)
+    matchups: list[MatchupResponse] = Field(default_factory=list)
+    cross_play_matrix: dict[str, Any] | None = None
+
+
+class TournamentResultList(BaseModel):
+    """Paginated list of tournament results."""
+
+    total: int
+    items: list[TournamentResultSummary]
+    limit: int
+    offset: int
+
+
 # Update forward references
 SuiteExecutionDetail.model_rebuild()
 MarketplaceSuiteDetail.model_rebuild()

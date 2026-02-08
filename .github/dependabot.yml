@@ -28,6 +28,20 @@ updates:
       prefix: "deps"
       include: "scope"
 
+  # atp-games sub-package
+  - package-ecosystem: "pip"
+    directory: "/atp-games"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "atp-games"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+
   # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"

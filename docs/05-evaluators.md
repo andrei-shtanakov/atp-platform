@@ -494,6 +494,295 @@ assertions:
 
 ---
 
+## Game-Theoretic Evaluators
+
+Phase 5 adds four evaluators for assessing agents in multi-agent strategic interactions. These evaluators are provided by the `atp-games` plugin and integrate with the standard ATP scoring pipeline.
+
+> **Prerequisite**: Install the `atp-games` package. Evaluators are auto-registered via the plugin system when `atp-games` is installed.
+>
+> For the standalone game library, see [game-environments README](../game-environments/README.md).
+> For the ATP plugin, see [atp-games README](../atp-games/README.md).
+> For runnable examples, see [examples/games/](../examples/games/).
+
+### Overview
+
+Game-theoretic evaluators analyze how agents behave in multi-agent strategic interactions. Unlike traditional evaluators that check artifacts or traces, these evaluators measure strategic properties:
+
+| Evaluator | What It Measures | Key Question |
+|-----------|-----------------|--------------|
+| **Payoff** | Outcome quality | How well does the agent perform? |
+| **Exploitability** | Strategic vulnerability | Can an opponent take advantage of this agent? |
+| **Cooperation** | Cooperative behavior | Does the agent cooperate and reciprocate? |
+| **Equilibrium** | Theoretical optimality | Is the agent playing a Nash equilibrium? |
+
+### End-to-End Example
+
+```python
+import asyncio
+from game_envs import PrisonersDilemma, PDConfig, TitForTat, AlwaysDefect
+from atp_games import GameRunner, GameRunConfig, BuiltinAdapter
+from atp_games.evaluators.payoff_evaluator import PayoffEvaluator, PayoffConfig
+from atp_games.evaluators.cooperation_evaluator import CooperationEvaluator
+
+async def evaluate():
+    # Set up game and agents
+    game = PrisonersDilemma(PDConfig(num_rounds=50))
+    agents = {
+        "player_0": BuiltinAdapter(TitForTat()),
+        "player_1": BuiltinAdapter(AlwaysDefect()),
+    }
+
+    # Run multi-episode evaluation
+    runner = GameRunner()
+    result = await runner.run_game(
+        game=game, agents=agents,
+        config=GameRunConfig(episodes=20, base_seed=42),
+    )
+
+    # Evaluate payoffs
+    payoff_eval = PayoffEvaluator(
+        PayoffConfig(min_payoff={"player_0": 50.0}, min_social_welfare=100.0)
+    )
+    payoff_result = payoff_eval.evaluate_game(result)
+    for check in payoff_result.checks:
+        print(f"[{'PASS' if check.passed else 'FAIL'}] {check.name}: {check.message}")
+
+    # Evaluate cooperation
+    coop_eval = CooperationEvaluator()
+    coop_result = coop_eval.evaluate_game(result)
+    for check in coop_result.checks:
+        print(f"[{'PASS' if check.passed else 'FAIL'}] {check.name}: {check.message}")
+
+asyncio.run(evaluate())
+```
+
+See [examples/games/llm_agent_eval.py](../examples/games/llm_agent_eval.py) for a complete runnable example.
+
+### 6. Payoff Evaluator
+
+Evaluates game outcomes based on payoff metrics.
+
+**Checks:**
+
+| Check | Description | Metric |
+|-------|-------------|--------|
+| `average_payoff` | Average payoff per player across episodes | Per-player mean with threshold |
+| `payoff_distribution` | Distribution statistics (min, max, median, p25, p75) | Informational |
+| `social_welfare` | Sum of average payoffs across all players | Total with threshold |
+| `pareto_efficiency` | Whether average outcome is Pareto dominated | Boolean |
+
+**Configuration Example:**
+
+```yaml
+assertions:
+  - type: average_payoff
+    config:
+      min_payoff:
+        player_0: 2.0        # Minimum average payoff for player_0
+      min_social_welfare: 4.0  # Minimum total welfare
+      pareto_check: true       # Enable Pareto efficiency check
+      weights:
+        average_payoff: 1.0
+        social_welfare: 1.0
+        pareto_efficiency: 1.0
+```
+
+**Scoring Logic:**
+
+- Average payoff score: ratio of actual to threshold (0-1)
+- Social welfare score: ratio of actual to threshold (0-1)
+- Pareto efficiency: 1.0 if not dominated, 0.0 if dominated
+
+**Typical Results:**
+
+| Matchup (50 rounds) | Player 0 Avg Payoff | Social Welfare | Pareto Efficient |
+|---------------------|---------------------|----------------|------------------|
+| TFT vs TFT | ~150 | ~300 | Yes |
+| TFT vs AlwaysDefect | ~54 | ~159 | No |
+| AlwaysDefect vs AlwaysDefect | ~50 | ~100 | No |
+
+### 7. Exploitability Evaluator
+
+Measures how exploitable an agent's strategy is by computing the payoff gap between their empirical play and the best response.
+
+**Checks:**
+
+| Check | Description | Metric |
+|-------|-------------|--------|
+| `per_player_exploitability` | Exploitability per player vs epsilon threshold | Per-player gap |
+| `total_exploitability` | Sum of per-player exploitability | Total gap |
+| `empirical_strategy` | Extracted empirical strategy distribution | Informational |
+
+**Configuration Example:**
+
+```yaml
+assertions:
+  - type: exploitability
+    config:
+      epsilon: 0.15            # Max exploitability for pass
+      payoff_matrix_1:         # Row player payoff matrix
+        - [3, 0]
+        - [5, 1]
+      payoff_matrix_2:         # Column player payoff matrix
+        - [3, 5]
+        - [0, 1]
+      action_names_1: ["cooperate", "defect"]
+      action_names_2: ["cooperate", "defect"]
+```
+
+**Interpretation:**
+
+- Exploitability ~ 0: agent plays near Nash equilibrium (not exploitable)
+- High exploitability: opponent can achieve much higher payoff by deviating to best response
+- Example: AlwaysCooperate in Prisoner's Dilemma has high exploitability (opponent gains by defecting)
+
+**Strategy Exploitability Reference:**
+
+| Strategy | Exploitability | Why |
+|----------|---------------|-----|
+| AlwaysDefect | 0.0 | Plays the dominant strategy (Nash equilibrium) |
+| Mixed (0.5, 0.5) | Low | Close to equilibrium |
+| AlwaysCooperate | High | Opponent gains 2 by switching to defect |
+
+### 8. Cooperation Evaluator
+
+Measures cooperative behavior patterns in games with cooperative/defective action choices (primarily Prisoner's Dilemma).
+
+**Checks:**
+
+| Check | Description | Metric |
+|-------|-------------|--------|
+| `cooperation_rate` | Fraction of cooperative actions per player | 0-1 per player |
+| `conditional_cooperation` | P(Cooperate\|opponent Cooperated) and P(C\|D) | Probability pair |
+| `reciprocity` | Correlation of cooperative actions between players | -1 to +1 |
+
+**Configuration Example:**
+
+```yaml
+assertions:
+  - type: cooperation
+    config:
+      min_cooperation_rate:
+        player_0: 0.6          # At least 60% cooperation
+      min_reciprocity: 0.3     # Positive reciprocity
+      cooperative_actions:
+        - cooperate
+        - c
+```
+
+**Interpretation:**
+
+- TFT vs TFT: cooperation rate ~ 1.0, reciprocity ~ 1.0
+- AllD vs AllC: cooperation rate ~ 0.5 overall, reciprocity ~ -1.0
+- Conditional cooperation reveals strategy type (e.g., P(C|C) > P(C|D) indicates conditional cooperator)
+
+**Strategy Fingerprints:**
+
+| Strategy | Coop Rate | P(C\|C) | P(C\|D) | Reciprocity |
+|----------|-----------|---------|---------|-------------|
+| TitForTat | Depends on opponent | ~1.0 | ~0.0 | High (+) |
+| AlwaysCooperate | 1.0 | 1.0 | 1.0 | 0.0 |
+| AlwaysDefect | 0.0 | 0.0 | 0.0 | 0.0 |
+| Pavlov | Depends on opponent | High | Low | Moderate (+) |
+| GrimTrigger | Depends on opponent | 1.0 | 0.0 | High (+) |
+
+### 9. Equilibrium Evaluator
+
+Measures proximity to Nash equilibrium and detects convergence in strategy over time.
+
+**Checks:**
+
+| Check | Description | Metric |
+|-------|-------------|--------|
+| `nash_distance` | L1 distance from empirical strategy to nearest NE | Distance value |
+| `equilibrium_type` | Classification of found equilibria (pure/mixed count) | Informational |
+| `convergence` | Whether strategy stabilizes over rounds | Boolean + change magnitude |
+
+**Configuration Example:**
+
+```yaml
+assertions:
+  - type: equilibrium
+    config:
+      max_nash_distance: 0.5   # Maximum distance from NE for pass
+      convergence_window: 20   # Rounds to check for convergence
+      convergence_threshold: 0.1  # Max strategy change between halves
+      payoff_matrix_1:
+        - [3, 0]
+        - [5, 1]
+      payoff_matrix_2:
+        - [3, 5]
+        - [0, 1]
+      action_names_1: ["cooperate", "defect"]
+      action_names_2: ["cooperate", "defect"]
+      solver_method: support_enumeration  # or lemke_howson, fictitious_play
+```
+
+**Convergence Detection:**
+
+The evaluator splits the history into two halves (within a sliding window) and compares the empirical strategy distributions. If the L1 distance between halves is below the threshold, the agent is considered converged. This detects whether agents "settle" on a strategy or keep oscillating.
+
+### YAML Game Suite Format
+
+Game-theoretic evaluators are typically used via YAML game suites rather than the standard test suite format. A game suite defines the game, agents, and evaluation criteria in one file:
+
+```yaml
+type: game_suite
+name: PD Cooperation Test
+version: "1.0"
+
+game:
+  type: prisoners_dilemma
+  variant: repeated
+  config:
+    num_rounds: 100
+    noise: 0.0
+
+agents:
+  - name: my_agent
+    adapter: http
+    endpoint: http://localhost:8000
+
+  - name: baseline
+    adapter: builtin
+    strategy: tit_for_tat
+
+evaluation:
+  episodes: 50
+  metrics:
+    - type: average_payoff
+      weight: 1.0
+    - type: cooperation
+      weight: 0.5
+      config:
+        min_cooperation_rate:
+          player_0: 0.6
+    - type: exploitability
+      weight: 0.5
+      config:
+        epsilon: 0.15
+```
+
+Run with: `uv run atp test --suite=game:prisoners_dilemma.yaml`
+
+See [atp-games README](../atp-games/README.md) for the full YAML reference and tournament modes.
+
+### Built-in Games
+
+Five canonical games are available, each with known Nash equilibria:
+
+| Game | Players | Action Space | Nash Equilibrium |
+|------|---------|-------------|-----------------|
+| Prisoner's Dilemma | 2 | Discrete | (Defect, Defect) |
+| Public Goods | 2-20 | Continuous | Free-ride (contribute 0) |
+| Auction | 2+ | Continuous | Truthful bidding (2nd price) |
+| Colonel Blotto | 2 | Structured | Mixed strategy |
+| Congestion | 2-50 | Discrete | Wardrop equilibrium |
+
+See [game-environments README](../game-environments/README.md) for game configs, strategies, and analysis tools.
+
+---
+
 ## Evaluator Comparison Matrix
 
 | Evaluator | Type | Deterministic | Cost | Use Case |
@@ -503,6 +792,10 @@ assertions:
 | **LLM Judge** | Semantic | No | High | Evaluate quality, accuracy, completeness |
 | **Code Execution** | Runtime | Yes | Medium | Run tests, lint, type-check code |
 | **Security** | Pattern-based | Yes | Low | Detect PII, secrets, injections, unsafe code |
+| **Payoff** | Game-theoretic | Yes | Low | Average payoff, social welfare, Pareto check |
+| **Exploitability** | Game-theoretic | Yes | Medium | Best-response gap, NE proximity |
+| **Cooperation** | Game-theoretic | Yes | Low | Cooperation rate, reciprocity, conditional coop |
+| **Equilibrium** | Game-theoretic | Yes | Medium | Nash distance, convergence, equilibrium type |
 
 ### When to Use Each Evaluator
 
@@ -514,6 +807,10 @@ assertions:
 | Research task | Artifact (sections), LLM (completeness, accuracy) |
 | User data handling | Security (pii_exposure, secret_leak) |
 | Chat/dialog agent | Security (prompt_injection), Behavior (no_errors) |
+| Game-theoretic evaluation | Payoff, Exploitability, Cooperation, Equilibrium |
+| Strategic reasoning | Exploitability (NE proximity), Equilibrium (convergence) |
+| Multi-agent cooperation | Cooperation (rate, reciprocity), Payoff (social welfare) |
+| Agent robustness | Exploitability (best-response gap), Payoff (distribution) |
 
 ---
 
