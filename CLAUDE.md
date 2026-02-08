@@ -40,11 +40,20 @@ python executor.py status          # Check execution status
 
 # CLI commands
 uv run atp test suite.yaml --adapter=cli  # Run tests
+uv run atp run suite.yaml --adapter=cli   # Alias for test
 uv run atp list suite.yaml         # List tests in a suite
 uv run atp validate --suite=suite.yaml    # Validate test suite
 uv run atp baseline save/compare   # Baseline management
 uv run atp list-agents             # List available adapters
 uv run atp dashboard               # Start web dashboard
+uv run atp tui                     # Start terminal UI (requires [tui] extra)
+uv run atp init                    # Initialize ATP project
+uv run atp generate                # Generate test suites
+uv run atp benchmark               # Run benchmarks
+uv run atp budget                  # Budget management
+uv run atp experiment              # Run experiments
+uv run atp plugins                 # Manage plugins
+uv run atp game                    # Game-theoretic evaluation
 uv run atp version                 # Show version info
 ```
 
@@ -53,10 +62,10 @@ uv run atp version                 # Show version info
 ### Core Components
 
 1. **Protocol** (`atp/protocol/`) - ATP Request/Response/Event models defining the contract
-2. **Adapters** (`atp/adapters/`) - Translate between ATP Protocol and agent types (HTTP, Docker, CLI, LangGraph, CrewAI)
+2. **Adapters** (`atp/adapters/`) - Translate between ATP Protocol and agent types (HTTP, Docker, CLI, LangGraph, CrewAI, AutoGen, MCP, Bedrock, Vertex, Azure OpenAI)
 3. **Runner** (`atp/runner/`) - Orchestrates test execution, manages sandboxes
-4. **Evaluators** (`atp/evaluators/`) - Assess agent results (artifact checks, behavior analysis, LLM-as-judge)
-5. **Reporters** (`atp/reporters/`) - Format output (console, JSON, HTML, JUnit)
+4. **Evaluators** (`atp/evaluators/`) - Assess agent results (artifact, behavior, LLM-judge, code-exec, security, factuality, style, performance)
+5. **Reporters** (`atp/reporters/`) - Format output (console, JSON, HTML, JUnit, game)
 
 ### Data Flow
 
@@ -74,26 +83,35 @@ Test Definition (YAML) → Loader → Runner → Adapter → Agent → Response 
 
 ```
 atp/
-├── cli/           # CLI entry point (atp test, validate, baseline, dashboard)
+├── cli/           # CLI entry point (atp test, validate, baseline, dashboard, etc.)
 ├── core/          # Config, exceptions, security utilities
 ├── protocol/      # ATP Request/Response/Event models
 ├── loader/        # YAML/JSON test parsing, filtering
 ├── runner/        # Test orchestration, sandbox, progress
-├── adapters/      # Agent adapters (HTTP, Docker, CLI, LangGraph, CrewAI, AutoGen)
-├── evaluators/    # Result evaluation (artifact, behavior, LLM-judge, code-exec)
+├── adapters/      # Agent adapters (HTTP, Docker, CLI, LangGraph, CrewAI, AutoGen, MCP, Bedrock, Vertex, Azure OpenAI)
+├── evaluators/    # Result evaluation (artifact, behavior, LLM-judge, code-exec, security, factuality, style, performance)
 ├── scoring/       # Score aggregation
 ├── statistics/    # Statistical analysis (mean, CI, stability)
 ├── baseline/      # Baseline storage, regression detection (Welch's t-test)
-├── reporters/     # Output formatting (console, JSON, HTML, JUnit)
+├── reporters/     # Output formatting (console, JSON, HTML, JUnit, game)
 ├── streaming/     # Event streaming, buffering, validation
 ├── mock_tools/    # Mock tool server for deterministic testing
 ├── performance/   # Profiling, caching, memory tracking
-└── dashboard/     # Web interface (FastAPI, SQLAlchemy)
+├── dashboard/     # Web interface (FastAPI, SQLAlchemy)
+├── analytics/     # Cost tracking and analytics
+├── benchmarks/    # Benchmark suites
+├── chaos/         # Chaos testing
+├── generator/     # Test suite generation
+├── plugins/       # Plugin ecosystem management
+└── tui/           # Terminal user interface (optional, requires [tui] extra)
 
 spec/              # Task specifications and requirements
-├── tasks.md       # Task definitions with dependencies
+├── tasks.md       # Phase 4 task definitions with dependencies
+├── phase5-tasks.md # Phase 5 game-theoretic evaluation tasks
 ├── requirements.md
+├── phase5-requirements.md
 ├── design.md
+├── phase5-design.md
 └── WORKFLOW.md    # Development workflow guide
 
 docs/              # Architecture documentation
@@ -112,8 +130,10 @@ tests/             # Test suite
 
 examples/
 ├── test_suites/   # Sample test suite YAML files
+├── games/         # Game-theoretic evaluation examples
 ├── search_agent/  # Web search agent for testing (no API keys required)
 ├── ci/            # CI/CD templates (GitHub, GitLab, Jenkins, Azure, CircleCI)
+├── docker/        # Docker deployment examples
 ├── demo_agent.py  # File operations agent (no API keys required)
 ├── openai_agent.py # OpenAI-powered agent with tool calling
 ├── mcp_agent.py   # MCP-capable agent with OpenAI

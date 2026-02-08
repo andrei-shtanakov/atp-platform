@@ -4,7 +4,7 @@
 
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Coverage](https://img.shields.io/badge/coverage-80%25+-green.svg)](https://github.com/yourusername/atp-platform-ru)
+[![Coverage](https://img.shields.io/badge/coverage-80%25+-green.svg)](https://github.com/yourusername/atp-platform)
 
 ## Overview
 
@@ -37,8 +37,8 @@ ATP provides:
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/atp-platform-ru.git
-cd atp-platform-ru
+git clone https://github.com/yourusername/atp-platform.git
+cd atp-platform
 
 # Install dependencies (requires uv)
 uv sync
@@ -140,19 +140,28 @@ tests:
 - **CLIAdapter** - Command-line agents
 - **LangGraphAdapter** - Native LangGraph integration
 - **CrewAIAdapter** - CrewAI framework support
-- **AutoGenAdapter** - AutoGen legacy support
+- **AutoGenAdapter** - AutoGen framework support
+- **MCPAdapter** - Model Context Protocol (MCP) tools/resources
+- **BedrockAdapter** - AWS Bedrock integration
+- **VertexAdapter** - Google Vertex AI integration
+- **AzureOpenAIAdapter** - Azure OpenAI integration
 
 ✅ **Evaluators** - Multi-level result assessment
 - **ArtifactEvaluator** - File existence, content, schema validation
 - **BehaviorEvaluator** - Tool usage, step limits, error checks
 - **LLMJudgeEvaluator** - Semantic evaluation via Claude
 - **CodeExecEvaluator** - Run generated code (pytest, npm, custom)
+- **SecurityEvaluator** - PII detection, secret leaks, code safety, prompt injection
+- **FactualityEvaluator** - Claim extraction, citation checking, hallucination detection
+- **StyleEvaluator** - Tone analysis, readability, formatting compliance
+- **PerformanceEvaluator** - Latency, throughput, regression detection
 
 ✅ **Reporters** - Multiple output formats
 - **Console** - Colored terminal output with progress
 - **JSON** - Structured results for automation
 - **HTML** - Self-contained visual reports with charts
 - **JUnit XML** - CI/CD integration (Jenkins, GitHub, GitLab)
+- **GameReporter / GameHTMLReporter** - Game-theoretic evaluation results
 
 ### Advanced Features
 
@@ -183,23 +192,29 @@ tests:
 ## Project Structure
 
 ```
-atp-platform-ru/
+atp-platform/
 ├── atp/                      # Main package
-│   ├── cli/                  # CLI commands (atp test, validate, baseline)
+│   ├── cli/                  # CLI commands (test, validate, baseline, dashboard, game, etc.)
 │   ├── core/                 # Config, exceptions, security
 │   ├── protocol/             # ATP Request/Response/Event models
 │   ├── loader/               # YAML/JSON test parsing
 │   ├── runner/               # Test orchestration, sandbox
-│   ├── adapters/             # Agent adapters (HTTP, Docker, LangGraph, etc.)
-│   ├── evaluators/           # Result evaluation (artifact, behavior, LLM, code)
+│   ├── adapters/             # Agent adapters (HTTP, Docker, CLI, LangGraph, CrewAI, AutoGen, MCP, Bedrock, Vertex, Azure OpenAI)
+│   ├── evaluators/           # Result evaluation (artifact, behavior, LLM, code, security, factuality, style, performance)
 │   ├── scoring/              # Score aggregation
 │   ├── statistics/           # Statistical analysis
 │   ├── baseline/             # Baseline management, regression detection
-│   ├── reporters/            # Output formatting (console, JSON, HTML, JUnit)
+│   ├── reporters/            # Output formatting (console, JSON, HTML, JUnit, game)
 │   ├── streaming/            # Event streaming support
 │   ├── mock_tools/           # Mock tool server for testing
 │   ├── performance/          # Profiling, caching, optimization
-│   └── dashboard/            # Web interface (FastAPI)
+│   ├── dashboard/            # Web interface (FastAPI)
+│   ├── analytics/            # Cost tracking and analytics
+│   ├── benchmarks/           # Benchmark suites
+│   ├── chaos/                # Chaos testing
+│   ├── generator/            # Test suite generation
+│   ├── plugins/              # Plugin ecosystem management
+│   └── tui/                  # Terminal user interface (optional)
 ├── game-environments/        # Standalone game theory library (Phase 5)
 │   └── game_envs/            # Games, strategies, analysis (Nash, exploitability)
 ├── atp-games/                # ATP plugin for game-theoretic evaluation (Phase 5)
@@ -208,15 +223,21 @@ atp-platform-ru/
 ├── examples/                 # Example test suites and CI configs
 │   ├── test_suites/          # Sample test suites
 │   ├── games/                # Game-theoretic evaluation examples
+│   ├── docker/               # Docker deployment examples
 │   └── ci/                   # CI/CD templates
 ├── tests/                    # Test suite (80%+ coverage)
 │   ├── unit/                 # Unit tests
+│   ├── integration/          # Integration tests
+│   ├── contract/             # Protocol contract tests
 │   ├── e2e/                  # End-to-end tests
 │   └── fixtures/             # Test fixtures
 ├── spec/                     # Working directory for specifications (managed by /spec-generator-skill)
-│   ├── requirements.md       # Current feature requirements (REQ-XXX)
-│   ├── design.md             # Technical design (DESIGN-XXX)
-│   ├── tasks.md              # Implementation tasks (TASK-XXX)
+│   ├── requirements.md       # Phase 4 feature requirements (REQ-XXX)
+│   ├── phase5-requirements.md # Phase 5 game-theoretic requirements
+│   ├── design.md             # Phase 4 technical design (DESIGN-XXX)
+│   ├── phase5-design.md      # Phase 5 technical design
+│   ├── tasks.md              # Phase 4 implementation tasks (TASK-XXX)
+│   ├── phase5-tasks.md       # Phase 5 implementation tasks
 │   └── WORKFLOW.md           # Task management workflow guide
 └── pyproject.toml            # Project configuration
 ```
@@ -274,6 +295,16 @@ uv run atp baseline compare suite.yaml -b baseline.json
 uv run atp list-agents          # List available adapters
 uv run atp version              # Show version
 uv run atp list suite.yaml      # List tests in a suite
+
+# Additional commands
+uv run atp init                 # Initialize ATP project
+uv run atp generate             # Generate test suites
+uv run atp benchmark            # Run benchmarks
+uv run atp budget               # Budget management
+uv run atp experiment           # Run experiments
+uv run atp plugins              # Manage plugins
+uv run atp game suite.yaml      # Game-theoretic evaluation
+uv run atp tui                  # Terminal user interface
 ```
 
 ## Documentation
@@ -376,7 +407,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/atp-platform-ru/issues)
+- **Issues**: [GitHub Issues](https://github.com/yourusername/atp-platform/issues)
 - **Documentation**: [docs/](docs/)
 - **Examples**: [examples/](examples/)
 
