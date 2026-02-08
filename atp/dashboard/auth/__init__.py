@@ -14,9 +14,10 @@ from datetime import datetime, timedelta
 from typing import Annotated
 
 import bcrypt
+import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
+from jwt.exceptions import InvalidTokenError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -199,7 +200,7 @@ async def get_current_user(
         if username is None:
             return None
         token_data = TokenData(username=username, user_id=user_id)
-    except JWTError:
+    except InvalidTokenError:
         return None
 
     # Get user from database

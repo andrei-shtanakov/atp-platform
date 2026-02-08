@@ -3,8 +3,8 @@
 from datetime import UTC, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import jwt
 import pytest
-from jose import jwt
 
 from atp.dashboard.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
