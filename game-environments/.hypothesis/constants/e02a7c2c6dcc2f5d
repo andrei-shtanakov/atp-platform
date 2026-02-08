@@ -1,0 +1,4 @@
+# file: /Users/Andrei_Shtanakov/labs/atp-platform/game-environments/game_envs/core/game.py
+# hypothesis_version: 6.151.5
+
+[0.0, 1.0, 'extensive_form', 'normal_form', 'repeated', 'sequential', 'simultaneous', 'stochastic']

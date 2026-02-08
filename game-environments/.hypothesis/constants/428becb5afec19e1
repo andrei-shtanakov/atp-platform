@@ -1,0 +1,4 @@
+# file: /Users/Andrei_Shtanakov/labs/atp-platform/game-environments/game_envs/games/colonel_blotto.py
+# hypothesis_version: 6.151.5
+
+[0.0, 1.0, 100, 'Rules:', 'allocation', 'fields', 'game', 'max_value', 'min_value', 'num_battlefields', 'payoff_rule', 'total', 'total_troops', 'type', 'your_role']

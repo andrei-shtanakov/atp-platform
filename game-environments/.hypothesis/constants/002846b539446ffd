@@ -1,0 +1,4 @@
+# file: /Users/Andrei_Shtanakov/labs/atp-platform/game-environments/game_envs/core/state.py
+# hypothesis_version: 6.151.5
+
+[0.0, ', ', 'Available actions:', 'Current state:', 'History:', 'Messages:', 'actions', 'available_actions', 'content', 'game_state', 'history', 'info', 'is_terminal', 'messages', 'observations', 'payoffs', 'player_id', 'player_states', 'public_state', 'round_number', 'sender', 'state', 'timestamp', 'total_rounds']

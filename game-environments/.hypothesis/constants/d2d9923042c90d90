@@ -1,0 +1,4 @@
+# file: /Users/Andrei_Shtanakov/labs/atp-platform/game-environments/game_envs/analysis/exploitability.py
+# hypothesis_version: 6.151.5
+
+[0.0, 'action_frequencies', 'best_responses', 'per_player', 'player_0', 'player_1', 'total']

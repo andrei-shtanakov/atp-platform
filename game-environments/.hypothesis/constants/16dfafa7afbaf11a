@@ -1,0 +1,4 @@
+# file: /Users/Andrei_Shtanakov/labs/atp-platform/game-environments/game_envs/strategies/auction_strategies.py
+# hypothesis_version: 6.151.5
+
+[0.0, 0.5, 1.0, 100.0, 'bid_range', 'random_bidder', 'truthful_bidder', 'your_private_value']

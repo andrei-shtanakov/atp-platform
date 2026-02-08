@@ -1,0 +1,4 @@
+# file: /Users/Andrei_Shtanakov/labs/atp-platform/game-environments/game_envs/strategies/__init__.py
+# hypothesis_version: 6.151.5
+
+['AlwaysCooperate', 'AlwaysDefect', 'EpsilonGreedy', 'FreeRider', 'FullContributor', 'GrimTrigger', 'NashMixed', 'Pavlov', 'Punisher', 'RandomBidder', 'RandomStrategy', 'SelfishRouter', 'ShadeBidder', 'SocialOptimum', 'StrategyRegistry', 'TitForTat', 'TruthfulBidder', 'UniformAllocation']

@@ -1,0 +1,4 @@
+# file: /Users/Andrei_Shtanakov/labs/atp-platform/game-environments/game_envs/strategies/congestion_strategies.py
+# hypothesis_version: 6.151.5
+
+[0.0, 0.1, 1.0, '-inf', 'base_cost', 'inf', 'routes', 'selfish_router', 'social_optimum']

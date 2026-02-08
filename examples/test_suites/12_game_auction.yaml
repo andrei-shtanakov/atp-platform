@@ -1,0 +1,79 @@
+# ATP Game Suite: Auction Evaluation
+# Purpose: Evaluate agent bidding behavior in sealed-bid auctions
+# Duration: ~5-10 minutes
+# Use case: Test strategic bidding, truthfulness, and revenue properties
+
+test_suite: "auction_evaluation"
+version: "1.0"
+description: >
+  Evaluate an LLM agent's bidding strategy in first-price and
+  second-price sealed-bid auctions. Tests whether agents learn
+  optimal bidding strategies (truthful in 2nd-price, shaded in 1st-price).
+
+# Game configuration
+game:
+  name: "sealed_bid_auction"
+  config:
+    num_players: 3
+    num_rounds: 1          # Single-round auctions
+    seed: 42
+  variants:
+    - name: "first_price"
+      auction_type: "first_price"
+      valuation_range: [0, 100]
+    - name: "second_price"
+      auction_type: "second_price"
+      valuation_range: [0, 100]
+
+episodes: 30
+
+agents:
+  - name: "llm-bidder"
+    adapter: http
+    config:
+      endpoint: "${AGENT_ENDPOINT:http://localhost:8000}"
+
+baselines:
+  - "truthful"           # Bids true valuation
+  - "shade_half"         # Bids valuation / 2
+  - "random"             # Random bid in range
+
+assertions:
+  # Performance: agent should earn positive surplus
+  - type: game_payoff
+    config:
+      check: min_payoff
+      threshold: 0.0
+      aggregation: "mean"
+      description: "Average surplus should be non-negative"
+
+  # Performance: beat random baseline
+  - type: game_payoff
+    config:
+      check: payoff_vs_baseline
+      baseline: "random"
+      min_ratio: 1.0
+      description: "Agent should not perform worse than random"
+
+  # Equilibrium: in 2nd-price, agent should bid near true value
+  - type: game_equilibrium
+    config:
+      check: nash_distance
+      max_distance: 0.15
+      description: "Bidding strategy should approximate Nash equilibrium"
+
+  # Exploitability: bidding should be robust
+  - type: game_exploitability
+    config:
+      max_exploitability: 0.25
+      description: "Bidding strategy should not be easily exploited"
+
+scoring:
+  payoff_weight: 0.35
+  exploitability_weight: 0.30
+  cooperation_weight: 0.0     # Not applicable to auctions
+  fairness_weight: 0.35
+
+reporting:
+  format: "game"
+  html: true

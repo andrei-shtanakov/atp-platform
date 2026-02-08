@@ -1,0 +1,82 @@
+name: Integration CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  schedule:
+    # Run nightly at 06:00 UTC to catch upstream breakage
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Install game-environments from source
+        working-directory: game-environments
+        run: uv sync --dev
+
+      - name: Run game-environments tests
+        working-directory: game-environments
+        run: |
+          uv run pytest tests/ -v \
+            --cov=game_envs \
+            --cov-report=term-missing \
+            --cov-fail-under=90
+
+      - name: Install atp-platform with all extras
+        run: uv sync --all-extras --dev
+
+      - name: Run atp-platform tests
+        run: |
+          uv run pytest tests/ -v \
+            --cov=atp \
+            --cov-report=term-missing \
+            --cov-fail-under=80
+
+      - name: Verify game-environments standalone install
+        run: |
+          # Verify game-environments can be built and installed standalone
+          cd game-environments
+          uv build
+          # Check the built package contains expected modules
+          python -c "
+          import zipfile, glob
+          whl = glob.glob('dist/*.whl')[0]
+          with zipfile.ZipFile(whl) as z:
+              names = z.namelist()
+              assert any('game_envs' in n for n in names), \
+                  f'game_envs not found in wheel: {names}'
+              print(f'Wheel contents verified: {len(names)} files')
+          "
+
+      - name: Verify atp-platform build
+        run: |
+          uv build
+          python -c "
+          import zipfile, glob
+          whl = glob.glob('dist/*.whl')[0]
+          with zipfile.ZipFile(whl) as z:
+              names = z.namelist()
+              assert any('atp' in n for n in names), \
+                  f'atp not found in wheel: {names}'
+              print(f'Wheel contents verified: {len(names)} files')
+          "

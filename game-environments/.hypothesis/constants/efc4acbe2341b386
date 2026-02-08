@@ -1,0 +1,4 @@
+# file: /Users/Andrei_Shtanakov/labs/atp-platform/game-environments/game_envs/strategies/pd_strategies.py
+# hypothesis_version: 6.151.5
+
+['always_cooperate', 'always_defect', 'cooperate', 'defect', 'grim_trigger', 'pavlov', 'random', 'tit_for_tat']

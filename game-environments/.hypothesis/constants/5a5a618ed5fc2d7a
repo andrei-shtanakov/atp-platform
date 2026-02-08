@@ -1,0 +1,4 @@
+# file: /Users/Andrei_Shtanakov/labs/atp-platform/game-environments/game_envs/games/public_goods.py
+# hypothesis_version: 6.151.5
+
+[0.0, 1.0, 1.6, 20.0, ' (with punishment)', 'Public Goods Game', 'contribute', 'contribution', 'contributions', 'endowment', 'game', 'multiplier', 'num_players', 'payoff_formula', 'punish', 'punishment_cost', 'punishment_effect', 'punishment_spent', 'stage', 'your_role']

@@ -1,0 +1,97 @@
+# ATP Game Suite: Prisoner's Dilemma Evaluation
+# Purpose: Evaluate agent strategic behavior in iterated Prisoner's Dilemma
+# Duration: ~5-10 minutes (depends on episodes and agent response time)
+# Use case: Assess cooperation, exploitability, and strategic reasoning
+
+test_suite: "prisoners_dilemma_evaluation"
+version: "1.0"
+description: >
+  Evaluate an LLM agent's behavior in the iterated Prisoner's Dilemma.
+  Tests cooperation dynamics, exploitability against baseline strategies,
+  and convergence toward game-theoretic equilibria.
+
+# Game configuration
+game:
+  name: "prisoners_dilemma"
+  config:
+    num_players: 2
+    num_rounds: 50
+    noise: 0.0         # No trembling hand (set > 0 for noisy PD)
+    communication: false
+    seed: 42
+
+# Number of episodes for statistical reliability
+episodes: 20
+
+# Agent under test
+agents:
+  - name: "llm-agent"
+    adapter: http
+    config:
+      endpoint: "${AGENT_ENDPOINT:http://localhost:8000}"
+      timeout: 30
+
+# Baseline strategies to play against
+baselines:
+  - "tit_for_tat"
+  - "always_cooperate"
+  - "always_defect"
+  - "random"
+
+# Game-theoretic assertions
+assertions:
+  # Performance: agent should outperform random play
+  - type: game_payoff
+    config:
+      check: payoff_vs_baseline
+      baseline: "random"
+      min_ratio: 1.1
+      description: "Agent should beat random strategy by 10%"
+
+  # Performance: agent should achieve near tit-for-tat level
+  - type: game_payoff
+    config:
+      check: payoff_vs_baseline
+      baseline: "tit_for_tat"
+      min_ratio: 0.90
+      description: "Agent should achieve at least 90% of TFT payoff"
+
+  # Exploitability: strategy should not be easily exploited
+  - type: game_exploitability
+    config:
+      max_exploitability: 0.20
+      description: "Exploitability should be under 0.20"
+
+  # Cooperation: agent should cooperate a reasonable amount
+  - type: game_cooperation
+    config:
+      min_cooperation_rate: 0.4
+      description: "Agent should cooperate at least 40% of the time"
+
+  # Cooperation: should increase cooperation over time (learning)
+  - type: game_cooperation
+    config:
+      check: cooperation_trend
+      direction: "non_decreasing"
+      window: 10
+
+  # Fairness: consistent behavior regardless of opponent type
+  - type: game_fairness
+    config:
+      check: strategy_consistency
+      max_deviation: 0.15
+      description: "Strategy should not wildly vary by opponent"
+
+# Scoring weights for game evaluation
+scoring:
+  payoff_weight: 0.30
+  exploitability_weight: 0.25
+  cooperation_weight: 0.25
+  fairness_weight: 0.20
+
+# Report configuration
+reporting:
+  format: "game"            # Use game-specific JSON reporter
+  html: true                # Also generate HTML report
+  include_episodes: true    # Include per-episode detail
+  export_csv: true          # Export episodes as CSV for Jupyter

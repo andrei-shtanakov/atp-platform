@@ -1,0 +1,4 @@
+# file: /Users/Andrei_Shtanakov/labs/atp-platform/game-environments/game_envs/strategies/pg_strategies.py
+# hypothesis_version: 6.151.5
+
+[0.0, 0.5, 20.0, 'contribution', 'contributions', 'endowment', 'free_rider', 'full_contributor', 'punish', 'punisher', 'stage']

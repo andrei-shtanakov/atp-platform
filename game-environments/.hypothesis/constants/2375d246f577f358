@@ -1,0 +1,4 @@
+# file: /Users/Andrei_Shtanakov/labs/atp-platform/game-environments/game_envs/games/__init__.py
+# hypothesis_version: 6.151.5
+
+['Auction', 'AuctionConfig', 'GameRegistry', 'PDConfig', 'PGConfig', 'PrisonersDilemma', 'PublicGoodsGame', 'register_game']
