@@ -326,6 +326,34 @@ task:
     - "charts/revenue.png"
 ```
 
+#### workspace_fixture
+
+**Type:** `string`
+**Required:** No
+**Description:** Path to a fixture directory to pre-populate the agent's workspace before test execution. The entire directory tree is copied into the sandbox workspace using `shutil.copytree`. The original fixture is never modified.
+
+Path can be absolute or relative (resolved from CWD).
+
+**Examples:**
+```yaml
+task:
+  description: "Read the config and return the project name"
+  workspace_fixture: "tests/fixtures/test_filesystem/basic"
+
+task:
+  description: "Clean up temp files from the project"
+  workspace_fixture: "tests/fixtures/test_filesystem/messy_directory"
+```
+
+**Behavior by adapter type:**
+
+| Adapter | Workspace Access |
+|---------|-----------------|
+| CLI | Agent receives absolute host path via `context.workspace_path` |
+| Container | Workspace is auto-mounted as a volume; `context.workspace_path` is rewritten to `/workspace` |
+
+> For detailed usage, see [Test Filesystem Guide](../guides/test-filesystem.md).
+
 ## Constraints
 
 Execution boundaries for agent behavior.
@@ -547,6 +575,112 @@ assertions:
 
 > For detailed security evaluator documentation, see [Security Evaluator Guide](../guides/security-evaluator.md).
 
+#### file_exists
+
+**Description:** Check that a file exists in the workspace. Requires `workspace_fixture` on the task or `workspace_path` injected at runtime.
+
+**Config:**
+- `path` (string, required): Relative path within the workspace
+
+**Example:**
+```yaml
+assertions:
+  - type: "file_exists"
+    config:
+      path: "output.txt"
+
+  - type: "file_exists"
+    config:
+      path: "reports/summary.json"
+```
+
+#### file_not_exists
+
+**Description:** Check that a file does NOT exist in the workspace (e.g., agent should have deleted it).
+
+**Config:**
+- `path` (string, required): Relative path within the workspace
+
+**Example:**
+```yaml
+assertions:
+  - type: "file_not_exists"
+    config:
+      path: "temp/scratch.tmp"
+```
+
+#### file_contains
+
+**Description:** Check that a file's content matches a plain text substring or regex pattern.
+
+**Config:**
+- `path` (string, required): Relative path within the workspace
+- `pattern` (string, required): Text or regex pattern to search for
+- `regex` (bool, optional): Treat pattern as regex (default: `false`)
+
+**Example:**
+```yaml
+assertions:
+  # Plain text match
+  - type: "file_contains"
+    config:
+      path: "output.txt"
+      pattern: "Processing complete"
+
+  # Regex match
+  - type: "file_contains"
+    config:
+      path: "report.json"
+      pattern: '"count":\s*\d+'
+      regex: true
+```
+
+#### dir_exists
+
+**Description:** Check that a directory exists in the workspace.
+
+**Config:**
+- `path` (string, required): Relative path within the workspace
+
+**Example:**
+```yaml
+assertions:
+  - type: "dir_exists"
+    config:
+      path: "output/reports"
+```
+
+#### file_count
+
+**Description:** Check the number of files in a directory.
+
+**Config:**
+- `path` (string, required): Relative path to directory within the workspace
+- `count` (int, required): Expected file count
+- `operator` (string, optional): Comparison operator (default: `"eq"`)
+
+**Operators:** `eq`, `gt`, `gte`, `lt`, `lte`
+
+**Example:**
+```yaml
+assertions:
+  # Exact count
+  - type: "file_count"
+    config:
+      path: "output"
+      count: 3
+      operator: "eq"
+
+  # At least 1 file
+  - type: "file_count"
+    config:
+      path: "output"
+      count: 1
+      operator: "gte"
+```
+
+> For detailed filesystem evaluator documentation, see [Test Filesystem Guide](../guides/test-filesystem.md).
+
 ### Multiple Assertions
 
 ```yaml
@@ -563,6 +697,15 @@ assertions:
     config:
       checks: [pii_exposure, secret_leak]
       sensitivity: "high"
+
+  - type: "file_exists"
+    config:
+      path: "data/config.json"
+
+  - type: "file_contains"
+    config:
+      path: "output.json"
+      pattern: '"status": "success"'
 
   - type: "llm_eval"
     config:
@@ -1207,5 +1350,6 @@ ATP validates test suites with the following rules:
 
 - [Quick Start Guide](../guides/quickstart.md) - Create your first test suite
 - [Usage Guide](../guides/usage.md) - Common workflows
+- [Test Filesystem Guide](../guides/test-filesystem.md) - Workspace fixtures and filesystem assertions
 - [Troubleshooting](troubleshooting.md) - Common issues
 - [Examples](../../examples/test_suites/) - Complete examples

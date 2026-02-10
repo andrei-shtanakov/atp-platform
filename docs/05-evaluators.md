@@ -492,6 +492,63 @@ assertions:
 
 > For detailed documentation, see [Security Evaluator Guide](guides/security-evaluator.md).
 
+### 6. Filesystem Evaluator
+
+Checks the actual filesystem state in the agent's workspace after execution. Unlike the Artifact Evaluator (which checks response artifacts in memory), the Filesystem Evaluator inspects real files on disk.
+
+**Check Types**:
+
+| Assertion Type | Description | Example |
+|----------------|-------------|---------|
+| `file_exists` | File exists at path | `path: "output.txt"` |
+| `file_not_exists` | File does NOT exist | `path: "temp.txt"` |
+| `file_contains` | File content matches pattern | `path: "out.txt", pattern: "OK"` |
+| `dir_exists` | Directory exists | `path: "reports/"` |
+| `file_count` | Number of files in directory | `path: "output/", count: 3` |
+
+**Configuration Example**:
+
+```yaml
+assertions:
+  - type: file_exists
+    config:
+      path: "output/report.json"
+
+  - type: file_not_exists
+    config:
+      path: "temp/scratch.txt"
+
+  - type: file_contains
+    config:
+      path: "output/report.json"
+      pattern: '"status":\s*"success"'
+      regex: true
+
+  - type: dir_exists
+    config:
+      path: "output/charts"
+
+  - type: file_count
+    config:
+      path: "output"
+      count: 3
+      operator: "gte"    # eq, gt, gte, lt, lte
+```
+
+**Workspace Fixtures**:
+
+Pre-populate the agent's workspace with files before the test runs using `workspace_fixture` in the task definition:
+
+```yaml
+task:
+  description: "Reorganize project files"
+  workspace_fixture: "tests/fixtures/test_filesystem/basic"
+```
+
+The fixture directory is copied into a fresh sandbox workspace. Each test run starts with a clean copy — agents cannot damage the fixture.
+
+> For detailed documentation, see [Test Filesystem Guide](guides/test-filesystem.md).
+
 ---
 
 ## Game-Theoretic Evaluators

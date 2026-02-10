@@ -7,6 +7,7 @@ from .base import Evaluator
 from .behavior import BehaviorEvaluator
 from .code_exec import CodeExecEvaluator
 from .factuality import FactualityEvaluator
+from .filesystem import FilesystemEvaluator
 from .llm_judge import LLMJudgeEvaluator
 from .performance import PerformanceEvaluator
 from .security import SecurityEvaluator
@@ -41,6 +42,7 @@ class EvaluatorRegistry:
         self.register("factuality", FactualityEvaluator)
         self.register("performance", PerformanceEvaluator)
         self.register("style", StyleEvaluator)
+        self.register("filesystem", FilesystemEvaluator)
 
         self._register_assertion_mapping("artifact_exists", "artifact")
         self._register_assertion_mapping("contains", "artifact")
@@ -77,6 +79,13 @@ class EvaluatorRegistry:
         self._register_assertion_mapping("passive_voice", "style")
         self._register_assertion_mapping("sentence_length", "style")
         self._register_assertion_mapping("style_rules", "style")
+
+        # Filesystem assertions
+        self._register_assertion_mapping("file_exists", "filesystem")
+        self._register_assertion_mapping("file_not_exists", "filesystem")
+        self._register_assertion_mapping("file_contains", "filesystem")
+        self._register_assertion_mapping("dir_exists", "filesystem")
+        self._register_assertion_mapping("file_count", "filesystem")
 
     def register(
         self,

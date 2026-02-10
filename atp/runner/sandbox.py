@@ -114,6 +114,48 @@ class SandboxManager:
                 cause=e,
             ) from e
 
+    def populate_workspace(
+        self,
+        sandbox_id: str,
+        fixture_path: str | Path,
+    ) -> None:
+        """
+        Copy fixture directory contents into sandbox workspace.
+
+        Args:
+            sandbox_id: Sandbox identifier.
+            fixture_path: Path to the fixture directory to copy.
+
+        Raises:
+            SandboxError: If fixture path is invalid or copy fails.
+        """
+        fixture = Path(fixture_path).resolve()
+        if not fixture.exists():
+            raise SandboxError(
+                f"Fixture path not found: {fixture}",
+                sandbox_id=sandbox_id,
+            )
+        if not fixture.is_dir():
+            raise SandboxError(
+                f"Fixture path is not a directory: {fixture}",
+                sandbox_id=sandbox_id,
+            )
+
+        workspace = self.get_workspace(sandbox_id)
+        try:
+            shutil.copytree(fixture, workspace, dirs_exist_ok=True)
+            logger.debug(
+                "Populated workspace %s from fixture %s",
+                workspace,
+                fixture,
+            )
+        except OSError as e:
+            raise SandboxError(
+                f"Failed to populate workspace from fixture: {e}",
+                sandbox_id=sandbox_id,
+                cause=e,
+            ) from e
+
     def get_workspace(self, sandbox_id: str) -> Path:
         """
         Get workspace path for a sandbox.

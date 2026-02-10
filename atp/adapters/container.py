@@ -19,6 +19,7 @@ from atp.protocol import (
     ATPEvent,
     ATPRequest,
     ATPResponse,
+    Context,
     EventType,
 )
 
@@ -147,6 +148,30 @@ class ContainerAdapter(AgentAdapter):
         """Return the adapter type identifier."""
         return "container"
 
+    def _prepare_workspace_mount(
+        self, request: ATPRequest
+    ) -> tuple[ATPRequest, str | None]:
+        """Extract workspace path and rewrite for container.
+
+        Returns:
+            Tuple of (possibly rewritten request, host workspace path).
+        """
+        if not request.context or not request.context.workspace_path:
+            return request, None
+
+        host_workspace = request.context.workspace_path
+        container_ws = self._config.working_dir or "/workspace"
+        rewritten = request.model_copy(
+            update={
+                "context": Context(
+                    workspace_path=container_ws,
+                    tools_endpoint=request.context.tools_endpoint,
+                    environment=request.context.environment,
+                )
+            }
+        )
+        return rewritten, host_workspace
+
     def _get_runtime(self) -> str:
         """Get the container runtime command.
 
@@ -182,8 +207,14 @@ class ContainerAdapter(AgentAdapter):
         self._runtime = runtime
         return runtime
 
-    def _build_container_command(self) -> list[str]:
+    def _build_container_command(
+        self,
+        workspace_path: str | None = None,
+    ) -> list[str]:
         """Build the container run command arguments.
+
+        Args:
+            workspace_path: Optional host workspace path to auto-mount.
 
         Security: Applies resource limits, privilege restrictions,
         and capability drops for defense in depth.
@@ -235,6 +266,11 @@ class ContainerAdapter(AgentAdapter):
             )
             cmd.extend(["-v", f"{validated_host}:{validated_container}"])
 
+        # Auto-mount workspace if provided
+        if workspace_path:
+            container_ws = self._config.working_dir or "/workspace"
+            cmd.extend(["-v", f"{workspace_path}:{container_ws}"])
+
         # Working directory
         if self._config.working_dir:
             cmd.extend(["-w", self._config.working_dir])
@@ -259,7 +295,10 @@ class ContainerAdapter(AgentAdapter):
             AdapterTimeoutError: If execution times out.
             AdapterResponseError: If agent returns invalid response.
         """
-        cmd = self._build_container_command()
+        request, host_workspace = self._prepare_workspace_mount(request)
+        cmd = self._build_container_command(
+            workspace_path=host_workspace,
+        )
         request_json = request.model_dump_json()
 
         try:
@@ -350,7 +389,10 @@ class ContainerAdapter(AgentAdapter):
             AdapterTimeoutError: If execution times out.
             AdapterResponseError: If agent returns invalid response.
         """
-        cmd = self._build_container_command()
+        request, host_workspace = self._prepare_workspace_mount(request)
+        cmd = self._build_container_command(
+            workspace_path=host_workspace,
+        )
         request_json = request.model_dump_json()
 
         try:

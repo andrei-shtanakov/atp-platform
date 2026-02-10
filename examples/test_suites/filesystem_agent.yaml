@@ -1,0 +1,74 @@
+test_suite: "filesystem_agent_tests"
+version: "1.0"
+description: >
+  Test suite for filesystem-based agent testing.
+  Demonstrates workspace fixtures and filesystem assertions.
+
+defaults:
+  timeout_seconds: 30
+  constraints:
+    max_steps: 5
+    timeout_seconds: 30
+
+agents:
+  - name: "file-agent"
+    type: "cli"
+    config:
+      command: "python"
+      args: ["examples/demo_agent.py"]
+      working_dir: "."
+
+tests:
+  - id: "fs-001"
+    name: "Read pre-populated file"
+    tags: ["filesystem", "read", "fixture"]
+    task:
+      description: "Read the file 'readme.txt' in the workspace and return its content"
+      workspace_fixture: "tests/fixtures/test_filesystem/basic"
+      expected_artifacts: ["readme_content.txt"]
+    constraints:
+      timeout_seconds: 15
+    assertions:
+      - type: "file_exists"
+        config:
+          path: "readme.txt"
+      - type: "behavior"
+        config:
+          check: "no_errors"
+
+  - id: "fs-002"
+    name: "Create file alongside fixtures"
+    tags: ["filesystem", "create", "fixture"]
+    task:
+      description: "Create a file 'output.txt' with content 'Agent was here'"
+      workspace_fixture: "tests/fixtures/test_filesystem/basic"
+      expected_artifacts: ["output.txt"]
+    assertions:
+      - type: "file_exists"
+        config:
+          path: "output.txt"
+      - type: "file_contains"
+        config:
+          path: "output.txt"
+          pattern: "Agent was here"
+      - type: "file_exists"
+        config:
+          path: "readme.txt"
+
+  - id: "fs-003"
+    name: "Verify JSON config"
+    tags: ["filesystem", "read", "json"]
+    task:
+      description: "Read data/config.json and return the project name"
+      workspace_fixture: "tests/fixtures/test_filesystem/basic"
+    assertions:
+      - type: "file_exists"
+        config:
+          path: "data/config.json"
+      - type: "file_contains"
+        config:
+          path: "data/config.json"
+          pattern: "test-project"
+      - type: "dir_exists"
+        config:
+          path: "data"

@@ -113,6 +113,10 @@ class TaskDefinition(BaseModel):
     expected_artifacts: list[str] | None = Field(
         None, description="Expected output artifacts"
     )
+    workspace_fixture: str | None = Field(
+        None,
+        description="Path to fixture directory to pre-populate workspace",
+    )
 
 
 class Constraints(BaseModel):

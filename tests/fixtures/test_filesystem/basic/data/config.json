@@ -1,0 +1,8 @@
+{
+  "version": "1.0",
+  "name": "test-project",
+  "settings": {
+    "debug": false,
+    "log_level": "info"
+  }
+}

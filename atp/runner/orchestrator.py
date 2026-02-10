@@ -5,6 +5,7 @@ import logging
 import uuid
 from collections.abc import AsyncIterator
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from opentelemetry.trace import SpanKind, Status, StatusCode
@@ -325,6 +326,13 @@ class TestOrchestrator:
                 workspace_path = str(self._sandbox_manager.get_workspace(sandbox_id))
                 set_span_attribute("atp.sandbox.id", sandbox_id)
                 set_span_attribute("atp.sandbox.path", workspace_path)
+
+            # Populate workspace with fixture if specified
+            if test.task.workspace_fixture and sandbox_id and self._sandbox_manager:
+                fixture_path = Path(test.task.workspace_fixture)
+                if not fixture_path.is_absolute():
+                    fixture_path = fixture_path.resolve()
+                self._sandbox_manager.populate_workspace(sandbox_id, fixture_path)
 
             try:
                 if use_parallel and num_runs > 1:

@@ -24,6 +24,7 @@ from .factuality import (
     LLMFactVerifier,
     VerificationMethod,
 )
+from .filesystem import FilesystemEvaluator
 from .llm_judge import (
     BUILTIN_CRITERIA,
     LLMJudgeConfig,
@@ -89,6 +90,7 @@ __all__ = [
     "LLMJudgeCost",
     "LLMJudgeResponse",
     "BUILTIN_CRITERIA",
+    "FilesystemEvaluator",
     "EvaluatorRegistry",
     "create_evaluator",
     "get_registry",

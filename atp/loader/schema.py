@@ -162,6 +162,7 @@ TEST_SUITE_SCHEMA: dict[str, Any] = {
                                 "type": "array",
                                 "items": {"type": "string"},
                             },
+                            "workspace_fixture": {"type": "string"},
                         },
                         "additionalProperties": False,
                     },
