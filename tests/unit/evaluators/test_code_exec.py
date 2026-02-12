@@ -448,7 +448,7 @@ class TestNpmCheck:
 
             mock_run.assert_called_once()
             call_args = mock_run.call_args
-            assert "npm run test:unit" in str(call_args)
+            assert call_args[0][0] == ["npm", "run", "test:unit"]
 
 
 class TestCustomCommandCheck:
@@ -861,6 +861,6 @@ class TestEdgeCases:
 
             call_args = mock_run.call_args
             command = call_args[0][0]
-            assert "ruff check" in command
-            assert "src/" in command
-            assert "--ignore E501" in command
+            assert command[:3] == ["ruff", "check", "src/"]
+            assert "--ignore" in command
+            assert "E501" in command

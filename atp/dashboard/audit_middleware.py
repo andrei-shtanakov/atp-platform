@@ -11,10 +11,11 @@ Features:
 - Integration with the audit logging system
 """
 
+import logging
 import re
 import uuid
 from collections.abc import Awaitable, Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import Request, Response
@@ -29,6 +30,8 @@ from atp.dashboard.audit import (
 )
 from atp.dashboard.database import get_database
 from atp.dashboard.models import DEFAULT_TENANT_ID, User
+
+logger = logging.getLogger(__name__)
 
 # Resource type mapping from URL patterns
 RESOURCE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
@@ -307,6 +310,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
         app: ASGIApp,
         audit_get_requests: bool = False,
         exclude_paths: set[str] | None = None,
+        trust_proxy_headers: bool = False,
     ) -> None:
         """Initialize the audit middleware.
 
@@ -314,10 +318,14 @@ class AuditMiddleware(BaseHTTPMiddleware):
             app: The ASGI application.
             audit_get_requests: Whether to audit GET requests.
             exclude_paths: Additional paths to exclude.
+            trust_proxy_headers: Whether to trust X-Forwarded-For
+                and X-Real-IP headers. Only enable when behind a
+                trusted reverse proxy.
         """
         super().__init__(app)
         self.audit_get_requests = audit_get_requests
         self.exclude_paths = exclude_paths or set()
+        self.trust_proxy_headers = trust_proxy_headers
 
     async def dispatch(
         self,
@@ -351,7 +359,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         # Record start time
-        start_time = datetime.utcnow()
+        start_time = datetime.now(tz=UTC)
 
         # Execute the request
         response = await call_next(request)
@@ -360,9 +368,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
         try:
             await self._create_audit_entry(request, response, request_id, start_time)
         except Exception:
-            # Don't let audit failures break the request
-            # In production, you might want to log this error
-            pass
+            logger.exception("Failed to create audit log entry")
 
         return response
 
@@ -412,7 +418,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
             "method": method,
             "path": path,
             "status_code": status_code,
-            "duration_ms": (datetime.utcnow() - start_time).total_seconds() * 1000,
+            "duration_ms": (datetime.now(tz=UTC) - start_time).total_seconds() * 1000,
             "query_params": dict(request.query_params)
             if request.query_params
             else None,
@@ -446,7 +452,8 @@ class AuditMiddleware(BaseHTTPMiddleware):
     def _get_client_ip(self, request: Request) -> str | None:
         """Extract the real client IP address.
 
-        Handles X-Forwarded-For header for proxied requests.
+        Only trusts proxy headers (X-Forwarded-For, X-Real-IP) when
+        trust_proxy_headers is enabled.
 
         Args:
             request: The request object.
@@ -454,18 +461,15 @@ class AuditMiddleware(BaseHTTPMiddleware):
         Returns:
             Client IP address or None.
         """
-        # Check X-Forwarded-For header first (for proxied requests)
-        forwarded_for = request.headers.get("X-Forwarded-For")
-        if forwarded_for:
-            # Take the first IP in the chain (original client)
-            return forwarded_for.split(",")[0].strip()
+        if self.trust_proxy_headers:
+            forwarded_for = request.headers.get("X-Forwarded-For")
+            if forwarded_for:
+                return forwarded_for.split(",")[0].strip()
 
-        # Check X-Real-IP header
-        real_ip = request.headers.get("X-Real-IP")
-        if real_ip:
-            return real_ip
+            real_ip = request.headers.get("X-Real-IP")
+            if real_ip:
+                return real_ip
 
-        # Fall back to direct client
         if request.client:
             return request.client.host
 

@@ -113,8 +113,10 @@ class LazyPlugin:
         except Exception as e:
             self._load_error = e
             logger.warning(
-                f"Failed to load plugin '{self._info.name}' from "
-                f"'{self._info.full_path}': {e}"
+                "Failed to load plugin '%s' from '%s': %s",
+                self._info.name,
+                self._info.full_path,
+                e,
             )
             raise
 
@@ -155,10 +157,17 @@ class PluginManager:
             try:
                 info = self._extract_plugin_info(ep, group)
                 plugins[ep.name] = LazyPlugin(ep, info)
-                logger.debug(f"Discovered plugin '{ep.name}' in group '{group}'")
+                logger.debug(
+                    "Discovered plugin '%s' in group '%s'",
+                    ep.name,
+                    group,
+                )
             except Exception as e:
                 logger.warning(
-                    f"Failed to process entry point '{ep.name}' in group '{group}': {e}"
+                    "Failed to process entry point '%s' in group '%s': %s",
+                    ep.name,
+                    group,
+                    e,
                 )
 
         self._plugins[group] = plugins
@@ -532,14 +541,24 @@ class PluginManager:
                 self._validate_plugin(plugin_class, group, name)
                 valid_plugins[name] = lazy_plugin
             except PluginValidationError as e:
-                logger.warning(f"Plugin '{name}' failed validation: {e.errors}")
+                logger.warning(
+                    "Plugin '%s' failed validation: %s",
+                    name,
+                    e.errors,
+                )
             except PluginVersionError as e:
                 logger.warning(
-                    f"Plugin '{name}' version incompatible: "
-                    f"requires {e.required_version}, current is {e.current_version}"
+                    "Plugin '%s' version incompatible: requires %s, current is %s",
+                    name,
+                    e.required_version,
+                    e.current_version,
                 )
             except Exception as e:
-                logger.warning(f"Failed to load plugin '{name}': {e}")
+                logger.warning(
+                    "Failed to load plugin '%s': %s",
+                    name,
+                    e,
+                )
 
         return valid_plugins
 

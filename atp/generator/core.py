@@ -199,14 +199,14 @@ class TestGenerator:
             A unique test ID.
 
         Raises:
-            ValueError: If unable to generate a unique ID (after 999 attempts).
+            ValueError: If unable to generate a unique ID (after 9999 attempts).
         """
         existing_ids = {t.id for t in suite.tests}
-        for i in range(1, 1000):
-            test_id = f"{prefix}-{i:03d}"
+        for i in range(1, 10000):
+            test_id = f"{prefix}-{i:04d}"
             if test_id not in existing_ids:
                 return test_id
-        raise ValueError("Cannot generate unique test ID")
+        raise ValueError("Cannot generate unique test ID after 9999 attempts")
 
     def register_template(self, template: TestTemplate) -> None:
         """

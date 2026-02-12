@@ -10,7 +10,9 @@ Re-exports from the core authentication module for backward compatibility.
 """
 
 import os
-from datetime import datetime, timedelta
+import secrets
+import warnings
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 import bcrypt
@@ -27,7 +29,15 @@ from atp.dashboard.models import User
 from atp.dashboard.schemas import TokenData
 
 # Configuration
-SECRET_KEY = os.getenv("ATP_SECRET_KEY", "atp-dashboard-dev-secret-key-change-in-prod")
+SECRET_KEY = os.getenv("ATP_SECRET_KEY", "")
+if not SECRET_KEY:
+    SECRET_KEY = secrets.token_urlsafe(32)
+    warnings.warn(
+        "ATP_SECRET_KEY is not set. Using a random secret key. "
+        "Tokens will be invalidated on restart. "
+        "Set ATP_SECRET_KEY for production use.",
+        stacklevel=2,
+    )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ATP_TOKEN_EXPIRE_MINUTES", "60"))
 
@@ -75,9 +85,9 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     """
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.now() + expires_delta
+        expire = datetime.now(tz=UTC) + expires_delta
     else:
-        expire = datetime.now() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(tz=UTC) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
@@ -257,14 +267,6 @@ async def get_current_admin_user(
     return current_user
 
 
-def get_optional_user() -> User | None:
-    """Dependency that allows optional authentication.
-
-    Returns None if no valid token is provided, instead of raising an error.
-    """
-    return Depends(get_current_user)
-
-
 __all__ = [
     # Core auth
     "ACCESS_TOKEN_EXPIRE_MINUTES",
@@ -276,7 +278,6 @@ __all__ = [
     "get_current_active_user",
     "get_current_admin_user",
     "get_current_user",
-    "get_optional_user",
     "get_password_hash",
     "get_user_by_email",
     "get_user_by_username",

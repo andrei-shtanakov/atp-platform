@@ -324,8 +324,8 @@ class TestRunCommand:
         result = runner.invoke(
             cli, ["run", str(suite_file), "--parallel", "-1", "--list-only"]
         )
-        # Negative values are checked before list-only
-        assert result.exit_code == EXIT_FAILURE
+        # Negative values are checked before list-only (config error -> EXIT_ERROR)
+        assert result.exit_code == EXIT_ERROR
         assert "--parallel must be at least 1" in result.output
 
     def test_run_with_runs_zero_with_list_only(

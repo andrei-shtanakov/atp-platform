@@ -3,6 +3,7 @@
 import asyncio
 import json
 import sys
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
@@ -393,14 +394,21 @@ def test_cmd(
 @cli.command(name="run")
 @click.argument("suite_file", type=click.Path(exists=True, path_type=Path))
 @click.option(
+    "--agent",
+    "--agent-name",
+    "agent_name",
+    type=str,
+    default="test-agent",
+    help="Name of the agent being tested (from config or identifier)",
+)
+@click.option(
     "--tags",
     type=str,
     help=(
         "Filter tests by tags. "
         "Use comma-separated values for multiple tags (OR logic). "
         "Prefix with '!' to exclude. "
-        "Examples: --tags=smoke, --tags=smoke,core, --tags=!slow, "
-        "--tags=smoke,!slow"
+        "Examples: --tags=smoke, --tags=smoke,core, --tags=!slow"
     ),
 )
 @click.option(
@@ -428,12 +436,6 @@ def test_cmd(
     type=str,
     multiple=True,
     help="Adapter configuration as key=value pairs",
-)
-@click.option(
-    "--agent-name",
-    type=str,
-    default="test-agent",
-    help="Name of the agent being tested",
 )
 @click.option(
     "--runs",
@@ -477,12 +479,12 @@ def test_cmd(
 def run(
     config_ctx: ConfigContext,
     suite_file: Path,
+    agent_name: str,
     tags: str | None,
     list_only: bool,
     parallel: int,
     adapter: str,
     adapter_config: tuple[str, ...],
-    agent_name: str,
     runs: int | None,
     fail_fast: bool,
     sandbox: bool,
@@ -496,92 +498,24 @@ def run(
     This command is provided for backward compatibility.
     Use 'atp test' for new scripts.
     """
-    # Apply config defaults
-    verbose = verbose or config_ctx.verbose
-    parallel = parallel or config_ctx.get_default("parallel_workers", 1)
-
-    # Validate parallel option early
-    if parallel < 1:
-        click.echo("Error: --parallel must be at least 1", err=True)
-        sys.exit(EXIT_FAILURE)
-
-    try:
-        # Load test suite
-        loader = TestLoader()
-        suite = loader.load_file(suite_file)
-
-        # Apply tag filtering
-        if tags:
-            suite = suite.filter_by_tags(tags)
-
-        # Check if any tests match
-        if not suite.tests:
-            click.echo("No tests match the specified criteria.", err=True)
-            sys.exit(EXIT_FAILURE)
-
-        # List tests
-        if list_only:
-            click.echo(f"Test Suite: {suite.test_suite}")
-            click.echo(f"Tests ({len(suite.tests)}):")
-            for test in suite.tests:
-                tags_str = ", ".join(test.tags) if test.tags else "no tags"
-                click.echo(f"  - {test.id}: {test.name} [{tags_str}]")
-            return
-
-        # Apply runs_per_test fallback: CLI > config > suite defaults
-        if runs is None:
-            runs = config_ctx.get_default("runs_per_test", None)
-        if runs is None:
-            runs = suite.defaults.runs_per_test
-        if runs < 1:
-            click.echo("Error: --runs must be at least 1", err=True)
-            sys.exit(EXIT_FAILURE)
-
-        # Parse adapter config
-        config_dict: dict[str, Any] = {}
-
-        # First, try to get agent config from config file
-        agent_cfg = config_ctx.get_agent_config(agent_name)
-        if agent_cfg:
-            if "type" in agent_cfg:
-                adapter = agent_cfg["type"]
-            config_dict.update(
-                {k: v for k, v in agent_cfg.items() if k not in ("type", "name")}
-            )
-
-        for item in adapter_config:
-            if "=" in item:
-                key, value = item.split("=", 1)
-                # Try to parse as JSON for complex values
-                try:
-                    config_dict[key] = json.loads(value)
-                except (json.JSONDecodeError, ValueError):
-                    config_dict[key] = value
-
-        # Run tests
-        result = asyncio.run(
-            _run_suite(
-                suite=suite,
-                adapter_type=adapter,
-                adapter_config=config_dict,
-                agent_name=agent_name,
-                parallel=parallel,
-                runs_per_test=runs,
-                fail_fast=fail_fast,
-                sandbox_enabled=sandbox,
-                verbose=verbose,
-                output_format=output,
-                output_file=output_file,
-                save_to_db=not no_save,
-            )
-        )
-
-        # Exit with appropriate code
-        sys.exit(EXIT_SUCCESS if result else EXIT_FAILURE)
-
-    except Exception as e:
-        click.echo(f"Error: {e}", err=True)
-        sys.exit(EXIT_FAILURE)
+    ctx = click.get_current_context()
+    ctx.invoke(
+        test_cmd,
+        suite_file=suite_file,
+        agent_name=agent_name,
+        tags=tags,
+        list_only=list_only,
+        parallel=parallel,
+        adapter=adapter,
+        adapter_config=adapter_config,
+        runs=runs,
+        fail_fast=fail_fast,
+        sandbox=sandbox,
+        verbose=verbose,
+        output=output,
+        output_file=output_file,
+        no_save=no_save,
+    )
 
 
 async def _run_suite(
@@ -752,7 +686,7 @@ async def _save_results_to_db(
                 # Update test execution with results
                 await storage.update_test_execution(
                     test_exec,
-                    completed_at=datetime.now(),
+                    completed_at=datetime.now(tz=UTC),
                     successful_runs=sum(1 for r in test_result.runs if r.success),
                     success=test_result.success,
                     status="completed" if test_result.success else "failed",
@@ -761,7 +695,7 @@ async def _save_results_to_db(
             # Update suite execution
             await storage.update_suite_execution(
                 suite_exec,
-                completed_at=datetime.now(),
+                completed_at=datetime.now(tz=UTC),
                 total_tests=len(result.tests),
                 passed_tests=sum(1 for t in result.tests if t.success),
                 failed_tests=sum(1 for t in result.tests if not t.success),

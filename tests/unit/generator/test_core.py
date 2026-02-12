@@ -345,35 +345,35 @@ class TestTestGeneratorGenerateTestId:
 
         test_id = generator.generate_test_id(suite)
 
-        assert test_id == "test-001"
+        assert test_id == "test-0001"
 
     def test_generate_test_id_with_existing_tests(self) -> None:
         """Test generating ID with existing tests."""
         generator = TestGenerator()
         suite = generator.create_suite("my_suite")
         generator.add_test(
-            suite, generator.create_custom_test("test-001", "Test 1", "Task 1")
+            suite, generator.create_custom_test("test-0001", "Test 1", "Task 1")
         )
 
         test_id = generator.generate_test_id(suite)
 
-        assert test_id == "test-002"
+        assert test_id == "test-0002"
 
     def test_generate_test_id_fills_gaps(self) -> None:
         """Test that generate_test_id fills gaps in sequence."""
         generator = TestGenerator()
         suite = generator.create_suite("my_suite")
-        # Add test-001 and test-003, leaving gap at test-002
+        # Add test-0001 and test-0003, leaving gap at test-0002
         generator.add_test(
-            suite, generator.create_custom_test("test-001", "Test 1", "Task 1")
+            suite, generator.create_custom_test("test-0001", "Test 1", "Task 1")
         )
         generator.add_test(
-            suite, generator.create_custom_test("test-003", "Test 3", "Task 3")
+            suite, generator.create_custom_test("test-0003", "Test 3", "Task 3")
         )
 
         test_id = generator.generate_test_id(suite)
 
-        assert test_id == "test-002"
+        assert test_id == "test-0002"
 
     def test_generate_test_id_custom_prefix(self) -> None:
         """Test generating ID with custom prefix."""
@@ -382,7 +382,7 @@ class TestTestGeneratorGenerateTestId:
 
         test_id = generator.generate_test_id(suite, prefix="smoke")
 
-        assert test_id == "smoke-001"
+        assert test_id == "smoke-0001"
 
     def test_generate_test_id_custom_prefix_with_existing(self) -> None:
         """Test generating ID with custom prefix and existing tests."""
@@ -390,29 +390,29 @@ class TestTestGeneratorGenerateTestId:
         suite = generator.create_suite("my_suite")
         # Add tests with different prefix
         generator.add_test(
-            suite, generator.create_custom_test("smoke-001", "Smoke 1", "Task 1")
+            suite, generator.create_custom_test("smoke-0001", "Smoke 1", "Task 1")
         )
         generator.add_test(
-            suite, generator.create_custom_test("smoke-002", "Smoke 2", "Task 2")
+            suite, generator.create_custom_test("smoke-0002", "Smoke 2", "Task 2")
         )
 
         test_id = generator.generate_test_id(suite, prefix="smoke")
 
-        assert test_id == "smoke-003"
+        assert test_id == "smoke-0003"
 
-    def test_generate_test_id_different_prefix_starts_at_001(self) -> None:
-        """Test that different prefix starts at 001."""
+    def test_generate_test_id_different_prefix_starts_at_0001(self) -> None:
+        """Test that different prefix starts at 0001."""
         generator = TestGenerator()
         suite = generator.create_suite("my_suite")
         # Add test with "test" prefix
         generator.add_test(
-            suite, generator.create_custom_test("test-001", "Test 1", "Task 1")
+            suite, generator.create_custom_test("test-0001", "Test 1", "Task 1")
         )
 
         # Generate with "smoke" prefix
         test_id = generator.generate_test_id(suite, prefix="smoke")
 
-        assert test_id == "smoke-001"
+        assert test_id == "smoke-0001"
 
     def test_generate_test_id_sequential(self) -> None:
         """Test generating multiple sequential IDs."""
@@ -428,17 +428,17 @@ class TestTestGeneratorGenerateTestId:
             generator.add_test(suite, test)
 
         assert len(suite.tests) == 5
-        assert suite.tests[0].id == "test-001"
-        assert suite.tests[4].id == "test-005"
+        assert suite.tests[0].id == "test-0001"
+        assert suite.tests[4].id == "test-0005"
 
     def test_generate_test_id_exhausted_raises(self) -> None:
         """Test that exhausting all IDs raises ValueError."""
         generator = TestGenerator()
         suite = generator.create_suite("my_suite")
 
-        # Pre-fill all possible IDs (test-001 through test-999)
-        for i in range(1, 1000):
-            test_id = f"test-{i:03d}"
+        # Pre-fill all possible IDs (test-0001 through test-9999)
+        for i in range(1, 10000):
+            test_id = f"test-{i:04d}"
             test = generator.create_custom_test(test_id, f"Test {i}", f"Task {i}")
             suite.tests.append(test)  # Bypass add_test to avoid validation overhead
 
@@ -502,8 +502,8 @@ class TestTestGeneratorIntegration:
         assert suite.description == "Integration test suite"
         assert len(suite.agents) == 2
         assert len(suite.tests) == 2
-        assert suite.tests[0].id == "test-001"
-        assert suite.tests[1].id == "test-002"
+        assert suite.tests[0].id == "test-0001"
+        assert suite.tests[1].id == "test-0002"
 
         # Convert to TestSuite model
         test_suite = suite.to_test_suite()
@@ -805,8 +805,8 @@ class TestTestGeneratorTemplateIntegration:
 
         # Verify
         assert len(suite.tests) == 2
-        assert suite.tests[0].id == "test-001"
-        assert suite.tests[1].id == "test-002"
+        assert suite.tests[0].id == "test-0001"
+        assert suite.tests[1].id == "test-0002"
 
         # Convert to TestSuite
         test_suite = suite.to_test_suite()

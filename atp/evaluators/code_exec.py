@@ -555,10 +555,13 @@ class CodeExecEvaluator(Evaluator):
         working_dir = config.get("working_dir")
         extra_args = config.get("args", "")
 
-        command = f"pytest {path} -v {extra_args}".strip()
+        # Build command as list to prevent shell injection
+        cmd_args = ["pytest", path, "-v"]
+        if extra_args:
+            cmd_args.extend(shlex.split(extra_args))
 
         result = await self._run_command(
-            command,
+            cmd_args,
             working_dir=working_dir,
             timeout=timeout,
         )
@@ -613,8 +616,11 @@ class CodeExecEvaluator(Evaluator):
         timeout = config.get("timeout", 300)
         working_dir = config.get("working_dir")
 
+        # Build command as list to prevent shell injection
+        cmd_args = shlex.split(command)
+
         result = await self._run_command(
-            command,
+            cmd_args,
             working_dir=working_dir,
             timeout=timeout,
         )
@@ -681,8 +687,11 @@ class CodeExecEvaluator(Evaluator):
         working_dir = config.get("working_dir")
         expect_zero = config.get("expect_zero", True)
 
+        # Split command to prevent shell injection
+        cmd_args = shlex.split(command)
+
         result = await self._run_command(
-            command,
+            cmd_args,
             working_dir=working_dir,
             timeout=timeout,
         )
@@ -792,14 +801,16 @@ class CodeExecEvaluator(Evaluator):
         working_dir = config.get("working_dir")
         extra_args = config.get("args", "")
 
-        # Build command
+        # Build command as list to prevent shell injection
         if linter == "ruff":
-            command = f"ruff check {path} {extra_args}".strip()
+            cmd_args = ["ruff", "check", path]
         else:  # eslint
-            command = f"eslint {path} {extra_args}".strip()
+            cmd_args = ["eslint", path]
+        if extra_args:
+            cmd_args.extend(shlex.split(extra_args))
 
         result = await self._run_command(
-            command,
+            cmd_args,
             working_dir=working_dir,
             timeout=timeout,
         )

@@ -1,6 +1,6 @@
 """Storage layer for persisting ATP test results to the database."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -113,7 +113,7 @@ class ResultStorage:
             suite_name=suite_name,
             agent_id=agent.id,
             runs_per_test=runs_per_test,
-            started_at=started_at or datetime.now(),
+            started_at=started_at or datetime.now(tz=UTC),
             status="running",
         )
         self._session.add(execution)
@@ -243,7 +243,7 @@ class ResultStorage:
             test_id=test_id,
             test_name=test_name,
             tags=tags or [],
-            started_at=started_at or datetime.now(),
+            started_at=started_at or datetime.now(tz=UTC),
             total_runs=total_runs,
             status="running",
         )
@@ -346,7 +346,7 @@ class ResultStorage:
         Returns:
             RunResult instance.
         """
-        now = datetime.now()
+        now = datetime.now(tz=UTC)
         started = started_at or now
         completed = completed_at or now
 
@@ -646,13 +646,13 @@ class ResultStorage:
             suite_name=report.suite_name,
             agent=agent,
             runs_per_test=report.runs_per_test,
-            started_at=datetime.now(),  # Report doesn't have start_time
+            started_at=datetime.now(tz=UTC),  # Report doesn't have start_time
         )
 
         # Update with results
         await self.update_suite_execution(
             suite_exec,
-            completed_at=datetime.now(),
+            completed_at=datetime.now(tz=UTC),
             total_tests=report.total_tests,
             passed_tests=report.passed_tests,
             failed_tests=report.failed_tests,
@@ -685,7 +685,7 @@ class ResultStorage:
             test_id=test_report.test_id,
             test_name=test_report.test_name,
             tags=[],  # Report doesn't include tags
-            started_at=datetime.now(),
+            started_at=datetime.now(tz=UTC),
             total_runs=test_report.total_runs,
         )
 
@@ -695,7 +695,7 @@ class ResultStorage:
         )
         await self.update_test_execution(
             test_exec,
-            completed_at=datetime.now(),
+            completed_at=datetime.now(tz=UTC),
             successful_runs=test_report.successful_runs,
             success=test_report.success,
             score=test_report.score,

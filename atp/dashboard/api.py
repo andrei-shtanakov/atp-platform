@@ -9,7 +9,7 @@
 
 import logging
 import warnings
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -306,9 +306,9 @@ async def list_suite_executions(
     executions = result.scalars().all()
 
     items = []
-    for exec in executions:
-        summary = SuiteExecutionSummary.model_validate(exec)
-        summary.agent_name = exec.agent.name if exec.agent else None
+    for execution in executions:
+        summary = SuiteExecutionSummary.model_validate(execution)
+        summary.agent_name = execution.agent.name if execution.agent else None
         items.append(summary)
 
     return SuiteExecutionList(
@@ -467,24 +467,26 @@ async def get_suite_trends(
 
     # Build trend data
     data_points: list[TrendDataPoint] = []
-    for exec in reversed(executions):
+    for execution in reversed(executions):
         if metric == "success_rate":
-            value = exec.success_rate
+            value = execution.success_rate
         elif metric == "score":
             # Calculate average score from tests
-            if exec.test_executions:
-                scores = [t.score for t in exec.test_executions if t.score is not None]
+            if execution.test_executions:
+                scores = [
+                    t.score for t in execution.test_executions if t.score is not None
+                ]
                 value = sum(scores) / len(scores) if scores else 0.0
             else:
                 value = 0.0
         else:  # duration
-            value = exec.duration_seconds or 0.0
+            value = execution.duration_seconds or 0.0
 
         data_points.append(
             TrendDataPoint(
-                timestamp=exec.started_at,
+                timestamp=execution.started_at,
                 value=value,
-                execution_id=exec.id,
+                execution_id=execution.id,
             )
         )
 
@@ -534,19 +536,19 @@ async def get_test_trends(
 
     # Build trend data
     data_points: list[TrendDataPoint] = []
-    for exec in reversed(executions):
+    for execution in reversed(executions):
         if metric == "score":
-            value = exec.score or 0.0
+            value = execution.score or 0.0
         elif metric == "duration":
-            value = exec.duration_seconds or 0.0
+            value = execution.duration_seconds or 0.0
         else:  # success_rate
-            value = 1.0 if exec.success else 0.0
+            value = 1.0 if execution.success else 0.0
 
         data_points.append(
             TrendDataPoint(
-                timestamp=exec.started_at,
+                timestamp=execution.started_at,
                 value=value,
-                execution_id=exec.id,
+                execution_id=execution.id,
             )
         )
 
@@ -602,8 +604,8 @@ async def compare_agents(
 
         # Calculate average score
         all_scores: list[float] = []
-        for exec in executions:
-            for test in exec.test_executions:
+        for execution in executions:
+            for test in execution.test_executions:
                 if test.score is not None:
                     all_scores.append(test.score)
         avg_score = sum(all_scores) / len(all_scores) if all_scores else None
@@ -632,8 +634,8 @@ async def compare_agents(
         )
 
         # Collect per-test metrics
-        for exec in executions:
-            for test in exec.test_executions:
+        for execution in executions:
+            for test in execution.test_executions:
                 if test.test_id not in test_metrics_map:
                     test_metrics_map[test.test_id] = {"_name": test.test_name}
                 if agent_name not in test_metrics_map[test.test_id]:
@@ -690,6 +692,62 @@ async def compare_agents(
     )
 
 
+def _summarize_event(event_type: str, payload: dict) -> str:
+    """Generate a human-readable summary for an event.
+
+    Args:
+        event_type: The event type string.
+        payload: The event payload dictionary.
+
+    Returns:
+        A human-readable summary string.
+    """
+    if event_type == "tool_call":
+        tool = payload.get("tool", "unknown")
+        tool_status = payload.get("status", "")
+        return f"Tool call: {tool} ({tool_status})"
+    if event_type == "llm_request":
+        model = payload.get("model", "unknown")
+        tokens = payload.get("input_tokens", 0) + payload.get("output_tokens", 0)
+        return f"LLM request: {model} ({tokens} tokens)"
+    if event_type == "reasoning":
+        thought = payload.get("thought", "")
+        step = payload.get("step", "")
+        summary = thought[:50] + "..." if len(thought) > 50 else thought
+        if not summary and step:
+            summary = step
+        return summary or "Reasoning step"
+    if event_type == "error":
+        error_type = payload.get("error_type", "Error")
+        message = payload.get("message", "")[:50]
+        return f"{error_type}: {message}"
+    if event_type == "progress":
+        percentage = payload.get("percentage", 0)
+        message = payload.get("message", "")
+        if message:
+            return f"Progress: {percentage}% - {message}"
+        return f"Progress: {percentage}%"
+    return f"Event: {event_type}"
+
+
+def _parse_event_timestamp(event: dict) -> datetime:
+    """Parse a timestamp from an event dictionary.
+
+    Args:
+        event: Raw event dictionary with optional 'timestamp' key.
+
+    Returns:
+        Parsed datetime, falling back to UTC now.
+    """
+    timestamp_str = event.get("timestamp", "")
+    if timestamp_str:
+        try:
+            return datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+        except ValueError:
+            return datetime.now(tz=UTC)
+    return datetime.now(tz=UTC)
+
+
 def _format_event_summary(event: dict) -> EventSummary:
     """Format a raw event dict into an EventSummary.
 
@@ -699,51 +757,10 @@ def _format_event_summary(event: dict) -> EventSummary:
     Returns:
         EventSummary with formatted data.
     """
-    from datetime import datetime as dt
-
     event_type = event.get("event_type", "unknown")
     payload = event.get("payload", {})
-
-    # Generate summary based on event type
-    if event_type == "tool_call":
-        tool = payload.get("tool", "unknown")
-        status = payload.get("status", "")
-        summary = f"Tool call: {tool} ({status})"
-    elif event_type == "llm_request":
-        model = payload.get("model", "unknown")
-        tokens = payload.get("input_tokens", 0) + payload.get("output_tokens", 0)
-        summary = f"LLM request: {model} ({tokens} tokens)"
-    elif event_type == "reasoning":
-        thought = payload.get("thought", "")
-        step = payload.get("step", "")
-        summary = thought[:50] + "..." if len(thought) > 50 else thought
-        if not summary and step:
-            summary = step
-        if not summary:
-            summary = "Reasoning step"
-    elif event_type == "error":
-        error_type = payload.get("error_type", "Error")
-        message = payload.get("message", "")[:50]
-        summary = f"{error_type}: {message}"
-    elif event_type == "progress":
-        percentage = payload.get("percentage", 0)
-        message = payload.get("message", "")
-        if message:
-            summary = f"Progress: {percentage}% - {message}"
-        else:
-            summary = f"Progress: {percentage}%"
-    else:
-        summary = f"Event: {event_type}"
-
-    # Parse timestamp
-    timestamp_str = event.get("timestamp", "")
-    if timestamp_str:
-        try:
-            timestamp = dt.fromisoformat(timestamp_str.replace("Z", "+00:00"))
-        except ValueError:
-            timestamp = dt.now()
-    else:
-        timestamp = dt.now()
+    summary = _summarize_event(event_type, payload)
+    timestamp = _parse_event_timestamp(event)
 
     return EventSummary(
         sequence=event.get("sequence", 0),
@@ -1147,47 +1164,8 @@ def _format_timeline_event(
     """
     event_type = event.get("event_type", "unknown")
     payload = event.get("payload", {})
-
-    # Generate summary based on event type
-    if event_type == "tool_call":
-        tool = payload.get("tool", "unknown")
-        status = payload.get("status", "")
-        summary = f"Tool call: {tool} ({status})"
-    elif event_type == "llm_request":
-        model = payload.get("model", "unknown")
-        tokens = payload.get("input_tokens", 0) + payload.get("output_tokens", 0)
-        summary = f"LLM request: {model} ({tokens} tokens)"
-    elif event_type == "reasoning":
-        thought = payload.get("thought", "")
-        step = payload.get("step", "")
-        summary = thought[:50] + "..." if len(thought) > 50 else thought
-        if not summary and step:
-            summary = step
-        if not summary:
-            summary = "Reasoning step"
-    elif event_type == "error":
-        error_type = payload.get("error_type", "Error")
-        message = payload.get("message", "")[:50]
-        summary = f"{error_type}: {message}"
-    elif event_type == "progress":
-        percentage = payload.get("percentage", 0)
-        message = payload.get("message", "")
-        if message:
-            summary = f"Progress: {percentage}% - {message}"
-        else:
-            summary = f"Progress: {percentage}%"
-    else:
-        summary = f"Event: {event_type}"
-
-    # Parse timestamp
-    timestamp_str = event.get("timestamp", "")
-    if timestamp_str:
-        try:
-            timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
-        except ValueError:
-            timestamp = datetime.now()
-    else:
-        timestamp = datetime.now()
+    summary = _summarize_event(event_type, payload)
+    timestamp = _parse_event_timestamp(event)
 
     # Calculate relative time from first event
     relative_time_ms = 0.0
@@ -1542,9 +1520,9 @@ async def get_dashboard_summary(
 
         # Get scores from test executions
         all_scores: list[float] = []
-        for exec in recent_execs:
-            if hasattr(exec, "test_executions"):
-                for test in exec.test_executions:
+        for execution in recent_execs:
+            if hasattr(execution, "test_executions"):
+                for test in execution.test_executions:
                     if test.score is not None:
                         all_scores.append(test.score)
         recent_avg_score = sum(all_scores) / len(all_scores) if all_scores else None
@@ -1553,9 +1531,9 @@ async def get_dashboard_summary(
         recent_avg_score = None
 
     recent_summaries = []
-    for exec in recent_execs:
-        summary = SuiteExecutionSummary.model_validate(exec)
-        summary.agent_name = exec.agent.name if exec.agent else None
+    for execution in recent_execs:
+        summary = SuiteExecutionSummary.model_validate(execution)
+        summary.agent_name = execution.agent.name if execution.agent else None
         recent_summaries.append(summary)
 
     return DashboardSummary(
