@@ -315,7 +315,7 @@ def log_security_event(
         additional_data: Additional context data.
     """
     redacted_message = redact_secrets(message)
-    event_data = {
+    event_data: dict[str, Any] = {
         "timestamp": datetime.now().isoformat(),
         "event_type": event_type.value,
         "message": redacted_message,

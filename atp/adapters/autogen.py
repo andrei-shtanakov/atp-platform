@@ -152,8 +152,8 @@ class AutoGenAdapter(AgentAdapter):
         except ImportError:
             try:
                 # Try AutoGen v0.4+ import
-                from autogen_agentchat.agents import (
-                    UserProxyAgent,  # pyrefly: ignore[missing-import]
+                from autogen_agentchat.agents import (  # pyrefly: ignore[missing-import]  # noqa: E501
+                    UserProxyAgent,
                 )
             except ImportError:
                 raise AdapterError(

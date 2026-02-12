@@ -339,7 +339,7 @@ class AzureOpenAIAdapter(AgentAdapter):
             AdapterConnectionError: If credential setup fails.
         """
         try:
-            from azure.identity import (
+            from azure.identity import (  # pyrefly: ignore[missing-import]
                 ClientSecretCredential,
                 DefaultAzureCredential,
                 ManagedIdentityCredential,

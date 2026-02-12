@@ -24,7 +24,7 @@ Audit Event Categories:
 import hashlib
 import json
 from collections.abc import Callable
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Any, TypeVar
 
@@ -163,7 +163,10 @@ class AuditLog(Base):
         String(100), nullable=False, default=DEFAULT_TENANT_ID, index=True
     )
     timestamp: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, index=True
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(UTC).replace(tzinfo=None),
+        index=True,
     )
 
     # Event classification
@@ -331,7 +334,7 @@ async def audit_log(
             details={"method": "password"},
         )
     """
-    timestamp = datetime.utcnow()
+    timestamp = datetime.now(UTC).replace(tzinfo=None)
 
     # Extract user info if user object provided
     if user is not None:
@@ -515,7 +518,7 @@ async def apply_retention_policy(
         return 0
 
     deleted_count = 0
-    cutoff_date = datetime.utcnow()
+    cutoff_date = datetime.now(UTC).replace(tzinfo=None)
 
     # Process each category with its specific retention
     for category in AuditCategory:
@@ -797,7 +800,7 @@ async def get_audit_statistics(
     Returns:
         AuditStatistics with aggregated data.
     """
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=days)
 
     # Total entries
     total_stmt = select(AuditLog).where(AuditLog.tenant_id == tenant_id)
@@ -850,8 +853,8 @@ async def get_audit_statistics(
     # Simple daily aggregation (last 30 days)
     entries_by_day: list[dict[str, Any]] = []
     for i in range(days):
-        day_start = datetime.utcnow().replace(
-            hour=0, minute=0, second=0, microsecond=0
+        day_start = datetime.now(UTC).replace(
+            hour=0, minute=0, second=0, microsecond=0, tzinfo=None
         ) - timedelta(days=i)
         day_end = day_start + timedelta(days=1)
 

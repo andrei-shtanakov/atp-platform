@@ -247,7 +247,7 @@ class ParallelExecutor:
         Returns:
             Tuple of (first result, remaining tasks).
         """
-        wrapped = [asyncio.create_task(t) for t in tasks]
+        wrapped = [asyncio.ensure_future(t) for t in tasks]
         done, pending = await asyncio.wait(wrapped, return_when=asyncio.FIRST_COMPLETED)
 
         first = done.pop()
@@ -381,7 +381,7 @@ async def retry_async[T](
     raise last_exception  # type: ignore[misc]
 
 
-class AsyncPool:
+class AsyncPool[T]:
     """
     Pool of reusable async resources with automatic cleanup.
 

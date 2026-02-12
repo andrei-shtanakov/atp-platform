@@ -298,10 +298,11 @@ class MemoryTracker:
                 bytes_freed=max(0, self._last_snapshot.current_bytes - current),
                 net_change_bytes=current - self._last_snapshot.current_bytes,
                 peak_during=max(peak, self._last_snapshot.peak_bytes),
-                gc_collections=tuple(
-                    a - b
-                    for a, b in zip(snapshot.gc_counts, self._last_snapshot.gc_counts)
-                ),  # type: ignore[assignment]
+                gc_collections=(
+                    snapshot.gc_counts[0] - self._last_snapshot.gc_counts[0],
+                    snapshot.gc_counts[1] - self._last_snapshot.gc_counts[1],
+                    snapshot.gc_counts[2] - self._last_snapshot.gc_counts[2],
+                ),
             )
             self._diffs.append(diff)
 

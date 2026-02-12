@@ -9,8 +9,9 @@
 
 import logging
 import warnings
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -109,7 +110,7 @@ router = APIRouter()
 # ==================== Session Dependency ====================
 
 
-async def get_session() -> AsyncSession:  # pragma: no cover
+async def get_session() -> AsyncGenerator[AsyncSession, None]:  # pragma: no cover
     """Get database session as a FastAPI dependency."""
     db = get_database()
     async with db.session() as session:
@@ -577,7 +578,7 @@ async def compare_agents(
 ) -> AgentComparisonResponse:
     """Compare multiple agents on a suite."""
     agent_metrics: list[AgentComparisonMetrics] = []
-    test_metrics_map: dict[str, dict[str, AgentComparisonMetrics]] = {}
+    test_metrics_map: dict[str, dict[str, Any]] = {}
 
     for agent_name in agents:
         # Get agent's executions
@@ -654,7 +655,7 @@ async def compare_agents(
     # Build test comparison metrics
     test_comparisons: list[TestComparisonMetrics] = []
     for test_id, agent_data in test_metrics_map.items():
-        test_name = agent_data.pop("_name", test_id)
+        test_name = str(agent_data.pop("_name", test_id))
         metrics_by_agent: dict[str, AgentComparisonMetrics] = {}
 
         for agent_name, data in agent_data.items():
@@ -2050,7 +2051,7 @@ async def list_templates(
         constraints = ConstraintsCreate(
             max_steps=template.default_constraints.max_steps,
             max_tokens=template.default_constraints.max_tokens,
-            timeout_seconds=template.default_constraints.timeout_seconds,
+            timeout_seconds=template.default_constraints.timeout_seconds or 300,
             allowed_tools=template.default_constraints.allowed_tools,
             budget_usd=template.default_constraints.budget_usd,
         )

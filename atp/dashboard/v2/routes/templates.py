@@ -69,7 +69,7 @@ async def list_templates(
         constraints = ConstraintsCreate(
             max_steps=template.default_constraints.max_steps,
             max_tokens=template.default_constraints.max_tokens,
-            timeout_seconds=template.default_constraints.timeout_seconds,
+            timeout_seconds=template.default_constraints.timeout_seconds or 300,
             allowed_tools=template.default_constraints.allowed_tools,
             budget_usd=template.default_constraints.budget_usd,
         )

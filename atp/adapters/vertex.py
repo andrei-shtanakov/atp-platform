@@ -232,7 +232,7 @@ class VertexAdapter(AgentAdapter):
             AdapterError: If google-cloud-aiplatform is not installed.
         """
         try:
-            import vertexai
+            import vertexai  # pyrefly: ignore[missing-import]
 
             return vertexai
         except ImportError as e:
@@ -262,15 +262,19 @@ class VertexAdapter(AgentAdapter):
 
             # Handle credentials
             if self._config.credentials_path:
-                from google.oauth2 import service_account
+                from google.oauth2 import (  # pyrefly: ignore[missing-import]
+                    service_account,
+                )
 
                 credentials = service_account.Credentials.from_service_account_file(
                     self._config.credentials_path
                 )
                 init_kwargs["credentials"] = credentials
             elif self._config.service_account_email:
-                import google.auth
-                from google.auth import impersonated_credentials
+                import google.auth  # pyrefly: ignore[missing-import]
+                from google.auth import (  # pyrefly: ignore[missing-import]
+                    impersonated_credentials,
+                )
 
                 source_credentials, _ = google.auth.default()
                 credentials = impersonated_credentials.Credentials(
@@ -306,7 +310,7 @@ class VertexAdapter(AgentAdapter):
         self._initialize_vertexai()
 
         try:
-            from vertexai.generative_models import (
+            from vertexai.generative_models import (  # pyrefly: ignore[missing-import]
                 GenerativeModel,
                 SafetySetting,
             )
@@ -333,7 +337,10 @@ class VertexAdapter(AgentAdapter):
                 model_kwargs["safety_settings"] = safety_settings
             elif self._config.block_threshold:
                 # Apply default threshold to all categories
-                from vertexai.generative_models import HarmBlockThreshold, HarmCategory
+                from vertexai.generative_models import (  # pyrefly: ignore[missing-import]  # noqa: E501
+                    HarmBlockThreshold,
+                    HarmCategory,
+                )
 
                 threshold = getattr(
                     HarmBlockThreshold, self._config.block_threshold, None
@@ -375,7 +382,10 @@ class VertexAdapter(AgentAdapter):
         Returns:
             List of Tool objects.
         """
-        from vertexai.generative_models import FunctionDeclaration, Tool
+        from vertexai.generative_models import (  # pyrefly: ignore[missing-import]
+            FunctionDeclaration,
+            Tool,
+        )
 
         function_declarations = []
 

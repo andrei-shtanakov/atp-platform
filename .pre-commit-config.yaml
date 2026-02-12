@@ -22,7 +22,7 @@ repos:
     hooks:
       - id: pyrefly
         name: pyrefly type check
-        entry: bash -c 'uv run pyrefly check || exit 0'
+        entry: bash -c 'uv run pyrefly check'
         language: system
         types: [python]
         pass_filenames: false

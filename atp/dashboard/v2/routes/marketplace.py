@@ -41,7 +41,7 @@ from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import desc, func, or_, select
+from sqlalchemy import desc, func, or_, select, update
 from sqlalchemy.orm import selectinload
 
 from atp.dashboard.models import (
@@ -278,7 +278,7 @@ async def get_marketplace_stats(
     categories = [
         MarketplaceCategoryStats(
             category=row.category,
-            count=row.count,
+            count=row.count,  # pyrefly: ignore[bad-argument-type]
             total_downloads=row.downloads or 0,
             average_rating=row.avg_rating,
         )
@@ -543,7 +543,9 @@ async def list_suite_reviews(
         .group_by(MarketplaceSuiteReview.rating)
     )
     dist_result = await session.execute(dist_stmt)
-    rating_distribution = {row.rating: row.count for row in dist_result}
+    rating_distribution = {  # pyrefly: ignore[no-matching-overload]
+        row.rating: row.count for row in dist_result
+    }
 
     # Get reviews
     stmt = (
@@ -574,7 +576,7 @@ async def list_suite_reviews(
         limit=limit,
         offset=offset,
         average_rating=suite.average_rating,
-        rating_distribution=rating_distribution,
+        rating_distribution=rating_distribution,  # pyrefly: ignore[bad-argument-type]
     )
 
 
@@ -934,7 +936,7 @@ async def create_version(
 
     # Unmark current latest
     await session.execute(
-        MarketplaceSuiteVersion.__table__.update()
+        update(MarketplaceSuiteVersion)
         .where(MarketplaceSuiteVersion.marketplace_suite_id == suite.id)
         .values(is_latest=False)
     )

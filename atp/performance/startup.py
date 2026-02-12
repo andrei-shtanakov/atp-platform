@@ -257,7 +257,7 @@ class ImportAnalyzer:
 
             return result
 
-        builtins.__import__ = timed_import
+        builtins.__import__ = timed_import  # pyrefly: ignore[bad-assignment]
 
     def stop(self) -> list[ImportTiming]:
         """

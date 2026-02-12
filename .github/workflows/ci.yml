@@ -40,8 +40,7 @@ jobs:
 
       - name: Run pyrefly type check
         run: |
-          uv run pyrefly check || echo "Pyrefly not configured yet"
-        continue-on-error: true
+          uv run pyrefly check
 
       - name: Run tests with coverage
         run: |

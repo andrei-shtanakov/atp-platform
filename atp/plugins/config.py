@@ -219,7 +219,8 @@ class PluginConfig(BaseModel):
         for field_name, field_info in cls.model_fields.items():
             # Check for default_factory first (returns PydanticUndefined for default)
             if field_info.default_factory is not None:
-                defaults[field_name] = field_info.default_factory()
+                factory = field_info.default_factory
+                defaults[field_name] = factory()  # pyrefly: ignore[bad-argument-count]
             elif field_info.default is not PydanticUndefined:
                 defaults[field_name] = field_info.default
         return defaults

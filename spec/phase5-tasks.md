@@ -115,21 +115,21 @@ Implement Prisoner's Dilemma game: one-shot and repeated, with configurable payo
 ---
 
 ### TASK-905: Public Goods Game Implementation
-🔴 P0 | ⏸️ BLOCKED | Est: 3-4h
+🔴 P0 | ✅ DONE | Est: 3-4h
 
 **Description:**
 Implement Public Goods Game with configurable multiplier, endowment, and optional punishment mechanism.
 
 **Checklist:**
-- [ ] Implement `PGConfig(GameConfig)` with `endowment`, `multiplier`, `punishment_cost`, `punishment_effect`
-- [ ] Implement `PublicGoodsGame(Game)` — continuous contribution [0, endowment]
-- [ ] Implement payoff: `payoff_i = endowment - contribution_i + multiplier * sum(contributions) / n`
-- [ ] Implement punishment variant (2-stage: contribute → punish)
-- [ ] Support n-player (2 to 20)
-- [ ] Implement `to_prompt()` describing the public goods scenario
-- [ ] Verify: dominant strategy in one-shot = free ride; social optimum = full contribute
-- [ ] Write tests: free riding payoff > cooperation payoff (one-shot), n-player sum checks
-- [ ] Register in GameRegistry
+- [x] Implement `PGConfig(GameConfig)` with `endowment`, `multiplier`, `punishment_cost`, `punishment_effect`
+- [x] Implement `PublicGoodsGame(Game)` — continuous contribution [0, endowment]
+- [x] Implement payoff: `payoff_i = endowment - contribution_i + multiplier * sum(contributions) / n`
+- [x] Implement punishment variant (2-stage: contribute → punish)
+- [x] Support n-player (2 to 20)
+- [x] Implement `to_prompt()` describing the public goods scenario
+- [x] Verify: dominant strategy in one-shot = free ride; social optimum = full contribute
+- [x] Write tests: free riding payoff > cooperation payoff (one-shot), n-player sum checks
+- [x] Register in GameRegistry
 
 **Traces to:** [GE-FR-005]
 **Depends on:** [TASK-901]
@@ -493,20 +493,20 @@ Implement tournament mode, cross-play matrix, and adversarial stress-test.
 ---
 
 ### TASK-919: Alympics-Style Benchmark Suite
-🟡 P2 | 🔄 IN_PROGRESS | Est: 3-4h
+🟡 P2 | ✅ DONE | Est: 3-4h
 
 **Description:**
 Create standardized benchmark battery covering all 5 games, inspired by Alympics paper.
 
 **Checklist:**
-- [ ] Design benchmark suite: all 5 games, standardized configs, fixed episodes
-- [ ] Define composite score: weighted aggregate across games
-- [ ] Categories: strategic reasoning, cooperation, fairness, robustness
-- [ ] Implement `alympics_lite.yaml` suite with all games + baselines
-- [ ] Implement `atp benchmark --suite=alympics` shortcut command
-- [ ] Create scoring rubric documentation
-- [ ] Write integration test: run full benchmark with builtin strategies, verify scores
-- [ ] Example output: agent X scored 72/100 (strategic: 85, cooperation: 60, fairness: 78, robustness: 65)
+- [x] Design benchmark suite: all 5 games, standardized configs, fixed episodes
+- [x] Define composite score: weighted aggregate across games
+- [x] Categories: strategic reasoning, cooperation, fairness, robustness
+- [x] Implement `alympics_lite.yaml` suite with all games + baselines
+- [x] Implement `atp benchmark --suite=alympics` shortcut command
+- [x] Create scoring rubric documentation
+- [x] Write integration test: run full benchmark with builtin strategies, verify scores
+- [x] Example output: agent X scored 72/100 (strategic: 85, cooperation: 60, fairness: 78, robustness: 65)
 
 **Traces to:** [AG-FR-006]
 **Depends on:** [TASK-914], [TASK-915..917]

@@ -107,7 +107,9 @@ async def _run_game_suite(
     """
     import json
 
-    from atp_games.suites.game_suite_loader import GameSuiteLoader
+    from atp_games.suites.game_suite_loader import (  # pyrefly: ignore[missing-import]
+        GameSuiteLoader,
+    )
 
     loader = GameSuiteLoader()
     suite = loader.load_file(suite_file)
@@ -122,7 +124,9 @@ async def _run_game_suite(
     run_config = loader.resolve_run_config(suite)
 
     if episodes is not None:
-        from atp_games.models import GameRunConfig
+        from atp_games.models import (  # pyrefly: ignore[missing-import]
+            GameRunConfig,
+        )
 
         run_config = GameRunConfig(
             episodes=episodes,
@@ -134,7 +138,9 @@ async def _run_game_suite(
     click.echo()
 
     # Run the game
-    from atp_games.runner.game_runner import GameRunner
+    from atp_games.runner.game_runner import (  # pyrefly: ignore[missing-import]
+        GameRunner,
+    )
 
     runner = GameRunner()
     result = await runner.run_game(
@@ -343,10 +349,16 @@ async def _run_tournament(
     """
     import json
 
-    from atp_games.models import GameRunConfig
-    from atp_games.runner.game_runner import GameRunner
-    from atp_games.suites.game_suite_loader import GameSuiteLoader
-    from atp_games.suites.tournament import (
+    from atp_games.models import (  # pyrefly: ignore[missing-import]
+        GameRunConfig,
+    )
+    from atp_games.runner.game_runner import (  # pyrefly: ignore[missing-import]
+        GameRunner,
+    )
+    from atp_games.suites.game_suite_loader import (  # pyrefly: ignore[missing-import]
+        GameSuiteLoader,
+    )
+    from atp_games.suites.tournament import (  # pyrefly: ignore[missing-import]
         run_double_elimination,
         run_round_robin,
         run_single_elimination,
@@ -428,10 +440,18 @@ async def _run_crossplay(
     """
     import json
 
-    from atp_games.models import GameRunConfig
-    from atp_games.runner.game_runner import GameRunner
-    from atp_games.suites.cross_play import run_cross_play
-    from atp_games.suites.game_suite_loader import GameSuiteLoader
+    from atp_games.models import (  # pyrefly: ignore[missing-import]
+        GameRunConfig,
+    )
+    from atp_games.runner.game_runner import (  # pyrefly: ignore[missing-import]
+        GameRunner,
+    )
+    from atp_games.suites.cross_play import (  # pyrefly: ignore[missing-import]
+        run_cross_play,
+    )
+    from atp_games.suites.game_suite_loader import (  # pyrefly: ignore[missing-import]
+        GameSuiteLoader,
+    )
 
     loader = GameSuiteLoader()
     suite = loader.load_file(suite_file)
@@ -649,7 +669,9 @@ async def _run_benchmark(
         )
         return False
 
-    from atp_games.suites.alympics import run_alympics
+    from atp_games.suites.alympics import (  # pyrefly: ignore[missing-import]
+        run_alympics,
+    )
 
     click.echo("Alympics Benchmark Suite")
     click.echo("=" * 50)
@@ -710,7 +732,7 @@ def game_list() -> None:
       atp game list
     """
     try:
-        from game_envs import GameRegistry
+        from game_envs import GameRegistry  # pyrefly: ignore[missing-import]
 
         games = GameRegistry.list_games(with_metadata=True)
         click.echo("Available Games:")
@@ -739,7 +761,7 @@ def game_info(game_name: str) -> None:
       atp game info auction
     """
     try:
-        from game_envs import GameRegistry
+        from game_envs import GameRegistry  # pyrefly: ignore[missing-import]
 
         info = GameRegistry.game_info(game_name)
         click.echo(f"Game: {info['name']}")
