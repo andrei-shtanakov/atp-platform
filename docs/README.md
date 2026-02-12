@@ -149,11 +149,11 @@ Complete reference for ATP features:
 
 8. **[Adapter Configuration](reference/adapters.md)**
    - HTTP adapter
-   - Docker adapter
+   - Container adapter
    - CLI adapter
    - LangGraph adapter
    - CrewAI adapter
-   - Custom adapters
+   - AutoGen, MCP, Bedrock, Vertex, Azure OpenAI adapters
 
 9. **[Troubleshooting Guide](reference/troubleshooting.md)**
    - Common errors
@@ -494,17 +494,15 @@ uv run atp test --agent=my-agent --runs=5 suite.yaml
 uv run atp test --agent=my-agent --tags=smoke suite.yaml
 uv run atp test --agent=my-agent --parallel=4 suite.yaml
 
-# Output formats
+# Output formats (console, json, junit)
 uv run atp test --agent=my-agent --output=json --output-file=results.json suite.yaml
-uv run atp test --agent=my-agent --output=html --output-file=report.html suite.yaml
 uv run atp test --agent=my-agent --output=junit --output-file=results.xml suite.yaml
 
 # Validate test definitions
-uv run atp validate suite.yaml
+uv run atp validate --suite=suite.yaml
 
 # Baseline management
-uv run atp baseline save --name=v1.0 results.json
-uv run atp baseline compare --baseline=v1.0 results.json
+uv run atp baseline save/compare
 
 # List agents
 uv run atp list-agents
@@ -546,6 +544,8 @@ atp-platform-ru/
 │   └── dashboard/     # Web interface
 ├── tests/             # ATP's own tests (80%+ coverage)
 │   ├── unit/          # Unit tests
+│   ├── integration/   # Integration tests
+│   ├── contract/      # Protocol contract tests
 │   └── e2e/           # End-to-end tests
 └── spec/              # Requirements and tasks
 ```

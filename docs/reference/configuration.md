@@ -428,11 +428,15 @@ agents:
 
 **Valid Values**:
 - `http` - REST API agent
-- `docker` - Containerized agent
+- `container` - Containerized agent
 - `cli` - Command-line agent
 - `langgraph` - LangGraph-based agent
 - `crewai` - CrewAI-based agent
-- `custom` - Custom adapter
+- `autogen` - AutoGen-based agent
+- `mcp` - Model Context Protocol agent
+- `bedrock` - AWS Bedrock agent
+- `vertex` - Google Vertex AI agent
+- `azure_openai` - Azure OpenAI agent
 
 **Example**:
 ```yaml
@@ -742,6 +746,12 @@ Test validation rules.
 - `behavior` - Analyze execution behavior
 - `llm_eval` - LLM-based evaluation
 - `code_execution` - Execute and validate code
+- `security` - Check for security vulnerabilities
+- `file_exists` - Check file exists in workspace
+- `file_not_exists` - Check file does not exist in workspace
+- `file_contains` - Check file content matches pattern
+- `dir_exists` - Check directory exists in workspace
+- `file_count` - Check number of files in directory
 
 **Example**:
 ```yaml

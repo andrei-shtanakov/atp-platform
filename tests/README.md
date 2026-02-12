@@ -8,9 +8,19 @@ This directory contains the test suite for the ATP (Agent Test Platform) project
 tests/
 ├── conftest.py           # Shared pytest fixtures
 ├── fixtures/             # Test data and fixtures
-│   └── test_suites/     # Sample YAML test suite files
-└── unit/                 # Unit tests
-    └── loader/          # Tests for loader module
+│   ├── artifacts/       # Artifact test data
+│   ├── comparison/      # Comparison test data
+│   ├── mock_tools/      # Mock tool definitions
+│   ├── protocol/        # Protocol test data
+│   ├── test_filesystem/ # Filesystem evaluator fixtures
+│   ├── test_site/       # Test e-commerce site (port 9876)
+│   ├── test_suites/     # Sample YAML test suite files
+│   └── traces/          # Event trace samples
+├── unit/                 # Unit tests (~70%)
+│   └── loader/          # Tests for loader module
+├── integration/          # Integration tests (~20%)
+├── contract/             # Protocol contract tests
+└── e2e/                  # End-to-end tests (~10%)
 ```
 
 ## Running Tests

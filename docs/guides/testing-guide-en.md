@@ -658,7 +658,7 @@ jobs:
 test:
   image: python:3.12
   script:
-    - pip install uv
+    - curl -LsSf https://astral.sh/uv/install.sh | sh
     - uv run atp test tests/suite.yaml \
         --adapter=cli \
         --adapter-config='command=python' \

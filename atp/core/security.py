@@ -16,7 +16,7 @@ import os
 import re
 import socket
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -244,7 +244,7 @@ SAFE_COMMAND_BINARIES: set[str] = {
 }
 
 
-class SecurityEventType(str, Enum):
+class SecurityEventType(StrEnum):
     """Types of security audit events."""
 
     VALIDATION_FAILURE = "validation_failure"

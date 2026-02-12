@@ -564,8 +564,8 @@ jobs:
 
       - name: Install ATP
         run: |
-          pip install uv
-          cd atp-platform-ru
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          cd atp-platform
           uv sync
 
       - name: Run Agent Server
@@ -774,7 +774,7 @@ After successful migration:
 
 - **Documentation**: [docs/](.)
 - **Examples**: [examples/](../../examples/)
-- **Issues**: [GitHub Issues](https://github.com/yourusername/atp-platform-ru/issues)
+- **Issues**: [GitHub Issues](https://github.com/yourusername/atp-platform/issues)
 
 ## See Also
 

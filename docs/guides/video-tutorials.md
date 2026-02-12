@@ -322,7 +322,7 @@ jobs:
 
       - name: Install ATP
         run: |
-          pip install uv
+          curl -LsSf https://astral.sh/uv/install.sh | sh
           uv sync
 
       - name: Run Smoke Tests
@@ -661,7 +661,7 @@ After watching tutorials, users should have:
 - **Documentation Questions**: See [docs/](.)
 - **Code Examples**: See [examples/](../../examples/)
 - **Contribution Guide**: See [CONTRIBUTING.md](../../CONTRIBUTING.md)
-- **Issues/Suggestions**: [GitHub Issues](https://github.com/yourusername/atp-platform-ru/issues)
+- **Issues/Suggestions**: [GitHub Issues](https://github.com/yourusername/atp-platform/issues)
 
 ---
 

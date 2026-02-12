@@ -656,7 +656,7 @@ class SemanticEvaluator:
             except ImportError:
                 raise ImportError(
                     "openai package required for semantic evaluation. "
-                    "Install with: pip install openai"
+                    "Install with: uv add openai"
                 )
         return self._client
 
@@ -1482,7 +1482,7 @@ uv run twine check dist/*
 uv run twine upload --repository testpypi dist/*
 
 # Install from TestPyPI to verify
-pip install --index-url https://test.pypi.org/simple/ my-atp-plugin
+uv pip install --index-url https://test.pypi.org/simple/ my-atp-plugin
 
 # Upload to PyPI
 uv run twine upload dist/*
@@ -1515,8 +1515,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install build
+          python -m pip install --upgrade pip build
 
       - name: Build package
         run: python -m build

@@ -284,9 +284,10 @@ validate_url("https://api.example.com/endpoint")
 ### 7.3 Out of Scope
 
 - Multi-tenant isolation (ATP is single-user)
-- Authentication/authorization
 - Encrypted storage
 - Network intrusion detection
+
+> **Note**: Authentication/authorization is implemented in the dashboard module with full JWT auth and RBAC support.
 
 ---
 

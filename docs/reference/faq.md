@@ -30,36 +30,34 @@ ATP (Agent Test Platform) is a framework-agnostic platform for testing and evalu
 
 ### What frameworks does ATP support?
 
-ATP is framework-agnostic. Current and planned adapters include:
+ATP is framework-agnostic. Implemented adapters include:
 
-**Current (MVP)**:
-- Test loader only (no runtime execution yet)
-
-**Planned**:
-- HTTP REST API agents
-- Docker containerized agents
-- CLI-based agents
-- LangGraph agents
-- CrewAI agents
-- AutoGen agents
-- Custom adapters
+- **HTTP** - REST API agents
+- **Container** - Containerized agents (Docker)
+- **CLI** - Command-line agents
+- **LangGraph** - LangGraph-based agents
+- **CrewAI** - CrewAI-based agents
+- **AutoGen** - AutoGen-based agents
+- **MCP** - Model Context Protocol agents
+- **Bedrock** - AWS Bedrock agents
+- **Vertex** - Google Vertex AI agents
+- **Azure OpenAI** - Azure OpenAI agents
 
 ---
 
 ### Is ATP production-ready?
 
-**Current Status**: MVP Phase (v0.1.0)
+ATP is actively developed with core features implemented:
 
-**What Works**:
-- ✅ Test suite loading and validation
-- ✅ YAML parsing with variable substitution
-- ✅ Comprehensive data models
-
-**In Development**:
-- 🚧 Runner (test execution)
-- 🚧 Adapters (agent integration)
-- 🚧 Evaluators (result assessment)
-- 🚧 Reporters (output formatting)
+- Test suite loading and validation
+- YAML parsing with variable substitution
+- Comprehensive data models
+- Runner (test execution with parallel support)
+- Adapters (HTTP, Container, CLI, LangGraph, CrewAI, AutoGen, MCP, Bedrock, Vertex, Azure OpenAI)
+- Evaluators (artifact, behavior, LLM-judge, code-exec, security, factuality, style, performance)
+- Reporters (console, JSON, HTML, JUnit)
+- Web dashboard with JWT auth and RBAC
+- Game-theoretic evaluation
 
 See [Roadmap](../07-roadmap.md) for development timeline.
 
@@ -71,8 +69,8 @@ See [Roadmap](../07-roadmap.md) for development timeline.
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/atp-platform-ru.git
-cd atp-platform-ru
+git clone https://github.com/yourusername/atp-platform.git
+cd atp-platform
 
 # Install with uv (recommended)
 uv sync
@@ -305,7 +303,13 @@ defaults:
 
 ### How do I run a test suite?
 
-**Current MVP** (load and inspect only):
+```bash
+uv run atp test suite.yaml
+uv run atp test suite.yaml --agent my-agent
+uv run atp test suite.yaml --tag smoke
+```
+
+Or programmatically:
 ```python
 from atp.loader import TestLoader
 
@@ -314,13 +318,6 @@ suite = loader.load_file("suite.yaml")
 
 print(f"Suite: {suite.test_suite}")
 print(f"Tests: {len(suite.tests)}")
-```
-
-**Planned** (full execution):
-```bash
-atp run suite.yaml
-atp run suite.yaml --agent my-agent
-atp run suite.yaml --tag smoke
 ```
 
 ---
@@ -505,7 +502,7 @@ defaults:
 - type: "llm_eval"
 ```
 
-3. **Parallelize tests** (planned feature)
+3. **Parallelize tests** (implemented)
 
 4. **Use cheaper LLM models for judging**:
 ```yaml
@@ -522,7 +519,7 @@ defaults:
 
 ### Can I create custom evaluators?
 
-**Yes** (planned feature). Implement the `Evaluator` interface:
+**Yes** (implemented). Implement the `Evaluator` interface:
 
 ```python
 from atp.evaluators.base import Evaluator, EvalResult
@@ -686,13 +683,10 @@ See [CI/CD Integration Guide](../guides/best-practices.md#cicd-integration).
 
 ### Can I export results to other tools?
 
-**Planned Features**:
+**Implemented**:
 - JSON export
 - JUnit XML (for CI/CD)
 - HTML reports
-- CSV/Excel export
-
-**Current** (MVP):
 - Programmatic access via Python API
 
 ---
@@ -703,8 +697,8 @@ See [CI/CD Integration Guide](../guides/best-practices.md#cicd-integration).
 
 - **Documentation**: [docs/](.)
 - **Examples**: [examples/](../../examples/)
-- **Issues**: [GitHub Issues](https://github.com/yourusername/atp-platform-ru/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/atp-platform-ru/discussions)
+- **Issues**: [GitHub Issues](https://github.com/yourusername/atp-platform/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/yourusername/atp-platform/discussions)
 
 ---
 
@@ -734,11 +728,13 @@ See [Roadmap](../07-roadmap.md) for:
 - Development timeline
 - Long-term vision
 
-**Next Milestones**:
-- Runner implementation
-- HTTP/Docker adapters
-- Basic evaluators
-- Console reporter
+**Completed Milestones**:
+- Runner with parallel execution
+- All major adapters (HTTP, Container, CLI, LangGraph, CrewAI, AutoGen, MCP, Bedrock, Vertex, Azure OpenAI)
+- Full evaluator suite (artifact, behavior, LLM-judge, code-exec, security, factuality, style, performance)
+- Console, JSON, HTML, JUnit reporters
+- Web dashboard with auth
+- Game-theoretic evaluation
 
 ---
 
@@ -797,7 +793,7 @@ See [Roadmap](../07-roadmap.md) for:
 - Check [Troubleshooting Guide](troubleshooting.md)
 - See [Best Practices](../guides/best-practices.md)
 - Browse [Examples](../../examples/)
-- Open an [Issue](https://github.com/yourusername/atp-platform-ru/issues)
+- Open an [Issue](https://github.com/yourusername/atp-platform/issues)
 
 ---
 

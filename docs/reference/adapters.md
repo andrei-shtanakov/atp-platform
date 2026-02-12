@@ -6,18 +6,20 @@ This document describes how to configure agent adapters in ATP test suites.
 
 Adapters are the bridge between ATP Protocol and your agent implementation. They translate ATP requests into agent-specific formats and normalize responses back to ATP Protocol.
 
-**Current Status**: MVP phase - adapters are defined in test suites but not yet implemented. This document describes the planned configuration format.
-
 ## Adapter Types
 
 ATP supports multiple adapter types:
 
 - **HTTP** - REST API agents
-- **Docker** - Containerized agents
+- **Container** - Containerized agents (Docker)
 - **CLI** - Command-line agents
 - **LangGraph** - LangGraph-based agents
 - **CrewAI** - CrewAI-based agents
-- **Custom** - Custom adapter implementations
+- **AutoGen** - AutoGen-based agents
+- **MCP** - Model Context Protocol agents
+- **Bedrock** - AWS Bedrock agents
+- **Vertex** - Google Vertex AI agents
+- **Azure OpenAI** - Azure OpenAI agents
 
 ## Agent Configuration Structure
 
@@ -134,7 +136,7 @@ The agent should return ATP response format:
 }
 ```
 
-## Docker Adapter
+## Container Adapter
 
 For agents running in Docker containers.
 
@@ -142,8 +144,8 @@ For agents running in Docker containers.
 
 ```yaml
 agents:
-  - name: "docker-agent"
-    type: "docker"
+  - name: "container-agent"
+    type: "container"
     config:
       image: string                 # Required: Docker image name
       tag: string                   # Optional: Image tag (default: latest)
@@ -158,23 +160,23 @@ agents:
 
 ### Examples
 
-#### Basic Docker Agent
+#### Basic Container Agent
 
 ```yaml
 agents:
-  - name: "docker-agent"
-    type: "docker"
+  - name: "container-agent"
+    type: "container"
     config:
       image: "my-agent"
       tag: "latest"
 ```
 
-#### Docker Agent with Environment
+#### Container Agent with Environment
 
 ```yaml
 agents:
   - name: "configured-agent"
-    type: "docker"
+    type: "container"
     config:
       image: "my-agent"
       tag: "v1.2.3"
@@ -187,12 +189,12 @@ agents:
         - "./output:/app/output"
 ```
 
-#### Docker Agent with Resource Limits
+#### Container Agent with Resource Limits
 
 ```yaml
 agents:
   - name: "constrained-agent"
-    type: "docker"
+    type: "container"
     config:
       image: "my-agent"
       memory_limit: "1g"
@@ -398,7 +400,7 @@ agents:
 
   # Development agent
   - name: "dev-agent"
-    type: "docker"
+    type: "container"
     config:
       image: "agent-dev"
       tag: "latest"
@@ -483,7 +485,7 @@ class MyCustomAdapter(AgentAdapter):
 Register custom adapter:
 
 ```python
-from atp.core.registry import adapter_registry
+from atp.adapters.registry import adapter_registry
 from my_package.adapters import MyCustomAdapter
 
 # Register adapter

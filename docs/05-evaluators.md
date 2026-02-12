@@ -551,6 +551,54 @@ The fixture directory is copied into a fresh sandbox workspace. Each test run st
 
 ---
 
+### 6a. Factuality Evaluator
+
+Checks factual accuracy of agent outputs by cross-referencing claims against known data sources and using LLM-based verification. Useful for research tasks where accuracy is critical.
+
+**Configuration Example**:
+
+```yaml
+assertions:
+  - type: factuality
+    config:
+      artifact: "report.md"
+      threshold: 0.8
+      check_claims: true
+```
+
+### 6b. Style Evaluator
+
+Assesses the style and formatting quality of agent outputs, including tone, readability, and adherence to style guidelines.
+
+**Configuration Example**:
+
+```yaml
+assertions:
+  - type: style
+    config:
+      artifact: "report.md"
+      guidelines:
+        - professional_tone
+        - markdown_formatting
+      threshold: 0.7
+```
+
+### 6c. Performance Evaluator
+
+Measures agent execution performance metrics including latency, throughput, and resource utilization.
+
+**Configuration Example**:
+
+```yaml
+assertions:
+  - type: performance
+    config:
+      max_latency_ms: 5000
+      max_memory_mb: 512
+```
+
+---
+
 ## Game-Theoretic Evaluators
 
 Phase 5 adds four evaluators for assessing agents in multi-agent strategic interactions. These evaluators are provided by the `atp-games` plugin and integrate with the standard ATP scoring pipeline.
@@ -615,7 +663,7 @@ asyncio.run(evaluate())
 
 See [examples/games/llm_agent_eval.py](../examples/games/llm_agent_eval.py) for a complete runnable example.
 
-### 6. Payoff Evaluator
+### 7. Payoff Evaluator
 
 Evaluates game outcomes based on payoff metrics.
 
@@ -658,7 +706,7 @@ assertions:
 | TFT vs AlwaysDefect | ~54 | ~159 | No |
 | AlwaysDefect vs AlwaysDefect | ~50 | ~100 | No |
 
-### 7. Exploitability Evaluator
+### 8. Exploitability Evaluator
 
 Measures how exploitable an agent's strategy is by computing the payoff gap between their empirical play and the best response.
 
@@ -701,7 +749,7 @@ assertions:
 | Mixed (0.5, 0.5) | Low | Close to equilibrium |
 | AlwaysCooperate | High | Opponent gains 2 by switching to defect |
 
-### 8. Cooperation Evaluator
+### 9. Cooperation Evaluator
 
 Measures cooperative behavior patterns in games with cooperative/defective action choices (primarily Prisoner's Dilemma).
 
@@ -743,7 +791,7 @@ assertions:
 | Pavlov | Depends on opponent | High | Low | Moderate (+) |
 | GrimTrigger | Depends on opponent | 1.0 | 0.0 | High (+) |
 
-### 9. Equilibrium Evaluator
+### 10. Equilibrium Evaluator
 
 Measures proximity to Nash equilibrium and detects convergence in strategy over time.
 
@@ -849,6 +897,10 @@ See [game-environments README](../game-environments/README.md) for game configs,
 | **LLM Judge** | Semantic | No | High | Evaluate quality, accuracy, completeness |
 | **Code Execution** | Runtime | Yes | Medium | Run tests, lint, type-check code |
 | **Security** | Pattern-based | Yes | Low | Detect PII, secrets, injections, unsafe code |
+| **Filesystem** | Structural | Yes | Low | Check workspace files on disk |
+| **Factuality** | Semantic | No | High | Verify factual accuracy of outputs |
+| **Style** | Semantic | No | Medium | Assess tone, formatting, readability |
+| **Performance** | Metrics | Yes | Low | Measure latency, throughput, resources |
 | **Payoff** | Game-theoretic | Yes | Low | Average payoff, social welfare, Pareto check |
 | **Exploitability** | Game-theoretic | Yes | Medium | Best-response gap, NE proximity |
 | **Cooperation** | Game-theoretic | Yes | Low | Cooperation rate, reciprocity, conditional coop |

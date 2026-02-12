@@ -31,10 +31,18 @@ open htmlcov/index.html
 tests/
 ├── conftest.py           # Shared pytest fixtures
 ├── fixtures/             # Test data and sample files
-│   └── test_suites/     # YAML test suite examples
+│   ├── artifacts/       # Artifact test data
+│   ├── comparison/      # Comparison test data
+│   ├── mock_tools/      # Mock tool definitions
+│   ├── protocol/        # Protocol test data
+│   ├── test_filesystem/ # Filesystem evaluator fixtures
+│   ├── test_site/       # Test e-commerce site (port 9876)
+│   ├── test_suites/     # YAML test suite examples
+│   └── traces/          # Event trace samples
 ├── unit/                 # Unit tests (70% of tests)
 │   └── loader/          # Loader module tests
 ├── integration/          # Integration tests (20% of tests)
+├── contract/             # Protocol contract tests
 └── e2e/                  # End-to-end tests (10% of tests)
 ```
 

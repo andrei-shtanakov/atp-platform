@@ -16,9 +16,6 @@ This guide will help you install and set up the ATP Platform on your system.
   # Install uv (macOS/Linux)
   curl -LsSf https://astral.sh/uv/install.sh | sh
 
-  # Or with pip
-  pip install uv
-
   # Verify installation
   uv --version
   ```
@@ -34,8 +31,8 @@ This guide will help you install and set up the ATP Platform on your system.
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/atp-platform-ru.git
-cd atp-platform-ru
+git clone https://github.com/yourusername/atp-platform.git
+cd atp-platform
 ```
 
 ### 2. Install Dependencies
@@ -228,11 +225,11 @@ rm uv.lock
 
 # Remove project directory
 cd ..
-rm -rf atp-platform-ru
+rm -rf atp-platform
 ```
 
 ## Getting Help
 
 - **Documentation**: [docs/](../)
-- **Issues**: [GitHub Issues](https://github.com/yourusername/atp-platform-ru/issues)
+- **Issues**: [GitHub Issues](https://github.com/yourusername/atp-platform/issues)
 - **Examples**: [examples/](../../examples/)

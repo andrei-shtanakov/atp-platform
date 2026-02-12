@@ -72,6 +72,14 @@ The system works with minimal configuration, reasonable defaults.
 │          │  │Artifact │  │Behavior │  │LLM Judge│  │CodeExec │   │          │
 │          │  │Evaluator│  │Evaluator│  │Evaluator│  │Evaluator│   │          │
 │          │  └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘   │          │
+│          │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐   │          │
+│          │  │Security │  │Factual- │  │Filesys- │  │  Style  │   │          │
+│          │  │Evaluator│  │  ity    │  │  tem    │  │Evaluator│   │          │
+│          │  └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘   │          │
+│          │  ┌─────────┐                                           │          │
+│          │  │Perform- │                                           │          │
+│          │  │  ance   │                                           │          │
+│          │  └────┬────┘                                           │          │
 │          │       └────────────┴────────────┴────────────┘        │          │
 │          │                         │                              │          │
 │          │                         ▼                              │          │
@@ -101,14 +109,34 @@ The system works with minimal configuration, reasonable defaults.
 atp/
 ├── cli/
 │   ├── __init__.py
-│   └── main.py          # All CLI commands (Click-based)
+│   ├── main.py              # Core CLI commands (Click-based)
+│   └── commands/            # Additional CLI commands
+│       ├── __init__.py
+│       ├── benchmark.py     # Benchmark command
+│       ├── budget.py        # Budget command
+│       ├── experiment.py    # Experiment command
+│       ├── game.py          # Game-theoretic evaluation
+│       ├── generate.py      # Test suite generation
+│       ├── init.py          # Project initialization
+│       └── plugins.py       # Plugin management
 ```
 
 **CLI Commands**:
 - `atp test` — run tests with options --agent, --suite, --tags, --runs, --parallel, --output, --fail-fast
+- `atp run` — alias for test
+- `atp list` — list tests in a suite
 - `atp validate` — validate test definitions
 - `atp baseline save/compare` — manage baselines
 - `atp list-agents` — list registered agents
+- `atp dashboard` — start web dashboard
+- `atp tui` — start terminal UI
+- `atp init` — initialize ATP project
+- `atp generate` — generate test suites
+- `atp benchmark` — run benchmarks
+- `atp budget` — budget management
+- `atp experiment` — run experiments
+- `atp plugins` — manage plugins
+- `atp game` — game-theoretic evaluation
 - `atp version` — version
 
 **Interface**:
@@ -276,7 +304,7 @@ atp/
 # protocol.py
 from pydantic import BaseModel
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 class ATPRequest(BaseModel):
     version: str = "1.0"
@@ -285,7 +313,7 @@ class ATPRequest(BaseModel):
     constraints: ConstraintsPayload
     tools_endpoint: str | None = None
 
-class ATPResponseStatus(str, Enum):
+class ResponseStatus(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     TIMEOUT = "timeout"
@@ -293,12 +321,12 @@ class ATPResponseStatus(str, Enum):
 class ATPResponse(BaseModel):
     version: str = "1.0"
     task_id: str
-    status: ATPResponseStatus
+    status: ResponseStatus
     artifacts: list[Artifact]
     metrics: ExecutionMetrics
     error: str | None = None
 
-class ATPEventType(str, Enum):
+class EventType(StrEnum):
     TOOL_CALL = "tool_call"
     LLM_REQUEST = "llm_request"
     REASONING = "reasoning"
@@ -308,7 +336,7 @@ class ATPEvent(BaseModel):
     task_id: str
     timestamp: datetime
     sequence: int
-    event_type: ATPEventType
+    event_type: EventType
     payload: dict
 ```
 
@@ -328,7 +356,14 @@ atp/
 │   ├── cli.py           # CLIAdapter - subprocess management
 │   ├── langgraph.py     # LangGraphAdapter - LangGraph native integration
 │   ├── crewai.py        # CrewAIAdapter - CrewAI framework
-│   └── autogen.py       # AutoGenAdapter - AutoGen legacy support
+│   ├── autogen.py       # AutoGenAdapter - AutoGen legacy support
+│   ├── azure_openai.py  # AzureOpenAIAdapter - Azure OpenAI service
+│   ├── bedrock.py       # BedrockAdapter - AWS Bedrock
+│   ├── vertex.py        # VertexAdapter - Google Vertex AI
+│   └── mcp/             # MCP adapter
+│       ├── __init__.py
+│       ├── adapter.py   # MCPAdapter
+│       └── transport.py # MCP transport layer
 ```
 
 **Base Adapter Interface**:
@@ -444,7 +479,19 @@ atp/
 │   ├── artifact.py      # ArtifactEvaluator - file checks, content, schema
 │   ├── behavior.py      # BehaviorEvaluator - tool usage, steps, errors
 │   ├── llm_judge.py     # LLMJudgeEvaluator - semantic evaluation via Claude
-│   └── code_exec.py     # CodeExecEvaluator - pytest, npm, custom runners
+│   ├── code_exec.py     # CodeExecEvaluator - pytest, npm, custom runners
+│   ├── factuality.py    # FactualityEvaluator - factual accuracy checks
+│   ├── filesystem.py    # FilesystemEvaluator - workspace file checks
+│   ├── performance.py   # PerformanceEvaluator - performance metrics
+│   ├── style.py         # StyleEvaluator - output style assessment
+│   └── security/        # Security evaluator package
+│       ├── __init__.py
+│       ├── base.py      # Base security checker
+│       ├── evaluator.py # SecurityEvaluator
+│       ├── pii.py       # PII detection
+│       ├── injection.py # Prompt injection detection
+│       ├── code.py      # Code safety checks
+│       └── secrets.py   # Secret leak detection
 ```
 
 **Base Evaluator Interface**:
@@ -694,7 +741,8 @@ atp/
 │   ├── console.py         # ConsoleReporter - ANSI colored terminal output
 │   ├── json_reporter.py   # JSONReporter - structured JSON export
 │   ├── html_reporter.py   # HTMLReporter - self-contained HTML with charts
-│   └── junit_reporter.py  # JUnitReporter - JUnit XML for CI/CD
+│   ├── junit_reporter.py  # JUnitReporter - JUnit XML for CI/CD
+│   └── game_reporter.py   # GameReporter - game-theoretic results
 ```
 
 **Console Reporter**:
@@ -780,7 +828,16 @@ atp-platform/
 │   │
 │   ├── cli/
 │   │   ├── __init__.py
-│   │   └── main.py              # All CLI commands (Click-based)
+│   │   ├── main.py              # Core CLI commands (Click-based)
+│   │   └── commands/            # Additional CLI commands
+│   │       ├── __init__.py
+│   │       ├── benchmark.py
+│   │       ├── budget.py
+│   │       ├── experiment.py
+│   │       ├── game.py
+│   │       ├── generate.py
+│   │       ├── init.py
+│   │       └── plugins.py
 │   │
 │   ├── core/
 │   │   ├── __init__.py
@@ -818,7 +875,14 @@ atp-platform/
 │   │   ├── cli.py               # CLIAdapter
 │   │   ├── langgraph.py         # LangGraphAdapter
 │   │   ├── crewai.py            # CrewAIAdapter
-│   │   └── autogen.py           # AutoGenAdapter
+│   │   ├── autogen.py           # AutoGenAdapter
+│   │   ├── azure_openai.py      # AzureOpenAIAdapter
+│   │   ├── bedrock.py           # BedrockAdapter
+│   │   ├── vertex.py            # VertexAdapter
+│   │   └── mcp/                 # MCP adapter
+│   │       ├── __init__.py
+│   │       ├── adapter.py
+│   │       └── transport.py
 │   │
 │   ├── evaluators/
 │   │   ├── __init__.py
@@ -827,7 +891,18 @@ atp-platform/
 │   │   ├── artifact.py          # ArtifactEvaluator
 │   │   ├── behavior.py          # BehaviorEvaluator
 │   │   ├── llm_judge.py         # LLMJudgeEvaluator
-│   │   └── code_exec.py         # CodeExecEvaluator
+│   │   ├── code_exec.py         # CodeExecEvaluator
+│   │   ├── factuality.py        # FactualityEvaluator
+│   │   ├── filesystem.py        # FilesystemEvaluator
+│   │   ├── performance.py       # PerformanceEvaluator
+│   │   ├── style.py             # StyleEvaluator
+│   │   └── security/            # Security evaluator package
+│   │       ├── __init__.py
+│   │       ├── evaluator.py
+│   │       ├── pii.py
+│   │       ├── injection.py
+│   │       ├── code.py
+│   │       └── secrets.py
 │   │
 │   ├── scoring/
 │   │   ├── __init__.py
@@ -854,7 +929,8 @@ atp-platform/
 │   │   ├── console.py           # ConsoleReporter
 │   │   ├── json_reporter.py     # JSONReporter
 │   │   ├── html_reporter.py     # HTMLReporter
-│   │   └── junit_reporter.py    # JUnitReporter
+│   │   ├── junit_reporter.py    # JUnitReporter
+│   │   └── game_reporter.py     # GameReporter
 │   │
 │   ├── streaming/
 │   │   ├── __init__.py
@@ -877,18 +953,27 @@ atp-platform/
 │   │   ├── async_utils.py       # Async optimization
 │   │   └── startup.py           # Startup optimization
 │   │
-│   └── dashboard/
-│       ├── __init__.py
-│       ├── app.py               # FastAPI application
-│       ├── api.py               # REST API endpoints
-│       ├── database.py          # SQLAlchemy setup
-│       ├── storage.py           # Result persistence
-│       ├── models.py            # Domain models
-│       ├── schemas.py           # Pydantic schemas
-│       └── auth.py              # Authentication
+│   ├── dashboard/
+│   │   ├── __init__.py
+│   │   ├── app.py               # FastAPI application
+│   │   ├── api.py               # REST API endpoints
+│   │   ├── database.py          # SQLAlchemy setup
+│   │   ├── storage.py           # Result persistence
+│   │   ├── models.py            # Domain models
+│   │   ├── schemas.py           # Pydantic schemas
+│   │   └── auth.py              # Authentication
+│   │
+│   ├── analytics/               # Cost tracking and analytics
+│   ├── benchmarks/              # Benchmark suites
+│   ├── chaos/                   # Chaos testing
+│   ├── generator/               # Test suite generation
+│   ├── plugins/                 # Plugin ecosystem management
+│   └── tui/                     # Terminal user interface
 │
 ├── tests/
 │   ├── unit/                    # Unit tests (~70%)
+│   ├── integration/             # Integration tests (~20%)
+│   ├── contract/                # Protocol contract tests
 │   ├── e2e/                     # End-to-end tests (~10%)
 │   ├── fixtures/                # Test fixtures
 │   └── conftest.py              # Shared pytest fixtures

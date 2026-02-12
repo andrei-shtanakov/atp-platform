@@ -248,7 +248,7 @@ This document describes the functional and non-functional requirements for Agent
 ### NFR-6: Compatibility
 
 #### NFR-6.1: Python Versions
-- The system MUST support Python 3.10+
+- The system MUST support Python 3.12+
 - Dependencies MUST be compatible with major frameworks
 
 #### NFR-6.2: OS Support
@@ -265,8 +265,8 @@ This document describes the functional and non-functional requirements for Agent
 ## Constraints
 
 ### C-1: Technology Constraints
-- Implementation language: Python 3.10+
-- Packaging: pip + pyproject.toml
+- Implementation language: Python 3.12+
+- Packaging: uv + pyproject.toml
 - Container runtime: Docker (primary)
 
 ### C-2: Integration Constraints

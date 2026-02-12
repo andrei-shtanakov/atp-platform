@@ -9,7 +9,7 @@ Install the optional Bedrock dependencies:
 ```bash
 uv add boto3
 # or install the bedrock optional group
-pip install atp-platform[bedrock]
+uv add atp-platform[bedrock]
 ```
 
 ## Quick Start

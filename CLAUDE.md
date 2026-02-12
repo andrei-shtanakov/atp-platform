@@ -62,9 +62,9 @@ uv run atp version                 # Show version info
 ### Core Components
 
 1. **Protocol** (`atp/protocol/`) - ATP Request/Response/Event models defining the contract
-2. **Adapters** (`atp/adapters/`) - Translate between ATP Protocol and agent types (HTTP, Docker, CLI, LangGraph, CrewAI, AutoGen, MCP, Bedrock, Vertex, Azure OpenAI)
+2. **Adapters** (`atp/adapters/`) - Translate between ATP Protocol and agent types (HTTP, Container, CLI, LangGraph, CrewAI, AutoGen, MCP, Bedrock, Vertex, Azure OpenAI)
 3. **Runner** (`atp/runner/`) - Orchestrates test execution, manages sandboxes
-4. **Evaluators** (`atp/evaluators/`) - Assess agent results (artifact, behavior, LLM-judge, code-exec, security, factuality, style, performance)
+4. **Evaluators** (`atp/evaluators/`) - Assess agent results (artifact, behavior, LLM-judge, code-exec, security, factuality, filesystem, style, performance)
 5. **Reporters** (`atp/reporters/`) - Format output (console, JSON, HTML, JUnit, game)
 
 ### Data Flow
@@ -88,8 +88,8 @@ atp/
 ├── protocol/      # ATP Request/Response/Event models
 ├── loader/        # YAML/JSON test parsing, filtering
 ├── runner/        # Test orchestration, sandbox, progress
-├── adapters/      # Agent adapters (HTTP, Docker, CLI, LangGraph, CrewAI, AutoGen, MCP, Bedrock, Vertex, Azure OpenAI)
-├── evaluators/    # Result evaluation (artifact, behavior, LLM-judge, code-exec, security, factuality, style, performance)
+├── adapters/      # Agent adapters (HTTP, Container, CLI, LangGraph, CrewAI, AutoGen, MCP, Bedrock, Vertex, Azure OpenAI)
+├── evaluators/    # Result evaluation (artifact, behavior, LLM-judge, code-exec, security, factuality, filesystem, style, performance)
 ├── scoring/       # Score aggregation
 ├── statistics/    # Statistical analysis (mean, CI, stability)
 ├── baseline/      # Baseline storage, regression detection (Welch's t-test)

@@ -9,7 +9,7 @@ Install the optional Vertex AI dependencies:
 ```bash
 uv add google-cloud-aiplatform
 # or install the vertex optional group
-pip install atp-platform[vertex]
+uv add atp-platform[vertex]
 ```
 
 ## Quick Start

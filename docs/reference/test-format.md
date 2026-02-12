@@ -117,7 +117,7 @@ defaults:
 
 **Type:** `string`
 **Required:** Yes
-**Values:** `"http"`, `"docker"`, `"cli"`, `"langgraph"`, `"crewai"`, `"custom"`
+**Values:** `"http"`, `"container"`, `"cli"`, `"langgraph"`, `"crewai"`, `"autogen"`, `"mcp"`, `"bedrock"`, `"vertex"`, `"azure_openai"`
 **Description:** Adapter type for the agent.
 
 #### config
@@ -142,12 +142,12 @@ agents:
         Content-Type: "application/json"
 ```
 
-#### Docker Agent
+#### Container Agent
 
 ```yaml
 agents:
-  - name: "docker-agent"
-    type: "docker"
+  - name: "container-agent"
+    type: "container"
     config:
       image: "my-agent:latest"
       environment:
