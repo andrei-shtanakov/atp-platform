@@ -240,7 +240,7 @@ class LangGraphAdapter(AgentAdapter):
                 )
                 try:
                     result = await asyncio.wait_for(
-                        asyncio.get_event_loop().run_in_executor(
+                        asyncio.get_running_loop().run_in_executor(
                             None, lambda: graph.invoke(input_state, config)
                         ),
                         timeout=timeout,
@@ -384,7 +384,7 @@ class LangGraphAdapter(AgentAdapter):
 
             elif hasattr(graph, "stream"):
                 # Sync streaming - wrap in async
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
 
                 def stream_generator():
                     return list(graph.stream(input_state, config))

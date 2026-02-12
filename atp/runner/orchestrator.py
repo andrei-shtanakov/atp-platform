@@ -400,9 +400,7 @@ class TestOrchestrator:
 
             # Set result attributes on span
             set_test_result_attributes(
-                score=result.score
-                if hasattr(result, "score")
-                else (1.0 if result.success else 0.0),
+                score=1.0 if result.success else 0.0,
                 passed=result.success,
                 duration_seconds=result.duration_seconds,
                 error=result.error,

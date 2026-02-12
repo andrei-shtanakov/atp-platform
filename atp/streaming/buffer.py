@@ -1,5 +1,6 @@
 """Event buffering and replay for ATP Protocol streaming."""
 
+from collections import deque
 from collections.abc import AsyncIterator, Iterator
 from datetime import datetime
 from typing import Any
@@ -20,7 +21,7 @@ class EventBuffer:
         Args:
             max_size: Maximum number of events to store (None for unlimited).
         """
-        self._events: list[ATPEvent] = []
+        self._events: deque[ATPEvent] = deque(maxlen=max_size)
         self._response: ATPResponse | None = None
         self._max_size = max_size
 
@@ -30,9 +31,6 @@ class EventBuffer:
         Args:
             event: Event to add.
         """
-        if self._max_size is not None and len(self._events) >= self._max_size:
-            # Remove oldest event when buffer is full
-            self._events.pop(0)
         self._events.append(event)
 
     def set_response(self, response: ATPResponse) -> None:

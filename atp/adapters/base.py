@@ -369,4 +369,4 @@ async def track_response_cost(
             )
         )
     except Exception as e:
-        logger.warning(f"Failed to track response cost: {e}")
+        logger.warning("Failed to track response cost: %s", e)

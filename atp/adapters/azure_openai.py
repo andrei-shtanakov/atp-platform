@@ -1,6 +1,7 @@
 """Azure OpenAI adapter implementation."""
 
 import asyncio
+import json
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -499,8 +500,6 @@ class AzureOpenAIAdapter(AgentAdapter):
             return events, sequence
 
         for tool_call in tool_calls:
-            import json
-
             try:
                 arguments = json.loads(tool_call.function.arguments)
             except (json.JSONDecodeError, AttributeError):
@@ -570,7 +569,7 @@ class AzureOpenAIAdapter(AgentAdapter):
         params = self._build_completion_params(messages)
 
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             response = await asyncio.wait_for(
                 loop.run_in_executor(
                     None,
@@ -810,7 +809,7 @@ class AzureOpenAIAdapter(AgentAdapter):
             sequence += 1
 
             # Create streaming completion
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             stream = await asyncio.wait_for(
                 loop.run_in_executor(
                     None,
@@ -871,8 +870,6 @@ class AzureOpenAIAdapter(AgentAdapter):
                             )
 
             # Process accumulated tool calls
-            import json
-
             for idx in sorted(tool_call_accumulators.keys()):
                 tc_data = tool_call_accumulators[idx]
                 try:

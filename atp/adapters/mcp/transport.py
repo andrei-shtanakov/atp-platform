@@ -5,7 +5,7 @@ import json
 import os
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 import httpx
@@ -18,7 +18,7 @@ from atp.adapters.exceptions import (
 from atp.core.security import filter_environment_variables
 
 
-class TransportState(Enum):
+class TransportState(StrEnum):
     """Transport connection state."""
 
     DISCONNECTED = "disconnected"
@@ -625,13 +625,21 @@ class StdioTransport(MCPTransport):
             )
 
         try:
-            return int(content_length_str)
+            content_length = int(content_length_str)
         except ValueError as e:
             raise AdapterConnectionError(
                 f"Invalid Content-Length: {content_length_str}",
                 adapter_type="mcp",
                 cause=e,
             ) from e
+
+        max_content_length = 50 * 1024 * 1024  # 50MB
+        if content_length > max_content_length:
+            raise AdapterConnectionError(
+                f"Content-Length {content_length} exceeds maximum {max_content_length}",
+                adapter_type="mcp",
+            )
+        return content_length
 
     async def _read_exact(self, num_bytes: int) -> bytes:
         """Read exactly num_bytes from stdout.

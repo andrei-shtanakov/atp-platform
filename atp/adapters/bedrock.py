@@ -547,7 +547,7 @@ class BedrockAdapter(AgentAdapter):
 
         try:
             # Run boto3 call in executor to avoid blocking
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             response = await asyncio.wait_for(
                 loop.run_in_executor(None, lambda: client.invoke_agent(**params)),
                 timeout=self._config.timeout_seconds,
@@ -775,7 +775,7 @@ class BedrockAdapter(AgentAdapter):
             params = self._build_invoke_params(request, session_id)
 
             # Run boto3 call in executor
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             response = await asyncio.wait_for(
                 loop.run_in_executor(None, lambda: client.invoke_agent(**params)),
                 timeout=self._config.timeout_seconds,

@@ -1,14 +1,14 @@
 """Models for mock tool definitions and responses."""
 
 import re
-from datetime import datetime
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
 
-class MatchType(str, Enum):
+class MatchType(StrEnum):
     """Match type for pattern matching."""
 
     EXACT = "exact"
@@ -159,7 +159,8 @@ class ToolCallRecord(BaseModel):
     """Record of a tool call for auditing."""
 
     timestamp: datetime = Field(
-        default_factory=datetime.now, description="Call timestamp"
+        default_factory=lambda: datetime.now(UTC),
+        description="Call timestamp",
     )
     tool: str = Field(..., description="Tool name")
     input: dict[str, Any] | str | None = Field(default=None, description="Tool input")

@@ -2,7 +2,7 @@
 
 import threading
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from atp.mock_tools.models import ToolCallRecord
@@ -41,7 +41,7 @@ class CallRecorder:
             The recorded ToolCallRecord
         """
         record = ToolCallRecord(
-            timestamp=datetime.now(),
+            timestamp=datetime.now(UTC),
             tool=tool,
             input=input_data,
             output=output,

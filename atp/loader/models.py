@@ -1,6 +1,6 @@
 """Data models for test definitions and suites."""
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, model_validator
 from atp.chaos import ChaosConfig, ChaosProfile
 
 
-class MultiAgentMode(str, Enum):
+class MultiAgentMode(StrEnum):
     """Mode for multi-agent test execution."""
 
     COMPARISON = "comparison"
@@ -41,7 +41,7 @@ class CollaborationConfig(BaseModel):
     )
 
 
-class HandoffTrigger(str, Enum):
+class HandoffTrigger(StrEnum):
     """Triggers for when to perform a handoff to the next agent."""
 
     ALWAYS = "always"
@@ -51,7 +51,7 @@ class HandoffTrigger(str, Enum):
     EXPLICIT = "explicit"
 
 
-class ContextAccumulationMode(str, Enum):
+class ContextAccumulationMode(StrEnum):
     """How context is accumulated across handoffs."""
 
     APPEND = "append"

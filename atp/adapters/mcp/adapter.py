@@ -1,5 +1,6 @@
 """MCP (Model Context Protocol) adapter implementation."""
 
+import logging
 import time
 from collections.abc import AsyncIterator
 from typing import Any
@@ -29,6 +30,8 @@ from .transport import (
     StdioTransport,
     StdioTransportConfig,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class MCPTool(BaseModel):
@@ -347,8 +350,7 @@ class MCPAdapter(AgentAdapter):
                         input_schema=tool_data.get("inputSchema", {}),
                     )
         except ValueError:
-            # Server may not support tools/list
-            pass
+            logger.debug("Server does not support tools/list")
 
     async def _discover_resources(self) -> None:
         """Discover available resources from MCP server."""
@@ -370,8 +372,7 @@ class MCPAdapter(AgentAdapter):
                         mime_type=resource_data.get("mimeType"),
                     )
         except ValueError:
-            # Server may not support resources/list
-            pass
+            logger.debug("Server does not support resources/list")
 
     async def _discover_prompts(self) -> None:
         """Discover available prompts from MCP server."""
@@ -391,8 +392,7 @@ class MCPAdapter(AgentAdapter):
                     arguments=prompt_data.get("arguments", []),
                 )
         except ValueError:
-            # Server may not support prompts/list
-            pass
+            logger.debug("Server does not support prompts/list")
 
     def _should_include_tool(self, tool_name: str) -> bool:
         """Check if a tool should be included based on filter."""

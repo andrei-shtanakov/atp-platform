@@ -6,14 +6,14 @@ import sys
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 from typing import TextIO
 
 from atp.runner.models import ProgressEvent, ProgressEventType
 
 
-class ProgressStatus(str, Enum):
+class ProgressStatus(StrEnum):
     """Status of a test in the progress tracker."""
 
     PENDING = "pending"
@@ -41,7 +41,7 @@ class SingleTestProgress:
         """Calculate duration in seconds."""
         if self.start_time is None:
             return None
-        end = self.end_time or datetime.now()
+        end = self.end_time or datetime.now(UTC)
         return (end - self.start_time).total_seconds()
 
     @property
@@ -148,7 +148,7 @@ class ParallelProgressTracker:
     def _handle_suite_started(self, event: ProgressEvent) -> None:
         """Handle suite started event."""
         self._suite_name = event.suite_name
-        self._suite_start = datetime.now()
+        self._suite_start = datetime.now(UTC)
         self._total_tests = event.total_tests or 0
         self._completed_count = 0
 
@@ -197,7 +197,7 @@ class ParallelProgressTracker:
             test_name=event.test_name or event.test_id,
             status=ProgressStatus.RUNNING,
             total_runs=event.total_runs or 1,
-            start_time=datetime.now(),
+            start_time=datetime.now(UTC),
         )
         self._tests[event.test_id] = test_progress
         self._test_order.append(event.test_id)
@@ -210,7 +210,7 @@ class ParallelProgressTracker:
             return
 
         test_progress = self._tests[event.test_id]
-        test_progress.end_time = datetime.now()
+        test_progress.end_time = datetime.now(UTC)
 
         if event.event_type == ProgressEventType.TEST_TIMEOUT:
             test_progress.status = ProgressStatus.TIMEOUT

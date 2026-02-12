@@ -294,7 +294,7 @@ class AutoGenAdapter(AgentAdapter):
                     ) from e
             elif hasattr(user_proxy, "initiate_chat"):
                 # Sync initiate_chat - run in executor
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 try:
                     chat_result = await asyncio.wait_for(
                         loop.run_in_executor(
@@ -517,7 +517,7 @@ class AutoGenAdapter(AgentAdapter):
 
         try:
             # Execute in background
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
 
             async def run_chat():
                 if hasattr(user_proxy, "a_initiate_chat"):

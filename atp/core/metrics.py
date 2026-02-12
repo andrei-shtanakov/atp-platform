@@ -395,7 +395,7 @@ def configure_metrics(
                 registry = _atp_registry
                 logger.info("Multiprocess metrics mode enabled")
             except Exception as e:
-                logger.warning(f"Failed to enable multiprocess mode: {e}")
+                logger.warning("Failed to enable multiprocess mode: %s", e)
 
         # Create metrics instance
         _metrics = ATPMetrics(registry=registry, settings=settings)

@@ -602,7 +602,7 @@ class VertexAdapter(AgentAdapter):
                     )
 
                 # Run generation in executor to avoid blocking
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 response = await asyncio.wait_for(
                     loop.run_in_executor(
                         None,
@@ -615,7 +615,7 @@ class VertexAdapter(AgentAdapter):
                 )
             else:
                 # Single-turn generation
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 response = await asyncio.wait_for(
                     loop.run_in_executor(
                         None,
@@ -844,7 +844,7 @@ class VertexAdapter(AgentAdapter):
             sequence += 1
 
             # Generate content with streaming
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
 
             if self._config.enable_session_persistence:
                 if self._chat_session is None:

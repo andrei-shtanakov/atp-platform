@@ -228,7 +228,7 @@ class CrewAIAdapter(AgentAdapter):
                     ) from e
             elif hasattr(crew, "kickoff"):
                 # Sync kickoff - run in executor
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 try:
                     result = await asyncio.wait_for(
                         loop.run_in_executor(None, lambda: crew.kickoff(inputs=inputs)),
@@ -417,7 +417,7 @@ class CrewAIAdapter(AgentAdapter):
                         adapter_type=self.adapter_type,
                     ) from e
             elif hasattr(crew, "kickoff"):
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 try:
                     result = await asyncio.wait_for(
                         loop.run_in_executor(None, lambda: crew.kickoff(inputs=inputs)),

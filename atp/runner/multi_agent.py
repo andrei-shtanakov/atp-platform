@@ -5,7 +5,7 @@ import copy
 import logging
 from dataclasses import field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from opentelemetry.trace import SpanKind, Status, StatusCode
@@ -19,7 +19,7 @@ from atp.core.telemetry import (
     get_tracer,
     set_span_attributes,
 )
-from atp.loader.models import TestDefinition, TestSuite
+from atp.loader.models import MultiAgentMode, TestDefinition, TestSuite
 from atp.protocol import ATPResponse, ResponseStatus
 from atp.runner.models import (
     ProgressCallback,
@@ -35,15 +35,7 @@ logger = logging.getLogger(__name__)
 tracer = get_tracer(__name__)
 
 
-class MultiAgentMode(str, Enum):
-    """Mode for multi-agent test execution."""
-
-    COMPARISON = "comparison"
-    COLLABORATION = "collaboration"
-    HANDOFF = "handoff"
-
-
-class RankingMetric(str, Enum):
+class RankingMetric(StrEnum):
     """Metrics available for ranking agents."""
 
     QUALITY = "quality"
@@ -91,7 +83,7 @@ class ComparisonMetrics(BaseModel):
     failed_tests: int = Field(default=0, description="Tests failed")
 
 
-class CollaborationMessageType(str, Enum):
+class CollaborationMessageType(StrEnum):
     """Types of messages exchanged between agents in collaboration mode."""
 
     TASK_ASSIGNMENT = "task_assignment"
@@ -240,7 +232,7 @@ class CollaborationMetrics(BaseModel):
 # ===========================================================================
 
 
-class HandoffTrigger(str, Enum):
+class HandoffTrigger(StrEnum):
     """Triggers for when to perform a handoff to the next agent."""
 
     ALWAYS = "always"  # Always handoff after each agent
@@ -250,7 +242,7 @@ class HandoffTrigger(str, Enum):
     EXPLICIT = "explicit"  # Agent must explicitly request handoff
 
 
-class ContextAccumulationMode(str, Enum):
+class ContextAccumulationMode(StrEnum):
     """How context is accumulated across handoffs."""
 
     APPEND = "append"  # Append all previous outputs

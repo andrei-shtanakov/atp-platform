@@ -425,13 +425,13 @@ class ContainerAdapter(AgentAdapter):
             await process.stdin.wait_closed()
 
         sequence = 0
-        start_time = asyncio.get_event_loop().time()
+        start_time = asyncio.get_running_loop().time()
 
         # Read events from stderr
         if process.stderr:
             try:
                 while True:
-                    elapsed = asyncio.get_event_loop().time() - start_time
+                    elapsed = asyncio.get_running_loop().time() - start_time
                     remaining = self._config.timeout_seconds - elapsed
                     if remaining <= 0:
                         process.kill()

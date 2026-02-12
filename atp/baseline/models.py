@@ -1,7 +1,8 @@
 """Data models for baseline storage and comparison."""
 
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -11,7 +12,7 @@ def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
-class ChangeType(str, Enum):
+class ChangeType(StrEnum):
     """Type of change detected when comparing to baseline."""
 
     REGRESSION = "regression"
@@ -49,9 +50,9 @@ class TestBaseline(BaseModel):
     mean_tokens: float | None = Field(None, description="Mean token usage", ge=0.0)
     mean_cost: float | None = Field(None, description="Mean cost in USD", ge=0.0)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
-        result = {
+        result: dict[str, Any] = {
             "test_id": self.test_id,
             "test_name": self.test_name,
             "mean_score": round(self.mean_score, 4),
@@ -87,7 +88,7 @@ class Baseline(BaseModel):
         default_factory=dict, description="Baseline data keyed by test_id"
     )
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
             "version": self.version,

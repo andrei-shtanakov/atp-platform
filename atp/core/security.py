@@ -9,6 +9,7 @@ This module provides security primitives for:
 - Defense-in-depth protections
 """
 
+import errno
 import ipaddress
 import logging
 import os
@@ -522,9 +523,9 @@ def validate_path_within_workspace(
             value=path_str,
         )
 
-    # Check for symlinks pointing outside workspace
-    if resolved.is_symlink():
-        target = resolved.resolve()
+    # Check for symlinks BEFORE resolving (resolved path won't be symlink)
+    if path_obj.is_symlink():
+        target = path_obj.resolve()
         try:
             target.relative_to(workspace)
         except ValueError:
@@ -585,7 +586,7 @@ def open_file_safely(
         fd = os.open(str(path), flags, mode=0o600)
         return os.fdopen(fd, mode.replace("b", "") or "r")
     except OSError as e:
-        if e.errno == 40:  # ELOOP - too many symbolic links
+        if e.errno == errno.ELOOP:
             raise SecurityValidationError(
                 "Cannot open file: symbolic link loop detected",
                 field="path",
@@ -1320,7 +1321,7 @@ def validate_command(
         )
 
     # Block dangerous shell metacharacters if requested
-    dangerous_chars = {";", "&", "|", "`", "$", "(", ")", "{", "}", "<", ">", "\\n"}
+    dangerous_chars = {";", "&", "|", "`", "$", "(", ")", "{", "}", "<", ">", "\n"}
     if block_shell_metacharacters:
         for char in dangerous_chars:
             if char in command:

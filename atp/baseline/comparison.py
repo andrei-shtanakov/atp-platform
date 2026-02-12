@@ -3,6 +3,7 @@
 import math
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -53,9 +54,9 @@ class TestComparison(BaseModel):
         description="Whether change is statistically significant (p < 0.05)",
     )
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
-        result: dict = {
+        result: dict[str, Any] = {
             "test_id": self.test_id,
             "test_name": self.test_name,
             "change_type": self.change_type.value,
@@ -129,7 +130,7 @@ class ComparisonResult(BaseModel):
         """Check if any improvements were detected."""
         return self.improvements > 0
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
             "suite_name": self.suite_name,

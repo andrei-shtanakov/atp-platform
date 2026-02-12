@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from dataclasses import field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -55,7 +55,7 @@ class SandboxConfig(BaseModel):
     )
 
 
-class ProgressEventType(str, Enum):
+class ProgressEventType(StrEnum):
     """Types of progress events."""
 
     TEST_STARTED = "test_started"

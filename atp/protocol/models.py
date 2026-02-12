@@ -1,8 +1,8 @@
 """ATP Protocol data models."""
 
 import re
-from datetime import datetime
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal
 
@@ -22,7 +22,7 @@ MAX_METADATA_KEYS = 50  # Maximum metadata keys
 TASK_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 
-class ResponseStatus(str, Enum):
+class ResponseStatus(StrEnum):
     """Status values for ATP Response."""
 
     COMPLETED = "completed"
@@ -32,7 +32,7 @@ class ResponseStatus(str, Enum):
     PARTIAL = "partial"
 
 
-class EventType(str, Enum):
+class EventType(StrEnum):
     """Event types for ATP Event streaming."""
 
     TOOL_CALL = "tool_call"
@@ -404,7 +404,8 @@ class ATPEvent(BaseModel):
     version: str = Field("1.0", description="Protocol version")
     task_id: str = Field(..., description="Task identifier")
     timestamp: datetime = Field(
-        default_factory=datetime.now, description="Event timestamp"
+        default_factory=lambda: datetime.now(UTC),
+        description="Event timestamp",
     )
     sequence: int = Field(..., description="Monotonic sequence number", ge=0)
     event_type: EventType = Field(..., description="Event type")
