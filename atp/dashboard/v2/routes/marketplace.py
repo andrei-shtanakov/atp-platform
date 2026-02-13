@@ -1400,13 +1400,17 @@ async def uninstall_suite(
 
 
 @router.post("/import/github", response_model=GitHubImportResponse)
-async def import_from_github(
+async def import_from_github_endpoint(
     session: DBSession,
     data: GitHubImportRequest,
     user: RequiredUser,
     _: Annotated[None, Depends(require_permission(Permission.MARKETPLACE_PUBLISH))],
 ) -> GitHubImportResponse:
     """Import a test suite from GitHub.
+
+    Fetches a YAML file from a public or private GitHub repository,
+    validates it as an ATP test suite, and publishes it to the
+    marketplace.
 
     Requires MARKETPLACE_PUBLISH permission.
 
@@ -1418,23 +1422,118 @@ async def import_from_github(
     Returns:
         Import result with the created suite.
     """
-    # Note: In a real implementation, this would:
-    # 1. Parse the GitHub URL to get owner/repo
-    # 2. Use GitHub API to fetch the repository contents
-    # 3. Download and parse the test suite YAML file(s)
-    # 4. Create the marketplace suite and version
+    from atp.dashboard.v2.services.github_import import (
+        import_from_github,
+        parse_github_url,
+    )
 
-    # For now, return a placeholder response
-    # The actual implementation would require:
-    # - GitHub API integration (httpx for async HTTP)
-    # - YAML parsing
-    # - Validation of test suite format
+    # Fetch and validate from GitHub
+    result = await import_from_github(
+        url=data.github_url,
+        branch=data.branch,
+        path=data.path,
+    )
+
+    if not result.success:
+        return GitHubImportResponse(
+            success=False,
+            error=result.error,
+            files_imported=result.files_imported or [],
+        )
+
+    suite_content = result.suite_content
+    if suite_content is None:
+        return GitHubImportResponse(
+            success=False,
+            error="Failed to parse suite content.",
+            files_imported=[],
+        )
+
+    # Derive metadata from suite content or request overrides
+    suite_name = data.name or suite_content.get("test_suite", "imported-suite")
+    slug = data.slug or re.sub(r"[^a-z0-9-]", "-", suite_name.lower()).strip("-")
+    description = data.description or suite_content.get("description", "")
+
+    # Parse GitHub URL for metadata
+    try:
+        parsed_url = parse_github_url(
+            data.github_url, branch=data.branch, path=data.path
+        )
+        github_owner_repo = f"{parsed_url.owner}/{parsed_url.repo}"
+    except ValueError:
+        github_owner_repo = data.github_url
+
+    # Check slug uniqueness
+    existing_stmt = select(MarketplaceSuite).where(MarketplaceSuite.slug == slug)
+    existing_result = await session.execute(existing_stmt)
+    if existing_result.scalar_one_or_none():
+        return GitHubImportResponse(
+            success=False,
+            error=f"A suite with slug '{slug}' already exists. "
+            "Use a different name or slug.",
+            files_imported=result.files_imported or [],
+        )
+
+    # Parse version from suite or default
+    version_str = suite_content.get("version", "1.0.0")
+    major, minor, patch = parse_semver(version_str)
+
+    # Calculate content hash
+    content_json = json.dumps(suite_content, sort_keys=True)
+    content_hash = hashlib.sha256(content_json.encode()).hexdigest()
+
+    # Create marketplace suite
+    suite = MarketplaceSuite(
+        tenant_id=user.tenant_id,
+        name=suite_name,
+        slug=slug,
+        description=description,
+        short_description=(description[:200] if description else ""),
+        publisher_id=user.id,
+        publisher_name=user.username,
+        category=data.category,
+        tags=data.tags,
+        license_type=data.license_type,
+        source_type="github",
+        github_url=data.github_url,
+        github_branch=data.branch,
+        github_path=data.path,
+        latest_version=version_str,
+        published_at=datetime.now(),
+    )
+    session.add(suite)
+    await session.flush()
+
+    # Create initial version
+    test_count = len(suite_content.get("tests", []))
+    version = MarketplaceSuiteVersion(
+        marketplace_suite_id=suite.id,
+        version=version_str,
+        version_major=major,
+        version_minor=minor,
+        version_patch=patch,
+        changelog=f"Imported from GitHub: {github_owner_repo}",
+        suite_content=suite_content,
+        test_count=test_count,
+        file_size_bytes=len(content_json),
+        content_hash=content_hash,
+        is_latest=True,
+        released_at=datetime.now(),
+    )
+    session.add(version)
+    await session.flush()
+
+    suite.latest_version_id = version.id
+    await session.commit()
+
+    # Invalidate cache
+    cache = get_marketplace_cache()
+    cache.invalidate_prefix("stats")
 
     return GitHubImportResponse(
-        success=False,
-        error="GitHub import is not yet implemented. "
-        "Please publish your test suite manually.",
-        files_imported=[],
+        success=True,
+        marketplace_suite=MarketplaceSuiteResponse.model_validate(suite),
+        files_imported=result.files_imported or [],
     )
 
 

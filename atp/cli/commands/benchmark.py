@@ -923,3 +923,78 @@ def list_categories() -> None:
 
     console.print(table)
     sys.exit(EXIT_SUCCESS)
+
+
+@benchmark_command.command(name="load")
+@click.argument(
+    "benchmark_name",
+    type=click.Choice(["humaneval", "swe-bench", "mmlu"]),
+)
+@click.option(
+    "--limit",
+    "-l",
+    type=int,
+    default=None,
+    help="Maximum number of items to include",
+)
+@click.option(
+    "--output",
+    "-o",
+    "output_file",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output YAML file path (default: <name>-suite.yaml)",
+)
+@click.option(
+    "--cache-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Cache directory for downloaded data",
+)
+def load_benchmark(
+    benchmark_name: str,
+    limit: int | None,
+    output_file: Path | None,
+    cache_dir: Path | None,
+) -> None:
+    """Load a standard benchmark and convert to ATP test suite.
+
+    Downloads benchmark data (cached locally) and converts it
+    to an ATP-compatible YAML test suite file.
+
+    BENCHMARK_NAME is one of: humaneval, swe-bench, mmlu.
+
+    Examples:
+
+      # Load HumanEval with a limit of 50 problems
+      atp benchmark load humaneval --limit=50
+
+      # Load SWE-bench to a specific output file
+      atp benchmark load swe-bench --output=suite.yaml
+
+      # Load MMLU with custom cache directory
+      atp benchmark load mmlu --cache-dir=/tmp/benchmarks
+
+    Exit Codes:
+
+      0 - Success
+      2 - Error occurred
+    """
+    from atp.benchmarks.loaders import get_loader
+
+    try:
+        loader = get_loader(benchmark_name)
+        if cache_dir is not None:
+            loader.cache_dir = cache_dir
+
+        if output_file is None:
+            output_file = Path(f"{benchmark_name}-suite.yaml")
+
+        click.echo(f"Loading {loader.name}...")
+        output_path = loader.export_yaml(output=output_file, limit=limit)
+        click.echo(f"Suite written to {output_path}")
+        sys.exit(EXIT_SUCCESS)
+
+    except Exception as e:
+        click.echo(f"Error loading benchmark: {e}", err=True)
+        sys.exit(EXIT_ERROR)

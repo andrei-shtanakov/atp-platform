@@ -13,6 +13,8 @@ import yaml
 from atp import __version__
 from atp.cli.commands.benchmark import benchmark_command
 from atp.cli.commands.budget import budget_command
+from atp.cli.commands.compare import compare_command
+from atp.cli.commands.estimate import estimate_command
 from atp.cli.commands.experiment import experiment_command
 from atp.cli.commands.game import game_command
 from atp.cli.commands.generate import generate_command
@@ -1622,6 +1624,8 @@ def list_tests(suite_file: Path, tags: str | None) -> None:
 # Register commands
 cli.add_command(benchmark_command)
 cli.add_command(budget_command)
+cli.add_command(compare_command)
+cli.add_command(estimate_command)
 cli.add_command(experiment_command)
 cli.add_command(init_command)
 cli.add_command(generate_command)

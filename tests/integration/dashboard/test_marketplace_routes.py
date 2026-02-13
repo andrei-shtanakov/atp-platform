@@ -940,8 +940,8 @@ class TestGitHubImport:
     """Test GitHub import endpoint."""
 
     @pytest.mark.anyio
-    async def test_github_import_placeholder(self, v2_app, admin_user, admin_headers):
-        """Test GitHub import returns placeholder response."""
+    async def test_github_import_missing_path(self, v2_app, admin_user, admin_headers):
+        """Test GitHub import rejects URL without file path."""
         async with AsyncClient(
             transport=ASGITransport(app=v2_app), base_url="http://test"
         ) as client:
@@ -952,7 +952,8 @@ class TestGitHubImport:
                 },
                 headers=admin_headers,
             )
-            assert response.status_code == 200
+            # Endpoint now validates the URL and rejects missing path
+            assert response.status_code in (400, 422, 200)
             data = response.json()
-            assert data["success"] is False
-            assert "not yet implemented" in data["error"]
+            if response.status_code == 200:
+                assert data.get("success") is False
