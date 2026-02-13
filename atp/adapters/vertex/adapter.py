@@ -4,10 +4,14 @@ import asyncio
 import time
 import uuid
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, NoReturn
 
-from pydantic import Field, field_validator, model_validator
-
+from atp.adapters.base import AgentAdapter
+from atp.adapters.exceptions import (
+    AdapterConnectionError,
+    AdapterError,
+    AdapterTimeoutError,
+)
 from atp.protocol import (
     ArtifactStructured,
     ATPEvent,
@@ -18,153 +22,8 @@ from atp.protocol import (
     ResponseStatus,
 )
 
-from .base import AdapterConfig, AgentAdapter
-from .exceptions import (
-    AdapterConnectionError,
-    AdapterError,
-    AdapterTimeoutError,
-)
-
-
-class VertexAdapterConfig(AdapterConfig):
-    """Configuration for Google Vertex AI adapter."""
-
-    # Project and location
-    project_id: str = Field(..., description="Google Cloud project ID")
-    location: str = Field(
-        default="us-central1", description="Google Cloud region for Vertex AI"
-    )
-
-    # Agent identification
-    agent_id: str | None = Field(
-        None,
-        description=(
-            "Vertex AI Agent Builder agent ID. If not provided, uses "
-            "direct Gemini model invocation."
-        ),
-    )
-    agent_display_name: str | None = Field(
-        None, description="Display name for the agent (for Agent Builder)"
-    )
-
-    # Model configuration (for direct model usage)
-    model_name: str = Field(
-        default="gemini-1.5-pro",
-        description="Vertex AI model name for direct invocation",
-    )
-
-    # Authentication
-    credentials_path: str | None = Field(
-        None,
-        description=(
-            "Path to service account JSON key file. "
-            "If not provided, uses Application Default Credentials."
-        ),
-    )
-    service_account_email: str | None = Field(
-        None, description="Service account email for impersonation"
-    )
-
-    # Session management
-    session_id: str | None = Field(
-        None,
-        description=(
-            "Session ID for conversation continuity. "
-            "If not provided, a new session is created per request."
-        ),
-    )
-    enable_session_persistence: bool = Field(
-        default=False,
-        description="Persist session ID across requests for multi-turn conversations",
-    )
-
-    # Generation settings
-    temperature: float = Field(
-        default=0.7, description="Temperature for model generation", ge=0.0, le=2.0
-    )
-    max_output_tokens: int = Field(
-        default=8192, description="Maximum tokens in the response", gt=0
-    )
-    top_p: float = Field(
-        default=0.95, description="Top-p (nucleus) sampling parameter", ge=0.0, le=1.0
-    )
-    top_k: int | None = Field(None, description="Top-k sampling parameter", ge=0)
-
-    # Tool configuration
-    enable_function_calling: bool = Field(
-        default=True, description="Enable function calling capabilities"
-    )
-    tools: list[dict[str, Any]] = Field(
-        default_factory=list,
-        description="List of tool definitions for function calling",
-    )
-
-    # Safety settings
-    safety_settings: list[dict[str, Any]] = Field(
-        default_factory=list,
-        description="Safety settings for content filtering",
-    )
-    block_threshold: str | None = Field(
-        None,
-        description=(
-            "Default block threshold for all categories. "
-            "Options: BLOCK_NONE, BLOCK_LOW_AND_ABOVE, BLOCK_MED_AND_ABOVE, "
-            "BLOCK_HIGH_AND_ABOVE"
-        ),
-    )
-
-    # Grounding
-    enable_grounding: bool = Field(
-        default=False, description="Enable Google Search grounding"
-    )
-    grounding_source: str | None = Field(
-        None,
-        description=(
-            "Grounding source. Options: 'google_search', 'vertex_ai_search', "
-            "or a custom data store ID"
-        ),
-    )
-
-    # System instruction
-    system_instruction: str | None = Field(
-        None, description="System instruction for the model"
-    )
-
-    @field_validator("project_id")
-    @classmethod
-    def validate_project_id(cls, v: str) -> str:
-        """Validate project ID format."""
-        if not v or not v.strip():
-            raise ValueError("project_id cannot be empty")
-        return v.strip()
-
-    @field_validator("location")
-    @classmethod
-    def validate_location(cls, v: str) -> str:
-        """Validate location/region."""
-        v = v.strip().lower()
-        if not v:
-            raise ValueError("location cannot be empty")
-        return v
-
-    @field_validator("model_name")
-    @classmethod
-    def validate_model_name(cls, v: str) -> str:
-        """Validate model name."""
-        if not v or not v.strip():
-            raise ValueError("model_name cannot be empty")
-        return v.strip()
-
-    @model_validator(mode="after")
-    def validate_config(self) -> "VertexAdapterConfig":
-        """Validate configuration combinations."""
-        # Grounding source requires grounding to be enabled
-        if self.grounding_source and not self.enable_grounding:
-            raise ValueError(
-                "enable_grounding must be True when grounding_source is provided"
-            )
-
-        return self
+from .auth import initialize_vertexai
+from .models import VertexAdapterConfig
 
 
 class VertexAdapter(AgentAdapter):
@@ -182,14 +41,14 @@ class VertexAdapter(AgentAdapter):
     - Multi-turn conversations with session persistence
     - Safety settings and content filtering
 
-    Vertex AI requires the google-cloud-aiplatform library to be installed:
+    Vertex AI requires the google-cloud-aiplatform library:
         uv add google-cloud-aiplatform
 
     Google Cloud credentials can be provided via:
-    - Explicit credentials_path to a service account JSON key file
-    - Service account impersonation via service_account_email
-    - Application Default Credentials (gcloud auth application-default login)
-    - GCE/GKE service account when running on Google Cloud infrastructure
+    - Explicit credentials_path to a service account JSON
+    - Service account impersonation
+    - Application Default Credentials
+    - GCE/GKE service account on Google Cloud
     """
 
     def __init__(self, config: VertexAdapterConfig) -> None:
@@ -200,7 +59,7 @@ class VertexAdapter(AgentAdapter):
             config: Vertex AI adapter configuration.
 
         Raises:
-            AdapterError: If google-cloud-aiplatform is not installed.
+            AdapterError: If required libs are not installed.
         """
         super().__init__(config)
         self._config: VertexAdapterConfig = config
@@ -221,27 +80,6 @@ class VertexAdapter(AgentAdapter):
         """Get the current session ID."""
         return self._session_id
 
-    def _get_vertexai_module(self) -> Any:
-        """
-        Import and return the vertexai module.
-
-        Returns:
-            The vertexai module.
-
-        Raises:
-            AdapterError: If google-cloud-aiplatform is not installed.
-        """
-        try:
-            import vertexai  # pyrefly: ignore[missing-import]
-
-            return vertexai
-        except ImportError as e:
-            raise AdapterError(
-                "google-cloud-aiplatform is required for Vertex AI adapter. "
-                "Install it with: uv add google-cloud-aiplatform",
-                adapter_type=self.adapter_type,
-            ) from e
-
     def _initialize_vertexai(self) -> None:
         """
         Initialize Vertex AI SDK.
@@ -252,47 +90,8 @@ class VertexAdapter(AgentAdapter):
         if self._initialized:
             return
 
-        vertexai = self._get_vertexai_module()
-
-        try:
-            init_kwargs: dict[str, Any] = {
-                "project": self._config.project_id,
-                "location": self._config.location,
-            }
-
-            # Handle credentials
-            if self._config.credentials_path:
-                from google.oauth2 import (  # pyrefly: ignore[missing-import]
-                    service_account,
-                )
-
-                credentials = service_account.Credentials.from_service_account_file(
-                    self._config.credentials_path
-                )
-                init_kwargs["credentials"] = credentials
-            elif self._config.service_account_email:
-                import google.auth  # pyrefly: ignore[missing-import]
-                from google.auth import (  # pyrefly: ignore[missing-import]
-                    impersonated_credentials,
-                )
-
-                source_credentials, _ = google.auth.default()
-                credentials = impersonated_credentials.Credentials(
-                    source_credentials=source_credentials,
-                    target_principal=self._config.service_account_email,
-                    target_scopes=["https://www.googleapis.com/auth/cloud-platform"],
-                )
-                init_kwargs["credentials"] = credentials
-
-            vertexai.init(**init_kwargs)
-            self._initialized = True
-
-        except Exception as e:
-            raise AdapterConnectionError(
-                f"Failed to initialize Vertex AI: {e}",
-                adapter_type=self.adapter_type,
-                cause=e,
-            ) from e
+        initialize_vertexai(self._config, self.adapter_type)
+        self._initialized = True
 
     def _get_model(self) -> Any:
         """
@@ -336,20 +135,24 @@ class VertexAdapter(AgentAdapter):
                         )
                 model_kwargs["safety_settings"] = safety_settings
             elif self._config.block_threshold:
-                # Apply default threshold to all categories
                 from vertexai.generative_models import (  # pyrefly: ignore[missing-import]  # noqa: E501
                     HarmBlockThreshold,
                     HarmCategory,
                 )
 
                 threshold = getattr(
-                    HarmBlockThreshold, self._config.block_threshold, None
+                    HarmBlockThreshold,
+                    self._config.block_threshold,
+                    None,
                 )
                 if threshold:
                     safety_settings = []
                     for category in HarmCategory:
                         safety_settings.append(
-                            SafetySetting(category=category, threshold=threshold)
+                            SafetySetting(
+                                category=category,
+                                threshold=threshold,
+                            )
                         )
                     model_kwargs["safety_settings"] = safety_settings
 
@@ -377,7 +180,7 @@ class VertexAdapter(AgentAdapter):
         Build Tool objects from configuration.
 
         Args:
-            tool_configs: List of tool configuration dictionaries.
+            tool_configs: List of tool configuration dicts.
 
         Returns:
             List of Tool objects.
@@ -391,7 +194,6 @@ class VertexAdapter(AgentAdapter):
 
         for tool_config in tool_configs:
             if "function_declarations" in tool_config:
-                # Tool config contains function declarations
                 for func_config in tool_config["function_declarations"]:
                     func_decl = FunctionDeclaration(
                         name=func_config.get("name", ""),
@@ -400,7 +202,6 @@ class VertexAdapter(AgentAdapter):
                     )
                     function_declarations.append(func_decl)
             elif "name" in tool_config:
-                # Direct function declaration
                 func_decl = FunctionDeclaration(
                     name=tool_config.get("name", ""),
                     description=tool_config.get("description", ""),
@@ -409,7 +210,7 @@ class VertexAdapter(AgentAdapter):
                 function_declarations.append(func_decl)
 
         if function_declarations:
-            return [Tool(function_declarations=function_declarations)]
+            return [Tool(function_declarations=(function_declarations))]
 
         return []
 
@@ -426,7 +227,7 @@ class VertexAdapter(AgentAdapter):
         """
         config: dict[str, Any] = {
             "temperature": self._config.temperature,
-            "max_output_tokens": self._config.max_output_tokens,
+            "max_output_tokens": (self._config.max_output_tokens),
             "top_p": self._config.top_p,
         }
 
@@ -450,14 +251,13 @@ class VertexAdapter(AgentAdapter):
             start_sequence: Starting sequence number.
 
         Returns:
-            Tuple of (list of ATPEvent objects, next sequence number).
+            Tuple of (events list, next sequence number).
         """
         events: list[ATPEvent] = []
         sequence = start_sequence
 
         for candidate in response.candidates:
             for part in candidate.content.parts:
-                # Check for function call
                 if hasattr(part, "function_call") and part.function_call:
                     func_call = part.function_call
                     events.append(
@@ -504,7 +304,7 @@ class VertexAdapter(AgentAdapter):
             response: Vertex AI response object.
 
         Returns:
-            Dictionary with input_tokens and output_tokens.
+            Dictionary with token counts.
         """
         metadata: dict[str, int] = {}
 
@@ -562,7 +362,10 @@ class VertexAdapter(AgentAdapter):
                         support_data: dict[str, Any] = {}
                         if hasattr(support, "segment"):
                             support_data["segment"] = str(support.segment)
-                        if hasattr(support, "grounding_chunk_indices"):
+                        if hasattr(
+                            support,
+                            "grounding_chunk_indices",
+                        ):
                             support_data["chunk_indices"] = list(
                                 support.grounding_chunk_indices
                             )
@@ -604,34 +407,31 @@ class VertexAdapter(AgentAdapter):
                 content = f"Context: {request.task.input_data['context']}\n\n{content}"
 
         try:
-            # For session persistence, use chat
             if self._config.enable_session_persistence:
                 if self._chat_session is None:
                     self._chat_session = model.start_chat(
-                        history=self._conversation_history
+                        history=(self._conversation_history)
                     )
 
-                # Run generation in executor to avoid blocking
                 loop = asyncio.get_running_loop()
                 response = await asyncio.wait_for(
                     loop.run_in_executor(
                         None,
                         lambda: self._chat_session.send_message(
                             content,
-                            generation_config=generation_config,
+                            generation_config=(generation_config),
                         ),
                     ),
                     timeout=self._config.timeout_seconds,
                 )
             else:
-                # Single-turn generation
                 loop = asyncio.get_running_loop()
                 response = await asyncio.wait_for(
                     loop.run_in_executor(
                         None,
                         lambda: model.generate_content(
                             content,
-                            generation_config=generation_config,
+                            generation_config=(generation_config),
                         ),
                     ),
                     timeout=self._config.timeout_seconds,
@@ -651,28 +451,42 @@ class VertexAdapter(AgentAdapter):
                 timeout_seconds=self._config.timeout_seconds,
             ) from e
         except Exception as e:
-            error_str = str(e)
-            if "PermissionDenied" in error_str or "403" in error_str:
-                raise AdapterConnectionError(
-                    "Permission denied to Vertex AI. Check Google Cloud credentials "
-                    "and permissions.",
-                    adapter_type=self.adapter_type,
-                    cause=e,
-                ) from e
-            if "NotFound" in error_str or "404" in error_str:
-                raise AdapterError(
-                    f"Model not found: {self._config.model_name}",
-                    adapter_type=self.adapter_type,
-                ) from e
-            if "ResourceExhausted" in error_str or "429" in error_str:
-                raise AdapterError(
-                    "Vertex AI quota exceeded. Consider implementing retry logic.",
-                    adapter_type=self.adapter_type,
-                ) from e
+            self._handle_generation_error(e)
+
+    def _handle_generation_error(self, e: Exception) -> NoReturn:
+        """
+        Handle errors from Vertex AI generation.
+
+        Args:
+            e: The exception to handle.
+
+        Raises:
+            AdapterConnectionError: For permission errors.
+            AdapterError: For other errors.
+        """
+        error_str = str(e)
+        if "PermissionDenied" in error_str or "403" in error_str:
+            raise AdapterConnectionError(
+                "Permission denied to Vertex AI. "
+                "Check Google Cloud credentials "
+                "and permissions.",
+                adapter_type=self.adapter_type,
+                cause=e,
+            ) from e
+        if "NotFound" in error_str or "404" in error_str:
             raise AdapterError(
-                f"Vertex AI generation failed: {e}",
+                f"Model not found: {self._config.model_name}",
                 adapter_type=self.adapter_type,
             ) from e
+        if "ResourceExhausted" in error_str or "429" in error_str:
+            raise AdapterError(
+                "Vertex AI quota exceeded. Consider implementing retry logic.",
+                adapter_type=self.adapter_type,
+            ) from e
+        raise AdapterError(
+            f"Vertex AI generation failed: {e}",
+            adapter_type=self.adapter_type,
+        ) from e
 
     async def execute(self, request: ATPRequest) -> ATPResponse:
         """
@@ -685,7 +499,7 @@ class VertexAdapter(AgentAdapter):
             ATPResponse with execution results.
 
         Raises:
-            AdapterConnectionError: If connection to Google Cloud fails.
+            AdapterConnectionError: If connection fails.
             AdapterTimeoutError: If execution times out.
             AdapterError: If generation fails.
         """
@@ -770,7 +584,11 @@ class VertexAdapter(AgentAdapter):
                 trace_id=session_id,
             )
 
-        except (AdapterTimeoutError, AdapterConnectionError, AdapterError):
+        except (
+            AdapterTimeoutError,
+            AdapterConnectionError,
+            AdapterError,
+        ):
             raise
         except Exception as e:
             wall_time = time.time() - start_time
@@ -788,8 +606,6 @@ class VertexAdapter(AgentAdapter):
         """
         Execute a task with event streaming.
 
-        Yields ATP events during execution and ends with the final response.
-
         Args:
             request: ATP Request with task specification.
 
@@ -798,7 +614,7 @@ class VertexAdapter(AgentAdapter):
             Final ATPResponse when complete.
 
         Raises:
-            AdapterConnectionError: If connection to Google Cloud fails.
+            AdapterConnectionError: If connection fails.
             AdapterTimeoutError: If execution times out.
             AdapterError: If generation fails.
         """
@@ -817,7 +633,7 @@ class VertexAdapter(AgentAdapter):
             sequence=sequence,
             event_type=EventType.PROGRESS,
             payload={
-                "message": "Starting Vertex AI generation",
+                "message": ("Starting Vertex AI generation"),
                 "session_id": session_id,
                 "model": self._config.model_name,
             },
@@ -831,7 +647,6 @@ class VertexAdapter(AgentAdapter):
             # Build the prompt/content
             content = request.task.description
 
-            # Add any additional context from input_data
             if request.task.input_data:
                 if "context" in request.task.input_data:
                     content = (
@@ -859,7 +674,7 @@ class VertexAdapter(AgentAdapter):
             if self._config.enable_session_persistence:
                 if self._chat_session is None:
                     self._chat_session = model.start_chat(
-                        history=self._conversation_history
+                        history=(self._conversation_history)
                     )
 
                 response_stream = await asyncio.wait_for(
@@ -867,7 +682,7 @@ class VertexAdapter(AgentAdapter):
                         None,
                         lambda: self._chat_session.send_message(
                             content,
-                            generation_config=generation_config,
+                            generation_config=(generation_config),
                             stream=True,
                         ),
                     ),
@@ -879,7 +694,7 @@ class VertexAdapter(AgentAdapter):
                         None,
                         lambda: model.generate_content(
                             content,
-                            generation_config=generation_config,
+                            generation_config=(generation_config),
                             stream=True,
                         ),
                     ),
@@ -893,9 +708,7 @@ class VertexAdapter(AgentAdapter):
             grounding: dict[str, Any] | None = None
             tool_events: list[ATPEvent] = []
 
-            # Iterate through streaming chunks
             for chunk in response_stream:
-                # Extract text from chunk
                 chunk_text = ""
                 for candidate in chunk.candidates:
                     for part in candidate.content.parts:
@@ -917,14 +730,16 @@ class VertexAdapter(AgentAdapter):
 
                 # Extract tool calls from chunk
                 chunk_tool_events, sequence = self._extract_tool_calls(
-                    chunk, request.task_id, sequence
+                    chunk,
+                    request.task_id,
+                    sequence,
                 )
                 for tool_event in chunk_tool_events:
                     yield tool_event
                     tool_events.append(tool_event)
                     tool_calls += 1
 
-                # Extract usage metadata (available in final chunk)
+                # Extract usage metadata
                 chunk_usage = self._extract_usage_metadata(chunk)
                 if chunk_usage:
                     usage = chunk_usage
@@ -1002,7 +817,8 @@ class VertexAdapter(AgentAdapter):
                 payload={
                     "error_type": "timeout",
                     "message": (
-                        f"Vertex AI generation timed out after "
+                        "Vertex AI generation timed "
+                        "out after "
                         f"{self._config.timeout_seconds}s"
                     ),
                     "recoverable": False,
@@ -1012,7 +828,8 @@ class VertexAdapter(AgentAdapter):
                 task_id=request.task_id,
                 status=ResponseStatus.TIMEOUT,
                 error=(
-                    f"Vertex AI generation timed out after "
+                    "Vertex AI generation timed "
+                    "out after "
                     f"{self._config.timeout_seconds}s"
                 ),
                 metrics=Metrics(wall_time_seconds=wall_time),
@@ -1042,7 +859,7 @@ class VertexAdapter(AgentAdapter):
         Check if Vertex AI is accessible.
 
         Returns:
-            True if Vertex AI is accessible, False otherwise.
+            True if accessible, False otherwise.
         """
         try:
             self._initialize_vertexai()
@@ -1071,6 +888,6 @@ class VertexAdapter(AgentAdapter):
         Set a specific session ID.
 
         Args:
-            session_id: Session ID to use for subsequent requests.
+            session_id: Session ID to use.
         """
         self._session_id = session_id

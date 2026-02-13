@@ -3,13 +3,39 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from atp.dashboard.api import router
-from atp.dashboard.app import app
+from atp.dashboard.auth import get_current_active_user
+from atp.dashboard.models import User
+from atp.dashboard.v2.factory import create_app
+from atp.dashboard.v2.routes import router
+
+
+def _mock_admin_user() -> User:
+    """Create a mock admin user for testing."""
+    user = User(
+        username="admin_test",
+        email="admin@test.com",
+        hashed_password="fake_hash",
+        is_active=True,
+        is_admin=True,
+    )
+    user.id = 1
+    return user
 
 
 @pytest.fixture
 def client() -> TestClient:
-    """Create a test client using the actual app."""
+    """Create a test client with auth bypass."""
+    app = create_app()
+    app.dependency_overrides[get_current_active_user] = _mock_admin_user
+    client = TestClient(app, raise_server_exceptions=False)
+    yield client  # type: ignore
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def unauth_client() -> TestClient:
+    """Create a test client without auth (for testing 401)."""
+    app = create_app()
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -39,52 +65,50 @@ class TestAuthEndpoints:
         )
         assert response.status_code == 422
 
-    def test_me_endpoint_unauthorized(self, client: TestClient) -> None:
+    def test_me_endpoint_unauthorized(self, unauth_client: TestClient) -> None:
         """Test me endpoint without authentication."""
-        response = client.get("/api/auth/me")
+        response = unauth_client.get("/api/auth/me")
         assert response.status_code == 401
 
 
 class TestAgentEndpoints:
     """Tests for agent endpoints."""
 
-    def test_list_agents_no_auth_allowed(self, client: TestClient) -> None:
-        """Test list agents without authentication (allowed - uses CurrentUser)."""
+    def test_list_agents(self, client: TestClient) -> None:
+        """Test list agents endpoint exists."""
         response = client.get("/api/agents")
-        # CurrentUser allows optional auth, so returns 200 or 500 (db error)
         assert response.status_code in [200, 500]
 
-    def test_create_agent_unauthorized(self, client: TestClient) -> None:
+    def test_create_agent_unauthorized(self, unauth_client: TestClient) -> None:
         """Test create agent without authentication."""
-        response = client.post(
+        response = unauth_client.post(
             "/api/agents",
             json={"name": "test", "agent_type": "http"},
         )
         assert response.status_code == 401
 
-    def test_create_agent_invalid_token(self, client: TestClient) -> None:
+    def test_create_agent_invalid_token(self, unauth_client: TestClient) -> None:
         """Test create agent with invalid token returns 401."""
-        response = client.post(
+        response = unauth_client.post(
             "/api/agents",
             json={"name": "test", "agent_type": "http"},
             headers={"Authorization": "Bearer fake-token"},
         )
         assert response.status_code == 401
 
-    def test_get_agent_no_auth_allowed(self, client: TestClient) -> None:
-        """Test get agent without authentication (allowed - uses CurrentUser)."""
+    def test_get_agent(self, client: TestClient) -> None:
+        """Test get agent endpoint exists."""
         response = client.get("/api/agents/1")
-        # CurrentUser allows optional auth, returns 200/404/500
         assert response.status_code in [200, 404, 500]
 
-    def test_update_agent_unauthorized(self, client: TestClient) -> None:
+    def test_update_agent_unauthorized(self, unauth_client: TestClient) -> None:
         """Test update agent without authentication."""
-        response = client.patch("/api/agents/1", json={})
+        response = unauth_client.patch("/api/agents/1", json={})
         assert response.status_code == 401
 
-    def test_delete_agent_unauthorized(self, client: TestClient) -> None:
+    def test_delete_agent_unauthorized(self, unauth_client: TestClient) -> None:
         """Test delete agent without authentication."""
-        response = client.delete("/api/agents/1")
+        response = unauth_client.delete("/api/agents/1")
         assert response.status_code == 401
 
 
@@ -94,7 +118,6 @@ class TestSuiteEndpoints:
     def test_list_suites_endpoint_exists(self, client: TestClient) -> None:
         """Test list suites endpoint exists."""
         response = client.get("/api/suites")
-        # Should return data or 500 (db error), not 404
         assert response.status_code in [200, 500]
 
     def test_get_suite_invalid_id(self, client: TestClient) -> None:
@@ -128,13 +151,11 @@ class TestTrendEndpoints:
     def test_get_suite_trends_missing_param(self, client: TestClient) -> None:
         """Test get suite trends requires suite_name."""
         response = client.get("/api/trends/suite")
-        # Should fail validation or return 500
         assert response.status_code in [422, 500]
 
     def test_get_test_trends_missing_param(self, client: TestClient) -> None:
         """Test get test trends requires suite_name."""
         response = client.get("/api/trends/test")
-        # Should fail validation or return 500
         assert response.status_code in [422, 500]
 
 
@@ -144,7 +165,6 @@ class TestComparisonEndpoints:
     def test_compare_agents_missing_params(self, client: TestClient) -> None:
         """Test compare agents with missing parameters."""
         response = client.get("/api/compare/agents")
-        # Requires suite_name, should fail validation
         assert response.status_code == 422
 
 
@@ -154,7 +174,6 @@ class TestDashboardEndpoints:
     def test_dashboard_summary_endpoint_exists(self, client: TestClient) -> None:
         """Test dashboard summary endpoint exists."""
         response = client.get("/api/dashboard/summary")
-        # Should return data or 500 (db error), not 404
         assert response.status_code in [200, 500]
 
 
@@ -164,7 +183,6 @@ class TestRouterConfiguration:
     def test_all_routes_exist(self) -> None:
         """Test that all expected routes exist."""
         route_paths = [r.path for r in router.routes if hasattr(r, "path")]
-        # Check some key routes exist
         assert "/auth/token" in route_paths
         assert "/agents" in route_paths
         assert "/suites" in route_paths

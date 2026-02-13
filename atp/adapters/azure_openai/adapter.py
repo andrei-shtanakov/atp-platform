@@ -5,10 +5,14 @@ import json
 import time
 import uuid
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, NoReturn
 
-from pydantic import Field, field_validator, model_validator
-
+from atp.adapters.base import AgentAdapter
+from atp.adapters.exceptions import (
+    AdapterConnectionError,
+    AdapterError,
+    AdapterTimeoutError,
+)
 from atp.protocol import (
     ArtifactStructured,
     ATPEvent,
@@ -19,221 +23,22 @@ from atp.protocol import (
     ResponseStatus,
 )
 
-from .base import AdapterConfig, AgentAdapter
-from .exceptions import (
-    AdapterConnectionError,
-    AdapterError,
-    AdapterTimeoutError,
-)
-
-
-class AzureOpenAIAdapterConfig(AdapterConfig):
-    """Configuration for Azure OpenAI adapter."""
-
-    # Azure OpenAI resource configuration
-    endpoint: str = Field(
-        ...,
-        description=(
-            "Azure OpenAI endpoint URL. "
-            "Format: https://<resource-name>.openai.azure.com/"
-        ),
-    )
-    deployment_name: str = Field(
-        ...,
-        description="Name of the Azure OpenAI model deployment",
-    )
-    api_version: str = Field(
-        default="2024-02-15-preview",
-        description="Azure OpenAI API version",
-    )
-
-    # Authentication - API Key
-    api_key: str | None = Field(
-        None,
-        description=(
-            "Azure OpenAI API key. If not provided, uses Azure AD authentication."
-        ),
-    )
-
-    # Authentication - Azure AD
-    use_azure_ad: bool = Field(
-        default=False,
-        description=(
-            "Use Azure AD (Entra ID) authentication instead of API key. "
-            "Requires azure-identity package."
-        ),
-    )
-    tenant_id: str | None = Field(
-        None,
-        description="Azure AD tenant ID for authentication",
-    )
-    client_id: str | None = Field(
-        None,
-        description="Azure AD client/application ID for service principal auth",
-    )
-    client_secret: str | None = Field(
-        None,
-        description="Azure AD client secret for service principal auth",
-    )
-    managed_identity_client_id: str | None = Field(
-        None,
-        description=(
-            "Client ID for user-assigned managed identity. "
-            "If not provided, uses system-assigned identity."
-        ),
-    )
-
-    # Region/Location
-    azure_region: str | None = Field(
-        None,
-        description=(
-            "Azure region where the resource is deployed "
-            "(e.g., 'eastus', 'westeurope'). "
-            "Informational and does not affect connectivity."
-        ),
-    )
-
-    # Model parameters
-    temperature: float = Field(
-        default=0.7,
-        description="Temperature for model generation",
-        ge=0.0,
-        le=2.0,
-    )
-    max_tokens: int = Field(
-        default=4096,
-        description="Maximum tokens in the response",
-        gt=0,
-    )
-    top_p: float = Field(
-        default=1.0,
-        description="Top-p (nucleus) sampling parameter",
-        ge=0.0,
-        le=1.0,
-    )
-    frequency_penalty: float = Field(
-        default=0.0,
-        description="Frequency penalty for generation",
-        ge=-2.0,
-        le=2.0,
-    )
-    presence_penalty: float = Field(
-        default=0.0,
-        description="Presence penalty for generation",
-        ge=-2.0,
-        le=2.0,
-    )
-
-    # Tool/function calling
-    enable_function_calling: bool = Field(
-        default=True,
-        description="Enable function/tool calling capabilities",
-    )
-    tools: list[dict[str, Any]] = Field(
-        default_factory=list,
-        description="List of tool definitions for function calling",
-    )
-    tool_choice: str | dict[str, Any] | None = Field(
-        None,
-        description=(
-            "Tool choice setting: 'auto', 'none', 'required', "
-            "or specific tool specification"
-        ),
-    )
-
-    # System message
-    system_message: str | None = Field(
-        None,
-        description="System message to set the behavior of the assistant",
-    )
-
-    # Session management
-    session_id: str | None = Field(
-        None,
-        description=(
-            "Session ID for conversation continuity. "
-            "If not provided, a new session is created per request."
-        ),
-    )
-    enable_session_persistence: bool = Field(
-        default=False,
-        description="Persist session across requests for multi-turn conversations",
-    )
-
-    # Response format
-    response_format: dict[str, Any] | None = Field(
-        None,
-        description=(
-            "Response format specification. E.g., {'type': 'json_object'} for JSON mode"
-        ),
-    )
-
-    # Seed for reproducibility
-    seed: int | None = Field(
-        None,
-        description="Seed for deterministic outputs (beta feature)",
-    )
-
-    @field_validator("endpoint")
-    @classmethod
-    def validate_endpoint(cls, v: str) -> str:
-        """Validate and normalize endpoint URL."""
-        v = v.strip()
-        if not v:
-            raise ValueError("endpoint cannot be empty")
-        # Remove trailing slash for consistency
-        return v.rstrip("/")
-
-    @field_validator("deployment_name")
-    @classmethod
-    def validate_deployment_name(cls, v: str) -> str:
-        """Validate deployment name."""
-        if not v or not v.strip():
-            raise ValueError("deployment_name cannot be empty")
-        return v.strip()
-
-    @field_validator("api_version")
-    @classmethod
-    def validate_api_version(cls, v: str) -> str:
-        """Validate API version."""
-        if not v or not v.strip():
-            raise ValueError("api_version cannot be empty")
-        return v.strip()
-
-    @model_validator(mode="after")
-    def validate_authentication(self) -> "AzureOpenAIAdapterConfig":
-        """Validate authentication configuration."""
-        if not self.api_key and not self.use_azure_ad:
-            raise ValueError(
-                "Either api_key or use_azure_ad=True must be provided "
-                "for authentication"
-            )
-
-        # Service principal auth requires all three fields
-        if self.client_id and not self.client_secret:
-            raise ValueError("client_secret is required when client_id is provided")
-        if self.client_secret and not self.client_id:
-            raise ValueError("client_id is required when client_secret is provided")
-        if (self.client_id or self.tenant_id) and not self.use_azure_ad:
-            raise ValueError(
-                "use_azure_ad must be True when using Azure AD credentials"
-            )
-
-        return self
+from .auth import get_openai_client
+from .models import AzureOpenAIAdapterConfig
 
 
 class AzureOpenAIAdapter(AgentAdapter):
     """
     Adapter for Azure OpenAI Service.
 
-    This adapter allows ATP to communicate with OpenAI models deployed
-    on Azure OpenAI Service. It supports:
+    This adapter allows ATP to communicate with OpenAI models
+    deployed on Azure OpenAI Service. It supports:
     - Chat completions with GPT models
     - Function/tool calling
     - Multi-turn conversations with session persistence
     - Both API key and Azure AD authentication
 
-    Azure OpenAI requires the openai library to be installed:
+    Azure OpenAI requires the openai library:
         uv add openai
 
     For Azure AD authentication, also install:
@@ -241,9 +46,9 @@ class AzureOpenAIAdapter(AgentAdapter):
 
     Authentication methods:
     - API Key: Provide api_key in config
-    - Azure AD Default Credential: Set use_azure_ad=True
-    - Service Principal: use_azure_ad=True with tenant_id, client_id, client_secret
-    - Managed Identity: use_azure_ad=True with optional managed_identity_client_id
+    - Azure AD Default Credential: use_azure_ad=True
+    - Service Principal: use_azure_ad=True with credentials
+    - Managed Identity: use_azure_ad=True with client_id
     """
 
     def __init__(self, config: AzureOpenAIAdapterConfig) -> None:
@@ -254,7 +59,7 @@ class AzureOpenAIAdapter(AgentAdapter):
             config: Azure OpenAI adapter configuration.
 
         Raises:
-            AdapterError: If openai library is not installed.
+            AdapterError: If openai library not installed.
         """
         super().__init__(config)
         self._config: AzureOpenAIAdapterConfig = config
@@ -282,112 +87,14 @@ class AzureOpenAIAdapter(AgentAdapter):
 
         Raises:
             AdapterError: If openai is not installed.
-            AdapterConnectionError: If client creation fails.
+            AdapterConnectionError: If creation fails.
         """
         if self._client is not None:
             return self._client
 
-        try:
-            from openai import AzureOpenAI
-        except ImportError as e:
-            raise AdapterError(
-                "openai is required for Azure OpenAI adapter. "
-                "Install it with: uv add openai",
-                adapter_type=self.adapter_type,
-            ) from e
-
-        try:
-            client_kwargs: dict[str, Any] = {
-                "azure_endpoint": self._config.endpoint,
-                "api_version": self._config.api_version,
-            }
-
-            if self._config.api_key:
-                client_kwargs["api_key"] = self._config.api_key
-            elif self._config.use_azure_ad:
-                # Get Azure AD token
-                token_provider = self._get_azure_ad_token_provider()
-                client_kwargs["azure_ad_token_provider"] = token_provider
-            else:
-                raise AdapterError(
-                    "No authentication method configured",
-                    adapter_type=self.adapter_type,
-                )
-
-            self._client = AzureOpenAI(**client_kwargs)
-            self._initialized = True
-            return self._client
-
-        except Exception as e:
-            if "openai" in str(type(e).__module__).lower():
-                raise AdapterConnectionError(
-                    f"Failed to create Azure OpenAI client: {e}",
-                    adapter_type=self.adapter_type,
-                    cause=e,
-                ) from e
-            raise
-
-    def _get_azure_ad_token_provider(self) -> Any:
-        """
-        Get an Azure AD token provider function.
-
-        Returns:
-            Callable that returns Azure AD tokens.
-
-        Raises:
-            AdapterError: If azure-identity is not installed.
-            AdapterConnectionError: If credential setup fails.
-        """
-        try:
-            from azure.identity import (  # pyrefly: ignore[missing-import]
-                ClientSecretCredential,
-                DefaultAzureCredential,
-                ManagedIdentityCredential,
-                get_bearer_token_provider,
-            )
-        except ImportError as e:
-            raise AdapterError(
-                "azure-identity is required for Azure AD authentication. "
-                "Install it with: uv add azure-identity",
-                adapter_type=self.adapter_type,
-            ) from e
-
-        try:
-            # Service principal authentication
-            if self._config.client_id and self._config.client_secret:
-                if not self._config.tenant_id:
-                    raise AdapterError(
-                        "tenant_id is required for service principal authentication",
-                        adapter_type=self.adapter_type,
-                    )
-                credential = ClientSecretCredential(
-                    tenant_id=self._config.tenant_id,
-                    client_id=self._config.client_id,
-                    client_secret=self._config.client_secret,
-                )
-            # Managed identity authentication
-            elif self._config.managed_identity_client_id:
-                credential = ManagedIdentityCredential(
-                    client_id=self._config.managed_identity_client_id
-                )
-            # Default Azure credential chain
-            else:
-                credential = DefaultAzureCredential()
-
-            # Create token provider for Azure OpenAI
-            token_provider = get_bearer_token_provider(
-                credential,
-                "https://cognitiveservices.azure.com/.default",
-            )
-
-            return token_provider
-
-        except Exception as e:
-            raise AdapterConnectionError(
-                f"Failed to setup Azure AD authentication: {e}",
-                adapter_type=self.adapter_type,
-                cause=e,
-            ) from e
+        self._client = get_openai_client(self._config, self.adapter_type)
+        self._initialized = True
+        return self._client
 
     def _generate_session_id(self) -> str:
         """Generate a new session ID."""
@@ -455,8 +162,8 @@ class AzureOpenAIAdapter(AgentAdapter):
             "temperature": self._config.temperature,
             "max_tokens": self._config.max_tokens,
             "top_p": self._config.top_p,
-            "frequency_penalty": self._config.frequency_penalty,
-            "presence_penalty": self._config.presence_penalty,
+            "frequency_penalty": (self._config.frequency_penalty),
+            "presence_penalty": (self._config.presence_penalty),
         }
 
         # Add tools if configured
@@ -485,12 +192,12 @@ class AzureOpenAIAdapter(AgentAdapter):
         Extract tool call events from a response message.
 
         Args:
-            message: The assistant message from the response.
+            message: The assistant message.
             task_id: Task ID for events.
             start_sequence: Starting sequence number.
 
         Returns:
-            Tuple of (list of ATPEvent objects, next sequence number).
+            Tuple of (events list, next sequence number).
         """
         events: list[ATPEvent] = []
         sequence = start_sequence
@@ -512,7 +219,7 @@ class AzureOpenAIAdapter(AgentAdapter):
                     event_type=EventType.TOOL_CALL,
                     payload={
                         "tool": tool_call.function.name,
-                        "function": tool_call.function.name,
+                        "function": (tool_call.function.name),
                         "tool_call_id": tool_call.id,
                         "input": arguments,
                         "status": "started",
@@ -580,56 +287,72 @@ class AzureOpenAIAdapter(AgentAdapter):
 
             metrics_info: dict[str, Any] = {
                 "session_id": session_id,
-                "deployment": self._config.deployment_name,
-                "model": getattr(response, "model", self._config.deployment_name),
+                "deployment": (self._config.deployment_name),
+                "model": getattr(
+                    response,
+                    "model",
+                    self._config.deployment_name,
+                ),
             }
 
             return response, metrics_info
 
         except TimeoutError as e:
             raise AdapterTimeoutError(
-                f"Azure OpenAI completion timed out after "
-                f"{self._config.timeout_seconds}s",
+                "Azure OpenAI completion timed out "
+                f"after {self._config.timeout_seconds}s",
                 adapter_type=self.adapter_type,
-                timeout_seconds=self._config.timeout_seconds,
+                timeout_seconds=(self._config.timeout_seconds),
             ) from e
         except Exception as e:
-            error_str = str(e)
-            error_type = type(e).__name__
+            self._handle_completion_error(e)
 
-            # Handle specific Azure OpenAI errors
-            if "AuthenticationError" in error_type or "401" in error_str:
-                raise AdapterConnectionError(
-                    "Authentication failed. Check API key or Azure AD credentials.",
-                    adapter_type=self.adapter_type,
-                    cause=e,
-                ) from e
-            if "PermissionDenied" in error_type or "403" in error_str:
-                raise AdapterConnectionError(
-                    "Permission denied. Check Azure RBAC permissions.",
-                    adapter_type=self.adapter_type,
-                    cause=e,
-                ) from e
-            if "NotFound" in error_type or "404" in error_str:
-                raise AdapterError(
-                    f"Deployment not found: {self._config.deployment_name}",
-                    adapter_type=self.adapter_type,
-                ) from e
-            if "RateLimitError" in error_type or "429" in error_str:
-                raise AdapterError(
-                    "Rate limit exceeded. Consider implementing retry logic.",
-                    adapter_type=self.adapter_type,
-                ) from e
-            if "BadRequestError" in error_type or "400" in error_str:
-                raise AdapterError(
-                    f"Bad request: {e}",
-                    adapter_type=self.adapter_type,
-                ) from e
+    def _handle_completion_error(self, e: Exception) -> NoReturn:
+        """
+        Handle errors from Azure OpenAI completion.
 
+        Args:
+            e: The exception to handle.
+
+        Raises:
+            AdapterConnectionError: For auth errors.
+            AdapterError: For other errors.
+        """
+        error_str = str(e)
+        error_type = type(e).__name__
+
+        if "AuthenticationError" in error_type or "401" in error_str:
+            raise AdapterConnectionError(
+                "Authentication failed. Check API key or Azure AD credentials.",
+                adapter_type=self.adapter_type,
+                cause=e,
+            ) from e
+        if "PermissionDenied" in error_type or "403" in error_str:
+            raise AdapterConnectionError(
+                "Permission denied. Check Azure RBAC permissions.",
+                adapter_type=self.adapter_type,
+                cause=e,
+            ) from e
+        if "NotFound" in error_type or "404" in error_str:
             raise AdapterError(
-                f"Azure OpenAI completion failed: {e}",
+                f"Deployment not found: {self._config.deployment_name}",
                 adapter_type=self.adapter_type,
             ) from e
+        if "RateLimitError" in error_type or "429" in error_str:
+            raise AdapterError(
+                "Rate limit exceeded. Consider implementing retry logic.",
+                adapter_type=self.adapter_type,
+            ) from e
+        if "BadRequestError" in error_type or "400" in error_str:
+            raise AdapterError(
+                f"Bad request: {e}",
+                adapter_type=self.adapter_type,
+            ) from e
+
+        raise AdapterError(
+            f"Azure OpenAI completion failed: {e}",
+            adapter_type=self.adapter_type,
+        ) from e
 
     async def execute(self, request: ATPRequest) -> ATPResponse:
         """
@@ -642,7 +365,7 @@ class AzureOpenAIAdapter(AgentAdapter):
             ATPResponse with execution results.
 
         Raises:
-            AdapterConnectionError: If connection to Azure fails.
+            AdapterConnectionError: If connection fails.
             AdapterTimeoutError: If execution times out.
             AdapterError: If completion fails.
         """
@@ -672,12 +395,12 @@ class AzureOpenAIAdapter(AgentAdapter):
             tool_events, _ = self._extract_tool_calls(message, request.task_id, 0)
             tool_calls = len(tool_events)
 
-            # Update conversation history for session persistence
+            # Update conversation history
             if self._config.enable_session_persistence:
                 self._conversation_history.append(
                     {
                         "role": "user",
-                        "content": request.task.description,
+                        "content": (request.task.description),
                     }
                 )
                 self._conversation_history.append(
@@ -694,9 +417,9 @@ class AzureOpenAIAdapter(AgentAdapter):
                     data={
                         "text": response_text,
                         "session_id": session_id,
-                        "deployment": self._config.deployment_name,
+                        "deployment": (self._config.deployment_name),
                         "model": metrics_info.get("model"),
-                        "finish_reason": response.choices[0].finish_reason,
+                        "finish_reason": (response.choices[0].finish_reason),
                     },
                     content_type="text/plain",
                 )
@@ -711,7 +434,7 @@ class AzureOpenAIAdapter(AgentAdapter):
                             "calls": [
                                 {
                                     "tool": e.payload.get("tool"),
-                                    "tool_call_id": e.payload.get("tool_call_id"),
+                                    "tool_call_id": (e.payload.get("tool_call_id")),
                                     "input": e.payload.get("input"),
                                 }
                                 for e in tool_events
@@ -735,7 +458,11 @@ class AzureOpenAIAdapter(AgentAdapter):
                 trace_id=session_id,
             )
 
-        except (AdapterTimeoutError, AdapterConnectionError, AdapterError):
+        except (
+            AdapterTimeoutError,
+            AdapterConnectionError,
+            AdapterError,
+        ):
             raise
         except Exception as e:
             wall_time = time.time() - start_time
@@ -753,8 +480,6 @@ class AzureOpenAIAdapter(AgentAdapter):
         """
         Execute a task with event streaming.
 
-        Yields ATP events during execution and ends with the final response.
-
         Args:
             request: ATP Request with task specification.
 
@@ -763,7 +488,7 @@ class AzureOpenAIAdapter(AgentAdapter):
             Final ATPResponse when complete.
 
         Raises:
-            AdapterConnectionError: If connection to Azure fails.
+            AdapterConnectionError: If connection fails.
             AdapterTimeoutError: If execution times out.
             AdapterError: If completion fails.
         """
@@ -782,9 +507,9 @@ class AzureOpenAIAdapter(AgentAdapter):
             sequence=sequence,
             event_type=EventType.PROGRESS,
             payload={
-                "message": "Starting Azure OpenAI completion",
+                "message": ("Starting Azure OpenAI completion"),
                 "session_id": session_id,
-                "deployment": self._config.deployment_name,
+                "deployment": (self._config.deployment_name),
             },
         )
         sequence += 1
@@ -802,7 +527,7 @@ class AzureOpenAIAdapter(AgentAdapter):
                 event_type=EventType.LLM_REQUEST,
                 payload={
                     "type": "chat_completion",
-                    "deployment": self._config.deployment_name,
+                    "deployment": (self._config.deployment_name),
                     "message_count": len(messages),
                 },
             )
@@ -899,13 +624,13 @@ class AzureOpenAIAdapter(AgentAdapter):
                 )
                 sequence += 1
 
-            # Update session ID if persistence is enabled
+            # Update session if persistence is enabled
             if self._config.enable_session_persistence:
                 self._session_id = session_id
                 self._conversation_history.append(
                     {
                         "role": "user",
-                        "content": request.task.description,
+                        "content": (request.task.description),
                     }
                 )
                 self._conversation_history.append(
@@ -924,7 +649,7 @@ class AzureOpenAIAdapter(AgentAdapter):
                     data={
                         "text": full_text,
                         "session_id": session_id,
-                        "deployment": self._config.deployment_name,
+                        "deployment": (self._config.deployment_name),
                         "model": model_name,
                         "finish_reason": finish_reason,
                     },
@@ -962,7 +687,8 @@ class AzureOpenAIAdapter(AgentAdapter):
                 payload={
                     "error_type": "timeout",
                     "message": (
-                        f"Azure OpenAI completion timed out after "
+                        "Azure OpenAI completion timed "
+                        "out after "
                         f"{self._config.timeout_seconds}s"
                     ),
                     "recoverable": False,
@@ -972,7 +698,8 @@ class AzureOpenAIAdapter(AgentAdapter):
                 task_id=request.task_id,
                 status=ResponseStatus.TIMEOUT,
                 error=(
-                    f"Azure OpenAI completion timed out after "
+                    "Azure OpenAI completion timed "
+                    "out after "
                     f"{self._config.timeout_seconds}s"
                 ),
                 metrics=Metrics(wall_time_seconds=wall_time),
@@ -1002,7 +729,7 @@ class AzureOpenAIAdapter(AgentAdapter):
         Check if Azure OpenAI is accessible.
 
         Returns:
-            True if Azure OpenAI is accessible, False otherwise.
+            True if accessible, False otherwise.
         """
         try:
             self._get_openai_client()
@@ -1028,6 +755,6 @@ class AzureOpenAIAdapter(AgentAdapter):
         Set a specific session ID.
 
         Args:
-            session_id: Session ID to use for subsequent requests.
+            session_id: Session ID to use.
         """
         self._session_id = session_id

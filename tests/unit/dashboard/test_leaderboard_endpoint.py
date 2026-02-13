@@ -10,14 +10,36 @@ This module tests:
 import pytest
 from fastapi.testclient import TestClient
 
-from atp.dashboard.api import _calculate_difficulty, _detect_pattern
-from atp.dashboard.app import app
+from atp.dashboard.auth import get_current_active_user
+from atp.dashboard.models import User
+from atp.dashboard.v2.factory import create_app
+from atp.dashboard.v2.routes.leaderboard import (
+    _calculate_difficulty,
+    _detect_pattern,
+)
+
+
+def _mock_admin_user() -> User:
+    """Create a mock admin user for testing."""
+    user = User(
+        username="admin_test",
+        email="admin@test.com",
+        hashed_password="fake_hash",
+        is_active=True,
+        is_admin=True,
+    )
+    user.id = 1
+    return user
 
 
 @pytest.fixture
 def client() -> TestClient:
-    """Create a test client using the actual app."""
-    return TestClient(app, raise_server_exceptions=False)
+    """Create a test client with auth bypass."""
+    app = create_app()
+    app.dependency_overrides[get_current_active_user] = _mock_admin_user
+    client = TestClient(app, raise_server_exceptions=False)
+    yield client  # type: ignore
+    app.dependency_overrides.clear()
 
 
 class TestLeaderboardMatrixEndpoint:
@@ -197,14 +219,14 @@ class TestRouterConfiguration:
 
     def test_leaderboard_route_exists(self, client: TestClient) -> None:
         """Test that leaderboard/matrix route exists."""
-        from atp.dashboard.api import router
+        from atp.dashboard.v2.routes import router
 
         route_paths = [r.path for r in router.routes if hasattr(r, "path")]
         assert "/leaderboard/matrix" in route_paths
 
     def test_leaderboard_route_has_tag(self, client: TestClient) -> None:
         """Test that leaderboard route has correct tag."""
-        from atp.dashboard.api import router
+        from atp.dashboard.v2.routes import router
 
         for route in router.routes:
             if hasattr(route, "path") and route.path == "/leaderboard/matrix":

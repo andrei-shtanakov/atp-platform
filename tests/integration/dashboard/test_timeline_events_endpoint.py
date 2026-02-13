@@ -12,17 +12,32 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-from atp.dashboard.api import get_session
-from atp.dashboard.app import app
+from atp.dashboard.auth import get_current_active_user
 from atp.dashboard.models import (
     Agent,
     Base,
     RunResult,
     SuiteExecution,
     TestExecution,
+    User,
 )
+from atp.dashboard.v2.dependencies import get_db_session
+from atp.dashboard.v2.factory import create_app
 from tests.fixtures.comparison import generate_realistic_event_sequence
 from tests.fixtures.comparison.factories import reset_all_factories
+
+
+def _mock_admin_user() -> User:
+    """Create a mock admin user for testing."""
+    user = User(
+        username="admin_test",
+        email="admin@test.com",
+        hashed_password="fake_hash",
+        is_active=True,
+        is_admin=True,
+    )
+    user.id = 1
+    return user
 
 
 @pytest.fixture
@@ -148,21 +163,23 @@ async def client_with_data(
     async_session: AsyncSession, test_data: dict
 ) -> AsyncGenerator[AsyncClient, None]:
     """Create an async HTTP client with test data."""
+    test_app = create_app()
 
     # Override the session dependency
-    async def override_get_session() -> AsyncGenerator[AsyncSession, None]:
+    async def override_get_db_session() -> AsyncGenerator[AsyncSession, None]:
         yield async_session
 
-    app.dependency_overrides[get_session] = override_get_session
+    test_app.dependency_overrides[get_db_session] = override_get_db_session
+    test_app.dependency_overrides[get_current_active_user] = _mock_admin_user
 
     async with AsyncClient(
-        transport=ASGITransport(app=app),
+        transport=ASGITransport(app=test_app),
         base_url="http://test",
     ) as client:
         yield client
 
     # Clean up
-    app.dependency_overrides.clear()
+    test_app.dependency_overrides.clear()
 
 
 @pytest.fixture(autouse=True)
@@ -544,13 +561,15 @@ class TestTimelineEventsEdgeCases:
         await async_session.commit()
 
         # Override session dependency
-        async def override_get_session() -> AsyncGenerator[AsyncSession, None]:
+        async def override_get_db_session() -> AsyncGenerator[AsyncSession, None]:
             yield async_session
 
-        app.dependency_overrides[get_session] = override_get_session
+        test_app = create_app()
+        test_app.dependency_overrides[get_db_session] = override_get_db_session
+        test_app.dependency_overrides[get_current_active_user] = _mock_admin_user
 
         async with AsyncClient(
-            transport=ASGITransport(app=app),
+            transport=ASGITransport(app=test_app),
             base_url="http://test",
         ) as client:
             response = await client.get(
@@ -562,7 +581,7 @@ class TestTimelineEventsEdgeCases:
                 },
             )
 
-        app.dependency_overrides.clear()
+        test_app.dependency_overrides.clear()
 
         assert response.status_code == 200
         data = response.json()
@@ -619,13 +638,15 @@ class TestTimelineEventsEdgeCases:
         await async_session.commit()
 
         # Override session dependency
-        async def override_get_session() -> AsyncGenerator[AsyncSession, None]:
+        async def override_get_db_session() -> AsyncGenerator[AsyncSession, None]:
             yield async_session
 
-        app.dependency_overrides[get_session] = override_get_session
+        test_app = create_app()
+        test_app.dependency_overrides[get_db_session] = override_get_db_session
+        test_app.dependency_overrides[get_current_active_user] = _mock_admin_user
 
         async with AsyncClient(
-            transport=ASGITransport(app=app),
+            transport=ASGITransport(app=test_app),
             base_url="http://test",
         ) as client:
             response = await client.get(
@@ -637,7 +658,7 @@ class TestTimelineEventsEdgeCases:
                 },
             )
 
-        app.dependency_overrides.clear()
+        test_app.dependency_overrides.clear()
 
         assert response.status_code == 200
         data = response.json()
@@ -733,13 +754,15 @@ class TestTimelineEventsEdgeCases:
         await async_session.commit()
 
         # Override session dependency
-        async def override_get_session() -> AsyncGenerator[AsyncSession, None]:
+        async def override_get_db_session() -> AsyncGenerator[AsyncSession, None]:
             yield async_session
 
-        app.dependency_overrides[get_session] = override_get_session
+        test_app = create_app()
+        test_app.dependency_overrides[get_db_session] = override_get_db_session
+        test_app.dependency_overrides[get_current_active_user] = _mock_admin_user
 
         async with AsyncClient(
-            transport=ASGITransport(app=app),
+            transport=ASGITransport(app=test_app),
             base_url="http://test",
         ) as client:
             response = await client.get(
@@ -751,7 +774,7 @@ class TestTimelineEventsEdgeCases:
                 },
             )
 
-        app.dependency_overrides.clear()
+        test_app.dependency_overrides.clear()
 
         assert response.status_code == 200
         data = response.json()

@@ -22,6 +22,7 @@ from atp.adapters import (
     create_adapter,
     get_registry,
 )
+from atp.adapters.registry import _BUILTIN_ADAPTERS
 from atp.protocol import ATPRequest, ATPResponse
 
 
@@ -310,3 +311,114 @@ class TestFrameworkAdapters:
         )
 
         assert isinstance(adapter, AutoGenAdapter)
+
+
+class TestLazyLoading:
+    """Tests for lazy-loading behavior in the adapter registry."""
+
+    def test_registry_init_does_not_import_adapters(self) -> None:
+        """Registry init should not eagerly import adapter modules."""
+        registry = AdapterRegistry()
+        # _adapters dict should be empty — modules not yet imported
+        assert len(registry._adapters) == 0
+        # But all built-in types should still appear as registered
+        assert registry.is_registered("http")
+        assert registry.is_registered("bedrock")
+        assert registry.is_registered("vertex")
+
+    def test_adapter_imported_on_first_access(self) -> None:
+        """Adapter module is imported when first requested."""
+        registry = AdapterRegistry()
+        assert "http" not in registry._adapters
+
+        cls = registry.get_adapter_class("http")
+
+        assert cls is HTTPAdapter
+        assert "http" in registry._adapters
+
+    def test_adapter_cached_after_first_resolve(self) -> None:
+        """Second access should use cached class, not re-import."""
+        registry = AdapterRegistry()
+        cls1 = registry.get_adapter_class("cli")
+        cls2 = registry.get_adapter_class("cli")
+        assert cls1 is cls2
+
+    def test_all_builtin_types_present(self) -> None:
+        """All built-in adapter types should be known."""
+        registry = AdapterRegistry()
+        adapters = registry.list_adapters()
+        expected = {
+            "http",
+            "container",
+            "cli",
+            "langgraph",
+            "crewai",
+            "autogen",
+            "mcp",
+            "bedrock",
+            "vertex",
+            "azure_openai",
+        }
+        assert expected == set(adapters)
+
+    def test_unregister_lazy_adapter(self) -> None:
+        """Unregistering a lazy (not-yet-resolved) adapter works."""
+        registry = AdapterRegistry()
+        assert registry.is_registered("vertex")
+
+        result = registry.unregister("vertex")
+
+        assert result is True
+        assert not registry.is_registered("vertex")
+        with pytest.raises(AdapterNotFoundError):
+            registry.get_adapter_class("vertex")
+
+    def test_register_overwrites_lazy_entry(self) -> None:
+        """Explicit register() should replace a lazy entry."""
+        registry = AdapterRegistry()
+
+        class FakeConfig(AdapterConfig):
+            x: str = "y"
+
+        class FakeAdapter(AgentAdapter):
+            def __init__(self, config: FakeConfig) -> None:
+                super().__init__(config)
+
+            @property
+            def adapter_type(self) -> str:
+                return "http"
+
+            async def execute(self, request: ATPRequest) -> ATPResponse:
+                raise NotImplementedError
+
+            async def stream_events(self, request):  # type: ignore
+                yield  # type: ignore
+
+        registry.register("http", FakeAdapter, FakeConfig)
+
+        assert registry.get_adapter_class("http") is FakeAdapter
+        assert registry.get_config_class("http") is FakeConfig
+
+    def test_import_registry_no_side_effects(self) -> None:
+        """Importing the registry module should not import adapters."""
+        # The _BUILTIN_ADAPTERS dict stores strings, not classes
+        for entry in _BUILTIN_ADAPTERS.values():
+            assert isinstance(entry.module, str)
+            assert isinstance(entry.adapter_class_name, str)
+
+    def test_lazy_init_getattr_on_package(self) -> None:
+        """Accessing adapter classes via the package triggers lazy load."""
+        import atp.adapters
+
+        # Verify __getattr__ resolves lazily-defined names
+        cls = getattr(atp.adapters, "CLIAdapter")
+        from atp.adapters.cli import CLIAdapter
+
+        assert cls is CLIAdapter
+
+    def test_package_getattr_raises_for_unknown(self) -> None:
+        """Package __getattr__ raises AttributeError for unknown names."""
+        import atp.adapters
+
+        with pytest.raises(AttributeError, match="no_such_thing"):
+            getattr(atp.adapters, "no_such_thing")

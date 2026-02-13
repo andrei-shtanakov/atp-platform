@@ -1523,7 +1523,13 @@ def dashboard_cmd(host: str, port: int, reload: bool) -> None:
     click.echo(f"Starting ATP Dashboard at http://{host}:{port}")
     click.echo("Press Ctrl+C to stop")
 
-    from atp.dashboard import run_server
+    try:
+        from atp.dashboard import run_server
+    except ImportError:
+        raise click.ClickException(
+            "Dashboard requires extra dependencies. "
+            "Install them with: uv add 'atp-platform[dashboard]'"
+        )
 
     run_server(host=host, port=port, reload=reload)
 

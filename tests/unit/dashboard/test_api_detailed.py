@@ -6,10 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from atp.dashboard.api import (
-    get_session,
-    router,
-)
 from atp.dashboard.schemas import (
     AgentCreate,
     AgentResponse,
@@ -18,23 +14,28 @@ from atp.dashboard.schemas import (
     Token,
     UserCreate,
 )
+from atp.dashboard.v2.dependencies import get_db_session
+from atp.dashboard.v2.routes import router
 
 
 class TestGetSession:
-    """Tests for get_session dependency."""
+    """Tests for get_db_session dependency."""
 
     @pytest.mark.anyio
     async def test_get_session_yields_session(self) -> None:
-        """Test that get_session yields a session."""
+        """Test that get_db_session yields a session."""
         mock_session = MagicMock(spec=AsyncSession)
         mock_db = MagicMock()
         mock_context = MagicMock()
         mock_context.__aenter__ = AsyncMock(return_value=mock_session)
         mock_context.__aexit__ = AsyncMock(return_value=None)
-        mock_db.session.return_value = mock_context
+        mock_db.session_factory.return_value = mock_context
 
-        with patch("atp.dashboard.api.get_database", return_value=mock_db):
-            async for session in get_session():
+        with patch(
+            "atp.dashboard.v2.dependencies.get_database",
+            return_value=mock_db,
+        ):
+            async for session in get_db_session():
                 assert session is mock_session
 
 

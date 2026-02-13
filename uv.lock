@@ -120,49 +120,86 @@ name = "atp-platform"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "click" },
+    { name = "httpx" },
+    { name = "jinja2" },
+    { name = "jsonschema" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-exporter-otlp-proto-grpc" },
+    { name = "opentelemetry-sdk" },
+    { name = "prometheus-client" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "pyyaml" },
+    { name = "rich" },
+    { name = "ruamel-yaml" },
+    { name = "structlog" },
+]
+
+[package.optional-dependencies]
+all = [
     { name = "aiosqlite" },
     { name = "anthropic" },
     { name = "asyncpg" },
     { name = "authlib" },
     { name = "bcrypt" },
-    { name = "beautifulsoup4" },
-    { name = "click" },
+    { name = "boto3" },
     { name = "fastapi" },
+    { name = "google-cloud-aiplatform" },
     { name = "greenlet" },
-    { name = "httpx" },
-    { name = "jinja2" },
-    { name = "jsonschema" },
     { name = "openai" },
     { name = "openpyxl" },
-    { name = "opentelemetry-api" },
-    { name = "opentelemetry-exporter-otlp-proto-grpc" },
     { name = "opentelemetry-instrumentation-fastapi" },
     { name = "opentelemetry-instrumentation-httpx" },
     { name = "opentelemetry-instrumentation-logging" },
-    { name = "opentelemetry-sdk" },
-    { name = "prometheus-client" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
     { name = "pyjwt" },
     { name = "python-multipart" },
     { name = "python3-saml" },
-    { name = "pyyaml" },
-    { name = "ruamel-yaml" },
-    { name = "spec-runner" },
+    { name = "rich" },
     { name = "sqlalchemy" },
-    { name = "structlog" },
+    { name = "textual" },
     { name = "uvicorn", extra = ["standard"] },
 ]
-
-[package.optional-dependencies]
+analytics = [
+    { name = "openpyxl" },
+]
+azure-openai = [
+    { name = "openai" },
+]
 bedrock = [
     { name = "boto3" },
+]
+cloud = [
+    { name = "boto3" },
+    { name = "google-cloud-aiplatform" },
+    { name = "openai" },
+]
+dashboard = [
+    { name = "aiosqlite" },
+    { name = "asyncpg" },
+    { name = "bcrypt" },
+    { name = "fastapi" },
+    { name = "greenlet" },
+    { name = "opentelemetry-instrumentation-fastapi" },
+    { name = "opentelemetry-instrumentation-httpx" },
+    { name = "opentelemetry-instrumentation-logging" },
+    { name = "pyjwt" },
+    { name = "python-multipart" },
+    { name = "sqlalchemy" },
+    { name = "uvicorn", extra = ["standard"] },
 ]
 dev = [
     { name = "pytest" },
     { name = "pytest-anyio" },
     { name = "pytest-cov" },
     { name = "ruff" },
+]
+enterprise = [
+    { name = "authlib" },
+    { name = "python3-saml" },
+]
+llm = [
+    { name = "anthropic" },
 ]
 tui = [
     { name = "rich" },
@@ -190,48 +227,56 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiosqlite", specifier = ">=0.22.1" },
-    { name = "anthropic", specifier = ">=0.76.0" },
-    { name = "asyncpg", specifier = ">=0.31.0" },
-    { name = "authlib", specifier = ">=1.6.6" },
-    { name = "bcrypt", specifier = ">=5.0.0" },
-    { name = "beautifulsoup4", specifier = ">=4.14.3" },
+    { name = "aiosqlite", marker = "extra == 'dashboard'", specifier = ">=0.22.1" },
+    { name = "anthropic", marker = "extra == 'llm'", specifier = ">=0.76.0" },
+    { name = "asyncpg", marker = "extra == 'dashboard'", specifier = ">=0.31.0" },
+    { name = "atp-platform", extras = ["analytics"], marker = "extra == 'all'" },
+    { name = "atp-platform", extras = ["cloud"], marker = "extra == 'all'" },
+    { name = "atp-platform", extras = ["dashboard"], marker = "extra == 'all'" },
+    { name = "atp-platform", extras = ["enterprise"], marker = "extra == 'all'" },
+    { name = "atp-platform", extras = ["llm"], marker = "extra == 'all'" },
+    { name = "atp-platform", extras = ["tui"], marker = "extra == 'all'" },
+    { name = "authlib", marker = "extra == 'enterprise'", specifier = ">=1.6.6" },
+    { name = "bcrypt", marker = "extra == 'dashboard'", specifier = ">=5.0.0" },
     { name = "boto3", marker = "extra == 'bedrock'", specifier = ">=1.42.39" },
+    { name = "boto3", marker = "extra == 'cloud'", specifier = ">=1.42.39" },
     { name = "click", specifier = ">=8.3.1" },
-    { name = "fastapi", specifier = ">=0.128.0" },
+    { name = "fastapi", marker = "extra == 'dashboard'", specifier = ">=0.128.0" },
+    { name = "google-cloud-aiplatform", marker = "extra == 'cloud'", specifier = ">=1.135.0" },
     { name = "google-cloud-aiplatform", marker = "extra == 'vertex'", specifier = ">=1.135.0" },
-    { name = "greenlet", specifier = ">=3.3.1" },
+    { name = "greenlet", marker = "extra == 'dashboard'", specifier = ">=3.3.1" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "jsonschema", specifier = ">=4.26.0" },
-    { name = "openai", specifier = ">=2.15.0" },
-    { name = "openpyxl", specifier = ">=3.1.5" },
+    { name = "openai", marker = "extra == 'azure-openai'", specifier = ">=2.15.0" },
+    { name = "openai", marker = "extra == 'cloud'", specifier = ">=2.15.0" },
+    { name = "openpyxl", marker = "extra == 'analytics'", specifier = ">=3.1.5" },
     { name = "opentelemetry-api", specifier = ">=1.39.1" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.39.1" },
-    { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0.60b1" },
-    { name = "opentelemetry-instrumentation-httpx", specifier = ">=0.60b1" },
-    { name = "opentelemetry-instrumentation-logging", specifier = ">=0.60b1" },
+    { name = "opentelemetry-instrumentation-fastapi", marker = "extra == 'dashboard'", specifier = ">=0.60b1" },
+    { name = "opentelemetry-instrumentation-httpx", marker = "extra == 'dashboard'", specifier = ">=0.60b1" },
+    { name = "opentelemetry-instrumentation-logging", marker = "extra == 'dashboard'", specifier = ">=0.60b1" },
     { name = "opentelemetry-sdk", specifier = ">=1.39.1" },
     { name = "prometheus-client", specifier = ">=0.24.1" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pydantic-settings", specifier = ">=2.12.0" },
-    { name = "pyjwt", specifier = ">=2.0.0" },
+    { name = "pyjwt", marker = "extra == 'dashboard'", specifier = ">=2.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-anyio", marker = "extra == 'dev'", specifier = ">=0.0.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0" },
-    { name = "python-multipart", specifier = ">=0.0.22" },
-    { name = "python3-saml", specifier = ">=1.16.0" },
+    { name = "python-multipart", marker = "extra == 'dashboard'", specifier = ">=0.0.22" },
+    { name = "python3-saml", marker = "extra == 'enterprise'", specifier = ">=1.16.0" },
     { name = "pyyaml", specifier = ">=6.0" },
+    { name = "rich", specifier = ">=13.0" },
     { name = "rich", marker = "extra == 'tui'", specifier = ">=13.0" },
     { name = "ruamel-yaml", specifier = ">=0.18" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4" },
-    { name = "spec-runner", specifier = ">=0.1.4" },
-    { name = "sqlalchemy", specifier = ">=2.0.46" },
+    { name = "sqlalchemy", marker = "extra == 'dashboard'", specifier = ">=2.0.46" },
     { name = "structlog", specifier = ">=25.5.0" },
     { name = "textual", marker = "extra == 'tui'", specifier = ">=0.47.0" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.40.0" },
+    { name = "uvicorn", extras = ["standard"], marker = "extra == 'dashboard'", specifier = ">=0.40.0" },
 ]
-provides-extras = ["dev", "tui", "bedrock", "vertex"]
+provides-extras = ["dev", "tui", "cloud", "bedrock", "vertex", "azure-openai", "dashboard", "enterprise", "analytics", "llm", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -334,19 +379,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/c0/f6/688d2cd64bfd0b14d805ddb8a565e11ca1fb0fd6817175d58b10052b6d88/bcrypt-5.0.0-cp39-abi3-win32.whl", hash = "sha256:64d7ce196203e468c457c37ec22390f1a61c85c6f0b8160fd752940ccfb3a683", size = 153725, upload-time = "2025-09-25T19:50:34.384Z" },
     { url = "https://files.pythonhosted.org/packages/9f/b9/9d9a641194a730bda138b3dfe53f584d61c58cd5230e37566e83ec2ffa0d/bcrypt-5.0.0-cp39-abi3-win_amd64.whl", hash = "sha256:64ee8434b0da054d830fa8e89e1c8bf30061d539044a39524ff7dec90481e5c2", size = 150912, upload-time = "2025-09-25T19:50:35.69Z" },
     { url = "https://files.pythonhosted.org/packages/27/44/d2ef5e87509158ad2187f4dd0852df80695bb1ee0cfe0a684727b01a69e0/bcrypt-5.0.0-cp39-abi3-win_arm64.whl", hash = "sha256:f2347d3534e76bf50bca5500989d6c1d05ed64b440408057a37673282c654927", size = 144953, upload-time = "2025-09-25T19:50:37.32Z" },
-]
-
-[[package]]
-name = "beautifulsoup4"
-version = "4.14.3"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "soupsieve" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/c3/b0/1c6a16426d389813b48d95e26898aff79abbde42ad353958ad95cc8c9b21/beautifulsoup4-4.14.3.tar.gz", hash = "sha256:6292b1c5186d356bba669ef9f7f051757099565ad9ada5dd630bd9de5fa7fb86", size = 627737, upload-time = "2025-11-30T15:08:26.084Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/1a/39/47f9197bdd44df24d67ac8893641e16f386c984a0619ef2ee4c51fbbc019/beautifulsoup4-4.14.3-py3-none-any.whl", hash = "sha256:0918bfe44902e6ad8d57732ba310582e98da931428d231a5ecb9e7c703a735bb", size = 107721, upload-time = "2025-11-30T15:08:24.087Z" },
 ]
 
 [[package]]
@@ -2593,15 +2625,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/a2/87/a6771e1546d97e7e041b6ae58d80074f81b7d5121207425c964ddf5cfdbd/sniffio-1.3.1.tar.gz", hash = "sha256:f4324edc670a0f49750a81b895f35c3adb843cca46f0530f79fc1babb23789dc", size = 20372, upload-time = "2024-02-25T23:20:04.057Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e9/44/75a9c9421471a6c4805dbf2356f7c181a29c1879239abab1ea2cc8f38b40/sniffio-1.3.1-py3-none-any.whl", hash = "sha256:2f6da418d1f1e0fddd844478f41680e794e6051915791a034ff65e5f100525a2", size = 10235, upload-time = "2024-02-25T23:20:01.196Z" },
-]
-
-[[package]]
-name = "soupsieve"
-version = "2.8.3"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/7b/ae/2d9c981590ed9999a0d91755b47fc74f74de286b0f5cee14c9269041e6c4/soupsieve-2.8.3.tar.gz", hash = "sha256:3267f1eeea4251fb42728b6dfb746edc9acaffc4a45b27e19450b676586e8349", size = 118627, upload-time = "2026-01-20T04:27:02.457Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/46/2c/1462b1d0a634697ae9e55b3cecdcb64788e8b7d63f54d923fcd0bb140aed/soupsieve-2.8.3-py3-none-any.whl", hash = "sha256:ed64f2ba4eebeab06cc4962affce381647455978ffc1e36bb79a545b91f45a95", size = 37016, upload-time = "2026-01-20T04:27:01.012Z" },
 ]
 
 [[package]]

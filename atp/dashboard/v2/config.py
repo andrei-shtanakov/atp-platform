@@ -4,7 +4,6 @@ This module provides centralized configuration management for the dashboard,
 supporting environment variables and sensible defaults.
 """
 
-import os
 from functools import lru_cache
 from typing import Any
 
@@ -115,12 +114,3 @@ def get_config() -> DashboardConfig:
         DashboardConfig instance with settings loaded from environment.
     """
     return DashboardConfig()
-
-
-def is_v2_enabled() -> bool:
-    """Check if Dashboard v2 is enabled via feature flag.
-
-    Returns:
-        True if ATP_DASHBOARD_V2 environment variable is set to 'true'.
-    """
-    return os.getenv("ATP_DASHBOARD_V2", "false").lower() == "true"

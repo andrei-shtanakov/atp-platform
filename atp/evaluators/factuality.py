@@ -812,7 +812,8 @@ class LLMFactVerifier:
             except ImportError as e:
                 raise RuntimeError(
                     "anthropic package is required for LLM verification. "
-                    "Install it with: uv add anthropic"
+                    "Install it with: "
+                    "uv add 'atp-platform[llm]'"
                 ) from e
 
             if self._config.api_key:

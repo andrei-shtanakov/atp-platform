@@ -1,19 +1,83 @@
 """Adapter registry for managing and creating adapters."""
 
+import importlib
+import logging
+from dataclasses import dataclass
 from typing import Any
 
-from .autogen import AutoGenAdapter, AutoGenAdapterConfig
-from .azure_openai import AzureOpenAIAdapter, AzureOpenAIAdapterConfig
 from .base import AdapterConfig, AgentAdapter
-from .bedrock import BedrockAdapter, BedrockAdapterConfig
-from .cli import CLIAdapter, CLIAdapterConfig
-from .container import ContainerAdapter, ContainerAdapterConfig
-from .crewai import CrewAIAdapter, CrewAIAdapterConfig
 from .exceptions import AdapterNotFoundError
-from .http import HTTPAdapter, HTTPAdapterConfig
-from .langgraph import LangGraphAdapter, LangGraphAdapterConfig
-from .mcp import MCPAdapter, MCPAdapterConfig
-from .vertex import VertexAdapter, VertexAdapterConfig
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class _LazyEntry:
+    """Deferred import reference for an adapter and its config."""
+
+    module: str
+    adapter_class_name: str
+    config_class_name: str
+
+
+# Map adapter types to the extras group needed for installation.
+_ADAPTER_EXTRAS: dict[str, str] = {
+    "bedrock": "bedrock",
+    "vertex": "vertex",
+    "azure_openai": "azure-openai",
+}
+
+# Built-in adapters: imported lazily on first access.
+_BUILTIN_ADAPTERS: dict[str, _LazyEntry] = {
+    "http": _LazyEntry("atp.adapters.http", "HTTPAdapter", "HTTPAdapterConfig"),
+    "container": _LazyEntry(
+        "atp.adapters.container",
+        "ContainerAdapter",
+        "ContainerAdapterConfig",
+    ),
+    "cli": _LazyEntry("atp.adapters.cli", "CLIAdapter", "CLIAdapterConfig"),
+    "langgraph": _LazyEntry(
+        "atp.adapters.langgraph",
+        "LangGraphAdapter",
+        "LangGraphAdapterConfig",
+    ),
+    "crewai": _LazyEntry(
+        "atp.adapters.crewai",
+        "CrewAIAdapter",
+        "CrewAIAdapterConfig",
+    ),
+    "autogen": _LazyEntry(
+        "atp.adapters.autogen",
+        "AutoGenAdapter",
+        "AutoGenAdapterConfig",
+    ),
+    "mcp": _LazyEntry("atp.adapters.mcp", "MCPAdapter", "MCPAdapterConfig"),
+    "bedrock": _LazyEntry(
+        "atp.adapters.bedrock",
+        "BedrockAdapter",
+        "BedrockAdapterConfig",
+    ),
+    "vertex": _LazyEntry(
+        "atp.adapters.vertex",
+        "VertexAdapter",
+        "VertexAdapterConfig",
+    ),
+    "azure_openai": _LazyEntry(
+        "atp.adapters.azure_openai",
+        "AzureOpenAIAdapter",
+        "AzureOpenAIAdapterConfig",
+    ),
+}
+
+
+def _resolve_entry(
+    entry: _LazyEntry,
+) -> tuple[type[AgentAdapter], type[AdapterConfig]]:
+    """Import and return (adapter_class, config_class) from a lazy entry."""
+    mod = importlib.import_module(entry.module)
+    adapter_cls: type[AgentAdapter] = getattr(mod, entry.adapter_class_name)
+    config_cls: type[AdapterConfig] = getattr(mod, entry.config_class_name)
+    return adapter_cls, config_cls
 
 
 class AdapterRegistry:
@@ -21,24 +85,33 @@ class AdapterRegistry:
     Registry for adapter types.
 
     Provides factory methods for creating adapters from configuration.
+    Adapter modules are imported lazily on first access.
     """
 
     def __init__(self) -> None:
         """Initialize the registry with built-in adapters."""
         self._adapters: dict[str, type[AgentAdapter]] = {}
         self._configs: dict[str, type[AdapterConfig]] = {}
+        self._lazy: dict[str, _LazyEntry] = dict(_BUILTIN_ADAPTERS)
 
-        # Register built-in adapters
-        self.register("http", HTTPAdapter, HTTPAdapterConfig)
-        self.register("container", ContainerAdapter, ContainerAdapterConfig)
-        self.register("cli", CLIAdapter, CLIAdapterConfig)
-        self.register("langgraph", LangGraphAdapter, LangGraphAdapterConfig)
-        self.register("crewai", CrewAIAdapter, CrewAIAdapterConfig)
-        self.register("autogen", AutoGenAdapter, AutoGenAdapterConfig)
-        self.register("mcp", MCPAdapter, MCPAdapterConfig)
-        self.register("bedrock", BedrockAdapter, BedrockAdapterConfig)
-        self.register("vertex", VertexAdapter, VertexAdapterConfig)
-        self.register("azure_openai", AzureOpenAIAdapter, AzureOpenAIAdapterConfig)
+    def _resolve(self, adapter_type: str) -> None:
+        """Resolve a lazy entry, importing the module on demand."""
+        if adapter_type in self._adapters:
+            return
+        entry = self._lazy.get(adapter_type)
+        if entry is None:
+            return
+        try:
+            adapter_cls, config_cls = _resolve_entry(entry)
+        except ImportError as exc:
+            extras_hint = _ADAPTER_EXTRAS.get(adapter_type, adapter_type)
+            raise ImportError(
+                f"Adapter '{adapter_type}' requires additional "
+                f"dependencies. Install them with: "
+                f"uv add 'atp-platform[{extras_hint}]'"
+            ) from exc
+        self._adapters[adapter_type] = adapter_cls
+        self._configs[adapter_type] = config_cls
 
     def register(
         self,
@@ -56,6 +129,8 @@ class AdapterRegistry:
         """
         self._adapters[adapter_type] = adapter_class
         self._configs[adapter_type] = config_class
+        # Remove any lazy entry so _resolve won't overwrite
+        self._lazy.pop(adapter_type, None)
 
     def unregister(self, adapter_type: str) -> bool:
         """
@@ -67,11 +142,11 @@ class AdapterRegistry:
         Returns:
             True if adapter was removed, False if it didn't exist.
         """
-        if adapter_type in self._adapters:
-            del self._adapters[adapter_type]
-            del self._configs[adapter_type]
-            return True
-        return False
+        existed = adapter_type in self._adapters or (adapter_type in self._lazy)
+        self._adapters.pop(adapter_type, None)
+        self._configs.pop(adapter_type, None)
+        self._lazy.pop(adapter_type, None)
+        return existed
 
     def get_adapter_class(self, adapter_type: str) -> type[AgentAdapter]:
         """
@@ -86,6 +161,7 @@ class AdapterRegistry:
         Raises:
             AdapterNotFoundError: If adapter type is not registered.
         """
+        self._resolve(adapter_type)
         if adapter_type not in self._adapters:
             raise AdapterNotFoundError(adapter_type)
         return self._adapters[adapter_type]
@@ -103,12 +179,15 @@ class AdapterRegistry:
         Raises:
             AdapterNotFoundError: If adapter type is not registered.
         """
+        self._resolve(adapter_type)
         if adapter_type not in self._configs:
             raise AdapterNotFoundError(adapter_type)
         return self._configs[adapter_type]
 
     def create(
-        self, adapter_type: str, config: dict[str, Any] | AdapterConfig
+        self,
+        adapter_type: str,
+        config: dict[str, Any] | AdapterConfig,
     ) -> AgentAdapter:
         """
         Create an adapter instance.
@@ -141,7 +220,8 @@ class AdapterRegistry:
         Returns:
             List of adapter type identifiers.
         """
-        return list(self._adapters.keys())
+        all_types = set(self._adapters.keys()) | set(self._lazy.keys())
+        return sorted(all_types)
 
     def is_registered(self, adapter_type: str) -> bool:
         """
@@ -153,7 +233,7 @@ class AdapterRegistry:
         Returns:
             True if adapter is registered, False otherwise.
         """
-        return adapter_type in self._adapters
+        return adapter_type in self._adapters or adapter_type in self._lazy
 
 
 # Global registry instance

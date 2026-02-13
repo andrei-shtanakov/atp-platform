@@ -158,7 +158,8 @@ class LLMJudgeEvaluator(Evaluator):
             except ImportError as e:
                 raise RuntimeError(
                     "anthropic package is required for LLMJudgeEvaluator. "
-                    "Install it with: uv add anthropic"
+                    "Install it with: "
+                    "uv add 'atp-platform[llm]'"
                 ) from e
 
             if self._config.api_key:

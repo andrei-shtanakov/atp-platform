@@ -1,6 +1,6 @@
 """ATP Dashboard v2 - Modular dashboard architecture.
 
-This package provides a refactored, modular implementation of the ATP Dashboard
+This package provides a modular implementation of the ATP Dashboard
 with improved organization, testability, and maintainability.
 
 Usage:
@@ -17,7 +17,6 @@ Usage:
     from atp.dashboard.v2 import app
 
 Environment Variables:
-    ATP_DASHBOARD_V2: Set to 'true' to enable v2 dashboard
     ATP_DATABASE_URL: Database connection URL
     ATP_SECRET_KEY: JWT secret key for authentication
     ATP_TOKEN_EXPIRE_MINUTES: JWT token expiration time
@@ -25,7 +24,7 @@ Environment Variables:
     ATP_DEBUG: Enable debug mode
 """
 
-from atp.dashboard.v2.config import DashboardConfig, get_config, is_v2_enabled
+from atp.dashboard.v2.config import DashboardConfig, get_config
 from atp.dashboard.v2.dependencies import (
     AdminUser,
     Config,
@@ -50,7 +49,6 @@ __all__ = [
     # Configuration
     "DashboardConfig",
     "get_config",
-    "is_v2_enabled",
     # Dependencies
     "get_db_session",
     "get_dashboard_config",

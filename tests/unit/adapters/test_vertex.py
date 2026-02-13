@@ -245,7 +245,7 @@ class TestVertexAdapter:
 
     def test_vertexai_not_installed(self, vertex_config: VertexAdapterConfig) -> None:
         """Test error when google-cloud-aiplatform is not installed."""
-        adapter = VertexAdapter(vertex_config)
+        from atp.adapters.vertex.auth import get_vertexai_module
 
         with patch.dict("sys.modules", {"vertexai": None}):
             with patch(
@@ -255,7 +255,7 @@ class TestVertexAdapter:
                 with pytest.raises(
                     AdapterError, match="google-cloud-aiplatform is required"
                 ):
-                    adapter._get_vertexai_module()
+                    get_vertexai_module()
 
     def test_session_id_management(self, vertex_config: VertexAdapterConfig) -> None:
         """Test session ID management."""

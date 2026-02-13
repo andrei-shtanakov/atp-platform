@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from atp.dashboard.v2.config import DashboardConfig, get_config, is_v2_enabled
+from atp.dashboard.v2.config import DashboardConfig, get_config
 
 
 class TestDashboardConfig:
@@ -127,34 +127,3 @@ class TestGetConfig:
         config1 = get_config()
         config2 = get_config()
         assert config1 is config2
-
-
-class TestIsV2Enabled:
-    """Tests for is_v2_enabled function."""
-
-    def test_disabled_by_default(self) -> None:
-        """Test that v2 is disabled when env var not set."""
-        with patch.dict(os.environ, {}, clear=True):
-            # Remove ATP_DASHBOARD_V2 if present
-            os.environ.pop("ATP_DASHBOARD_V2", None)
-            assert is_v2_enabled() is False
-
-    def test_enabled_when_true(self) -> None:
-        """Test that v2 is enabled when env var is 'true'."""
-        with patch.dict(os.environ, {"ATP_DASHBOARD_V2": "true"}):
-            assert is_v2_enabled() is True
-
-    def test_enabled_when_true_uppercase(self) -> None:
-        """Test that v2 is enabled when env var is 'TRUE'."""
-        with patch.dict(os.environ, {"ATP_DASHBOARD_V2": "TRUE"}):
-            assert is_v2_enabled() is True
-
-    def test_disabled_when_false(self) -> None:
-        """Test that v2 is disabled when env var is 'false'."""
-        with patch.dict(os.environ, {"ATP_DASHBOARD_V2": "false"}):
-            assert is_v2_enabled() is False
-
-    def test_disabled_when_other_value(self) -> None:
-        """Test that v2 is disabled when env var is other value."""
-        with patch.dict(os.environ, {"ATP_DASHBOARD_V2": "yes"}):
-            assert is_v2_enabled() is False

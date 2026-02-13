@@ -20,7 +20,7 @@ from atp.dashboard.v2.factory import create_test_app
 @pytest.fixture
 def v2_app(test_database: Database):
     """Create a test app with v2 routes."""
-    app = create_test_app(use_v2_routes=True)
+    app = create_test_app()
 
     # Override the dependency to use our test session
     async def override_get_session() -> AsyncGenerator[AsyncSession, None]:

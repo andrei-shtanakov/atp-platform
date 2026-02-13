@@ -6,8 +6,12 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
-from pydantic import Field, field_validator, model_validator
-
+from atp.adapters.base import AgentAdapter
+from atp.adapters.exceptions import (
+    AdapterConnectionError,
+    AdapterError,
+    AdapterTimeoutError,
+)
 from atp.protocol import (
     ArtifactStructured,
     ATPEvent,
@@ -18,149 +22,16 @@ from atp.protocol import (
     ResponseStatus,
 )
 
-from .base import AdapterConfig, AgentAdapter
-from .exceptions import (
-    AdapterConnectionError,
-    AdapterError,
-    AdapterTimeoutError,
-)
-
-
-class BedrockAdapterConfig(AdapterConfig):
-    """Configuration for AWS Bedrock Agents adapter."""
-
-    # Agent identification
-    agent_id: str = Field(..., description="Bedrock Agent ID")
-    agent_alias_id: str = Field(
-        default="TSTALIASID",
-        description="Bedrock Agent alias ID (default: TSTALIASID for draft)",
-    )
-
-    # AWS configuration
-    region: str = Field(default="us-east-1", description="AWS region")
-    profile: str | None = Field(
-        None, description="AWS profile name for credential resolution"
-    )
-    access_key_id: str | None = Field(None, description="AWS access key ID")
-    secret_access_key: str | None = Field(None, description="AWS secret access key")
-    session_token: str | None = Field(None, description="AWS session token")
-    endpoint_url: str | None = Field(
-        None, description="Custom endpoint URL for Bedrock (for testing)"
-    )
-
-    # Session management
-    session_id: str | None = Field(
-        None,
-        description=(
-            "Session ID for conversation continuity. "
-            "If not provided, a new session is created per request."
-        ),
-    )
-    enable_session_persistence: bool = Field(
-        default=False,
-        description="Persist session ID across requests for multi-turn conversations",
-    )
-    session_ttl_seconds: int = Field(
-        default=3600,
-        description="Session time-to-live in seconds",
-        gt=0,
-    )
-
-    # Knowledge base configuration
-    knowledge_base_ids: list[str] = Field(
-        default_factory=list,
-        description="List of knowledge base IDs to attach to the agent",
-    )
-    retrieve_and_generate: bool = Field(
-        default=False,
-        description=(
-            "Use retrieve and generate mode for knowledge base queries. "
-            "When enabled, the agent retrieves relevant documents and generates "
-            "responses based on them."
-        ),
-    )
-    retrieval_config: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Configuration for knowledge base retrieval",
-    )
-
-    # Action group configuration
-    action_groups: list[str] = Field(
-        default_factory=list,
-        description="List of action group names to enable",
-    )
-
-    # Tracing and observability
-    enable_trace: bool = Field(
-        default=True,
-        description="Enable trace output from Bedrock agent",
-    )
-    trace_include_reasoning: bool = Field(
-        default=True,
-        description="Include reasoning steps in trace events",
-    )
-
-    # Memory and context
-    memory_id: str | None = Field(
-        None,
-        description="Memory ID for agent memory feature",
-    )
-
-    # Guardrails
-    guardrail_identifier: str | None = Field(
-        None,
-        description="Guardrail identifier for content filtering",
-    )
-    guardrail_version: str | None = Field(
-        None,
-        description="Guardrail version (required if guardrail_identifier is set)",
-    )
-
-    @field_validator("agent_id")
-    @classmethod
-    def validate_agent_id(cls, v: str) -> str:
-        """Validate agent ID format."""
-        if not v or not v.strip():
-            raise ValueError("agent_id cannot be empty")
-        return v.strip()
-
-    @field_validator("region")
-    @classmethod
-    def validate_region(cls, v: str) -> str:
-        """Validate AWS region."""
-        v = v.strip().lower()
-        if not v:
-            raise ValueError("region cannot be empty")
-        return v
-
-    @model_validator(mode="after")
-    def validate_credentials(self) -> "BedrockAdapterConfig":
-        """Validate credential configuration."""
-        # If access key is provided, secret key must also be provided
-        if self.access_key_id and not self.secret_access_key:
-            raise ValueError(
-                "secret_access_key is required when access_key_id is provided"
-            )
-        if self.secret_access_key and not self.access_key_id:
-            raise ValueError(
-                "access_key_id is required when secret_access_key is provided"
-            )
-
-        # Guardrail version required if identifier is set
-        if self.guardrail_identifier and not self.guardrail_version:
-            raise ValueError(
-                "guardrail_version is required when guardrail_identifier is set"
-            )
-
-        return self
+from .auth import create_boto3_client
+from .models import BedrockAdapterConfig
 
 
 class BedrockAdapter(AgentAdapter):
     """
     Adapter for AWS Bedrock Agents.
 
-    This adapter allows ATP to communicate with agents deployed on AWS Bedrock.
-    It supports:
+    This adapter allows ATP to communicate with agents deployed
+    on AWS Bedrock. It supports:
     - Agent invocation with session management
     - Knowledge base integration for RAG workflows
     - Action groups for custom tool invocation
@@ -205,7 +76,7 @@ class BedrockAdapter(AgentAdapter):
 
     def _get_boto3_client(self) -> Any:
         """
-        Create or return the boto3 client for Bedrock Agent Runtime.
+        Create or return the boto3 client.
 
         Returns:
             boto3 client for bedrock-agent-runtime.
@@ -217,47 +88,8 @@ class BedrockAdapter(AgentAdapter):
         if self._client is not None:
             return self._client
 
-        try:
-            import boto3
-        except ImportError as e:
-            raise AdapterError(
-                "boto3 is required for Bedrock adapter. Install it with: uv add boto3",
-                adapter_type=self.adapter_type,
-            ) from e
-
-        try:
-            # Build session kwargs
-            session_kwargs: dict[str, Any] = {
-                "region_name": self._config.region,
-            }
-
-            if self._config.profile:
-                session_kwargs["profile_name"] = self._config.profile
-
-            # Create session
-            session = boto3.Session(**session_kwargs)
-
-            # Build client kwargs
-            client_kwargs: dict[str, Any] = {}
-
-            if self._config.access_key_id and self._config.secret_access_key:
-                client_kwargs["aws_access_key_id"] = self._config.access_key_id
-                client_kwargs["aws_secret_access_key"] = self._config.secret_access_key
-                if self._config.session_token:
-                    client_kwargs["aws_session_token"] = self._config.session_token
-
-            if self._config.endpoint_url:
-                client_kwargs["endpoint_url"] = self._config.endpoint_url
-
-            self._client = session.client("bedrock-agent-runtime", **client_kwargs)
-            return self._client
-
-        except Exception as e:
-            raise AdapterConnectionError(
-                f"Failed to create Bedrock client: {e}",
-                adapter_type=self.adapter_type,
-                cause=e,
-            ) from e
+        self._client = create_boto3_client(self._config, self.adapter_type)
+        return self._client
 
     def _generate_session_id(self) -> str:
         """Generate a new session ID."""
@@ -313,8 +145,8 @@ class BedrockAdapter(AgentAdapter):
         # Add guardrails
         if self._config.guardrail_identifier and self._config.guardrail_version:
             params["guardrailConfiguration"] = {
-                "guardrailIdentifier": self._config.guardrail_identifier,
-                "guardrailVersion": self._config.guardrail_version,
+                "guardrailIdentifier": (self._config.guardrail_identifier),
+                "guardrailVersion": (self._config.guardrail_version),
             }
 
         # Add session state if input data contains it
@@ -354,109 +186,11 @@ class BedrockAdapter(AgentAdapter):
         # Handle orchestration trace
         orchestration_trace = trace_data.get("orchestrationTrace")
         if orchestration_trace:
-            # Model invocation input
-            model_input = orchestration_trace.get("modelInvocationInput")
-            if model_input:
-                return ATPEvent(
-                    task_id=task_id,
-                    sequence=sequence,
-                    event_type=EventType.LLM_REQUEST,
-                    payload={
-                        "type": "model_invocation",
-                        "text": model_input.get("text", ""),
-                        "trace_id": model_input.get("traceId"),
-                    },
-                )
-
-            # Model invocation output
-            model_output = orchestration_trace.get("modelInvocationOutput")
-            if model_output:
-                parsed = model_output.get("parsedResponse", {})
-                return ATPEvent(
-                    task_id=task_id,
-                    sequence=sequence,
-                    event_type=EventType.LLM_REQUEST,
-                    payload={
-                        "type": "model_response",
-                        "text": parsed.get("text", ""),
-                        "trace_id": model_output.get("traceId"),
-                    },
-                )
-
-            # Rationale (reasoning)
-            rationale = orchestration_trace.get("rationale")
-            if rationale and self._config.trace_include_reasoning:
-                return ATPEvent(
-                    task_id=task_id,
-                    sequence=sequence,
-                    event_type=EventType.REASONING,
-                    payload={
-                        "thought": rationale.get("text", ""),
-                        "trace_id": rationale.get("traceId"),
-                    },
-                )
-
-            # Invocation input (action group call)
-            invocation_input = orchestration_trace.get("invocationInput")
-            if invocation_input:
-                action_input = invocation_input.get("actionGroupInvocationInput", {})
-                return ATPEvent(
-                    task_id=task_id,
-                    sequence=sequence,
-                    event_type=EventType.TOOL_CALL,
-                    payload={
-                        "tool": action_input.get("actionGroupName", "unknown"),
-                        "function": action_input.get("function", ""),
-                        "api_path": action_input.get("apiPath", ""),
-                        "input": action_input.get("parameters", []),
-                        "status": "started",
-                        "trace_id": invocation_input.get("traceId"),
-                    },
-                )
-
-            # Observation (action result)
-            observation = orchestration_trace.get("observation")
-            if observation:
-                action_output = observation.get("actionGroupInvocationOutput", {})
-                kb_output = observation.get("knowledgeBaseLookupOutput", {})
-                final_response = observation.get("finalResponse", {})
-
-                if action_output:
-                    return ATPEvent(
-                        task_id=task_id,
-                        sequence=sequence,
-                        event_type=EventType.TOOL_CALL,
-                        payload={
-                            "output": action_output.get("text", ""),
-                            "status": "success",
-                            "trace_id": observation.get("traceId"),
-                        },
-                    )
-                elif kb_output:
-                    return ATPEvent(
-                        task_id=task_id,
-                        sequence=sequence,
-                        event_type=EventType.TOOL_CALL,
-                        payload={
-                            "tool": "knowledge_base_lookup",
-                            "retrieved_references": kb_output.get(
-                                "retrievedReferences", []
-                            ),
-                            "status": "success",
-                            "trace_id": observation.get("traceId"),
-                        },
-                    )
-                elif final_response:
-                    return ATPEvent(
-                        task_id=task_id,
-                        sequence=sequence,
-                        event_type=EventType.PROGRESS,
-                        payload={
-                            "message": "Final response generated",
-                            "text": final_response.get("text", ""),
-                            "trace_id": observation.get("traceId"),
-                        },
-                    )
+            event = self._extract_orchestration_event(
+                orchestration_trace, task_id, sequence
+            )
+            if event:
+                return event
 
         # Handle pre-processing trace
         preprocessing_trace = trace_data.get("preProcessingTrace")
@@ -523,6 +257,148 @@ class BedrockAdapter(AgentAdapter):
 
         return None
 
+    def _extract_orchestration_event(
+        self,
+        orchestration_trace: dict[str, Any],
+        task_id: str,
+        sequence: int,
+    ) -> ATPEvent | None:
+        """
+        Extract an ATP event from an orchestration trace.
+
+        Args:
+            orchestration_trace: Orchestration trace dict.
+            task_id: Task ID for the event.
+            sequence: Sequence number.
+
+        Returns:
+            ATPEvent if trace can be converted, None otherwise.
+        """
+        # Model invocation input
+        model_input = orchestration_trace.get("modelInvocationInput")
+        if model_input:
+            return ATPEvent(
+                task_id=task_id,
+                sequence=sequence,
+                event_type=EventType.LLM_REQUEST,
+                payload={
+                    "type": "model_invocation",
+                    "text": model_input.get("text", ""),
+                    "trace_id": model_input.get("traceId"),
+                },
+            )
+
+        # Model invocation output
+        model_output = orchestration_trace.get("modelInvocationOutput")
+        if model_output:
+            parsed = model_output.get("parsedResponse", {})
+            return ATPEvent(
+                task_id=task_id,
+                sequence=sequence,
+                event_type=EventType.LLM_REQUEST,
+                payload={
+                    "type": "model_response",
+                    "text": parsed.get("text", ""),
+                    "trace_id": model_output.get("traceId"),
+                },
+            )
+
+        # Rationale (reasoning)
+        rationale = orchestration_trace.get("rationale")
+        if rationale and self._config.trace_include_reasoning:
+            return ATPEvent(
+                task_id=task_id,
+                sequence=sequence,
+                event_type=EventType.REASONING,
+                payload={
+                    "thought": rationale.get("text", ""),
+                    "trace_id": rationale.get("traceId"),
+                },
+            )
+
+        # Invocation input (action group call)
+        invocation_input = orchestration_trace.get("invocationInput")
+        if invocation_input:
+            action_input = invocation_input.get("actionGroupInvocationInput", {})
+            return ATPEvent(
+                task_id=task_id,
+                sequence=sequence,
+                event_type=EventType.TOOL_CALL,
+                payload={
+                    "tool": action_input.get("actionGroupName", "unknown"),
+                    "function": action_input.get("function", ""),
+                    "api_path": action_input.get("apiPath", ""),
+                    "input": action_input.get("parameters", []),
+                    "status": "started",
+                    "trace_id": invocation_input.get("traceId"),
+                },
+            )
+
+        # Observation (action result)
+        observation = orchestration_trace.get("observation")
+        if observation:
+            return self._extract_observation_event(observation, task_id, sequence)
+
+        return None
+
+    def _extract_observation_event(
+        self,
+        observation: dict[str, Any],
+        task_id: str,
+        sequence: int,
+    ) -> ATPEvent | None:
+        """
+        Extract an ATP event from an observation.
+
+        Args:
+            observation: Observation dictionary.
+            task_id: Task ID for the event.
+            sequence: Sequence number.
+
+        Returns:
+            ATPEvent if observation can be converted.
+        """
+        action_output = observation.get("actionGroupInvocationOutput", {})
+        kb_output = observation.get("knowledgeBaseLookupOutput", {})
+        final_response = observation.get("finalResponse", {})
+
+        if action_output:
+            return ATPEvent(
+                task_id=task_id,
+                sequence=sequence,
+                event_type=EventType.TOOL_CALL,
+                payload={
+                    "output": action_output.get("text", ""),
+                    "status": "success",
+                    "trace_id": observation.get("traceId"),
+                },
+            )
+        elif kb_output:
+            return ATPEvent(
+                task_id=task_id,
+                sequence=sequence,
+                event_type=EventType.TOOL_CALL,
+                payload={
+                    "tool": "knowledge_base_lookup",
+                    "retrieved_references": kb_output.get("retrievedReferences", []),
+                    "status": "success",
+                    "trace_id": observation.get("traceId"),
+                },
+            )
+        elif final_response:
+            return ATPEvent(
+                task_id=task_id,
+                sequence=sequence,
+                event_type=EventType.PROGRESS,
+                payload={
+                    "message": "Final response generated",
+                    "text": final_response.get("text", ""),
+                    "trace_id": observation.get("traceId"),
+                },
+            )
+
+        return None
+
     async def _invoke_agent(
         self,
         request: ATPRequest,
@@ -549,7 +425,10 @@ class BedrockAdapter(AgentAdapter):
             # Run boto3 call in executor to avoid blocking
             loop = asyncio.get_running_loop()
             response = await asyncio.wait_for(
-                loop.run_in_executor(None, lambda: client.invoke_agent(**params)),
+                loop.run_in_executor(
+                    None,
+                    lambda: client.invoke_agent(**params),
+                ),
                 timeout=self._config.timeout_seconds,
             )
         except TimeoutError as e:
@@ -569,8 +448,8 @@ class BedrockAdapter(AgentAdapter):
                 ) from e
             if "AccessDeniedException" in error_str:
                 raise AdapterConnectionError(
-                    "Access denied to Bedrock agent. Check AWS credentials and "
-                    "permissions.",
+                    "Access denied to Bedrock agent. "
+                    "Check AWS credentials and permissions.",
                     adapter_type=self.adapter_type,
                     cause=e,
                 ) from e
@@ -622,7 +501,7 @@ class BedrockAdapter(AgentAdapter):
                     }
                 )
 
-        # Extract session ID from response metadata if available
+        # Extract session ID from response metadata
         response_metadata = response.get("ResponseMetadata", {})
         metrics_info["request_id"] = response_metadata.get("RequestId")
         metrics_info["http_status"] = response_metadata.get("HTTPStatusCode")
@@ -715,7 +594,11 @@ class BedrockAdapter(AgentAdapter):
                 trace_id=metrics_info.get("request_id"),
             )
 
-        except (AdapterTimeoutError, AdapterConnectionError, AdapterError):
+        except (
+            AdapterTimeoutError,
+            AdapterConnectionError,
+            AdapterError,
+        ):
             raise
         except Exception as e:
             wall_time = time.time() - start_time
@@ -733,7 +616,8 @@ class BedrockAdapter(AgentAdapter):
         """
         Execute a task with event streaming.
 
-        Yields ATP events during execution and ends with the final response.
+        Yields ATP events during execution and ends with
+        the final response.
 
         Args:
             request: ATP Request with task specification.
@@ -743,7 +627,7 @@ class BedrockAdapter(AgentAdapter):
             Final ATPResponse when complete.
 
         Raises:
-            AdapterConnectionError: If connection to AWS fails.
+            AdapterConnectionError: If connection fails.
             AdapterTimeoutError: If execution times out.
             AdapterError: If agent invocation fails.
         """
@@ -762,7 +646,7 @@ class BedrockAdapter(AgentAdapter):
             sequence=sequence,
             event_type=EventType.PROGRESS,
             payload={
-                "message": "Starting Bedrock agent invocation",
+                "message": ("Starting Bedrock agent invocation"),
                 "session_id": session_id,
                 "agent_id": self._config.agent_id,
             },
@@ -777,7 +661,10 @@ class BedrockAdapter(AgentAdapter):
             # Run boto3 call in executor
             loop = asyncio.get_running_loop()
             response = await asyncio.wait_for(
-                loop.run_in_executor(None, lambda: client.invoke_agent(**params)),
+                loop.run_in_executor(
+                    None,
+                    lambda: client.invoke_agent(**params),
+                ),
                 timeout=self._config.timeout_seconds,
             )
 
@@ -816,7 +703,9 @@ class BedrockAdapter(AgentAdapter):
 
                     # Convert trace to ATP event
                     atp_event = self._extract_trace_event(
-                        trace, request.task_id, sequence
+                        trace,
+                        request.task_id,
+                        sequence,
                     )
                     if atp_event:
                         yield atp_event
@@ -839,10 +728,10 @@ class BedrockAdapter(AgentAdapter):
                         event_type=EventType.TOOL_CALL,
                         payload={
                             "type": "return_control",
-                            "invocation_inputs": return_control.get(
-                                "invocationInputs", []
+                            "invocation_inputs": (
+                                return_control.get("invocationInputs", [])
                             ),
-                            "invocation_id": return_control.get("invocationId"),
+                            "invocation_id": (return_control.get("invocationId")),
                         },
                     )
                     sequence += 1
@@ -899,7 +788,8 @@ class BedrockAdapter(AgentAdapter):
                 payload={
                     "error_type": "timeout",
                     "message": (
-                        f"Bedrock agent invocation timed out after "
+                        "Bedrock agent invocation timed "
+                        "out after "
                         f"{self._config.timeout_seconds}s"
                     ),
                     "recoverable": False,
@@ -909,7 +799,8 @@ class BedrockAdapter(AgentAdapter):
                 task_id=request.task_id,
                 status=ResponseStatus.TIMEOUT,
                 error=(
-                    f"Bedrock agent invocation timed out after "
+                    "Bedrock agent invocation timed "
+                    "out after "
                     f"{self._config.timeout_seconds}s"
                 ),
                 metrics=Metrics(wall_time_seconds=wall_time),
@@ -942,7 +833,6 @@ class BedrockAdapter(AgentAdapter):
             True if agent is accessible, False otherwise.
         """
         try:
-            # Try to get the client - this validates credentials
             self._get_boto3_client()
             return True
         except (AdapterError, AdapterConnectionError):
@@ -964,6 +854,6 @@ class BedrockAdapter(AgentAdapter):
         Set a specific session ID.
 
         Args:
-            session_id: Session ID to use for subsequent requests.
+            session_id: Session ID to use.
         """
         self._session_id = session_id

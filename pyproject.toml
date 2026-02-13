@@ -10,33 +10,15 @@ dependencies = [
     "httpx>=0.27",
     "ruamel-yaml>=0.18",
     "click>=8.3.1",
-    "fastapi>=0.128.0",
-    "uvicorn[standard]>=0.40.0",
     "jsonschema>=4.26.0",
-    "anthropic>=0.76.0",
     "jinja2>=3.1.6",
-    "sqlalchemy>=2.0.46",
-    "aiosqlite>=0.22.1",
-    "asyncpg>=0.31.0",
-    "PyJWT>=2.0.0",
-    "bcrypt>=5.0.0",
-    "python-multipart>=0.0.22",
-    "greenlet>=3.3.1",
-    "openai>=2.15.0",
     "pydantic-settings>=2.12.0",
+    "rich>=13.0",
     "structlog>=25.5.0",
     "opentelemetry-api>=1.39.1",
     "opentelemetry-sdk>=1.39.1",
     "opentelemetry-exporter-otlp-proto-grpc>=1.39.1",
-    "opentelemetry-instrumentation-fastapi>=0.60b1",
-    "opentelemetry-instrumentation-httpx>=0.60b1",
-    "opentelemetry-instrumentation-logging>=0.60b1",
     "prometheus-client>=0.24.1",
-    "openpyxl>=3.1.5",
-    "authlib>=1.6.6",
-    "python3-saml>=1.16.0",
-    "beautifulsoup4>=4.14.3",
-    "spec-runner>=0.1.4",
 ]
 
 [project.scripts]
@@ -50,8 +32,9 @@ container = "atp.adapters.container:ContainerAdapter"
 langgraph = "atp.adapters.langgraph:LangGraphAdapter"
 crewai = "atp.adapters.crewai:CrewAIAdapter"
 autogen = "atp.adapters.autogen:AutoGenAdapter"
-bedrock = "atp.adapters.bedrock:BedrockAdapter"
-vertex = "atp.adapters.vertex:VertexAdapter"
+bedrock = "atp.adapters.bedrock.adapter:BedrockAdapter"
+vertex = "atp.adapters.vertex.adapter:VertexAdapter"
+azure_openai = "atp.adapters.azure_openai.adapter:AzureOpenAIAdapter"
 
 [project.entry-points."atp.evaluators"]
 artifact = "atp.evaluators.artifact:ArtifactEvaluator"
@@ -81,11 +64,51 @@ tui = [
     "rich>=13.0",
     "textual>=0.47.0",
 ]
+cloud = [
+    "boto3>=1.42.39",
+    "google-cloud-aiplatform>=1.135.0",
+    "openai>=2.15.0",
+]
 bedrock = [
     "boto3>=1.42.39",
 ]
 vertex = [
     "google-cloud-aiplatform>=1.135.0",
+]
+azure-openai = [
+    "openai>=2.15.0",
+]
+dashboard = [
+    "fastapi>=0.128.0",
+    "uvicorn[standard]>=0.40.0",
+    "sqlalchemy>=2.0.46",
+    "aiosqlite>=0.22.1",
+    "asyncpg>=0.31.0",
+    "PyJWT>=2.0.0",
+    "bcrypt>=5.0.0",
+    "python-multipart>=0.0.22",
+    "greenlet>=3.3.1",
+    "opentelemetry-instrumentation-fastapi>=0.60b1",
+    "opentelemetry-instrumentation-httpx>=0.60b1",
+    "opentelemetry-instrumentation-logging>=0.60b1",
+]
+enterprise = [
+    "authlib>=1.6.6",
+    "python3-saml>=1.16.0",
+]
+analytics = [
+    "openpyxl>=3.1.5",
+]
+llm = [
+    "anthropic>=0.76.0",
+]
+all = [
+    "atp-platform[cloud]",
+    "atp-platform[dashboard]",
+    "atp-platform[enterprise]",
+    "atp-platform[analytics]",
+    "atp-platform[llm]",
+    "atp-platform[tui]",
 ]
 
 [build-system]

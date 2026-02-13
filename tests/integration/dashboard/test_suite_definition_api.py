@@ -3,12 +3,38 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from atp.dashboard.app import app
+from atp.dashboard.auth import get_current_active_user
+from atp.dashboard.models import User
+from atp.dashboard.v2.factory import create_app
+
+
+def _mock_admin_user() -> User:
+    """Create a mock admin user for testing."""
+    user = User(
+        username="admin_test",
+        email="admin@test.com",
+        hashed_password="fake_hash",
+        is_active=True,
+        is_admin=True,
+    )
+    user.id = 1
+    return user
 
 
 @pytest.fixture
 def client() -> TestClient:
-    """Create a test client using the actual app."""
+    """Create a test client with auth bypass."""
+    app = create_app()
+    app.dependency_overrides[get_current_active_user] = _mock_admin_user
+    client = TestClient(app, raise_server_exceptions=False)
+    yield client  # type: ignore
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def unauth_client() -> TestClient:
+    """Create a test client without auth (for testing 401)."""
+    app = create_app()
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -36,17 +62,21 @@ class TestSuiteDefinitionEndpoints:
         response = client.get("/api/suite-definitions?offset=-1")
         assert response.status_code == 422
 
-    def test_create_suite_definition_unauthorized(self, client: TestClient) -> None:
+    def test_create_suite_definition_unauthorized(
+        self, unauth_client: TestClient
+    ) -> None:
         """Test creating suite without authentication."""
-        response = client.post(
+        response = unauth_client.post(
             "/api/suite-definitions",
             json={"name": "test-suite"},
         )
         assert response.status_code == 401
 
-    def test_create_suite_definition_invalid_token(self, client: TestClient) -> None:
+    def test_create_suite_definition_invalid_token(
+        self, unauth_client: TestClient
+    ) -> None:
         """Test creating suite with invalid token."""
-        response = client.post(
+        response = unauth_client.post(
             "/api/suite-definitions",
             json={"name": "test-suite"},
             headers={"Authorization": "Bearer invalid-token"},
@@ -55,23 +85,20 @@ class TestSuiteDefinitionEndpoints:
 
     def test_create_suite_definition_validation(self, client: TestClient) -> None:
         """Test suite creation validation."""
-        # Missing required field
+        # Missing required field (auth bypassed)
         response = client.post(
             "/api/suite-definitions",
             json={},
-            headers={"Authorization": "Bearer fake"},
         )
-        # Either 422 (validation) or 401 (auth)
-        assert response.status_code in [401, 422]
+        assert response.status_code == 422
 
     def test_create_suite_empty_name(self, client: TestClient) -> None:
         """Test suite creation with empty name."""
         response = client.post(
             "/api/suite-definitions",
             json={"name": ""},
-            headers={"Authorization": "Bearer fake"},
         )
-        assert response.status_code in [401, 422]
+        assert response.status_code == 422
 
     def test_get_suite_definition_no_auth(self, client: TestClient) -> None:
         """Test getting suite definition without auth (allowed)."""
@@ -84,18 +111,20 @@ class TestSuiteDefinitionEndpoints:
         response = client.get("/api/suite-definitions/invalid")
         assert response.status_code == 422
 
-    def test_delete_suite_definition_unauthorized(self, client: TestClient) -> None:
+    def test_delete_suite_definition_unauthorized(
+        self, unauth_client: TestClient
+    ) -> None:
         """Test deleting suite without authentication."""
-        response = client.delete("/api/suite-definitions/1")
+        response = unauth_client.delete("/api/suite-definitions/1")
         assert response.status_code == 401
 
 
 class TestAddTestToSuiteEndpoints:
     """Integration tests for adding tests to suites."""
 
-    def test_add_test_unauthorized(self, client: TestClient) -> None:
+    def test_add_test_unauthorized(self, unauth_client: TestClient) -> None:
         """Test adding test without authentication."""
-        response = client.post(
+        response = unauth_client.post(
             "/api/suite-definitions/1/tests",
             json={
                 "id": "test-001",
@@ -106,7 +135,7 @@ class TestAddTestToSuiteEndpoints:
         assert response.status_code == 401
 
     def test_add_test_invalid_suite_id(self, client: TestClient) -> None:
-        """Test adding test with invalid suite ID (requires auth first)."""
+        """Test adding test with invalid suite ID."""
         response = client.post(
             "/api/suite-definitions/invalid/tests",
             json={
@@ -115,18 +144,15 @@ class TestAddTestToSuiteEndpoints:
                 "task": {"description": "Do something"},
             },
         )
-        # Auth is checked before path validation, so 401 is expected
-        assert response.status_code in [401, 422]
+        assert response.status_code == 422
 
     def test_add_test_missing_required_fields(self, client: TestClient) -> None:
         """Test adding test with missing required fields."""
         response = client.post(
             "/api/suite-definitions/1/tests",
             json={"id": "test-001"},
-            headers={"Authorization": "Bearer fake"},
         )
-        # Either 422 (validation) or 401 (auth)
-        assert response.status_code in [401, 422]
+        assert response.status_code == 422
 
 
 class TestYAMLExportEndpoints:
@@ -244,7 +270,7 @@ class TestSuiteDefinitionResponseFormat:
 class TestComplexSuiteCreation:
     """Tests for complex suite creation scenarios."""
 
-    def test_create_suite_with_all_fields(self, client: TestClient) -> None:
+    def test_create_suite_with_all_fields(self, unauth_client: TestClient) -> None:
         """Test creating suite with all optional fields."""
         suite_data = {
             "name": "complex-suite",
@@ -301,7 +327,7 @@ class TestComplexSuiteCreation:
             ],
         }
         # Without auth, should return 401
-        response = client.post("/api/suite-definitions", json=suite_data)
+        response = unauth_client.post("/api/suite-definitions", json=suite_data)
         assert response.status_code == 401
 
     def test_create_suite_with_invalid_scoring(self, client: TestClient) -> None:
@@ -315,5 +341,4 @@ class TestComplexSuiteCreation:
             },
         }
         response = client.post("/api/suite-definitions", json=suite_data)
-        # Either 422 (validation) or 401 (auth)
-        assert response.status_code in [401, 422]
+        assert response.status_code == 422
