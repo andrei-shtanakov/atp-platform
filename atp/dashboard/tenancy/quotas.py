@@ -14,6 +14,7 @@ Quota Types:
 """
 
 import logging
+import time
 from datetime import datetime
 from enum import Enum
 from typing import Any
@@ -25,6 +26,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from atp.dashboard.tenancy.models import Tenant, TenantQuotas
 
 logger = logging.getLogger(__name__)
+
+# Cache for storage usage: {tenant_id: (timestamp, value_gb)}
+_storage_cache: dict[str, tuple[float, float]] = {}
+STORAGE_CACHE_TTL_SECONDS = 300  # 5 minutes
 
 
 class QuotaType(str, Enum):
@@ -203,10 +208,158 @@ class QuotaChecker:
     async def _get_storage_usage(self, tenant_id: str) -> float:
         """Get storage usage in GB for a tenant.
 
-        In a real implementation, this would query actual storage metrics.
+        Calculates storage from three sources:
+        1. Artifact sizes stored in the database
+        2. Run result data (response JSON, events) in the database
+        3. Trace files on disk (~/.atp/traces/)
+
+        Results are cached for 5 minutes to avoid expensive
+        recalculation on every quota check.
+
+        Args:
+            tenant_id: The tenant ID.
+
+        Returns:
+            Storage usage in GB.
         """
-        # Placeholder - would need actual storage tracking
-        return 0.0
+        now = time.monotonic()
+        cached = _storage_cache.get(tenant_id)
+        if cached is not None:
+            cached_time, cached_value = cached
+            if now - cached_time < STORAGE_CACHE_TTL_SECONDS:
+                return cached_value
+
+        total_bytes = 0
+
+        # 1. Artifact storage from DB
+        total_bytes += await self._get_artifact_storage_bytes(tenant_id)
+
+        # 2. Run result data storage from DB
+        total_bytes += await self._get_run_result_storage_bytes(tenant_id)
+
+        # 3. Trace file storage on disk
+        total_bytes += self._get_trace_storage_bytes(tenant_id)
+
+        total_gb = total_bytes / (1024**3)
+        _storage_cache[tenant_id] = (now, total_gb)
+        return total_gb
+
+    async def _get_artifact_storage_bytes(self, tenant_id: str) -> int:
+        """Get total artifact size in bytes for a tenant."""
+        try:
+            from atp.dashboard.models import (
+                Artifact,
+                RunResult,
+                SuiteExecution,
+                TestExecution,
+            )
+
+            query = (
+                select(func.coalesce(func.sum(Artifact.size_bytes), 0))
+                .join(
+                    RunResult,
+                    Artifact.run_result_id == RunResult.id,
+                )
+                .join(
+                    TestExecution,
+                    RunResult.test_execution_id == TestExecution.id,
+                )
+                .join(
+                    SuiteExecution,
+                    TestExecution.suite_execution_id == SuiteExecution.id,
+                )
+                .where(
+                    SuiteExecution.tenant_id == tenant_id,
+                )
+            )
+            result = await self._session.execute(query)
+            return int(result.scalar() or 0)
+        except Exception as e:
+            logger.debug(
+                "Error getting artifact storage for %s: %s",
+                tenant_id,
+                e,
+            )
+            return 0
+
+    async def _get_run_result_storage_bytes(self, tenant_id: str) -> int:
+        """Estimate run result JSON data size for a tenant.
+
+        Uses the DB length of response_json and events_json
+        columns to approximate storage.
+        """
+        try:
+            from atp.dashboard.models import (
+                RunResult,
+                SuiteExecution,
+                TestExecution,
+            )
+
+            query = (
+                select(
+                    func.coalesce(
+                        func.sum(
+                            func.coalesce(
+                                func.length(RunResult.response_json),
+                                0,
+                            )
+                            + func.coalesce(
+                                func.length(RunResult.events_json),
+                                0,
+                            )
+                        ),
+                        0,
+                    )
+                )
+                .join(
+                    TestExecution,
+                    RunResult.test_execution_id == TestExecution.id,
+                )
+                .join(
+                    SuiteExecution,
+                    TestExecution.suite_execution_id == SuiteExecution.id,
+                )
+                .where(
+                    SuiteExecution.tenant_id == tenant_id,
+                )
+            )
+            result = await self._session.execute(query)
+            return int(result.scalar() or 0)
+        except Exception as e:
+            logger.debug(
+                "Error getting run result storage for %s: %s",
+                tenant_id,
+                e,
+            )
+            return 0
+
+    @staticmethod
+    def _get_trace_storage_bytes(tenant_id: str) -> int:
+        """Get trace file storage in bytes for a tenant.
+
+        Scans the trace directory for files belonging to the
+        given tenant.
+
+        Args:
+            tenant_id: The tenant ID.
+
+        Returns:
+            Total size in bytes of trace files for the tenant.
+        """
+        try:
+            from atp.tracing.storage import DEFAULT_TRACES_DIR
+
+            traces_dir = DEFAULT_TRACES_DIR / tenant_id
+            if not traces_dir.is_dir():
+                return 0
+            return sum(f.stat().st_size for f in traces_dir.iterdir() if f.is_file())
+        except Exception as e:
+            logger.debug(
+                "Error getting trace storage for %s: %s",
+                tenant_id,
+                e,
+            )
+            return 0
 
     async def _get_agent_count(self, tenant_id: str) -> int:
         """Get the number of agents for a tenant."""

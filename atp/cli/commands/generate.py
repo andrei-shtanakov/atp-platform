@@ -934,3 +934,290 @@ def generate_regression(
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(EXIT_ERROR)
+
+
+@generate_command.command(name="from-traces")
+@click.option(
+    "--source",
+    type=click.Choice(["langsmith", "otel"]),
+    required=True,
+    help="Trace source: langsmith or otel",
+)
+@click.option(
+    "--output",
+    "-o",
+    "output_file",
+    type=click.Path(path_type=Path),
+    required=True,
+    help="Output YAML file path for generated test suite",
+)
+@click.option(
+    "--project",
+    type=str,
+    default=None,
+    help="LangSmith project name (for --source=langsmith)",
+)
+@click.option(
+    "--api-key",
+    type=str,
+    default=None,
+    help="API key (for --source=langsmith)",
+)
+@click.option(
+    "--file",
+    "trace_file",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="OTLP JSON file path (for --source=otel)",
+)
+@click.option(
+    "--limit",
+    type=int,
+    default=50,
+    help="Max number of traces to import (default: 50)",
+)
+@click.option(
+    "--name",
+    "suite_name",
+    type=str,
+    default=None,
+    help="Suite name (default: derived from output filename)",
+)
+@click.option(
+    "--no-dedupe",
+    is_flag=True,
+    help="Disable deduplication of similar traces",
+)
+@click.option(
+    "--tags",
+    type=str,
+    default=None,
+    help="Comma-separated tags to add to all generated tests",
+)
+def generate_from_traces(
+    source: str,
+    output_file: Path,
+    project: str | None,
+    api_key: str | None,
+    trace_file: Path | None,
+    limit: int,
+    suite_name: str | None,
+    no_dedupe: bool,
+    tags: str | None,
+) -> None:
+    """Generate test suites from production traces.
+
+    Import agent traces from LangSmith or OpenTelemetry and
+    auto-generate regression test suites.
+
+    Examples:
+
+      # Import from LangSmith
+      atp generate from-traces --source=langsmith \\
+          --project=my-project --api-key=KEY \\
+          --limit=50 --output=suite.yaml
+
+      # Import from OpenTelemetry OTLP JSON
+      atp generate from-traces --source=otel \\
+          --file=traces.json --output=suite.yaml
+
+    Exit Codes:
+
+      0 - Tests generated successfully
+      2 - Error occurred
+    """
+    import asyncio
+
+    try:
+        # Validate source-specific options
+        if source == "langsmith":
+            if not api_key:
+                raise click.ClickException("--api-key is required for langsmith source")
+        elif source == "otel":
+            if not trace_file:
+                raise click.ClickException("--file is required for otel source")
+
+        # Derive suite name
+        if suite_name is None:
+            suite_name = output_file.stem.replace("-", "_").replace(".", "_")
+
+        tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
+
+        click.echo(f"Importing traces from: {source}")
+
+        # Build importer and fetch
+        from atp.generator.importers import get_importer
+
+        fetch_kwargs: dict[str, object] = {}
+        if source == "langsmith":
+            importer = get_importer(
+                "langsmith",
+                api_key=api_key or "",
+                project=project or "",
+            )
+        else:
+            importer = get_importer(
+                "otel",
+                file_path=str(trace_file or ""),
+            )
+
+        records = asyncio.run(importer.fetch_traces(limit=limit, **fetch_kwargs))
+        click.echo(f"  Fetched {len(records)} trace(s)")
+
+        if not records:
+            raise click.ClickException("No traces found")
+
+        # Convert to test suite
+        suite = importer.import_traces(
+            records,
+            suite_name=suite_name,
+            deduplicate=not no_dedupe,
+            tags=tag_list,
+        )
+
+        deduped = len(records) - len(suite.tests)
+        if deduped > 0 and not no_dedupe:
+            click.echo(f"  Deduplicated: removed {deduped}")
+
+        click.echo(f"  Generated {len(suite.tests)} test(s)")
+
+        # Save
+        from atp.generator.writer import YAMLWriter
+
+        writer = YAMLWriter()
+        writer.save(suite, output_file)
+
+        click.echo(f"\nTest suite saved: {output_file}")
+        click.echo(f"  Name: {suite.name}")
+        click.echo(f"  Tests: {len(suite.tests)}")
+        click.echo(f"\nRun tests with: atp test {output_file}")
+
+        sys.exit(EXIT_SUCCESS)
+
+    except click.ClickException:
+        raise
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(EXIT_ERROR)
+
+
+@generate_command.command(name="from-description")
+@click.argument("description", required=False)
+@click.option(
+    "--file",
+    "-f",
+    "desc_file",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Read description from a text file",
+)
+@click.option(
+    "--output",
+    "-o",
+    "output_file",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output YAML file path (default: stdout)",
+)
+@click.option(
+    "--name",
+    "-n",
+    "suite_name",
+    type=str,
+    default=None,
+    help="Suite name (default: derived from output filename)",
+)
+def generate_from_description(
+    description: str | None,
+    desc_file: Path | None,
+    output_file: Path | None,
+    suite_name: str | None,
+) -> None:
+    """Generate a test suite from a natural language description.
+
+    Uses an LLM to convert a plain-text description into a valid
+    ATP test suite YAML file.
+
+    Provide the description as a positional argument or via --file.
+
+    Environment Variables:
+
+      ATP_LLM_API_KEY or OPENAI_API_KEY: LLM API key
+      ATP_LLM_BASE_URL: API base URL (default: OpenAI)
+      ATP_LLM_MODEL: Model to use (default: gpt-4o-mini)
+
+    Examples:
+
+      # Generate from inline description
+      atp generate from-description "test that the agent can search
+      the web and summarize results"
+
+      # Generate from a requirements file
+      atp generate from-description --file=requirements.txt
+      --output=suite.yaml
+
+      # Specify a suite name
+      atp generate from-description -n my-suite
+      "test file creation and deletion"
+
+    Exit Codes:
+
+      0 - Suite generated successfully
+      2 - Error occurred
+    """
+    try:
+        from atp.generator.nl_generator import NLTestGenerator
+
+        # Determine description source
+        if desc_file is not None:
+            desc_text = desc_file.read_text(encoding="utf-8").strip()
+            if not desc_text:
+                raise click.ClickException(f"Description file is empty: {desc_file}")
+        elif description is not None:
+            desc_text = description.strip()
+        else:
+            raise click.ClickException("Provide a description argument or --file")
+
+        if not desc_text:
+            raise click.ClickException("Description cannot be empty")
+
+        # Derive suite name
+        if suite_name is None:
+            if output_file is not None:
+                suite_name = output_file.stem.replace("-", "_").replace(".", "_")
+            else:
+                suite_name = "generated-suite"
+
+        click.echo("Generating test suite from description...")
+        click.echo(f"  Suite name: {suite_name}")
+
+        generator = NLTestGenerator()
+        suite = generator.generate(
+            description=desc_text,
+            suite_name=suite_name,
+        )
+
+        click.echo(f"  Generated {len(suite.tests)} test(s)")
+
+        # Output
+        if output_file is not None:
+            generator.save(suite, output_file)
+            click.echo(f"\nTest suite saved: {output_file}")
+            click.echo(f"\nRun tests with: atp test {output_file}")
+        else:
+            yaml_content = generator.to_yaml(suite)
+            click.echo("\n" + yaml_content)
+
+        sys.exit(EXIT_SUCCESS)
+
+    except click.ClickException:
+        raise
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(EXIT_ERROR)
+    except RuntimeError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(EXIT_ERROR)
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(EXIT_ERROR)

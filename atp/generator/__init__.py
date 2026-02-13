@@ -1,6 +1,10 @@
 """Test generator module for ATP test suites."""
 
 from atp.generator.core import TestGenerator, TestSuiteData
+from atp.generator.nl_generator import (
+    NLTestGenerator,
+    OpenAICompatibleClient,
+)
 from atp.generator.regression import (
     AnonymizationLevel,
     DataAnonymizer,
@@ -22,12 +26,16 @@ from atp.generator.templates import (
     substitute_in_assertion,
     substitute_variables,
 )
+from atp.generator.trace_import import TraceImporter, TraceRecord
 from atp.generator.writer import YAMLWriter
 
 __all__ = [
     # Core generator
     "TestGenerator",
     "TestSuiteData",
+    # NL generator
+    "NLTestGenerator",
+    "OpenAICompatibleClient",
     # Templates
     "TestTemplate",
     "TemplateRegistry",
@@ -37,6 +45,9 @@ __all__ = [
     "get_template_variables",
     # Writer
     "YAMLWriter",
+    # Trace import
+    "TraceImporter",
+    "TraceRecord",
     # Regression test generator
     "RegressionTestGenerator",
     "Recording",
