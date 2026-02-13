@@ -54,6 +54,10 @@ uv run atp budget                  # Budget management
 uv run atp experiment              # Run experiments
 uv run atp plugins                 # Manage plugins
 uv run atp game                    # Game-theoretic evaluation
+uv run atp compare                 # Multi-model comparison
+uv run atp estimate                # Cost estimation
+uv run atp traces                  # Trace management
+uv run atp replay                  # Replay agent traces
 uv run atp version                 # Show version info
 ```
 
@@ -103,6 +107,8 @@ atp/
 ├── chaos/         # Chaos testing
 ├── generator/     # Test suite generation
 ├── plugins/       # Plugin ecosystem management
+├── sdk/           # Python SDK for programmatic test execution
+├── tracing/       # Agent replay and trace management
 └── tui/           # Terminal user interface (optional, requires [tui] extra)
 
 spec/              # Task specifications and requirements

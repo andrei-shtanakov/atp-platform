@@ -621,7 +621,7 @@ uv sync --reinstall
 4. **Example bug report**:
    ```markdown
    ## Environment
-   - ATP version: 0.1.0
+   - ATP version: 1.0.0
    - Python: 3.12.1
    - OS: macOS 14.2
 

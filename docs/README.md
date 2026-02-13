@@ -93,6 +93,21 @@ Understand ATP's architecture and design:
    - Upcoming features
    - Long-term vision
 
+8. **[Performance](performance.md)**
+   - Profiling and optimization
+   - Caching strategies
+   - Memory tracking
+
+9. **[Security](security.md)**
+   - Security model
+   - Secret redaction
+   - Input sanitization
+
+10. **[CI/CD Integration](ci-cd.md)**
+    - GitHub Actions setup
+    - CI/CD templates
+    - Pipeline configuration
+
 ### 📖 Reference Documentation
 
 Complete reference for ATP features:
@@ -434,9 +449,7 @@ We welcome documentation improvements!
 ### Versioning
 
 Documentation is versioned alongside code releases:
-- **v0.1.x**: MVP documentation
-- **v0.2.x**: Runner and adapter documentation
-- **v1.0.x**: Complete feature documentation
+- **v1.0.0**: Complete feature documentation (Phases 1-6)
 
 ### Updates
 
@@ -541,7 +554,14 @@ atp-platform-ru/
 │   ├── streaming/     # Event streaming
 │   ├── mock_tools/    # Mock tool server
 │   ├── performance/   # Performance utilities
-│   └── dashboard/     # Web interface
+│   ├── dashboard/     # Web interface
+│   ├── analytics/     # Cost tracking and analytics
+│   ├── benchmarks/    # Benchmark suites
+│   ├── chaos/         # Chaos testing
+│   ├── generator/     # Test suite generation
+│   ├── plugins/       # Plugin ecosystem
+│   ├── sdk/           # Python SDK
+│   └── tracing/       # Agent replay and traces
 ├── tests/             # ATP's own tests (80%+ coverage)
 │   ├── unit/          # Unit tests
 │   ├── integration/   # Integration tests

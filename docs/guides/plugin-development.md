@@ -81,8 +81,8 @@ class MyAdapter:
     # Required: Unique adapter identifier
     adapter_type = "my_adapter"
 
-    # Optional: Minimum ATP version required (default: "0.1.0")
-    atp_version = "0.1.0"
+    # Optional: Minimum ATP version required (default: "1.0.0")
+    atp_version = "1.0.0"
 
     # Optional: Configuration schema class
     config_schema = MyAdapterConfig
@@ -158,7 +158,7 @@ class MyEvaluator:
     name = "my_evaluator"
 
     # Optional: Minimum ATP version required
-    atp_version = "0.1.0"
+    atp_version = "1.0.0"
 
     # Optional: Configuration schema class
     config_schema = MyEvaluatorConfig
@@ -216,7 +216,7 @@ class MyReporter:
     name = "my_reporter"
 
     # Optional: Minimum ATP version required
-    atp_version = "0.1.0"
+    atp_version = "1.0.0"
 
     # Optional: Whether the reporter supports streaming output
     supports_streaming = False
@@ -402,7 +402,7 @@ class RestAdapter:
     """Adapter for agents exposed via REST API."""
 
     adapter_type = "rest_api"
-    atp_version = "0.1.0"
+    atp_version = "1.0.0"
     config_schema = RestAdapterConfig
 
     def __init__(self, config: RestAdapterConfig | None = None) -> None:
@@ -640,7 +640,7 @@ class SemanticEvaluator:
     """Evaluator that checks semantic similarity using embeddings."""
 
     name = "semantic_similarity"
-    atp_version = "0.1.0"
+    atp_version = "1.0.0"
     config_schema = SemanticEvaluatorConfig
 
     def __init__(self, config: SemanticEvaluatorConfig | None = None) -> None:
@@ -827,7 +827,7 @@ class MarkdownReporter:
     """Reporter that outputs test results as Markdown."""
 
     name = "markdown"
-    atp_version = "0.1.0"
+    atp_version = "1.0.0"
     supports_streaming = False
     config_schema = MarkdownReporterConfig
 
@@ -992,7 +992,7 @@ my-atp-plugin/
 ```toml
 [project]
 name = "my-atp-plugin"
-version = "0.1.0"
+version = "1.0.0"
 description = "Custom plugins for ATP (Agent Test Platform)"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -1011,7 +1011,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "atp-platform>=0.1.0",
+    "atp-platform>=1.0.0",
     "httpx>=0.27",  # Example dependency
 ]
 
@@ -1068,7 +1068,7 @@ from my_atp_plugin.adapter import RestAdapter, RestAdapterConfig
 from my_atp_plugin.evaluator import SemanticEvaluator, SemanticEvaluatorConfig
 from my_atp_plugin.reporter import MarkdownReporter, MarkdownReporterConfig
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 
 __all__ = [
     "RestAdapter",
@@ -1565,7 +1565,7 @@ Always specify the minimum ATP version your plugin requires:
 
 ```python
 class MyPlugin:
-    atp_version = "0.1.0"  # Minimum required version
+    atp_version = "1.0.0"  # Minimum required version
 ```
 
 ### 2. Configuration Validation

@@ -214,6 +214,8 @@ atp-platform/
 │   ├── chaos/                # Chaos testing
 │   ├── generator/            # Test suite generation
 │   ├── plugins/              # Plugin ecosystem management
+│   ├── sdk/                  # Python SDK for programmatic use
+│   ├── tracing/              # Agent replay and trace management
 │   └── tui/                  # Terminal user interface (optional)
 ├── game-environments/        # Standalone game theory library (Phase 5)
 │   └── game_envs/            # Games, strategies, analysis (Nash, exploitability)
@@ -305,6 +307,10 @@ uv run atp experiment           # Run experiments
 uv run atp plugins              # Manage plugins
 uv run atp game suite.yaml      # Game-theoretic evaluation
 uv run atp tui                  # Terminal user interface
+uv run atp compare              # Multi-model comparison
+uv run atp estimate             # Cost estimation
+uv run atp traces               # Trace management
+uv run atp replay               # Replay agent traces
 ```
 
 ## Documentation
