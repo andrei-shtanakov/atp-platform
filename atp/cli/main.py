@@ -20,6 +20,7 @@ from atp.cli.commands.game import game_command
 from atp.cli.commands.generate import generate_command
 from atp.cli.commands.init import init_command
 from atp.cli.commands.plugins import plugins_command
+from atp.cli.commands.traces import replay_command, traces_command
 from atp.loader import TestLoader
 
 # Exit codes as per requirements
@@ -243,6 +244,16 @@ def version_cmd() -> None:
     is_flag=True,
     help="Don't save results to dashboard database",
 )
+@click.option(
+    "--live",
+    is_flag=True,
+    help="Enable Rich live display for streaming progress",
+)
+@click.option(
+    "--trace",
+    is_flag=True,
+    help="Record execution traces for replay",
+)
 @pass_config
 def test_cmd(
     config_ctx: ConfigContext,
@@ -260,6 +271,8 @@ def test_cmd(
     output: str,
     output_file: Path | None,
     no_save: bool,
+    live: bool,
+    trace: bool,
 ) -> None:
     """Run tests from a test suite file.
 
@@ -381,6 +394,8 @@ def test_cmd(
                 output_format=output,
                 output_file=output_file,
                 save_to_db=not no_save,
+                live=live,
+                enable_tracing=trace,
             )
         )
 
@@ -477,6 +492,16 @@ def test_cmd(
     is_flag=True,
     help="Don't save results to dashboard database",
 )
+@click.option(
+    "--live",
+    is_flag=True,
+    help="Enable Rich live display for streaming progress",
+)
+@click.option(
+    "--trace",
+    is_flag=True,
+    help="Record execution traces for replay",
+)
 @pass_config
 def run(
     config_ctx: ConfigContext,
@@ -494,6 +519,8 @@ def run(
     output: str,
     output_file: Path | None,
     no_save: bool,
+    live: bool,
+    trace: bool,
 ) -> None:
     """Run tests from a test suite file (alias for 'test' command).
 
@@ -517,6 +544,8 @@ def run(
         output=output,
         output_file=output_file,
         no_save=no_save,
+        live=live,
+        trace=trace,
     )
 
 
@@ -533,6 +562,8 @@ async def _run_suite(
     output_format: str,
     output_file: Path | None,
     save_to_db: bool = True,
+    live: bool = False,
+    enable_tracing: bool = False,
 ) -> bool:
     """Run a test suite asynchronously.
 
@@ -549,6 +580,8 @@ async def _run_suite(
         output_format: Output format (console or json)
         output_file: Output file path (for json output)
         save_to_db: Whether to save results to dashboard database
+        live: Whether to use Rich live display
+        enable_tracing: Whether to record execution traces
 
     Returns:
         True if all tests passed, False otherwise
@@ -568,31 +601,79 @@ async def _run_suite(
     # Create sandbox config
     sandbox_config = SandboxConfig(enabled=sandbox_enabled)
 
-    # Create progress callback
-    progress_callback = create_progress_callback(
-        max_parallel=parallel,
-        verbose=verbose,
-        use_colors=True,
-    )
+    # Choose progress display: live Rich or plain tracker
+    live_display = None
+    if live:
+        from atp.cli.live_display import (
+            LiveProgressDisplay,
+            SimpleFallbackDisplay,
+            is_terminal_capable,
+        )
+
+        if is_terminal_capable():
+            live_display = LiveProgressDisplay()
+            progress_callback = live_display.on_progress
+        else:
+            fallback = SimpleFallbackDisplay()
+            progress_callback = fallback.on_progress
+    else:
+        progress_callback = create_progress_callback(
+            max_parallel=parallel,
+            verbose=verbose,
+            use_colors=True,
+        )
 
     # Determine if parallel execution should be used
     use_parallel = parallel > 1 and not fail_fast
 
     # Create and run orchestrator
-    async with TestOrchestrator(
-        adapter=adapter,
-        sandbox_config=sandbox_config,
-        progress_callback=progress_callback,
-        runs_per_test=runs_per_test,
-        fail_fast=fail_fast,
-        parallel_tests=use_parallel,
-        max_parallel_tests=parallel,
-    ) as orchestrator:
-        result = await orchestrator.run_suite(
-            suite=suite,
-            agent_name=agent_name,
+    if live_display is not None:
+        live_display.start()
+    try:
+        async with TestOrchestrator(
+            adapter=adapter,
+            sandbox_config=sandbox_config,
+            progress_callback=progress_callback,
             runs_per_test=runs_per_test,
+            fail_fast=fail_fast,
+            parallel_tests=use_parallel,
+            max_parallel_tests=parallel,
+        ) as orchestrator:
+            result = await orchestrator.run_suite(
+                suite=suite,
+                agent_name=agent_name,
+                runs_per_test=runs_per_test,
+            )
+    finally:
+        if live_display is not None:
+            live_display.stop()
+
+    # Record traces if enabled
+    if enable_tracing:
+        from atp.tracing import (
+            TraceMetadata,
+            TraceRecorder,
+            get_default_storage,
         )
+
+        storage = get_default_storage()
+        for test_result in result.tests:
+            for run_result in test_result.runs:
+                meta = TraceMetadata(
+                    agent_name=agent_name,
+                    adapter_type=adapter_type,
+                    suite_name=suite.test_suite,
+                )
+                recorder = TraceRecorder(
+                    test_id=test_result.test.id,
+                    test_name=test_result.test.name,
+                    metadata=meta,
+                )
+                for event in run_result.events:
+                    recorder.record_event(event)
+                recorder.complete(run_result.response)
+                storage.save(recorder.trace)
+        click.echo(f"Traces saved to {storage.base_dir}")
 
     # Generate report
     reporter_config: dict[str, Any] = {
@@ -1631,6 +1712,8 @@ cli.add_command(init_command)
 cli.add_command(generate_command)
 cli.add_command(plugins_command)
 cli.add_command(game_command)
+cli.add_command(traces_command)
+cli.add_command(replay_command)
 
 
 def _is_game_suite(suite_file: Path) -> bool:

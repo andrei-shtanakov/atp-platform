@@ -30,10 +30,14 @@ Each module handles a specific domain of functionality:
 - roles: Role-based access control management
 - audit: Audit logging (query, filter, export, retention)
 - websocket: Real-time updates via WebSocket (TASK-801)
+- agent_traces: Agent execution trace listing and viewing (TASK-1601)
 """
 
 from fastapi import APIRouter
 
+from atp.dashboard.v2.routes.agent_traces import (
+    router as agent_traces_router,
+)
 from atp.dashboard.v2.routes.agents import router as agents_router
 from atp.dashboard.v2.routes.analytics import router as analytics_router
 from atp.dashboard.v2.routes.audit import router as audit_router
@@ -95,9 +99,11 @@ router.include_router(saml_router)
 router.include_router(audit_router)
 router.include_router(users_router)
 router.include_router(websocket_router)
+router.include_router(agent_traces_router)
 
 __all__ = [
     "router",
+    "agent_traces_router",
     "agents_router",
     "analytics_router",
     "audit_router",
