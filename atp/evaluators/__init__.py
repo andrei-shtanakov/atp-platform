@@ -9,6 +9,7 @@ from .code_exec import (
     CommandResult,
     LintResults,
 )
+from .composite import CompositeEvaluator
 from .factuality import (
     Citation,
     CitationExtractor,
@@ -68,6 +69,7 @@ __all__ = [
     "Evaluator",
     "ArtifactEvaluator",
     "BehaviorEvaluator",
+    "CompositeEvaluator",
     "CodeExecEvaluator",
     "CodeTestResults",
     "CommandResult",

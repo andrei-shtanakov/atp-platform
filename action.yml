@@ -1,0 +1,123 @@
+# ATP Test Action
+#
+# A composite GitHub Action that runs ATP (Agent Test Platform) tests
+# in CI/CD pipelines. Produces JUnit XML, JSON reports, markdown
+# summaries, and badge URLs.
+#
+# Usage:
+#   - uses: your-org/atp-platform@v1
+#     with:
+#       suite_path: tests/suite.yaml
+#       adapter: cli
+#       threshold: "0.8"
+
+name: "ATP Test"
+description: "Run ATP agent tests and produce reports, summaries, and badges"
+author: "ATP Platform"
+
+branding:
+  icon: "check-circle"
+  color: "blue"
+
+inputs:
+  suite_path:
+    description: "Path to the ATP test suite YAML file"
+    required: true
+    default: "tests/suite.yaml"
+  adapter:
+    description: "Agent adapter to use (e.g. cli, http, langraph)"
+    required: false
+    default: ""
+  threshold:
+    description: >
+      Minimum success rate (0.0-1.0). The action fails if the
+      actual success rate falls below this value.
+    required: false
+    default: ""
+  budget_usd:
+    description: >
+      Maximum allowed estimated cost in USD. The action fails if
+      the estimated cost exceeds this budget.
+    required: false
+    default: ""
+  baseline_path:
+    description: >
+      Path to a baseline JSON file for regression comparison.
+      When set, the action runs baseline comparison and fails
+      on detected regressions.
+    required: false
+    default: ""
+  comment_on_pr:
+    description: "Post a markdown summary as a PR comment (true/false)"
+    required: false
+    default: "false"
+  python_version:
+    description: "Python version to use"
+    required: false
+    default: "3.12"
+  extra_args:
+    description: "Additional arguments passed to `atp test`"
+    required: false
+    default: ""
+
+outputs:
+  success_rate:
+    description: "Overall success rate (0.0-1.0)"
+    value: ${{ steps.run.outputs.success_rate }}
+  total_tests:
+    description: "Total number of tests executed"
+    value: ${{ steps.run.outputs.total_tests }}
+  passed_tests:
+    description: "Number of passed tests"
+    value: ${{ steps.run.outputs.passed_tests }}
+  failed_tests:
+    description: "Number of failed tests"
+    value: ${{ steps.run.outputs.failed_tests }}
+  estimated_cost:
+    description: "Estimated cost in USD"
+    value: ${{ steps.run.outputs.estimated_cost }}
+  junit_path:
+    description: "Path to the generated JUnit XML report"
+    value: ${{ steps.run.outputs.junit_path }}
+  json_path:
+    description: "Path to the generated JSON report"
+    value: ${{ steps.run.outputs.json_path }}
+  summary_markdown:
+    description: "Markdown summary of the test results"
+    value: ${{ steps.run.outputs.summary_markdown }}
+  badge_url:
+    description: "shields.io badge URL reflecting the test outcome"
+    value: ${{ steps.run.outputs.badge_url }}
+  regression_detected:
+    description: "Whether a regression was detected (true/false)"
+    value: ${{ steps.run.outputs.regression_detected }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python_version }}
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+
+    - name: Install dependencies
+      shell: bash
+      run: uv sync
+
+    - name: Run ATP tests
+      id: run
+      shell: bash
+      env:
+        INPUT_SUITE_PATH: ${{ inputs.suite_path }}
+        INPUT_ADAPTER: ${{ inputs.adapter }}
+        INPUT_THRESHOLD: ${{ inputs.threshold }}
+        INPUT_BUDGET_USD: ${{ inputs.budget_usd }}
+        INPUT_BASELINE_PATH: ${{ inputs.baseline_path }}
+        INPUT_COMMENT_ON_PR: ${{ inputs.comment_on_pr }}
+        INPUT_EXTRA_ARGS: ${{ inputs.extra_args }}
+      run: bash "${{ github.action_path }}/action/entrypoint.sh"

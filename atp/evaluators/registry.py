@@ -6,6 +6,7 @@ from .artifact import ArtifactEvaluator
 from .base import Evaluator
 from .behavior import BehaviorEvaluator
 from .code_exec import CodeExecEvaluator
+from .composite import CompositeEvaluator
 from .factuality import FactualityEvaluator
 from .filesystem import FilesystemEvaluator
 from .llm_judge import LLMJudgeEvaluator
@@ -43,6 +44,7 @@ class EvaluatorRegistry:
         self.register("performance", PerformanceEvaluator)
         self.register("style", StyleEvaluator)
         self.register("filesystem", FilesystemEvaluator)
+        self.register("composite", CompositeEvaluator)
 
         self._register_assertion_mapping("artifact_exists", "artifact")
         self._register_assertion_mapping("contains", "artifact")
@@ -86,6 +88,9 @@ class EvaluatorRegistry:
         self._register_assertion_mapping("file_contains", "filesystem")
         self._register_assertion_mapping("dir_exists", "filesystem")
         self._register_assertion_mapping("file_count", "filesystem")
+
+        # Composite assertions
+        self._register_assertion_mapping("composite", "composite")
 
     def register(
         self,

@@ -1,6 +1,6 @@
 # Basic GitHub Actions workflow for ATP testing
 #
-# This is a minimal example showing how to run ATP tests in GitHub Actions.
+# This example shows how to use the ATP reusable action.
 # Copy this file to .github/workflows/atp.yml in your repository.
 
 name: ATP Tests
@@ -18,34 +18,40 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+      # Option 1: Use the published ATP action
+      # - uses: your-org/atp-platform@v1
+      #   with:
+      #     suite_path: tests/suite.yaml
 
-      - name: Install ATP
-        run: |
-          pip install uv
-          uv sync
-
+      # Option 2: Use the local action (if ATP is in-repo)
       - name: Run ATP tests
+        id: atp
+        uses: ./
+        with:
+          suite_path: tests/suite.yaml
+          adapter: cli
+          threshold: "0.8"
+          budget_usd: "5.00"
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          mkdir -p results
-          atp test tests/suite.yaml \
-            --output=junit \
-            --output-file=results/junit.xml
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: test-results
-          path: results/
+          path: |
+            ${{ steps.atp.outputs.json_path }}
+            ${{ steps.atp.outputs.junit_path }}
 
       - name: Publish Test Report
         uses: EnricoMi/publish-unit-test-result-action@v2
         if: always()
         with:
-          files: results/junit.xml
+          files: ${{ steps.atp.outputs.junit_path }}
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          message: ${{ steps.atp.outputs.summary_markdown }}
