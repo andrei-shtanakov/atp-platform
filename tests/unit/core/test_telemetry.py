@@ -59,7 +59,7 @@ class TestTelemetrySettings:
         settings = TelemetrySettings()
         assert settings.enabled is True
         assert settings.service_name == "atp-platform"
-        assert settings.service_version == "0.1.0"
+        assert settings.service_version == "1.0.0"
         assert settings.environment == "development"
         assert settings.otlp_endpoint is None
         assert settings.otlp_insecure is True

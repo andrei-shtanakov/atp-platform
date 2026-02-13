@@ -242,7 +242,7 @@ class TestVersionCompatibility:
         class NoVersionPlugin:
             pass
 
-        error = check_version_compatibility(NoVersionPlugin, "0.1.0", "test")
+        error = check_version_compatibility(NoVersionPlugin, "1.0.0", "test")
         assert error is None
 
     def test_invalid_version_format(self) -> None:
@@ -441,7 +441,7 @@ class TestValidatePluginFull:
             pass
 
         errors, version_error = validate_plugin_full(
-            InvalidAdapter, ADAPTER_GROUP, "0.1.0", "test"
+            InvalidAdapter, ADAPTER_GROUP, "1.0.0", "test"
         )
         assert len(errors) > 0
         assert version_error is None

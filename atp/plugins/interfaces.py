@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 
 # Minimum ATP version required for plugin compatibility
-MIN_ATP_VERSION = "0.1.0"
+MIN_ATP_VERSION = "1.0.0"
 
 
 class PluginValidationError(Exception):
@@ -90,7 +90,7 @@ class AdapterPlugin(Protocol):
         stream_events: Execute a task with event streaming.
 
     Optional class attributes:
-        atp_version: Minimum ATP version required (default: "0.1.0").
+        atp_version: Minimum ATP version required (default: "1.0.0").
         config_schema: PluginConfig subclass defining configuration options.
 
     Optional methods:
@@ -105,7 +105,7 @@ class AdapterPlugin(Protocol):
 
         class MyAdapter:
             adapter_type = "my_adapter"
-            atp_version = "0.1.0"  # Optional
+            atp_version = "1.0.0"  # Optional
             config_schema = MyAdapterConfig  # Optional
 
             async def execute(self, request: ATPRequest) -> ATPResponse:
@@ -165,7 +165,7 @@ class EvaluatorPlugin(Protocol):
         evaluate: Evaluate agent results against an assertion.
 
     Optional class attributes:
-        atp_version: Minimum ATP version required (default: "0.1.0").
+        atp_version: Minimum ATP version required (default: "1.0.0").
         config_schema: PluginConfig subclass defining configuration options.
 
     Example:
@@ -175,7 +175,7 @@ class EvaluatorPlugin(Protocol):
 
         class MyEvaluator:
             name = "my_evaluator"
-            atp_version = "0.1.0"  # Optional
+            atp_version = "1.0.0"  # Optional
             config_schema = MyEvaluatorConfig  # Optional
 
             async def evaluate(
@@ -231,7 +231,7 @@ class ReporterPlugin(Protocol):
         report: Generate and output the report.
 
     Optional class attributes:
-        atp_version: Minimum ATP version required (default: "0.1.0").
+        atp_version: Minimum ATP version required (default: "1.0.0").
         supports_streaming: Whether the reporter supports streaming output.
         config_schema: PluginConfig subclass defining configuration options.
 
@@ -242,7 +242,7 @@ class ReporterPlugin(Protocol):
 
         class MyReporter:
             name = "my_reporter"
-            atp_version = "0.1.0"  # Optional
+            atp_version = "1.0.0"  # Optional
             supports_streaming = False  # Optional
             config_schema = MyReporterConfig  # Optional
 

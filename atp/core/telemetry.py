@@ -93,7 +93,7 @@ class TelemetrySettings(BaseSettings):
         description="Service name for trace identification",
     )
     service_version: str = Field(
-        default="0.1.0",
+        default="1.0.0",
         description="Service version for trace metadata",
     )
     environment: str = Field(

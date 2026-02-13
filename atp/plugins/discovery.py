@@ -368,7 +368,7 @@ class PluginManager:
         current_version = atp.__version__
         version_error = check_version_compatibility(plugin_class, current_version, name)
         if version_error:
-            required_version = getattr(plugin_class, "atp_version", "0.1.0")
+            required_version = getattr(plugin_class, "atp_version", "1.0.0")
             raise PluginVersionError(name, required_version, current_version)
 
         return True

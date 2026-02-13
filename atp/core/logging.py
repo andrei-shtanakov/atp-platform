@@ -39,7 +39,7 @@ from structlog.types import EventDict, Processor, WrappedLogger
 from atp.core.security import redact_secrets, sanitize_log_message
 
 # Version of ATP platform - imported dynamically to avoid circular imports
-ATP_VERSION = "0.1.0"
+ATP_VERSION = "1.0.0"
 
 # Context variable for correlation ID propagation across async operations
 _correlation_id: ContextVar[str | None] = ContextVar("correlation_id", default=None)
