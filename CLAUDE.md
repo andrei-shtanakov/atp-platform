@@ -68,7 +68,7 @@ uv run atp version                 # Show version info
 1. **Protocol** (`atp/protocol/`) - ATP Request/Response/Event models defining the contract
 2. **Adapters** (`atp/adapters/`) - Translate between ATP Protocol and agent types (HTTP, Container, CLI, LangGraph, CrewAI, AutoGen, MCP, Bedrock, Vertex, Azure OpenAI)
 3. **Runner** (`atp/runner/`) - Orchestrates test execution, manages sandboxes
-4. **Evaluators** (`atp/evaluators/`) - Assess agent results (artifact, behavior, LLM-judge, code-exec, security, factuality, filesystem, style, performance)
+4. **Evaluators** (`atp/evaluators/`) - Assess agent results (artifact, behavior, LLM-judge, code-exec, security, factuality, filesystem, style, performance, composite)
 5. **Reporters** (`atp/reporters/`) - Format output (console, JSON, HTML, JUnit, game)
 
 ### Data Flow

@@ -154,7 +154,9 @@ tests:
 - **SecurityEvaluator** - PII detection, secret leaks, code safety, prompt injection
 - **FactualityEvaluator** - Claim extraction, citation checking, hallucination detection
 - **StyleEvaluator** - Tone analysis, readability, formatting compliance
+- **FilesystemEvaluator** - Workspace file existence, content, directory checks
 - **PerformanceEvaluator** - Latency, throughput, regression detection
+- **CompositeEvaluator** - Boolean logic (AND/OR/NOT) over nested assertions
 
 ✅ **Reporters** - Multiple output formats
 - **Console** - Colored terminal output with progress

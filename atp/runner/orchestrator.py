@@ -4,7 +4,7 @@ import asyncio
 import logging
 import uuid
 from collections.abc import AsyncIterator
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -286,7 +286,7 @@ class TestOrchestrator:
         """
         num_runs = runs if runs is not None else self.runs_per_test
         use_parallel = parallel if parallel is not None else self.parallel_runs
-        result = TestResult(test=test, start_time=datetime.now())
+        result = TestResult(test=test, start_time=datetime.now(tz=UTC))
 
         # Record test start in metrics
         metrics = get_metrics()
@@ -382,7 +382,7 @@ class TestOrchestrator:
                             "Failed to cleanup sandbox %s: %s", sandbox_id, e
                         )
 
-            result.end_time = datetime.now()
+            result.end_time = datetime.now(tz=UTC)
 
             # Record test end in metrics
             if metrics:
@@ -498,8 +498,8 @@ class TestOrchestrator:
                             status=ResponseStatus.FAILED,
                             error=str(result),
                         ),
-                        start_time=datetime.now(),
-                        end_time=datetime.now(),
+                        start_time=datetime.now(tz=UTC),
+                        end_time=datetime.now(tz=UTC),
                         error=str(result),
                     )
                 )
@@ -593,7 +593,7 @@ class TestOrchestrator:
         Returns:
             RunResult for this execution.
         """
-        start_time = datetime.now()
+        start_time = datetime.now(tz=UTC)
 
         # Create span for individual run
         with tracer.start_as_current_span(
@@ -651,7 +651,7 @@ class TestOrchestrator:
                 span.record_exception(e)
                 span.set_status(Status(StatusCode.ERROR, str(e)))
 
-            end_time = datetime.now()
+            end_time = datetime.now(tz=UTC)
 
             run_result = RunResult(
                 test_id=test.id,
@@ -727,7 +727,7 @@ class TestOrchestrator:
         result = SuiteResult(
             suite_name=suite.test_suite,
             agent_name=agent_name,
-            start_time=datetime.now(),
+            start_time=datetime.now(tz=UTC),
         )
 
         # Record suite start in metrics
@@ -816,7 +816,7 @@ class TestOrchestrator:
                 span.record_exception(e)
                 span.set_status(Status(StatusCode.ERROR, str(e)))
 
-            result.end_time = datetime.now()
+            result.end_time = datetime.now(tz=UTC)
 
             # Record suite end in metrics
             if metrics:

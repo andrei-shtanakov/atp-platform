@@ -1,6 +1,7 @@
 """Artifact evaluator for checking agent outputs."""
 
 import re
+from pathlib import Path
 from typing import Any
 
 from atp.loader.models import Assertion, TestDefinition
@@ -67,7 +68,12 @@ class ArtifactEvaluator(Evaluator):
     def _check_artifact_exists(
         self, response: ATPResponse, config: dict[str, Any]
     ) -> EvalCheck:
-        """Check if an artifact with the given path exists."""
+        """Check if an artifact with the given path exists.
+
+        First checks the response artifacts, then falls back to
+        checking the workspace filesystem if a workspace_path is
+        available in the response context.
+        """
         path = config.get("path", "")
         if not path:
             return self._create_check(
@@ -76,16 +82,54 @@ class ArtifactEvaluator(Evaluator):
                 message="No path specified in assertion config",
             )
 
+        # Check response artifacts
         for artifact in response.artifacts:
             artifact_path = getattr(artifact, "path", None) or getattr(
                 artifact, "name", None
             )
             if artifact_path == path:
+                # Artifact declared in response — also verify on disk
+                # if workspace is available
+                workspace_path = self._get_workspace_path(response)
+                if workspace_path:
+                    file_path = Path(workspace_path) / path
+                    if not file_path.is_file():
+                        return self._create_check(
+                            name="artifact_exists",
+                            passed=False,
+                            message=(
+                                f"Artifact declared in response "
+                                f"but not found on disk: {path}"
+                            ),
+                            details={
+                                "path": path,
+                                "in_response": True,
+                                "on_disk": False,
+                                "workspace": workspace_path,
+                            },
+                        )
                 return self._create_check(
                     name="artifact_exists",
                     passed=True,
                     message=f"Artifact found: {path}",
                     details={"path": path, "found": True},
+                )
+
+        # Not in response — check workspace filesystem as fallback
+        workspace_path = self._get_workspace_path(response)
+        if workspace_path:
+            file_path = Path(workspace_path) / path
+            if file_path.is_file():
+                return self._create_check(
+                    name="artifact_exists",
+                    passed=True,
+                    message=f"Artifact found on disk: {path}",
+                    details={
+                        "path": path,
+                        "found": True,
+                        "source": "filesystem",
+                        "workspace": workspace_path,
+                    },
                 )
 
         return self._create_check(
@@ -101,6 +145,16 @@ class ArtifactEvaluator(Evaluator):
                 ],
             },
         )
+
+    @staticmethod
+    def _get_workspace_path(response: ATPResponse) -> str | None:
+        """Extract workspace path from response context."""
+        context = getattr(response, "context", None)
+        if context:
+            workspace = getattr(context, "workspace_path", None)
+            if workspace:
+                return str(workspace)
+        return None
 
     def _check_contains(
         self, response: ATPResponse, config: dict[str, Any]

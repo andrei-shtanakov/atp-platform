@@ -4,7 +4,7 @@ import asyncio
 import copy
 import logging
 from dataclasses import field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
@@ -155,7 +155,7 @@ class SharedContext(BaseModel):
             "value": value,
             "set_by": agent_name,
             "turn": self.current_turn,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(tz=UTC).isoformat(),
         }
 
     def get_artifact(self, key: str) -> Any | None:
@@ -894,7 +894,7 @@ class MultiAgentOrchestrator:
         result = MultiAgentTestResult(
             test=test,
             mode=self.mode,
-            start_time=datetime.now(),
+            start_time=datetime.now(tz=UTC),
         )
 
         with tracer.start_as_current_span(
@@ -930,7 +930,7 @@ class MultiAgentOrchestrator:
             if self.mode == MultiAgentMode.COLLABORATION:
                 collaboration_result = await self._run_collaboration(test)
                 result.collaboration_result = collaboration_result
-                result.end_time = datetime.now()
+                result.end_time = datetime.now(tz=UTC)
 
                 # Set span attributes for collaboration
                 set_span_attributes(
@@ -987,7 +987,7 @@ class MultiAgentOrchestrator:
             if self.mode == MultiAgentMode.HANDOFF:
                 handoff_result = await self._run_handoff(test)
                 result.handoff_result = handoff_result
-                result.end_time = datetime.now()
+                result.end_time = datetime.now(tz=UTC)
 
                 # Set span attributes for handoff
                 set_span_attributes(
@@ -1050,7 +1050,7 @@ class MultiAgentOrchestrator:
                     runs=runs,
                 )
 
-            result.end_time = datetime.now()
+            result.end_time = datetime.now(tz=UTC)
 
             # Determine winner if in comparison mode
             if self.mode == MultiAgentMode.COMPARISON and self.determine_winner:
@@ -1137,7 +1137,7 @@ class MultiAgentOrchestrator:
                             test=test,
                             error=str(result),
                         ),
-                        end_time=datetime.now(),
+                        end_time=datetime.now(tz=UTC),
                     )
                 )
             else:
@@ -1169,7 +1169,7 @@ class MultiAgentOrchestrator:
                             test=test,
                             error=str(e),
                         ),
-                        end_time=datetime.now(),
+                        end_time=datetime.now(tz=UTC),
                     )
                 )
         return results
@@ -1181,7 +1181,7 @@ class MultiAgentOrchestrator:
         runs: int | None = None,
     ) -> AgentTestResult:
         """Execute a test for a specific agent."""
-        start_time = datetime.now()
+        start_time = datetime.now(tz=UTC)
 
         # Get or create orchestrator for this agent
         if agent.name not in self._orchestrators:
@@ -1197,7 +1197,7 @@ class MultiAgentOrchestrator:
             agent_name=agent.name,
             test_result=test_result,
             start_time=start_time,
-            end_time=datetime.now(),
+            end_time=datetime.now(tz=UTC),
         )
 
     # =========================================================================
@@ -1270,7 +1270,7 @@ class MultiAgentOrchestrator:
             from_agent=from_agent,
             to_agent=to_agent,
             content=content,
-            timestamp=datetime.now(),
+            timestamp=datetime.now(tz=UTC),
             turn_number=turn_number,
             in_reply_to=in_reply_to,
         )
@@ -1333,7 +1333,7 @@ class MultiAgentOrchestrator:
         turn_result = CollaborationTurnResult(
             turn_number=turn_number,
             agent_name=agent.name,
-            start_time=datetime.now(),
+            start_time=datetime.now(tz=UTC),
         )
 
         # Get messages for this agent from the shared context
@@ -1418,7 +1418,7 @@ class MultiAgentOrchestrator:
             turn_result.error = str(e)
             logger.error("Agent %s failed on turn %d: %s", agent.name, turn_number, e)
 
-        turn_result.end_time = datetime.now()
+        turn_result.end_time = datetime.now(tz=UTC)
         return turn_result
 
     def _create_collaboration_test(
@@ -1615,7 +1615,7 @@ class MultiAgentOrchestrator:
         collaboration_result = CollaborationResult(
             test=test,
             shared_context=shared_context,
-            start_time=datetime.now(),
+            start_time=datetime.now(tz=UTC),
         )
 
         with tracer.start_as_current_span(
@@ -1749,7 +1749,7 @@ class MultiAgentOrchestrator:
                 )
             )
 
-            collaboration_result.end_time = datetime.now()
+            collaboration_result.end_time = datetime.now(tz=UTC)
 
             # Set span attributes
             set_span_attributes(
@@ -1947,7 +1947,7 @@ class MultiAgentOrchestrator:
             agent_name=agent.name,
             sequence_position=position,
             context_received=copy.deepcopy(context),
-            start_time=datetime.now(),
+            start_time=datetime.now(tz=UTC),
         )
 
         try:
@@ -1998,7 +1998,7 @@ class MultiAgentOrchestrator:
             turn_result.error = str(e)
             logger.error("Agent %s failed at position %d: %s", agent.name, position, e)
 
-        turn_result.end_time = datetime.now()
+        turn_result.end_time = datetime.now(tz=UTC)
 
         # Update context with this agent's output
         agent_output = AgentHandoffOutput(
@@ -2176,7 +2176,7 @@ class MultiAgentOrchestrator:
         handoff_result = HandoffResult(
             test=test,
             handoff_context=context,
-            start_time=datetime.now(),
+            start_time=datetime.now(tz=UTC),
         )
 
         with tracer.start_as_current_span(
@@ -2280,7 +2280,7 @@ class MultiAgentOrchestrator:
                 turn_results, context, test
             )
 
-            handoff_result.end_time = datetime.now()
+            handoff_result.end_time = datetime.now(tz=UTC)
 
             # Set span attributes
             set_span_attributes(
@@ -2331,7 +2331,7 @@ class MultiAgentOrchestrator:
             suite_name=suite.test_suite,
             mode=self.mode,
             agents=[a.name for a in self.agents],
-            start_time=datetime.now(),
+            start_time=datetime.now(tz=UTC),
         )
 
         # Record suite start in metrics
@@ -2404,7 +2404,7 @@ class MultiAgentOrchestrator:
                         agent_name=agent.name,
                         tests=agent_test_results,
                         start_time=result.start_time,
-                        end_time=datetime.now(),
+                        end_time=datetime.now(tz=UTC),
                     )
                     result.agent_suite_results[agent.name] = suite_result
 
@@ -2426,7 +2426,7 @@ class MultiAgentOrchestrator:
                 span.record_exception(e)
                 span.set_status(Status(StatusCode.ERROR, str(e)))
 
-            result.end_time = datetime.now()
+            result.end_time = datetime.now(tz=UTC)
 
             # Record suite end in metrics
             if metrics:

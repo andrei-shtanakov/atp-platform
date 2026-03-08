@@ -2,7 +2,7 @@
 
 from collections.abc import Callable
 from dataclasses import field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -74,7 +74,7 @@ class ProgressEvent(BaseModel):
 
     event_type: ProgressEventType = Field(..., description="Type of progress event")
     timestamp: datetime = Field(
-        default_factory=datetime.now,
+        default_factory=lambda: datetime.now(tz=UTC),
         description="Event timestamp",
     )
 
@@ -114,7 +114,7 @@ class RunResult:
     run_number: int
     response: ATPResponse
     events: list[ATPEvent] = field(default_factory=list)
-    start_time: datetime = field(default_factory=datetime.now)
+    start_time: datetime = field(default_factory=lambda: datetime.now(tz=UTC))
     end_time: datetime | None = None
     error: str | None = None
 
@@ -137,7 +137,7 @@ class TestResult:
 
     test: TestDefinition
     runs: list[RunResult] = field(default_factory=list)
-    start_time: datetime = field(default_factory=datetime.now)
+    start_time: datetime = field(default_factory=lambda: datetime.now(tz=UTC))
     end_time: datetime | None = None
     error: str | None = None
 
@@ -229,7 +229,7 @@ class SuiteResult:
     suite_name: str
     agent_name: str
     tests: list[TestResult] = field(default_factory=list)
-    start_time: datetime = field(default_factory=datetime.now)
+    start_time: datetime = field(default_factory=lambda: datetime.now(tz=UTC))
     end_time: datetime | None = None
     error: str | None = None
 

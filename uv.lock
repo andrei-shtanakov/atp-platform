@@ -120,8 +120,10 @@ name = "atp-platform"
 version = "1.0.0"
 source = { editable = "." }
 dependencies = [
+    { name = "aiosqlite" },
     { name = "click" },
     { name = "cryptography" },
+    { name = "greenlet" },
     { name = "httpx" },
     { name = "jinja2" },
     { name = "jsonschema" },
@@ -135,12 +137,12 @@ dependencies = [
     { name = "pyyaml" },
     { name = "rich" },
     { name = "ruamel-yaml" },
+    { name = "sqlalchemy" },
     { name = "structlog" },
 ]
 
 [package.optional-dependencies]
 all = [
-    { name = "aiosqlite" },
     { name = "anthropic" },
     { name = "asyncpg" },
     { name = "authlib" },
@@ -148,7 +150,6 @@ all = [
     { name = "boto3" },
     { name = "fastapi" },
     { name = "google-cloud-aiplatform" },
-    { name = "greenlet" },
     { name = "openai" },
     { name = "openpyxl" },
     { name = "opentelemetry-instrumentation-fastapi" },
@@ -158,7 +159,6 @@ all = [
     { name = "python-multipart" },
     { name = "python3-saml" },
     { name = "rich" },
-    { name = "sqlalchemy" },
     { name = "textual" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -177,17 +177,14 @@ cloud = [
     { name = "openai" },
 ]
 dashboard = [
-    { name = "aiosqlite" },
     { name = "asyncpg" },
     { name = "bcrypt" },
     { name = "fastapi" },
-    { name = "greenlet" },
     { name = "opentelemetry-instrumentation-fastapi" },
     { name = "opentelemetry-instrumentation-httpx" },
     { name = "opentelemetry-instrumentation-logging" },
     { name = "pyjwt" },
     { name = "python-multipart" },
-    { name = "sqlalchemy" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 dev = [
@@ -230,7 +227,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiosqlite", marker = "extra == 'dashboard'", specifier = ">=0.22.1" },
+    { name = "aiosqlite", specifier = ">=0.22.1" },
     { name = "anthropic", marker = "extra == 'llm'", specifier = ">=0.76.0" },
     { name = "asyncpg", marker = "extra == 'dashboard'", specifier = ">=0.31.0" },
     { name = "atp-platform", extras = ["analytics"], marker = "extra == 'all'" },
@@ -248,7 +245,7 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'dashboard'", specifier = ">=0.128.0" },
     { name = "google-cloud-aiplatform", marker = "extra == 'cloud'", specifier = ">=1.135.0" },
     { name = "google-cloud-aiplatform", marker = "extra == 'vertex'", specifier = ">=1.135.0" },
-    { name = "greenlet", marker = "extra == 'dashboard'", specifier = ">=3.3.1" },
+    { name = "greenlet", specifier = ">=3.3.1" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "jsonschema", specifier = ">=4.26.0" },
@@ -276,7 +273,7 @@ requires-dist = [
     { name = "rich", marker = "extra == 'tui'", specifier = ">=13.0" },
     { name = "ruamel-yaml", specifier = ">=0.18" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4" },
-    { name = "sqlalchemy", marker = "extra == 'dashboard'", specifier = ">=2.0.46" },
+    { name = "sqlalchemy", specifier = ">=2.0.46" },
     { name = "structlog", specifier = ">=25.5.0" },
     { name = "textual", marker = "extra == 'tui'", specifier = ">=0.47.0" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'dashboard'", specifier = ">=0.40.0" },

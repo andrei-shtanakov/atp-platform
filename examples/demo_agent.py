@@ -148,6 +148,18 @@ def parse_file_operation(description: str) -> tuple[str, dict[str, Any]]:
                 "filename": match.group(1),
                 "content": match.group(2),
             }
+        # Pattern: create a file named 'name' with the following content:\ncontent
+        match = re.search(
+            r"create\s+(?:a\s+)?file\s+(?:named?\s+)?['\"]?(\S+?)['\"]?"
+            r"\s+with\s+(?:the\s+)?(?:following\s+)?content[:\s]+(.+)",
+            description,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if match:
+            return "create_file", {
+                "filename": match.group(1),
+                "content": match.group(2).strip(),
+            }
         # Default
         return "create_file", {"filename": "output.txt", "content": "Default content"}
 
