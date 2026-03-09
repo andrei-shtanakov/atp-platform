@@ -53,6 +53,12 @@ BUILTIN_CRITERIA: dict[str, str] = {
         "Check if the response provides actionable guidance or usable information. "
         "Score 1.0 if highly actionable, 0.0 if not actionable at all."
     ),
+    "quality": (
+        "Evaluate the overall code quality of the artifact. "
+        "Check for clean structure, proper naming conventions, type hints, "
+        "docstrings, error handling, and adherence to language idioms. "
+        "Score 1.0 if production-quality code, 0.0 if poor quality."
+    ),
 }
 
 
@@ -90,9 +96,16 @@ class LLMJudgeCost(BaseModel):
 class LLMJudgeConfig(BaseModel):
     """Configuration for LLM Judge evaluator."""
 
-    api_key: str | None = Field(None, description="Anthropic API key")
-    model: str = Field(
-        "claude-sonnet-4-20250514", description="Model to use for evaluation"
+    provider: str | None = Field(
+        None,
+        description="LLM provider (anthropic or openai). "
+        "Auto-detected from settings if not set.",
+    )
+    api_key: str | None = Field(None, description="API key")
+    model: str | None = Field(
+        None,
+        description="Model to use for evaluation. "
+        "Auto-detected from settings if not set.",
     )
     temperature: float = Field(0.0, ge=0.0, le=1.0, description="Model temperature")
     max_tokens: int = Field(1024, ge=1, description="Max tokens for response")
@@ -133,8 +146,39 @@ class LLMJudgeEvaluator(Evaluator):
                 enable_cost_tracking is True, uses the global tracker.
         """
         self._config = config or LLMJudgeConfig()
+
+        # Resolve provider and model from config / settings / env
+        import os as _os
+
+        self._provider = self._config.provider
+        self._model = self._config.model
+
+        # Try ATP settings
+        if not self._model:
+            try:
+                from atp.core.settings import get_settings
+
+                settings = get_settings()
+                if not self._model:
+                    self._model = settings.default_llm_model
+            except Exception:
+                pass
+
+        # Detect provider from available API keys
+        if not self._provider:
+            if _os.environ.get("ANTHROPIC_API_KEY"):
+                self._provider = "anthropic"
+            elif _os.environ.get("OPENAI_API_KEY"):
+                self._provider = "openai"
+            else:
+                self._provider = "anthropic"
+
+        self._model = self._model or (
+            "gpt-4o-mini" if self._provider == "openai" else "claude-sonnet-4-20250514"
+        )
+
         self._client: Any = None
-        self._total_cost = LLMJudgeCost(model=self._config.model)
+        self._total_cost = LLMJudgeCost(model=self._model)
         self._cost_tracker = cost_tracker
         self._test_id: str | None = None
         self._suite_id: str | None = None
@@ -151,22 +195,34 @@ class LLMJudgeEvaluator(Evaluator):
         return self._total_cost
 
     def _get_client(self) -> Any:
-        """Get or create Anthropic client (lazy initialization)."""
+        """Get or create LLM client (lazy initialization)."""
         if self._client is None:
-            try:
-                import anthropic
-            except ImportError as e:
-                raise RuntimeError(
-                    "anthropic package is required for LLMJudgeEvaluator. "
-                    "Install it with: "
-                    "uv add 'atp-platform[llm]'"
-                ) from e
-
-            if self._config.api_key:
-                self._client = anthropic.AsyncAnthropic(api_key=self._config.api_key)
+            if self._provider == "openai":
+                try:
+                    from openai import AsyncOpenAI
+                except ImportError as e:
+                    raise RuntimeError(
+                        "openai package is required for OpenAI LLM eval. "
+                        "Install it with: uv add openai"
+                    ) from e
+                if self._config.api_key:
+                    self._client = AsyncOpenAI(api_key=self._config.api_key)
+                else:
+                    self._client = AsyncOpenAI()
             else:
-                # Uses ANTHROPIC_API_KEY env var by default
-                self._client = anthropic.AsyncAnthropic()
+                try:
+                    import anthropic
+                except ImportError as e:
+                    raise RuntimeError(
+                        "anthropic package is required for Anthropic LLM eval. "
+                        "Install it with: uv add anthropic"
+                    ) from e
+                if self._config.api_key:
+                    self._client = anthropic.AsyncAnthropic(
+                        api_key=self._config.api_key
+                    )
+                else:
+                    self._client = anthropic.AsyncAnthropic()
 
         return self._client
 
@@ -401,30 +457,49 @@ Important:
 
         for attempt in range(max_retries):
             try:
-                response = await asyncio.wait_for(
-                    client.messages.create(
-                        model=self._config.model,
-                        max_tokens=self._config.max_tokens,
-                        temperature=self._config.temperature,
-                        messages=[{"role": "user", "content": prompt}],
-                    ),
-                    timeout=self._config.timeout,
-                )
+                if self._provider == "openai":
+                    response = await asyncio.wait_for(
+                        client.chat.completions.create(
+                            model=self._model,
+                            max_tokens=self._config.max_tokens,
+                            temperature=self._config.temperature,
+                            messages=[{"role": "user", "content": prompt}],
+                        ),
+                        timeout=self._config.timeout,
+                    )
+                    input_tokens = response.usage.prompt_tokens if response.usage else 0
+                    output_tokens = (
+                        response.usage.completion_tokens if response.usage else 0
+                    )
+                    text = response.choices[0].message.content or ""
+                else:
+                    response = await asyncio.wait_for(
+                        client.messages.create(
+                            model=self._model,
+                            max_tokens=self._config.max_tokens,
+                            temperature=self._config.temperature,
+                            messages=[{"role": "user", "content": prompt}],
+                        ),
+                        timeout=self._config.timeout,
+                    )
+                    input_tokens = response.usage.input_tokens
+                    output_tokens = response.usage.output_tokens
+                    text = response.content[0].text
 
                 # Update local cost tracking
-                self._total_cost.input_tokens += response.usage.input_tokens
-                self._total_cost.output_tokens += response.usage.output_tokens
+                self._total_cost.input_tokens += input_tokens
+                self._total_cost.output_tokens += output_tokens
                 self._total_cost.total_calls += 1
 
                 # Track cost via CostTracker if enabled
                 if self._config.enable_cost_tracking:
                     await self._track_cost(
-                        input_tokens=response.usage.input_tokens,
-                        output_tokens=response.usage.output_tokens,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
                     )
 
                 # Parse response
-                return self._parse_response(response.content[0].text)
+                return self._parse_response(text)
 
             except TimeoutError:
                 if attempt == max_retries - 1:
@@ -469,7 +544,7 @@ Important:
                 CostEvent(
                     timestamp=datetime.now(),
                     provider="anthropic",
-                    model=self._config.model,
+                    model=self._config.model or "unknown",
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,
                     test_id=self._test_id,
@@ -628,7 +703,7 @@ Important:
 
     def reset_cost_tracking(self) -> None:
         """Reset the cumulative cost tracking."""
-        self._total_cost = LLMJudgeCost(model=self._config.model)
+        self._total_cost = LLMJudgeCost(model=self._config.model or "unknown")
 
     @classmethod
     def get_available_criteria(cls) -> dict[str, str]:

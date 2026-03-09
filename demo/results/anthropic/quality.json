@@ -1,0 +1,379 @@
+{
+  "version": "1.0",
+  "generated_at": "2026-03-09T07:41:02.518739",
+  "summary": {
+    "suite_name": "code_writer_quality",
+    "agent_name": "test-agent",
+    "total_tests": 3,
+    "passed_tests": 3,
+    "failed_tests": 0,
+    "success_rate": 1.0,
+    "duration_seconds": 33.353,
+    "runs_per_test": 1,
+    "success": true,
+    "error": null
+  },
+  "tests": [
+    {
+      "test_id": "QL-001",
+      "test_name": "\u041a\u043e\u0434 \u0441\u043e\u0434\u0435\u0440\u0436\u0438\u0442 docstrings",
+      "success": true,
+      "score": 97.89,
+      "duration_seconds": 11.538,
+      "runs": {
+        "total": 1,
+        "successful": 1
+      },
+      "error": null,
+      "score_breakdown": {
+        "final_score": 97.89,
+        "components": {
+          "quality": {
+            "normalized": 1.0,
+            "weight": 0.5,
+            "weighted": 0.5,
+            "details": {
+              "total_checks": 3,
+              "artifact_checks": 2,
+              "llm_checks": 1,
+              "mean_artifact_score": 1.0,
+              "mean_llm_score": 1.0
+            }
+          },
+          "completeness": {
+            "normalized": 1.0,
+            "weight": 0.2,
+            "weighted": 0.2,
+            "details": {
+              "passed_checks": 3,
+              "total_checks": 3
+            }
+          },
+          "efficiency": {
+            "normalized": 1.0,
+            "weight": 0.1,
+            "weighted": 0.1,
+            "details": {
+              "actual_steps": 1,
+              "max_steps": 3,
+              "optimal_steps": 1
+            }
+          },
+          "cost": {
+            "normalized": 0.8944,
+            "weight": 0.2,
+            "weighted": 0.17888,
+            "details": {
+              "cost_usd": 0.00528,
+              "max_cost_usd": 0.05,
+              "method": "direct_cost"
+            }
+          }
+        }
+      },
+      "evaluations": [
+        {
+          "evaluator": "artifact",
+          "passed": true,
+          "score": 1.0,
+          "checks": [
+            {
+              "name": "artifact_exists",
+              "passed": true,
+              "score": 1.0,
+              "message": "Artifact found: fibonacci.py",
+              "details": {
+                "path": "fibonacci.py",
+                "found": true
+              }
+            }
+          ]
+        },
+        {
+          "evaluator": "artifact",
+          "passed": true,
+          "score": 1.0,
+          "checks": [
+            {
+              "name": "contains",
+              "passed": true,
+              "score": 1.0,
+              "message": "Pattern found: \"\"\"",
+              "details": {
+                "pattern": "\"\"\"",
+                "regex": false,
+                "found": true
+              }
+            }
+          ]
+        },
+        {
+          "evaluator": "llm_judge",
+          "passed": true,
+          "score": 1.0,
+          "checks": [
+            {
+              "name": "llm_eval:quality",
+              "passed": true,
+              "score": 1.0,
+              "message": "The code is well-structured, follows proper naming conventions, and includes type hints. The docstring is comprehensive, providing a clear description of the function, its parameters, return value, and potential exceptions. The error handling is appropriate, raising specific exceptions for invalid input. Overall, the implementation adheres to Python idioms and best practices.",
+              "details": {
+                "criteria": "quality",
+                "threshold": 0.8,
+                "score": 1.0,
+                "issues": [],
+                "strengths": [
+                  "Clear and concise function definition",
+                  "Comprehensive docstring with examples",
+                  "Proper error handling for invalid input",
+                  "Use of type hints for better clarity",
+                  "Efficient iterative approach to calculate Fibonacci numbers"
+                ],
+                "cost": {
+                  "input_tokens": 485,
+                  "output_tokens": 145,
+                  "estimated_usd": 0.00363
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "test_id": "QL-002",
+      "test_name": "\u041a\u043e\u0434 \u0441\u043e\u043e\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0443\u0435\u0442 PEP 8",
+      "success": true,
+      "score": 72.47,
+      "duration_seconds": 13.421,
+      "runs": {
+        "total": 1,
+        "successful": 1
+      },
+      "error": null,
+      "score_breakdown": {
+        "final_score": 72.47,
+        "components": {
+          "quality": {
+            "normalized": 0.6666666666666666,
+            "weight": 0.5,
+            "weighted": 0.3333333333333333,
+            "details": {
+              "total_checks": 3,
+              "artifact_checks": 1,
+              "llm_checks": 1,
+              "mean_artifact_score": 1.0,
+              "mean_llm_score": 1.0
+            }
+          },
+          "completeness": {
+            "normalized": 0.6666666666666666,
+            "weight": 0.2,
+            "weighted": 0.13333333333333333,
+            "details": {
+              "passed_checks": 2,
+              "total_checks": 3
+            }
+          },
+          "efficiency": {
+            "normalized": 1.0,
+            "weight": 0.1,
+            "weighted": 0.1,
+            "details": {
+              "actual_steps": 1,
+              "max_steps": 3,
+              "optimal_steps": 1
+            }
+          },
+          "cost": {
+            "normalized": 0.79036,
+            "weight": 0.2,
+            "weighted": 0.158072,
+            "details": {
+              "cost_usd": 0.010482,
+              "max_cost_usd": 0.05,
+              "method": "direct_cost"
+            }
+          }
+        }
+      },
+      "evaluations": [
+        {
+          "evaluator": "artifact",
+          "passed": true,
+          "score": 1.0,
+          "checks": [
+            {
+              "name": "artifact_exists",
+              "passed": true,
+              "score": 1.0,
+              "message": "Artifact found: csv_parser.py",
+              "details": {
+                "path": "csv_parser.py",
+                "found": true
+              }
+            }
+          ]
+        },
+        {
+          "evaluator": "code_exec",
+          "passed": false,
+          "score": 0.0,
+          "checks": [
+            {
+              "name": "custom_command",
+              "passed": false,
+              "score": 0.0,
+              "message": "Command failed with return code 1",
+              "details": {
+                "command": "python -m py_compile csv_parser.py && echo 'Syntax OK'",
+                "return_code": 1,
+                "stdout": "",
+                "stderr": "[Errno 2] No such file or directory: '&&'"
+              }
+            }
+          ]
+        },
+        {
+          "evaluator": "llm_judge",
+          "passed": true,
+          "score": 1.0,
+          "checks": [
+            {
+              "name": "llm_eval:quality",
+              "passed": true,
+              "score": 1.0,
+              "message": "The code adheres to PEP 8 guidelines, including proper naming conventions (snake_case for functions and variables), appropriate use of type hints, and clear docstrings for each function. The structure is clean, with well-defined functions that handle specific tasks. Error handling is implemented effectively, raising appropriate exceptions for various error conditions. The code is also formatted correctly with proper indentation and spacing.",
+              "details": {
+                "criteria": "quality",
+                "threshold": 0.75,
+                "score": 1.0,
+                "issues": [],
+                "strengths": [
+                  "Adheres to PEP 8 naming conventions (snake_case)",
+                  "All functions have clear and informative docstrings",
+                  "Proper use of type hints for parameters and return values",
+                  "Effective error handling with specific exceptions",
+                  "Clean and organized structure with well-defined functions"
+                ],
+                "cost": {
+                  "input_tokens": 792,
+                  "output_tokens": 166,
+                  "estimated_usd": 0.004866
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "test_id": "QL-003",
+      "test_name": "\u041a\u043e\u0434 \u043e\u0431\u0440\u0430\u0431\u0430\u0442\u044b\u0432\u0430\u0435\u0442 \u0433\u0440\u0430\u043d\u0438\u0447\u043d\u044b\u0435 \u0441\u043b\u0443\u0447\u0430\u0438",
+      "success": true,
+      "score": 94.99,
+      "duration_seconds": 8.393,
+      "runs": {
+        "total": 1,
+        "successful": 1
+      },
+      "error": null,
+      "score_breakdown": {
+        "final_score": 94.99,
+        "components": {
+          "quality": {
+            "normalized": 1.0,
+            "weight": 0.5,
+            "weighted": 0.5,
+            "details": {
+              "total_checks": 2,
+              "artifact_checks": 1,
+              "llm_checks": 1,
+              "mean_artifact_score": 1.0,
+              "mean_llm_score": 1.0
+            }
+          },
+          "completeness": {
+            "normalized": 1.0,
+            "weight": 0.2,
+            "weighted": 0.2,
+            "details": {
+              "passed_checks": 2,
+              "total_checks": 2
+            }
+          },
+          "efficiency": {
+            "normalized": 1.0,
+            "weight": 0.1,
+            "weighted": 0.1,
+            "details": {
+              "actual_steps": 1,
+              "max_steps": 3,
+              "optimal_steps": 1
+            }
+          },
+          "cost": {
+            "normalized": 0.74932,
+            "weight": 0.2,
+            "weighted": 0.149864,
+            "details": {
+              "cost_usd": 0.012534,
+              "max_cost_usd": 0.05,
+              "method": "direct_cost"
+            }
+          }
+        }
+      },
+      "evaluations": [
+        {
+          "evaluator": "artifact",
+          "passed": true,
+          "score": 1.0,
+          "checks": [
+            {
+              "name": "artifact_exists",
+              "passed": true,
+              "score": 1.0,
+              "message": "Artifact found: api_client.py",
+              "details": {
+                "path": "api_client.py",
+                "found": true
+              }
+            }
+          ]
+        },
+        {
+          "evaluator": "llm_judge",
+          "passed": true,
+          "score": 1.0,
+          "checks": [
+            {
+              "name": "llm_eval:quality",
+              "passed": true,
+              "score": 1.0,
+              "message": "The code is well-structured, follows proper naming conventions, and includes type hints and comprehensive docstrings. It effectively handles various error scenarios, including HTTP errors, timeouts, and connection issues. The normalization of the base_url is also correctly implemented. Overall, it adheres to Python idioms and best practices, making it suitable for production use.",
+              "details": {
+                "criteria": "quality",
+                "threshold": 0.75,
+                "score": 1.0,
+                "issues": [],
+                "strengths": [
+                  "Clear and concise class structure with appropriate methods for GET and POST requests.",
+                  "Comprehensive error handling for HTTP errors, timeouts, and request errors.",
+                  "Proper use of type hints for function arguments and return types.",
+                  "Well-written docstrings that explain the purpose and usage of methods.",
+                  "Normalization of base_url to handle trailing slashes."
+                ],
+                "cost": {
+                  "input_tokens": 922,
+                  "output_tokens": 174,
+                  "estimated_usd": 0.005376
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

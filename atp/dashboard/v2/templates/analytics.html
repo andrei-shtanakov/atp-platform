@@ -11,6 +11,7 @@
 {% block scripts %}
 {{ chart_scripts() }}
 <script type="text/babel">
+{% raw %}
     // ==================== Trend Analysis Components ====================
 
     function TrendCard({ trend }) {
@@ -640,5 +641,6 @@
         const root = ReactDOM.createRoot(analyticsRoot);
         root.render(<AnalyticsDashboard />);
     }
+{% endraw %}
 </script>
 {% endblock %}

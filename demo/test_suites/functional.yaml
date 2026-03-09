@@ -1,0 +1,142 @@
+# Функциональные тесты для Code Writer Agents
+# Запуск (из корня atp-platform):
+#   uv run atp test demo/test_suites/functional.yaml --adapter=http \
+#     --adapter-config='endpoint=http://localhost:8001' --runs=3
+
+test_suite: "code_writer_functional"
+version: "1.0"
+description: "Проверка корректности: сгенерированный код проходит unit-тесты"
+
+defaults:
+  runs_per_test: 3
+  timeout_seconds: 60
+  constraints:
+    max_steps: 3
+    max_tokens: 15000
+    timeout_seconds: 60
+    budget_usd: 0.05
+  scoring:
+    quality_weight: 0.3
+    completeness_weight: 0.4
+    efficiency_weight: 0.2
+    cost_weight: 0.1
+
+tests:
+  # FN-001: Fibonacci — простое задание
+  - id: "FN-001"
+    name: "Fibonacci — код проходит unit-тесты"
+    tags: ["functional", "high", "simple"]
+    task:
+      description: "Напиши Python-модуль с функцией fibonacci(n)"
+      input_data:
+        requirements: |
+          Напиши функцию fibonacci(n: int) -> int:
+          - Принимает целое число n >= 0
+          - Возвращает n-е число Фибоначчи
+          - fibonacci(0) = 0, fibonacci(1) = 1
+          - Для отрицательных n — поднимает ValueError
+          - Должна работать для больших n (до 1000) без переполнения
+        language: "python"
+        filename: "fibonacci.py"
+      expected_artifacts: ["fibonacci.py"]
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "fibonacci.py"
+      - type: "code_exec"
+        config:
+          command: "python -m pytest demo/fixtures/tests/test_fibonacci.py -v --tb=short"
+          expected_exit_code: 0
+      - type: "llm_eval"
+        config:
+          criteria: "completeness"
+          threshold: 0.8
+          prompt: "Оцени, реализует ли код все требования: fibonacci(n), ValueError для n<0, работа с большими n"
+
+  # FN-002: CSV-парсер — среднее задание
+  - id: "FN-002"
+    name: "CSV-парсер — код проходит unit-тесты"
+    tags: ["functional", "high", "medium"]
+    task:
+      description: "Напиши Python-модуль для работы с CSV-файлами"
+      input_data:
+        requirements: |
+          Напиши модуль с тремя функциями:
+
+          1. read_csv(path: str) -> list[dict[str, str]]
+             - Читает CSV-файл, возвращает список словарей
+             - Первая строка — заголовки
+             - Поднимает FileNotFoundError если файл не найден
+
+          2. filter_rows(data: list[dict], column: str, value: str) -> list[dict]
+             - Фильтрует строки где column == value
+             - Поднимает KeyError если column не существует
+
+          3. write_csv(data: list[dict], path: str) -> None
+             - Записывает список словарей в CSV-файл
+             - Заголовки берёт из ключей первого словаря
+             - Если data пуст — создаёт пустой файл
+
+          Используй только стандартную библиотеку (модуль csv).
+        language: "python"
+        filename: "csv_parser.py"
+      expected_artifacts: ["csv_parser.py"]
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "csv_parser.py"
+      - type: "code_exec"
+        config:
+          command: "python -m pytest demo/fixtures/tests/test_csv_parser.py -v --tb=short"
+          expected_exit_code: 0
+      - type: "llm_eval"
+        config:
+          criteria: "completeness"
+          threshold: 0.8
+          prompt: "Оцени, реализует ли код все 3 функции: read_csv, filter_rows, write_csv с обработкой ошибок"
+
+  # FN-003: REST API клиент — сложное задание
+  - id: "FN-003"
+    name: "REST API клиент — код проходит unit-тесты"
+    tags: ["functional", "high", "complex"]
+    task:
+      description: "Напиши Python-модуль — HTTP API клиент"
+      input_data:
+        requirements: |
+          Напиши класс APIClient:
+
+          class APIClient:
+              def __init__(self, base_url: str, timeout: int = 30):
+                  ...
+
+              def get(self, path: str, params: dict | None = None) -> dict:
+                  """GET-запрос, возвращает JSON-ответ как dict."""
+                  ...
+
+              def post(self, path: str, data: dict | None = None) -> dict:
+                  """POST-запрос с JSON body, возвращает JSON-ответ."""
+                  ...
+
+          Требования:
+          - Используй библиотеку httpx
+          - При HTTP ошибках (4xx, 5xx) поднимай httpx.HTTPStatusError
+          - При таймауте поднимай httpx.TimeoutException
+          - При ошибке соединения поднимай httpx.ConnectError
+          - Метод get добавляет params как query string
+          - Метод post отправляет data как JSON body
+        language: "python"
+        filename: "api_client.py"
+      expected_artifacts: ["api_client.py"]
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "api_client.py"
+      - type: "code_exec"
+        config:
+          command: "python -m pytest demo/fixtures/tests/test_api_client.py -v --tb=short"
+          expected_exit_code: 0
+      - type: "llm_eval"
+        config:
+          criteria: "completeness"
+          threshold: 0.7
+          prompt: "Оцени, реализует ли код класс APIClient с методами get/post, обработкой ошибок и таймаутом"

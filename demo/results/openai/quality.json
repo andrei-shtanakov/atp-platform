@@ -1,0 +1,381 @@
+{
+  "version": "1.0",
+  "generated_at": "2026-03-09T07:41:09.825253",
+  "summary": {
+    "suite_name": "code_writer_quality",
+    "agent_name": "test-agent",
+    "total_tests": 3,
+    "passed_tests": 3,
+    "failed_tests": 0,
+    "success_rate": 1.0,
+    "duration_seconds": 38.636,
+    "runs_per_test": 1,
+    "success": true,
+    "error": null
+  },
+  "tests": [
+    {
+      "test_id": "QL-001",
+      "test_name": "\u041a\u043e\u0434 \u0441\u043e\u0434\u0435\u0440\u0436\u0438\u0442 docstrings",
+      "success": true,
+      "score": 99.95,
+      "duration_seconds": 13.606,
+      "runs": {
+        "total": 1,
+        "successful": 1
+      },
+      "error": null,
+      "score_breakdown": {
+        "final_score": 99.95,
+        "components": {
+          "quality": {
+            "normalized": 1.0,
+            "weight": 0.5,
+            "weighted": 0.5,
+            "details": {
+              "total_checks": 3,
+              "artifact_checks": 2,
+              "llm_checks": 1,
+              "mean_artifact_score": 1.0,
+              "mean_llm_score": 1.0
+            }
+          },
+          "completeness": {
+            "normalized": 1.0,
+            "weight": 0.2,
+            "weighted": 0.2,
+            "details": {
+              "passed_checks": 3,
+              "total_checks": 3
+            }
+          },
+          "efficiency": {
+            "normalized": 1.0,
+            "weight": 0.1,
+            "weighted": 0.1,
+            "details": {
+              "actual_steps": 1,
+              "max_steps": 3,
+              "optimal_steps": 1
+            }
+          },
+          "cost": {
+            "normalized": 0.99764,
+            "weight": 0.2,
+            "weighted": 0.199528,
+            "details": {
+              "cost_usd": 0.000118,
+              "max_cost_usd": 0.05,
+              "method": "direct_cost"
+            }
+          }
+        }
+      },
+      "evaluations": [
+        {
+          "evaluator": "artifact",
+          "passed": true,
+          "score": 1.0,
+          "checks": [
+            {
+              "name": "artifact_exists",
+              "passed": true,
+              "score": 1.0,
+              "message": "Artifact found: fibonacci.py",
+              "details": {
+                "path": "fibonacci.py",
+                "found": true
+              }
+            }
+          ]
+        },
+        {
+          "evaluator": "artifact",
+          "passed": true,
+          "score": 1.0,
+          "checks": [
+            {
+              "name": "contains",
+              "passed": true,
+              "score": 1.0,
+              "message": "Pattern found: \"\"\"",
+              "details": {
+                "pattern": "\"\"\"",
+                "regex": false,
+                "found": true
+              }
+            }
+          ]
+        },
+        {
+          "evaluator": "llm_judge",
+          "passed": true,
+          "score": 1.0,
+          "checks": [
+            {
+              "name": "llm_eval:quality",
+              "passed": true,
+              "score": 1.0,
+              "message": "The code is well-structured and follows proper naming conventions. The function is clearly defined with type hints, and the docstring provides a comprehensive description of the function's purpose, parameters, return value, and exceptions raised. The error handling for negative integers is appropriate, and the implementation adheres to Python idioms for calculating Fibonacci numbers efficiently.",
+              "details": {
+                "criteria": "quality",
+                "threshold": 0.8,
+                "score": 1.0,
+                "issues": [],
+                "strengths": [
+                  "Clear and concise function definition",
+                  "Proper use of type hints",
+                  "Comprehensive docstring covering function purpose, parameters, return value, and exceptions",
+                  "Appropriate error handling for negative input",
+                  "Efficient iterative implementation of Fibonacci calculation"
+                ],
+                "cost": {
+                  "input_tokens": 373,
+                  "output_tokens": 152,
+                  "estimated_usd": 0.003399
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "test_id": "QL-002",
+      "test_name": "\u041a\u043e\u0434 \u0441\u043e\u043e\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0443\u0435\u0442 PEP 8",
+      "success": true,
+      "score": 76.57,
+      "duration_seconds": 15.913,
+      "runs": {
+        "total": 1,
+        "successful": 1
+      },
+      "error": null,
+      "score_breakdown": {
+        "final_score": 76.57,
+        "components": {
+          "quality": {
+            "normalized": 0.6666666666666666,
+            "weight": 0.5,
+            "weighted": 0.3333333333333333,
+            "details": {
+              "total_checks": 3,
+              "artifact_checks": 1,
+              "llm_checks": 1,
+              "mean_artifact_score": 1.0,
+              "mean_llm_score": 1.0
+            }
+          },
+          "completeness": {
+            "normalized": 0.6666666666666666,
+            "weight": 0.2,
+            "weighted": 0.13333333333333333,
+            "details": {
+              "passed_checks": 2,
+              "total_checks": 3
+            }
+          },
+          "efficiency": {
+            "normalized": 1.0,
+            "weight": 0.1,
+            "weighted": 0.1,
+            "details": {
+              "actual_steps": 1,
+              "max_steps": 3,
+              "optimal_steps": 1
+            }
+          },
+          "cost": {
+            "normalized": 0.99494,
+            "weight": 0.2,
+            "weighted": 0.19898800000000003,
+            "details": {
+              "cost_usd": 0.000253,
+              "max_cost_usd": 0.05,
+              "method": "direct_cost"
+            }
+          }
+        }
+      },
+      "evaluations": [
+        {
+          "evaluator": "artifact",
+          "passed": true,
+          "score": 1.0,
+          "checks": [
+            {
+              "name": "artifact_exists",
+              "passed": true,
+              "score": 1.0,
+              "message": "Artifact found: csv_parser.py",
+              "details": {
+                "path": "csv_parser.py",
+                "found": true
+              }
+            }
+          ]
+        },
+        {
+          "evaluator": "code_exec",
+          "passed": false,
+          "score": 0.0,
+          "checks": [
+            {
+              "name": "custom_command",
+              "passed": false,
+              "score": 0.0,
+              "message": "Command failed with return code 1",
+              "details": {
+                "command": "python -m py_compile csv_parser.py && echo 'Syntax OK'",
+                "return_code": 1,
+                "stdout": "",
+                "stderr": "[Errno 2] No such file or directory: '&&'"
+              }
+            }
+          ]
+        },
+        {
+          "evaluator": "llm_judge",
+          "passed": true,
+          "score": 1.0,
+          "checks": [
+            {
+              "name": "llm_eval:quality",
+              "passed": true,
+              "score": 1.0,
+              "message": "The code adheres to PEP 8 guidelines, including proper naming conventions (snake_case), type hints for parameters and return values, and appropriate error handling. The structure is clean, with well-defined functions and clear docstrings explaining their purpose. The import statements are correctly placed on separate lines, and the code is easy to read and maintain.",
+              "details": {
+                "criteria": "quality",
+                "threshold": 0.75,
+                "score": 1.0,
+                "issues": [],
+                "strengths": [
+                  "Follows PEP 8 naming conventions (snake_case).",
+                  "All functions have clear and concise docstrings.",
+                  "Type hints are provided for all parameters and return values.",
+                  "Proper error handling is implemented for file operations.",
+                  "Code structure is clean and modular, making it easy to understand."
+                ],
+                "cost": {
+                  "input_tokens": 637,
+                  "output_tokens": 164,
+                  "estimated_usd": 0.004371
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "test_id": "QL-003",
+      "test_name": "\u041a\u043e\u0434 \u043e\u0431\u0440\u0430\u0431\u0430\u0442\u044b\u0432\u0430\u0435\u0442 \u0433\u0440\u0430\u043d\u0438\u0447\u043d\u044b\u0435 \u0441\u043b\u0443\u0447\u0430\u0438",
+      "success": true,
+      "score": 94.87,
+      "duration_seconds": 9.114,
+      "runs": {
+        "total": 1,
+        "successful": 1
+      },
+      "error": null,
+      "score_breakdown": {
+        "final_score": 94.87,
+        "components": {
+          "quality": {
+            "normalized": 0.9,
+            "weight": 0.5,
+            "weighted": 0.45,
+            "details": {
+              "total_checks": 2,
+              "artifact_checks": 1,
+              "llm_checks": 1,
+              "mean_artifact_score": 1.0,
+              "mean_llm_score": 0.8
+            }
+          },
+          "completeness": {
+            "normalized": 1.0,
+            "weight": 0.2,
+            "weighted": 0.2,
+            "details": {
+              "passed_checks": 2,
+              "total_checks": 2
+            }
+          },
+          "efficiency": {
+            "normalized": 1.0,
+            "weight": 0.1,
+            "weighted": 0.1,
+            "details": {
+              "actual_steps": 1,
+              "max_steps": 3,
+              "optimal_steps": 1
+            }
+          },
+          "cost": {
+            "normalized": 0.99368,
+            "weight": 0.2,
+            "weighted": 0.19873600000000002,
+            "details": {
+              "cost_usd": 0.000316,
+              "max_cost_usd": 0.05,
+              "method": "direct_cost"
+            }
+          }
+        }
+      },
+      "evaluations": [
+        {
+          "evaluator": "artifact",
+          "passed": true,
+          "score": 1.0,
+          "checks": [
+            {
+              "name": "artifact_exists",
+              "passed": true,
+              "score": 1.0,
+              "message": "Artifact found: api_client.py",
+              "details": {
+                "path": "api_client.py",
+                "found": true
+              }
+            }
+          ]
+        },
+        {
+          "evaluator": "llm_judge",
+          "passed": true,
+          "score": 0.8,
+          "checks": [
+            {
+              "name": "llm_eval:quality",
+              "passed": true,
+              "score": 0.8,
+              "message": "The code demonstrates a clean structure, proper naming conventions, and good use of type hints and docstrings. Error handling is present for HTTP status errors and request errors, which is a strength. However, there are some areas for improvement, such as handling timeouts explicitly, checking for empty or non-JSON responses, and normalizing the base_url to ensure consistent behavior regardless of trailing slashes. Overall, it is close to production quality but lacks some robustness in edge case handling.",
+              "details": {
+                "criteria": "quality",
+                "threshold": 0.75,
+                "score": 0.8,
+                "issues": [
+                  "No explicit handling for timeout errors.",
+                  "No check for empty or non-JSON responses.",
+                  "No normalization of base_url for trailing slashes."
+                ],
+                "strengths": [
+                  "Clean structure and proper naming conventions.",
+                  "Good use of type hints and docstrings.",
+                  "Effective error handling for HTTP status and request errors."
+                ],
+                "cost": {
+                  "input_tokens": 760,
+                  "output_tokens": 193,
+                  "estimated_usd": 0.005175
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

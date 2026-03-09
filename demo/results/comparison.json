@@ -1,0 +1,332 @@
+{
+  "agents": [
+    "openai",
+    "anthropic"
+  ],
+  "summaries": {
+    "openai": {
+      "total_tests": 9,
+      "passed": 9,
+      "pass_rate": 1.0,
+      "avg_score": 94.2,
+      "min_score": 76.6,
+      "max_score": 100.0,
+      "total_duration": 147.3,
+      "quality": 0.915,
+      "completeness": 0.926,
+      "efficiency": 1.0,
+      "cost": 0.997
+    },
+    "anthropic": {
+      "total_tests": 9,
+      "passed": 9,
+      "pass_rate": 1.0,
+      "avg_score": 92.9,
+      "min_score": 72.5,
+      "max_score": 99.5,
+      "total_duration": 128.6,
+      "quality": 0.926,
+      "completeness": 0.926,
+      "efficiency": 1.0,
+      "cost": 0.868
+    }
+  },
+  "per_test": {
+    "FN-001": {
+      "openai": {
+        "suite": "functional",
+        "name": "Fibonacci — код проходит unit-тесты",
+        "score": 99.98,
+        "passed": true,
+        "duration": 32.233,
+        "evaluations": {
+          "artifact": "PASS",
+          "code_exec": "PASS",
+          "llm_judge": "PASS"
+        },
+        "quality": 1.0,
+        "completeness": 1.0,
+        "efficiency": 1.0,
+        "cost": 0.99786
+      },
+      "anthropic": {
+        "suite": "functional",
+        "name": "Fibonacci — код проходит unit-тесты",
+        "score": 99.37,
+        "passed": true,
+        "duration": 27.339,
+        "evaluations": {
+          "artifact": "PASS",
+          "code_exec": "PASS",
+          "llm_judge": "PASS"
+        },
+        "quality": 1.0,
+        "completeness": 1.0,
+        "efficiency": 1.0,
+        "cost": 0.9373
+      }
+    },
+    "FN-002": {
+      "openai": {
+        "suite": "functional",
+        "name": "CSV-парсер — код проходит unit-тесты",
+        "score": 99.96,
+        "passed": true,
+        "duration": 30.085,
+        "evaluations": {
+          "artifact": "PASS",
+          "code_exec": "PASS",
+          "llm_judge": "PASS"
+        },
+        "quality": 1.0,
+        "completeness": 1.0,
+        "efficiency": 1.0,
+        "cost": 0.99552
+      },
+      "anthropic": {
+        "suite": "functional",
+        "name": "CSV-парсер — код проходит unit-тесты",
+        "score": 98.27,
+        "passed": true,
+        "duration": 26.83,
+        "evaluations": {
+          "artifact": "PASS",
+          "code_exec": "PASS",
+          "llm_judge": "PASS"
+        },
+        "quality": 1.0,
+        "completeness": 1.0,
+        "efficiency": 1.0,
+        "cost": 0.8266600000000001
+      }
+    },
+    "FN-003": {
+      "openai": {
+        "suite": "functional",
+        "name": "REST API клиент — код проходит unit-тесты",
+        "score": 76.61,
+        "passed": true,
+        "duration": 24.117,
+        "evaluations": {
+          "artifact": "PASS",
+          "code_exec": "FAIL",
+          "llm_judge": "PASS"
+        },
+        "quality": 0.6666666666666666,
+        "completeness": 0.6666666666666666,
+        "efficiency": 1.0,
+        "cost": 0.99428
+      },
+      "anthropic": {
+        "suite": "functional",
+        "name": "REST API клиент — код проходит unit-тесты",
+        "score": 74.6,
+        "passed": true,
+        "duration": 21.416,
+        "evaluations": {
+          "artifact": "PASS",
+          "code_exec": "FAIL",
+          "llm_judge": "PASS"
+        },
+        "quality": 0.6666666666666666,
+        "completeness": 0.6666666666666666,
+        "efficiency": 1.0,
+        "cost": 0.7933
+      }
+    },
+    "QL-001": {
+      "openai": {
+        "suite": "quality",
+        "name": "Код содержит docstrings",
+        "score": 99.95,
+        "passed": true,
+        "duration": 13.606,
+        "evaluations": {
+          "artifact": "PASS",
+          "llm_judge": "PASS"
+        },
+        "quality": 1.0,
+        "completeness": 1.0,
+        "efficiency": 1.0,
+        "cost": 0.99764
+      },
+      "anthropic": {
+        "suite": "quality",
+        "name": "Код содержит docstrings",
+        "score": 97.89,
+        "passed": true,
+        "duration": 11.538,
+        "evaluations": {
+          "artifact": "PASS",
+          "llm_judge": "PASS"
+        },
+        "quality": 1.0,
+        "completeness": 1.0,
+        "efficiency": 1.0,
+        "cost": 0.8944
+      }
+    },
+    "QL-002": {
+      "openai": {
+        "suite": "quality",
+        "name": "Код соответствует PEP 8",
+        "score": 76.57,
+        "passed": true,
+        "duration": 15.913,
+        "evaluations": {
+          "artifact": "PASS",
+          "code_exec": "FAIL",
+          "llm_judge": "PASS"
+        },
+        "quality": 0.6666666666666666,
+        "completeness": 0.6666666666666666,
+        "efficiency": 1.0,
+        "cost": 0.99494
+      },
+      "anthropic": {
+        "suite": "quality",
+        "name": "Код соответствует PEP 8",
+        "score": 72.47,
+        "passed": true,
+        "duration": 13.421,
+        "evaluations": {
+          "artifact": "PASS",
+          "code_exec": "FAIL",
+          "llm_judge": "PASS"
+        },
+        "quality": 0.6666666666666666,
+        "completeness": 0.6666666666666666,
+        "efficiency": 1.0,
+        "cost": 0.79036
+      }
+    },
+    "QL-003": {
+      "openai": {
+        "suite": "quality",
+        "name": "Код обрабатывает граничные случаи",
+        "score": 94.87,
+        "passed": true,
+        "duration": 9.114,
+        "evaluations": {
+          "artifact": "PASS",
+          "llm_judge": "PASS"
+        },
+        "quality": 0.9,
+        "completeness": 1.0,
+        "efficiency": 1.0,
+        "cost": 0.99368
+      },
+      "anthropic": {
+        "suite": "quality",
+        "name": "Код обрабатывает граничные случаи",
+        "score": 94.99,
+        "passed": true,
+        "duration": 8.393,
+        "evaluations": {
+          "artifact": "PASS",
+          "llm_judge": "PASS"
+        },
+        "quality": 1.0,
+        "completeness": 1.0,
+        "efficiency": 1.0,
+        "cost": 0.74932
+      }
+    },
+    "SM-001": {
+      "openai": {
+        "suite": "smoke",
+        "name": "Агент возвращает Python-файл",
+        "score": 99.98,
+        "passed": true,
+        "duration": 4.2,
+        "evaluations": {
+          "artifact": "PASS",
+          "behavior": "PASS"
+        },
+        "quality": 1.0,
+        "completeness": 1.0,
+        "efficiency": 1.0,
+        "cost": 0.99826
+      },
+      "anthropic": {
+        "suite": "smoke",
+        "name": "Агент возвращает Python-файл",
+        "score": 99.25,
+        "passed": true,
+        "duration": 3.733,
+        "evaluations": {
+          "artifact": "PASS",
+          "behavior": "PASS"
+        },
+        "quality": 1.0,
+        "completeness": 1.0,
+        "efficiency": 1.0,
+        "cost": 0.92536
+      }
+    },
+    "SM-002": {
+      "openai": {
+        "suite": "smoke",
+        "name": "Ответ валиден по JSON Schema",
+        "score": 99.99,
+        "passed": true,
+        "duration": 7.167,
+        "evaluations": {
+          "artifact": "PASS",
+          "behavior": "PASS"
+        },
+        "quality": 1.0,
+        "completeness": 1.0,
+        "efficiency": 1.0,
+        "cost": 0.99876
+      },
+      "anthropic": {
+        "suite": "smoke",
+        "name": "Ответ валиден по JSON Schema",
+        "score": 99.51,
+        "passed": true,
+        "duration": 5.376,
+        "evaluations": {
+          "artifact": "PASS",
+          "behavior": "PASS"
+        },
+        "quality": 1.0,
+        "completeness": 1.0,
+        "efficiency": 1.0,
+        "cost": 0.95056
+      }
+    },
+    "SM-003": {
+      "openai": {
+        "suite": "smoke",
+        "name": "Код синтаксически валиден",
+        "score": 99.98,
+        "passed": true,
+        "duration": 10.841,
+        "evaluations": {
+          "artifact": "PASS",
+          "code_exec": "PASS"
+        },
+        "quality": 1.0,
+        "completeness": 1.0,
+        "efficiency": 1.0,
+        "cost": 0.9978
+      },
+      "anthropic": {
+        "suite": "smoke",
+        "name": "Код синтаксически валиден",
+        "score": 99.42,
+        "passed": true,
+        "duration": 10.522,
+        "evaluations": {
+          "artifact": "PASS",
+          "code_exec": "PASS"
+        },
+        "quality": 1.0,
+        "completeness": 1.0,
+        "efficiency": 1.0,
+        "cost": 0.9418
+      }
+    }
+  }
+}

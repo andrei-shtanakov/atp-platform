@@ -10,6 +10,7 @@
 {% block scripts %}
 <script src="{{ url_for('static_v2', path='js/pages/home.js') }}"></script>
 <script type="text/babel">
+{% raw %}
     // Dashboard Summary Component
     function DashboardSummary({ summary }) {
         if (!summary) {
@@ -91,7 +92,7 @@
             setLoading(true);
             setError(null);
             try {
-                const data = await api.get('/summary');
+                const data = await api.get('/dashboard/summary');
                 setSummary(data);
             } catch (err) {
                 setError(err.message);
@@ -166,5 +167,6 @@
         const root = ReactDOM.createRoot(homeRoot);
         root.render(<HomePage />);
     }
+{% endraw %}
 </script>
 {% endblock %}

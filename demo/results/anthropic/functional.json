@@ -1,0 +1,393 @@
+{
+  "version": "1.0",
+  "generated_at": "2026-03-09T07:42:05.712340",
+  "summary": {
+    "suite_name": "code_writer_functional",
+    "agent_name": "test-agent",
+    "total_tests": 3,
+    "passed_tests": 3,
+    "failed_tests": 0,
+    "success_rate": 1.0,
+    "duration_seconds": 75.592,
+    "runs_per_test": 3,
+    "success": true,
+    "error": null
+  },
+  "tests": [
+    {
+      "test_id": "FN-001",
+      "test_name": "Fibonacci \u2014 \u043a\u043e\u0434 \u043f\u0440\u043e\u0445\u043e\u0434\u0438\u0442 unit-\u0442\u0435\u0441\u0442\u044b",
+      "success": true,
+      "score": 99.37,
+      "duration_seconds": 27.339,
+      "runs": {
+        "total": 3,
+        "successful": 3
+      },
+      "error": null,
+      "score_breakdown": {
+        "final_score": 99.37,
+        "components": {
+          "quality": {
+            "normalized": 1.0,
+            "weight": 0.3,
+            "weighted": 0.3,
+            "details": {
+              "total_checks": 3,
+              "artifact_checks": 1,
+              "llm_checks": 1,
+              "mean_artifact_score": 1.0,
+              "mean_llm_score": 1.0
+            }
+          },
+          "completeness": {
+            "normalized": 1.0,
+            "weight": 0.4,
+            "weighted": 0.4,
+            "details": {
+              "passed_checks": 3,
+              "total_checks": 3
+            }
+          },
+          "efficiency": {
+            "normalized": 1.0,
+            "weight": 0.2,
+            "weighted": 0.2,
+            "details": {
+              "actual_steps": 1,
+              "max_steps": 3,
+              "optimal_steps": 1
+            }
+          },
+          "cost": {
+            "normalized": 0.9373,
+            "weight": 0.1,
+            "weighted": 0.09373000000000001,
+            "details": {
+              "cost_usd": 0.003135,
+              "max_cost_usd": 0.05,
+              "method": "direct_cost"
+            }
+          }
+        }
+      },
+      "evaluations": [
+        {
+          "evaluator": "artifact",
+          "passed": true,
+          "score": 1.0,
+          "checks": [
+            {
+              "name": "artifact_exists",
+              "passed": true,
+              "score": 1.0,
+              "message": "Artifact found: fibonacci.py",
+              "details": {
+                "path": "fibonacci.py",
+                "found": true
+              }
+            }
+          ]
+        },
+        {
+          "evaluator": "code_exec",
+          "passed": true,
+          "score": 1.0,
+          "checks": [
+            {
+              "name": "custom_command",
+              "passed": true,
+              "score": 1.0,
+              "message": "Command completed successfully (return code: 0)",
+              "details": {
+                "command": "python -m pytest demo/fixtures/tests/test_fibonacci.py -v --tb=short",
+                "return_code": 0,
+                "stdout": "============================= test session starts ==============================\nplatform darwin -- Python 3.12.11, pytest-9.0.2, pluggy-1.6.0 -- /Users/Andrei_Shtanakov/labs/all_ai_orchestrators/atp-platform/.venv/bin/python\ncachedir: .pytest_cache\nrootdir: /Users/Andrei_Shtanakov/labs/all_ai_orchestrators/atp-platform\nconfigfile: pyproject.toml\nplugins: anyio-4.12.1, mock-3.15.1, cov-7.0.0\ncollecting ... collected 10 items\n\ndemo/fixtures/tests/test_fibonacci.py::TestFibonacciBasic::test_zero P"
+              }
+            }
+          ]
+        },
+        {
+          "evaluator": "llm_judge",
+          "passed": true,
+          "score": 1.0,
+          "checks": [
+            {
+              "name": "llm_eval:completeness",
+              "passed": true,
+              "score": 1.0,
+              "message": "The code fully implements the Fibonacci function as specified in the task. It correctly calculates the n-th Fibonacci number, raises a ValueError for negative inputs, and handles large values of n efficiently using an iterative approach.",
+              "details": {
+                "criteria": "completeness",
+                "threshold": 0.8,
+                "score": 1.0,
+                "issues": [],
+                "strengths": [
+                  "Correctly raises ValueError for negative input.",
+                  "Efficiently calculates Fibonacci numbers using an iterative method.",
+                  "Handles edge cases for n = 0 and n = 1 correctly."
+                ],
+                "cost": {
+                  "input_tokens": 347,
+                  "output_tokens": 113,
+                  "estimated_usd": 0.0027359999999999997
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "test_id": "FN-002",
+      "test_name": "CSV-\u043f\u0430\u0440\u0441\u0435\u0440 \u2014 \u043a\u043e\u0434 \u043f\u0440\u043e\u0445\u043e\u0434\u0438\u0442 unit-\u0442\u0435\u0441\u0442\u044b",
+      "success": true,
+      "score": 98.27,
+      "duration_seconds": 26.83,
+      "runs": {
+        "total": 3,
+        "successful": 3
+      },
+      "error": null,
+      "score_breakdown": {
+        "final_score": 98.27,
+        "components": {
+          "quality": {
+            "normalized": 1.0,
+            "weight": 0.3,
+            "weighted": 0.3,
+            "details": {
+              "total_checks": 3,
+              "artifact_checks": 1,
+              "llm_checks": 1,
+              "mean_artifact_score": 1.0,
+              "mean_llm_score": 1.0
+            }
+          },
+          "completeness": {
+            "normalized": 1.0,
+            "weight": 0.4,
+            "weighted": 0.4,
+            "details": {
+              "passed_checks": 3,
+              "total_checks": 3
+            }
+          },
+          "efficiency": {
+            "normalized": 1.0,
+            "weight": 0.2,
+            "weighted": 0.2,
+            "details": {
+              "actual_steps": 1,
+              "max_steps": 3,
+              "optimal_steps": 1
+            }
+          },
+          "cost": {
+            "normalized": 0.8266600000000001,
+            "weight": 0.1,
+            "weighted": 0.08266600000000002,
+            "details": {
+              "cost_usd": 0.008667,
+              "max_cost_usd": 0.05,
+              "method": "direct_cost"
+            }
+          }
+        }
+      },
+      "evaluations": [
+        {
+          "evaluator": "artifact",
+          "passed": true,
+          "score": 1.0,
+          "checks": [
+            {
+              "name": "artifact_exists",
+              "passed": true,
+              "score": 1.0,
+              "message": "Artifact found: csv_parser.py",
+              "details": {
+                "path": "csv_parser.py",
+                "found": true
+              }
+            }
+          ]
+        },
+        {
+          "evaluator": "code_exec",
+          "passed": true,
+          "score": 1.0,
+          "checks": [
+            {
+              "name": "custom_command",
+              "passed": true,
+              "score": 1.0,
+              "message": "Command completed successfully (return code: 0)",
+              "details": {
+                "command": "python -m pytest demo/fixtures/tests/test_csv_parser.py -v --tb=short",
+                "return_code": 0,
+                "stdout": "============================= test session starts ==============================\nplatform darwin -- Python 3.12.11, pytest-9.0.2, pluggy-1.6.0 -- /Users/Andrei_Shtanakov/labs/all_ai_orchestrators/atp-platform/.venv/bin/python\ncachedir: .pytest_cache\nrootdir: /Users/Andrei_Shtanakov/labs/all_ai_orchestrators/atp-platform\nconfigfile: pyproject.toml\nplugins: anyio-4.12.1, mock-3.15.1, cov-7.0.0\ncollecting ... collected 10 items\n\ndemo/fixtures/tests/test_csv_parser.py::TestReadCsv::test_reads_file P"
+              }
+            }
+          ]
+        },
+        {
+          "evaluator": "llm_judge",
+          "passed": true,
+          "score": 1.0,
+          "checks": [
+            {
+              "name": "llm_eval:completeness",
+              "passed": true,
+              "score": 1.0,
+              "message": "The code fully implements the required functions: read_csv, filter_rows, and write_csv, along with appropriate error handling for file not found and key errors. Each function is well-defined and adheres to the expected functionality outlined in the task.",
+              "details": {
+                "criteria": "completeness",
+                "threshold": 0.8,
+                "score": 1.0,
+                "issues": [],
+                "strengths": [
+                  "All three required functions are implemented correctly.",
+                  "Error handling is included for file not found and key errors.",
+                  "The code uses type hints for better clarity and type checking.",
+                  "The functions are well-documented with clear docstrings."
+                ],
+                "cost": {
+                  "input_tokens": 620,
+                  "output_tokens": 129,
+                  "estimated_usd": 0.0037949999999999998
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "test_id": "FN-003",
+      "test_name": "REST API \u043a\u043b\u0438\u0435\u043d\u0442 \u2014 \u043a\u043e\u0434 \u043f\u0440\u043e\u0445\u043e\u0434\u0438\u0442 unit-\u0442\u0435\u0441\u0442\u044b",
+      "success": true,
+      "score": 74.6,
+      "duration_seconds": 21.416,
+      "runs": {
+        "total": 3,
+        "successful": 3
+      },
+      "error": null,
+      "score_breakdown": {
+        "final_score": 74.6,
+        "components": {
+          "quality": {
+            "normalized": 0.6666666666666666,
+            "weight": 0.3,
+            "weighted": 0.19999999999999998,
+            "details": {
+              "total_checks": 3,
+              "artifact_checks": 1,
+              "llm_checks": 1,
+              "mean_artifact_score": 1.0,
+              "mean_llm_score": 1.0
+            }
+          },
+          "completeness": {
+            "normalized": 0.6666666666666666,
+            "weight": 0.4,
+            "weighted": 0.26666666666666666,
+            "details": {
+              "passed_checks": 2,
+              "total_checks": 3
+            }
+          },
+          "efficiency": {
+            "normalized": 1.0,
+            "weight": 0.2,
+            "weighted": 0.2,
+            "details": {
+              "actual_steps": 1,
+              "max_steps": 3,
+              "optimal_steps": 1
+            }
+          },
+          "cost": {
+            "normalized": 0.7933,
+            "weight": 0.1,
+            "weighted": 0.07933000000000001,
+            "details": {
+              "cost_usd": 0.010335,
+              "max_cost_usd": 0.05,
+              "method": "direct_cost"
+            }
+          }
+        }
+      },
+      "evaluations": [
+        {
+          "evaluator": "artifact",
+          "passed": true,
+          "score": 1.0,
+          "checks": [
+            {
+              "name": "artifact_exists",
+              "passed": true,
+              "score": 1.0,
+              "message": "Artifact found: api_client.py",
+              "details": {
+                "path": "api_client.py",
+                "found": true
+              }
+            }
+          ]
+        },
+        {
+          "evaluator": "code_exec",
+          "passed": false,
+          "score": 0.0,
+          "checks": [
+            {
+              "name": "custom_command",
+              "passed": false,
+              "score": 0.0,
+              "message": "Command failed with return code 1",
+              "details": {
+                "command": "python -m pytest demo/fixtures/tests/test_api_client.py -v --tb=short",
+                "return_code": 1,
+                "stdout": "============================= test session starts ==============================\nplatform darwin -- Python 3.12.11, pytest-9.0.2, pluggy-1.6.0 -- /Users/Andrei_Shtanakov/labs/all_ai_orchestrators/atp-platform/.venv/bin/python\ncachedir: .pytest_cache\nrootdir: /Users/Andrei_Shtanakov/labs/all_ai_orchestrators/atp-platform\nconfigfile: pyproject.toml\nplugins: anyio-4.12.1, mock-3.15.1, cov-7.0.0\ncollecting ... collected 7 items\n\ndemo/fixtures/tests/test_api_client.py::TestGet::test_get_returns_dict ",
+                "stderr": ""
+              }
+            }
+          ]
+        },
+        {
+          "evaluator": "llm_judge",
+          "passed": true,
+          "score": 1.0,
+          "checks": [
+            {
+              "name": "llm_eval:completeness",
+              "passed": true,
+              "score": 1.0,
+              "message": "The code fully implements the APIClient class with both GET and POST methods, includes error handling for HTTP status errors, timeouts, and connection errors, and allows for a configurable timeout. All required aspects of the task are addressed.",
+              "details": {
+                "criteria": "completeness",
+                "threshold": 0.7,
+                "score": 1.0,
+                "issues": [],
+                "strengths": [
+                  "Complete implementation of the APIClient class.",
+                  "GET and POST methods are correctly defined and functional.",
+                  "Error handling for various exceptions is included.",
+                  "Configurable timeout for requests is provided."
+                ],
+                "cost": {
+                  "input_tokens": 701,
+                  "output_tokens": 118,
+                  "estimated_usd": 0.0038729999999999997
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

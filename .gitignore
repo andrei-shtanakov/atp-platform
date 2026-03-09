@@ -43,3 +43,23 @@ Thumbs.db
 *.log
 .env
 .env.local
+
+# Generated artifacts
+art/
+SUGGESTIONS.md
+
+# Temp Office files
+~$*
+
+# Auto-generated test suites (atp init)
+my-test-suite.yaml
+
+# Executor runtime state
+spec/.executor-phase5-state.json
+spec/.executor-progress.txt
+
+# Hypothesis test cache
+game-environments/.hypothesis/
+
+# Generated PDFs (rebuild via art/generate_quickstart_pdf.py)
+docs/*.pdf

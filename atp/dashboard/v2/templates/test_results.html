@@ -9,6 +9,7 @@
 
 {% block scripts %}
 <script type="text/babel">
+{% raw %}
     // Suite Detail Component
     function SuiteDetail({ executionId, onBack }) {
         const [execution, setExecution] = React.useState(null);
@@ -182,5 +183,6 @@
         const root = ReactDOM.createRoot(testResultsRoot);
         root.render(<TestResultsPage />);
     }
+{% endraw %}
 </script>
 {% endblock %}

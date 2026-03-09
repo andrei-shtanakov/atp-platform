@@ -1,0 +1,179 @@
+{
+  "agents": [
+    "openai"
+  ],
+  "summaries": {
+    "openai": {
+      "total_tests": 9,
+      "passed": 9,
+      "pass_rate": 1.0,
+      "avg_score": 94.2,
+      "min_score": 76.6,
+      "max_score": 100.0,
+      "total_duration": 35.4,
+      "quality": 0.915,
+      "completeness": 0.926,
+      "efficiency": 1.0,
+      "cost": 0.997
+    }
+  },
+  "per_test": {
+    "FN-001": {
+      "openai": {
+        "suite": "functional",
+        "name": "Fibonacci — код проходит unit-тесты",
+        "score": 99.98,
+        "passed": true,
+        "duration": 3.515,
+        "evaluations": {
+          "artifact": "PASS",
+          "code_exec": "PASS",
+          "llm_judge": "PASS"
+        },
+        "quality": 1.0,
+        "completeness": 1.0,
+        "efficiency": 1.0,
+        "cost": 0.99776
+      }
+    },
+    "FN-002": {
+      "openai": {
+        "suite": "functional",
+        "name": "CSV-парсер — код проходит unit-тесты",
+        "score": 99.96,
+        "passed": true,
+        "duration": 4.963,
+        "evaluations": {
+          "artifact": "PASS",
+          "code_exec": "PASS",
+          "llm_judge": "PASS"
+        },
+        "quality": 1.0,
+        "completeness": 1.0,
+        "efficiency": 1.0,
+        "cost": 0.99574
+      }
+    },
+    "FN-003": {
+      "openai": {
+        "suite": "functional",
+        "name": "REST API клиент — код проходит unit-тесты",
+        "score": 76.61,
+        "passed": true,
+        "duration": 5.535,
+        "evaluations": {
+          "artifact": "PASS",
+          "code_exec": "FAIL",
+          "llm_judge": "PASS"
+        },
+        "quality": 0.6666666666666666,
+        "completeness": 0.6666666666666666,
+        "efficiency": 1.0,
+        "cost": 0.99478
+      }
+    },
+    "QL-001": {
+      "openai": {
+        "suite": "quality",
+        "name": "Код содержит docstrings",
+        "score": 99.95,
+        "passed": true,
+        "duration": 3.02,
+        "evaluations": {
+          "artifact": "PASS",
+          "llm_judge": "PASS"
+        },
+        "quality": 1.0,
+        "completeness": 1.0,
+        "efficiency": 1.0,
+        "cost": 0.99732
+      }
+    },
+    "QL-002": {
+      "openai": {
+        "suite": "quality",
+        "name": "Код соответствует PEP 8",
+        "score": 76.57,
+        "passed": true,
+        "duration": 5.738,
+        "evaluations": {
+          "artifact": "PASS",
+          "code_exec": "FAIL",
+          "llm_judge": "PASS"
+        },
+        "quality": 0.6666666666666666,
+        "completeness": 0.6666666666666666,
+        "efficiency": 1.0,
+        "cost": 0.99532
+      }
+    },
+    "QL-003": {
+      "openai": {
+        "suite": "quality",
+        "name": "Код обрабатывает граничные случаи",
+        "score": 94.88,
+        "passed": true,
+        "duration": 6.822,
+        "evaluations": {
+          "artifact": "PASS",
+          "llm_judge": "PASS"
+        },
+        "quality": 0.9,
+        "completeness": 1.0,
+        "efficiency": 1.0,
+        "cost": 0.9941
+      }
+    },
+    "SM-001": {
+      "openai": {
+        "suite": "smoke",
+        "name": "Агент возвращает Python-файл",
+        "score": 99.98,
+        "passed": true,
+        "duration": 2.245,
+        "evaluations": {
+          "artifact": "PASS",
+          "behavior": "PASS"
+        },
+        "quality": 1.0,
+        "completeness": 1.0,
+        "efficiency": 1.0,
+        "cost": 0.99826
+      }
+    },
+    "SM-002": {
+      "openai": {
+        "suite": "smoke",
+        "name": "Ответ валиден по JSON Schema",
+        "score": 99.98,
+        "passed": true,
+        "duration": 2.104,
+        "evaluations": {
+          "artifact": "PASS",
+          "behavior": "PASS"
+        },
+        "quality": 1.0,
+        "completeness": 1.0,
+        "efficiency": 1.0,
+        "cost": 0.99808
+      }
+    },
+    "SM-003": {
+      "openai": {
+        "suite": "smoke",
+        "name": "Код синтаксически валиден",
+        "score": 99.99,
+        "passed": true,
+        "duration": 1.446,
+        "evaluations": {
+          "artifact": "PASS",
+          "code_exec": "PASS"
+        },
+        "quality": 1.0,
+        "completeness": 1.0,
+        "efficiency": 1.0,
+        "cost": 0.99862
+      }
+    }
+  }
+}

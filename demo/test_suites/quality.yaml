@@ -1,0 +1,123 @@
+# Тесты качества кода для Code Writer Agents
+# Запуск (из корня atp-platform):
+#   uv run atp test demo/test_suites/quality.yaml --adapter=http \
+#     --adapter-config='endpoint=http://localhost:8001'
+
+test_suite: "code_writer_quality"
+version: "1.0"
+description: "Проверка качества: стиль, документация, обработка ошибок"
+
+defaults:
+  runs_per_test: 1
+  timeout_seconds: 60
+  constraints:
+    max_steps: 3
+    max_tokens: 15000
+    timeout_seconds: 60
+    budget_usd: 0.05
+  scoring:
+    quality_weight: 0.5
+    completeness_weight: 0.2
+    efficiency_weight: 0.1
+    cost_weight: 0.2
+
+tests:
+  # QL-001: Код содержит docstrings
+  - id: "QL-001"
+    name: "Код содержит docstrings"
+    tags: ["quality", "medium"]
+    task:
+      description: "Напиши Python-модуль с функцией fibonacci(n)"
+      input_data:
+        requirements: |
+          Функция fibonacci(n: int) -> int:
+          - Принимает целое число n >= 0
+          - Возвращает n-е число Фибоначчи
+          - fibonacci(0) = 0, fibonacci(1) = 1
+          - Для отрицательных n — ValueError
+          Код должен быть хорошо документирован.
+        language: "python"
+        filename: "fibonacci.py"
+      expected_artifacts: ["fibonacci.py"]
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "fibonacci.py"
+      - type: "contains"
+        config:
+          path: "fibonacci.py"
+          pattern: '"""'
+      - type: "llm_eval"
+        config:
+          criteria: "quality"
+          threshold: 0.8
+          prompt: "Оцени качество docstrings: есть ли описание функции, параметров, возвращаемого значения и исключений?"
+
+  # QL-002: Код следует PEP 8
+  - id: "QL-002"
+    name: "Код соответствует PEP 8"
+    tags: ["quality", "medium"]
+    task:
+      description: "Напиши Python-модуль для работы с CSV-файлами"
+      input_data:
+        requirements: |
+          Напиши модуль с функциями:
+          - read_csv(path: str) -> list[dict[str, str]]
+          - filter_rows(data: list[dict], column: str, value: str) -> list[dict]
+          - write_csv(data: list[dict], path: str) -> None
+          Используй стандартную библиотеку csv.
+          Код должен строго следовать PEP 8.
+        language: "python"
+        filename: "csv_parser.py"
+      expected_artifacts: ["csv_parser.py"]
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "csv_parser.py"
+      - type: "code_exec"
+        config:
+          command: "python -m py_compile csv_parser.py && echo 'Syntax OK'"
+          expected_exit_code: 0
+      - type: "llm_eval"
+        config:
+          criteria: "quality"
+          threshold: 0.75
+          prompt: |
+            Оцени код по критериям PEP 8:
+            - snake_case для функций и переменных
+            - Длина строк <= 88 символов
+            - Type hints для параметров и возвращаемых значений
+            - Правильные отступы и пробелы
+            - Import на отдельных строках
+
+  # QL-003: Код обрабатывает edge cases
+  - id: "QL-003"
+    name: "Код обрабатывает граничные случаи"
+    tags: ["quality", "medium"]
+    task:
+      description: "Напиши Python-класс APIClient для HTTP-запросов"
+      input_data:
+        requirements: |
+          Класс APIClient:
+          - __init__(self, base_url: str, timeout: int = 30)
+          - get(self, path: str, params: dict | None = None) -> dict
+          - post(self, path: str, data: dict | None = None) -> dict
+          Используй httpx. Обработай все возможные ошибки.
+        language: "python"
+        filename: "api_client.py"
+      expected_artifacts: ["api_client.py"]
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "api_client.py"
+      - type: "llm_eval"
+        config:
+          criteria: "quality"
+          threshold: 0.75
+          prompt: |
+            Оцени, насколько хорошо код обрабатывает граничные случаи:
+            - HTTP ошибки (4xx, 5xx) — raise или обработка?
+            - Таймаут — есть ли обработка?
+            - Ошибка соединения — есть ли обработка?
+            - Пустой ответ / не-JSON ответ — есть ли защита?
+            - base_url с/без trailing slash — нормализация?

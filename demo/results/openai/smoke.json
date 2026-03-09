@@ -1,0 +1,293 @@
+{
+  "version": "1.0",
+  "generated_at": "2026-03-09T07:40:31.404071",
+  "summary": {
+    "suite_name": "code_writer_smoke",
+    "agent_name": "test-agent",
+    "total_tests": 3,
+    "passed_tests": 3,
+    "failed_tests": 0,
+    "success_rate": 1.0,
+    "duration_seconds": 22.21,
+    "runs_per_test": 1,
+    "success": true,
+    "error": null
+  },
+  "tests": [
+    {
+      "test_id": "SM-001",
+      "test_name": "\u0410\u0433\u0435\u043d\u0442 \u0432\u043e\u0437\u0432\u0440\u0430\u0449\u0430\u0435\u0442 Python-\u0444\u0430\u0439\u043b",
+      "success": true,
+      "score": 99.98,
+      "duration_seconds": 4.2,
+      "runs": {
+        "total": 1,
+        "successful": 1
+      },
+      "error": null,
+      "score_breakdown": {
+        "final_score": 99.98,
+        "components": {
+          "quality": {
+            "normalized": 1.0,
+            "weight": 0.3,
+            "weighted": 0.3,
+            "details": {
+              "total_checks": 2,
+              "artifact_checks": 1,
+              "llm_checks": 0,
+              "mean_artifact_score": 1.0,
+              "mean_llm_score": null
+            }
+          },
+          "completeness": {
+            "normalized": 1.0,
+            "weight": 0.4,
+            "weighted": 0.4,
+            "details": {
+              "passed_checks": 2,
+              "total_checks": 2
+            }
+          },
+          "efficiency": {
+            "normalized": 1.0,
+            "weight": 0.2,
+            "weighted": 0.2,
+            "details": {
+              "actual_steps": 1,
+              "max_steps": 3,
+              "optimal_steps": 1
+            }
+          },
+          "cost": {
+            "normalized": 0.99826,
+            "weight": 0.1,
+            "weighted": 0.09982600000000001,
+            "details": {
+              "cost_usd": 8.7e-05,
+              "max_cost_usd": 0.05,
+              "method": "direct_cost"
+            }
+          }
+        }
+      },
+      "evaluations": [
+        {
+          "evaluator": "artifact",
+          "passed": true,
+          "score": 1.0,
+          "checks": [
+            {
+              "name": "artifact_exists",
+              "passed": true,
+              "score": 1.0,
+              "message": "Artifact found: fibonacci.py",
+              "details": {
+                "path": "fibonacci.py",
+                "found": true
+              }
+            }
+          ]
+        },
+        {
+          "evaluator": "behavior",
+          "passed": true,
+          "score": 1.0,
+          "checks": [
+            {
+              "name": "behavior",
+              "passed": true,
+              "score": 1.0,
+              "message": "No behavior constraints specified"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "test_id": "SM-002",
+      "test_name": "\u041e\u0442\u0432\u0435\u0442 \u0432\u0430\u043b\u0438\u0434\u0435\u043d \u043f\u043e JSON Schema",
+      "success": true,
+      "score": 99.99,
+      "duration_seconds": 7.167,
+      "runs": {
+        "total": 1,
+        "successful": 1
+      },
+      "error": null,
+      "score_breakdown": {
+        "final_score": 99.99,
+        "components": {
+          "quality": {
+            "normalized": 1.0,
+            "weight": 0.3,
+            "weighted": 0.3,
+            "details": {
+              "total_checks": 2,
+              "artifact_checks": 1,
+              "llm_checks": 0,
+              "mean_artifact_score": 1.0,
+              "mean_llm_score": null
+            }
+          },
+          "completeness": {
+            "normalized": 1.0,
+            "weight": 0.4,
+            "weighted": 0.4,
+            "details": {
+              "passed_checks": 2,
+              "total_checks": 2
+            }
+          },
+          "efficiency": {
+            "normalized": 1.0,
+            "weight": 0.2,
+            "weighted": 0.2,
+            "details": {
+              "actual_steps": 1,
+              "max_steps": 3,
+              "optimal_steps": 1
+            }
+          },
+          "cost": {
+            "normalized": 0.99876,
+            "weight": 0.1,
+            "weighted": 0.099876,
+            "details": {
+              "cost_usd": 6.2e-05,
+              "max_cost_usd": 0.05,
+              "method": "direct_cost"
+            }
+          }
+        }
+      },
+      "evaluations": [
+        {
+          "evaluator": "artifact",
+          "passed": true,
+          "score": 1.0,
+          "checks": [
+            {
+              "name": "artifact_exists",
+              "passed": true,
+              "score": 1.0,
+              "message": "Artifact found: add.py",
+              "details": {
+                "path": "add.py",
+                "found": true
+              }
+            }
+          ]
+        },
+        {
+          "evaluator": "behavior",
+          "passed": true,
+          "score": 1.0,
+          "checks": [
+            {
+              "name": "behavior",
+              "passed": true,
+              "score": 1.0,
+              "message": "No behavior constraints specified"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "test_id": "SM-003",
+      "test_name": "\u041a\u043e\u0434 \u0441\u0438\u043d\u0442\u0430\u043a\u0441\u0438\u0447\u0435\u0441\u043a\u0438 \u0432\u0430\u043b\u0438\u0434\u0435\u043d",
+      "success": true,
+      "score": 99.98,
+      "duration_seconds": 10.841,
+      "runs": {
+        "total": 1,
+        "successful": 1
+      },
+      "error": null,
+      "score_breakdown": {
+        "final_score": 99.98,
+        "components": {
+          "quality": {
+            "normalized": 1.0,
+            "weight": 0.3,
+            "weighted": 0.3,
+            "details": {
+              "total_checks": 2,
+              "artifact_checks": 1,
+              "llm_checks": 0,
+              "mean_artifact_score": 1.0,
+              "mean_llm_score": null
+            }
+          },
+          "completeness": {
+            "normalized": 1.0,
+            "weight": 0.4,
+            "weighted": 0.4,
+            "details": {
+              "passed_checks": 2,
+              "total_checks": 2
+            }
+          },
+          "efficiency": {
+            "normalized": 1.0,
+            "weight": 0.2,
+            "weighted": 0.2,
+            "details": {
+              "actual_steps": 1,
+              "max_steps": 3,
+              "optimal_steps": 1
+            }
+          },
+          "cost": {
+            "normalized": 0.9978,
+            "weight": 0.1,
+            "weighted": 0.09978000000000001,
+            "details": {
+              "cost_usd": 0.00011,
+              "max_cost_usd": 0.05,
+              "method": "direct_cost"
+            }
+          }
+        }
+      },
+      "evaluations": [
+        {
+          "evaluator": "artifact",
+          "passed": true,
+          "score": 1.0,
+          "checks": [
+            {
+              "name": "artifact_exists",
+              "passed": true,
+              "score": 1.0,
+              "message": "Artifact found: palindrome.py",
+              "details": {
+                "path": "palindrome.py",
+                "found": true
+              }
+            }
+          ]
+        },
+        {
+          "evaluator": "code_exec",
+          "passed": true,
+          "score": 1.0,
+          "checks": [
+            {
+              "name": "custom_command",
+              "passed": true,
+              "score": 1.0,
+              "message": "Command completed successfully (return code: 0)",
+              "details": {
+                "command": "python -c \"import ast; ast.parse(open('palindrome.py').read()); print('OK')\"",
+                "return_code": 0,
+                "stdout": "OK\n"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -15,14 +15,14 @@ def main() -> None:  # pragma: no cover
     parser.add_argument(
         "--host",
         type=str,
-        default="0.0.0.0",
-        help="Host to bind to (default: 0.0.0.0)",
+        default=None,
+        help="Host to bind to (default: from config or 127.0.0.1)",
     )
     parser.add_argument(
         "--port",
         type=int,
-        default=8080,
-        help="Port to bind to (default: 8080)",
+        default=None,
+        help="Port to bind to (default: from config or 8080)",
     )
     parser.add_argument(
         "--reload",
@@ -31,10 +31,15 @@ def main() -> None:  # pragma: no cover
     )
     args = parser.parse_args()
 
+    from atp.core.settings import ATPSettings
     from atp.dashboard import run_server
 
-    print(f"Starting ATP Dashboard at http://{args.host}:{args.port}")
-    run_server(host=args.host, port=args.port, reload=args.reload)
+    settings = ATPSettings()
+    host = args.host if args.host is not None else settings.dashboard_host
+    port = args.port if args.port is not None else settings.dashboard_port
+
+    print(f"Starting ATP Dashboard at http://{host}:{port}")
+    run_server(host=host, port=port, reload=args.reload)
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -249,43 +249,61 @@ class HTTPAdapter(AgentAdapter):
                         adapter_type=self.adapter_type,
                     )
 
-                event_data = ""
-                event_type = ""
+                # Check if response is SSE or plain JSON
+                content_type = response.headers.get("content-type", "")
+                is_sse = "text/event-stream" in content_type
 
-                async for line in response.aiter_lines():
-                    if line.startswith("event:"):
-                        event_type = line[6:].strip()
-                    elif line.startswith("data:"):
-                        event_data = line[5:].strip()
-                    elif line == "" and event_data:
-                        # Empty line signals end of event
-                        try:
-                            data = json.loads(event_data)
+                if not is_sse:
+                    # Plain JSON response — read and parse directly
+                    await response.aread()
+                    try:
+                        data = response.json()
+                        yield ATPResponse.model_validate(data)
+                    except (json.JSONDecodeError, ValueError) as e:
+                        raise AdapterResponseError(
+                            f"Invalid response: {e}",
+                            status_code=response.status_code,
+                            response_body=response.text,
+                            adapter_type=self.adapter_type,
+                        ) from e
+                else:
+                    # SSE stream — parse event lines
+                    event_data = ""
+                    event_type = ""
 
-                            if event_type == "response" or "status" in data:
-                                # Final response
-                                yield ATPResponse.model_validate(data)
-                            else:
-                                # Event
-                                if "sequence" not in data:
-                                    data["sequence"] = sequence
-                                    sequence += 1
-                                if "timestamp" not in data:
-                                    data["timestamp"] = datetime.now().isoformat()
-                                if "task_id" not in data:
-                                    data["task_id"] = request.task_id
-                                if "event_type" not in data:
-                                    data["event_type"] = (
-                                        event_type or EventType.PROGRESS.value
-                                    )
+                    async for line in response.aiter_lines():
+                        if line.startswith("event:"):
+                            event_type = line[6:].strip()
+                        elif line.startswith("data:"):
+                            event_data = line[5:].strip()
+                        elif line == "" and event_data:
+                            try:
+                                data = json.loads(event_data)
 
-                                yield ATPEvent.model_validate(data)
-                        except (json.JSONDecodeError, ValueError):
-                            # Skip malformed events
-                            pass
+                                if event_type == "response" or "status" in data:
+                                    yield ATPResponse.model_validate(data)
+                                else:
+                                    if "sequence" not in data:
+                                        data["sequence"] = sequence
+                                        sequence += 1
+                                    if "timestamp" not in data:
+                                        data["timestamp"] = datetime.now().isoformat()
+                                    if "task_id" not in data:
+                                        data["task_id"] = request.task_id
+                                    if "event_type" not in data:
+                                        data["event_type"] = (
+                                            event_type or EventType.PROGRESS.value
+                                        )
 
-                        event_data = ""
-                        event_type = ""
+                                    yield ATPEvent.model_validate(data)
+                            except (
+                                json.JSONDecodeError,
+                                ValueError,
+                            ):
+                                pass
+
+                            event_data = ""
+                            event_type = ""
 
         except httpx.TimeoutException as e:
             raise AdapterTimeoutError(

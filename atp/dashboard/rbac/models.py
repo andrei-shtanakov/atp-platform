@@ -429,20 +429,45 @@ def require_permission(
         This is necessary to allow the decorator to work with FastAPI's
         dependency injection system.
         """
-        from atp.dashboard.auth import get_current_active_user
+        from atp.dashboard.auth import get_current_user
         from atp.dashboard.database import get_database
+        from atp.dashboard.v2.config import get_config
 
-        async def check_permission(
-            current_user: Annotated[User, Depends(get_current_active_user)],
+        async def check_permission_with_config(
+            current_user: Annotated[User | None, Depends(get_current_user)],
         ) -> None:
             """Check if the current user has the required permission.
 
+            Supports disabling authentication via ATP_DISABLE_AUTH for development.
+
             Args:
-                current_user: The authenticated user.
+                current_user: The authenticated user (or None if not authenticated).
 
             Raises:
-                HTTPException: If user doesn't have the required permission.
+                HTTPException: If auth required but user not
+                    authenticated, or missing permission.
             """
+            # Check if auth is disabled (dev mode only)
+            config = get_config()
+            if config.disable_auth:
+                # Skip all auth/permission checks when disabled
+                return
+
+            # Auth is enabled - require authenticated user
+            if current_user is None:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Not authenticated",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+
+            # Check if user is active
+            if not current_user.is_active:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Inactive user",
+                )
+
             # Admin users bypass permission checks
             if current_user.is_admin:
                 return
@@ -469,7 +494,7 @@ def require_permission(
                         detail=f"Permission denied: {permission.value} required",
                     )
 
-        return check_permission
+        return check_permission_with_config
 
     return dependency_factory()
 

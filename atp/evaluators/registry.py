@@ -60,6 +60,7 @@ class EvaluatorRegistry:
 
         self._register_assertion_mapping("llm_eval", "llm_judge")
 
+        self._register_assertion_mapping("code_exec", "code_exec")
         self._register_assertion_mapping("pytest", "code_exec")
         self._register_assertion_mapping("npm", "code_exec")
         self._register_assertion_mapping("custom_command", "code_exec")

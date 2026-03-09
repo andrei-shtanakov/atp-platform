@@ -1,0 +1,19 @@
+# atp.config.yaml
+log_level: INFO
+parallel_workers: 4
+default_timeout: 300
+fail_fast: false
+sandbox_enabled: false
+runs_per_test: 1
+
+# LLM (для llm_eval assertions)
+openai_api_key: ${OPENAI_API_KEY}
+default_llm_model: gpt-4o-mini
+default_provider: openai
+max_retries: 3
+request_timeout: 60
+
+# Dashboard (опционально)
+dashboard_host: 0.0.0.0
+dashboard_port: 8085
+dashboard_secret_key: ${ATP_DASHBOARD_SECRET_KEY}

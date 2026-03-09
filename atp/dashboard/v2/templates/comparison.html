@@ -9,6 +9,7 @@
 
 {% block scripts %}
 <script type="text/babel">
+{% raw %}
     // Agent Selector Component
     function AgentSelector({ agents, selectedAgents, onSelectionChange, maxAgents = 3 }) {
         const [isOpen, setIsOpen] = React.useState(false);
@@ -356,5 +357,6 @@
         const root = ReactDOM.createRoot(comparisonRoot);
         root.render(<ComparisonPage />);
     }
+{% endraw %}
 </script>
 {% endblock %}

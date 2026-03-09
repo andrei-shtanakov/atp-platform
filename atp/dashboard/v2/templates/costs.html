@@ -11,6 +11,7 @@
 {% block scripts %}
 {{ chart_scripts() }}
 <script type="text/babel">
+{% raw %}
     // ==================== Cost Summary Cards ====================
 
     function CostSummaryCards({ summary, loading }) {
@@ -512,5 +513,6 @@
         const root = ReactDOM.createRoot(costsRoot);
         root.render(<CostDashboardPage />);
     }
+{% endraw %}
 </script>
 {% endblock %}

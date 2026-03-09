@@ -648,6 +648,82 @@ async def _run_suite(
         if live_display is not None:
             live_display.stop()
 
+    # Evaluate assertions and compute scores
+    from atp.evaluators.registry import get_registry as get_evaluator_registry
+    from atp.scoring.aggregator import ScoreAggregator
+
+    evaluator_registry = get_evaluator_registry()
+    all_eval_results: dict[str, list[Any]] = {}
+    all_scored_results: dict[str, Any] = {}
+
+    for test_result in result.tests:
+        test_id = test_result.test.id
+        test_def = test_result.test
+        assertions = test_def.assertions
+
+        if not assertions or not test_result.runs:
+            continue
+
+        # Evaluate assertions against the first successful run
+        run = test_result.runs[0]
+
+        # Materialize inline artifacts to CWD so code_exec
+        # evaluators (pytest, etc.) can import them
+        materialized_files: list[Path] = []
+        for artifact in run.response.artifacts:
+            content = getattr(artifact, "content", None)
+            a_path = getattr(artifact, "path", None)
+            if content and a_path:
+                file_path = Path(a_path)
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                file_path.write_text(content)
+                materialized_files.append(file_path)
+
+        eval_results_list: list[Any] = []
+        try:
+            for assertion in assertions:
+                try:
+                    evaluator = evaluator_registry.create_for_assertion(assertion.type)
+                    eval_result = await evaluator.evaluate(
+                        test_def,
+                        run.response,
+                        run.events,
+                        assertion,
+                    )
+                    eval_results_list.append(eval_result)
+                except Exception as e:
+                    click.echo(
+                        f"  Warning: evaluator for '{assertion.type}' failed: {e}",
+                        err=True,
+                    )
+        finally:
+            # Clean up materialized artifacts
+            for f in materialized_files:
+                f.unlink(missing_ok=True)
+
+        all_eval_results[test_id] = eval_results_list
+
+        # Score the evaluation results
+        if eval_results_list:
+            try:
+                scoring_weights = test_def.scoring
+                aggregator = ScoreAggregator(weights=scoring_weights)
+
+                scored = aggregator.score_test_result(
+                    test_id=test_id,
+                    eval_results=eval_results_list,
+                    response=run.response,
+                    max_steps=test_def.constraints.max_steps,
+                    max_tokens=test_def.constraints.max_tokens,
+                    max_cost_usd=test_def.constraints.budget_usd,
+                )
+                all_scored_results[test_id] = scored
+            except Exception as e:
+                click.echo(
+                    f"  Warning: scoring for '{test_id}' failed: {e}",
+                    err=True,
+                )
+
     # Record traces if enabled
     if enable_tracing:
         from atp.tracing import (
@@ -685,7 +761,11 @@ async def _run_suite(
         reporter_config["output_file"] = output_file
 
     reporter = create_reporter(output_format, reporter_config)
-    report = SuiteReport.from_suite_result(result)
+    report = SuiteReport.from_suite_result(
+        result,
+        eval_results=all_eval_results,
+        scored_results=all_scored_results,
+    )
     reporter.report(report)
 
     # Save results to dashboard database
@@ -1566,25 +1646,26 @@ async def _run_and_compare_baseline(
 @click.option(
     "--host",
     type=str,
-    default="0.0.0.0",
-    help="Host to bind to (default: 0.0.0.0)",
+    default=None,
+    help="Host to bind to (default: from config or 127.0.0.1)",
 )
 @click.option(
     "--port",
     type=int,
-    default=8080,
-    help="Port to bind to (default: 8080)",
+    default=None,
+    help="Port to bind to (default: from config or 8080)",
 )
 @click.option(
     "--reload",
     is_flag=True,
     help="Enable auto-reload for development",
 )
-def dashboard_cmd(host: str, port: int, reload: bool) -> None:
+def dashboard_cmd(host: str | None, port: int | None, reload: bool) -> None:
     """Start the ATP web dashboard server.
 
     Launches a web interface for viewing test results, historical trends,
-    and agent comparisons.
+    and agent comparisons. Host and port are resolved with priority:
+    CLI flags > atp.config.yaml > defaults (127.0.0.1:8080).
 
     Examples:
 
@@ -1603,6 +1684,12 @@ def dashboard_cmd(host: str, port: int, reload: bool) -> None:
       ATP_SECRET_KEY: JWT secret key for authentication
       ATP_CORS_ORIGINS: Comma-separated list of allowed CORS origins
     """
+    from atp.core.settings import ATPSettings
+
+    settings = ATPSettings()
+    host = host if host is not None else settings.dashboard_host
+    port = port if port is not None else settings.dashboard_port
+
     click.echo(f"Starting ATP Dashboard at http://{host}:{port}")
     click.echo("Press Ctrl+C to stop")
 

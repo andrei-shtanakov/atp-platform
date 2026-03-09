@@ -1,0 +1,81 @@
+# Smoke-тесты для Code Writer Agents
+# Запуск (из корня atp-platform):
+#   uv run atp test demo/test_suites/smoke.yaml --adapter=http \
+#     --adapter-config='endpoint=http://localhost:8001'
+
+test_suite: "code_writer_smoke"
+version: "1.0"
+description: "Базовые проверки: агент отвечает, код валиден, формат корректен"
+
+defaults:
+  runs_per_test: 1
+  timeout_seconds: 60
+  constraints:
+    max_steps: 3
+    max_tokens: 10000
+    timeout_seconds: 60
+    budget_usd: 0.05
+  scoring:
+    quality_weight: 0.3
+    completeness_weight: 0.4
+    efficiency_weight: 0.2
+    cost_weight: 0.1
+
+tests:
+  # SM-001: Агент отвечает и возвращает Python-файл
+  - id: "SM-001"
+    name: "Агент возвращает Python-файл"
+    tags: ["smoke", "critical"]
+    task:
+      description: "Напиши Python-функцию fibonacci(n), возвращающую n-е число Фибоначчи"
+      input_data:
+        requirements: "Функция fibonacci(n) принимает целое число n >= 0. Возвращает n-е число Фибоначчи. fibonacci(0)=0, fibonacci(1)=1."
+        language: "python"
+        filename: "fibonacci.py"
+      expected_artifacts: ["fibonacci.py"]
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "fibonacci.py"
+      - type: "behavior"
+        config:
+          check: "no_errors"
+
+  # SM-002: Ответ соответствует JSON Schema
+  - id: "SM-002"
+    name: "Ответ валиден по JSON Schema"
+    tags: ["smoke", "critical"]
+    task:
+      description: "Напиши Python-функцию add(a, b), которая складывает два числа"
+      input_data:
+        requirements: "Функция add(a, b) принимает два числа и возвращает их сумму."
+        language: "python"
+        filename: "add.py"
+      expected_artifacts: ["add.py"]
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "add.py"
+      - type: "behavior"
+        config:
+          check: "no_errors"
+
+  # SM-003: Сгенерированный код компилируется
+  - id: "SM-003"
+    name: "Код синтаксически валиден"
+    tags: ["smoke", "critical"]
+    task:
+      description: "Напиши Python-функцию is_palindrome(s), проверяющую является ли строка палиндромом"
+      input_data:
+        requirements: "Функция is_palindrome(s) принимает строку и возвращает True если строка читается одинаково слева направо и справа налево (без учёта регистра и пробелов)."
+        language: "python"
+        filename: "palindrome.py"
+      expected_artifacts: ["palindrome.py"]
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "palindrome.py"
+      - type: "code_exec"
+        config:
+          command: "python -c \"import ast; ast.parse(open('palindrome.py').read()); print('OK')\""
+          expected_exit_code: 0

@@ -108,7 +108,7 @@ class CodeExecEvaluator(Evaluator):
             check = await self._check_pytest(config)
         elif assertion_type == "npm":
             check = await self._check_npm(config)
-        elif assertion_type == "custom_command":
+        elif assertion_type in ("custom_command", "code_exec"):
             check = await self._check_custom_command(config)
         elif assertion_type == "lint":
             check = await self._check_lint(config)

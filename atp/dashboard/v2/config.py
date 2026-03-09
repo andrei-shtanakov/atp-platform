@@ -61,6 +61,10 @@ class DashboardConfig(BaseSettings):
         default=False,
         description="Enable debug mode",
     )
+    disable_auth: bool = Field(
+        default=False,
+        description="Disable authentication (WARNING: For development only!)",
+    )
 
     # App metadata
     title: str = Field(
@@ -101,6 +105,7 @@ class DashboardConfig(BaseSettings):
             "host": self.host,
             "port": self.port,
             "debug": self.debug,
+            "disable_auth": self.disable_auth,
             "title": self.title,
             "version": self.version,
         }
