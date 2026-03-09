@@ -1,6 +1,7 @@
 """Benchmark registry for managing and loading benchmark suites."""
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,8 @@ from .models import (
     BenchmarkTest,
     NormalizationConfig,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class BenchmarkNotFoundError(Exception):
@@ -67,15 +70,15 @@ class BenchmarkRegistry:
             try:
                 suite = self._load_suite_file(file_path)
                 self._suites[suite.name] = suite
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to load benchmark suite %s: %s", file_path, e)
 
         for file_path in self._suites_dir.glob("*.json"):
             try:
                 suite = self._load_suite_file(file_path)
                 self._suites[suite.name] = suite
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to load benchmark suite %s: %s", file_path, e)
 
     def _load_suite_file(self, file_path: Path) -> BenchmarkSuite:
         """Load a benchmark suite from a file.

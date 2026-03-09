@@ -161,8 +161,8 @@ class LLMJudgeEvaluator(Evaluator):
                 settings = get_settings()
                 if not self._model:
                     self._model = settings.default_llm_model
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to load default model from settings: %s", e)
 
         # Detect provider from available API keys
         if not self._provider:

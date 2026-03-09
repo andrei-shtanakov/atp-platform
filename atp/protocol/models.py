@@ -73,9 +73,18 @@ class Task(BaseModel):
                 raise ValueError(
                     f"Artifact path too long: {len(path)} > {MAX_PATH_LENGTH}"
                 )
-            # Reject obvious path traversal
-            if ".." in path or path.startswith("/"):
+            # Reject path traversal and unsafe patterns
+            if ".." in path or path.startswith("/") or path.startswith("~"):
                 raise ValueError(f"Invalid artifact path: {path}")
+            # Resolve and verify containment (catch symlink tricks)
+            resolved = Path(path).resolve()
+            cwd = Path.cwd().resolve()
+            if not str(resolved).startswith(str(cwd)):
+                # Path escapes working directory — allow only
+                # if it's clearly a relative filename
+                parts = Path(path).parts
+                if any(p.startswith(".") and p != "." for p in parts):
+                    raise ValueError(f"Invalid artifact path: {path}")
             validated.append(path.strip())
         return validated
 

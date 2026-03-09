@@ -1,5 +1,6 @@
 """Tests for test orchestrator."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from unittest.mock import MagicMock, patch
 
@@ -609,7 +610,7 @@ class TestParallelTestExecution:
 
         assert orchestrator.parallel_tests is True
         assert orchestrator.max_parallel_tests == 3
-        assert orchestrator._tests_semaphore is None  # Created on first use
+        assert isinstance(orchestrator._tests_semaphore, asyncio.Semaphore)
 
     @pytest.mark.anyio
     async def test_parallel_suite_execution(

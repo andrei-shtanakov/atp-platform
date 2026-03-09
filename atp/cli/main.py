@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import sys
 from datetime import UTC
 from pathlib import Path
@@ -22,6 +23,8 @@ from atp.cli.commands.init import init_command
 from atp.cli.commands.plugins import plugins_command
 from atp.cli.commands.traces import replay_command, traces_command
 from atp.loader import TestLoader
+
+logger = logging.getLogger(__name__)
 
 # Exit codes as per requirements
 EXIT_SUCCESS = 0  # All tests passed
@@ -1102,8 +1105,8 @@ def list_agents_cmd(config_ctx: ConfigContext, verbose: bool) -> None:
                     if len(optional_fields) > 5:
                         fields_str += f" (+{len(optional_fields) - 5} more)"
                     click.echo(f"                 Optional: {fields_str}")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to inspect adapter %s: %s", adapter_type, e)
 
     # Show configured agents from config file
     if config_ctx.config:

@@ -1,6 +1,7 @@
 """AutoGen adapter for agents implemented with Microsoft AutoGen."""
 
 import importlib
+import logging
 import time
 from collections.abc import AsyncIterator
 from datetime import datetime
@@ -23,6 +24,8 @@ from .exceptions import (
     AdapterError,
     AdapterTimeoutError,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class AutoGenAdapterConfig(AdapterConfig):
@@ -512,8 +515,8 @@ class AutoGenAdapter(AgentAdapter):
                     [type(user_proxy)],
                     lambda *args, **kwargs: message_callback(*args, **kwargs) or False,
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to register reply for agent: %s", e)
 
         try:
             # Execute in background

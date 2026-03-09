@@ -1,11 +1,16 @@
 """Event buffering and replay for ATP Protocol streaming."""
 
+import logging
 from collections import deque
 from collections.abc import AsyncIterator, Iterator
 from datetime import datetime
 from typing import Any
 
 from atp.protocol import ATPEvent, ATPResponse, EventType
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_MAX_EVENTS = 10_000
 
 
 class EventBuffer:
@@ -15,12 +20,18 @@ class EventBuffer:
     Supports filtering by event type, time range, and sequence.
     """
 
-    def __init__(self, max_size: int | None = None) -> None:
+    def __init__(self, max_size: int | None = DEFAULT_MAX_EVENTS) -> None:
         """Initialize the event buffer.
 
         Args:
-            max_size: Maximum number of events to store (None for unlimited).
+            max_size: Maximum number of events to store.
+                Defaults to 10,000. Pass None for unlimited (not recommended).
         """
+        if max_size is None:
+            logger.warning(
+                "EventBuffer created with unlimited size. "
+                "This may cause memory issues in long-running sessions."
+            )
         self._events: deque[ATPEvent] = deque(maxlen=max_size)
         self._response: ATPResponse | None = None
         self._max_size = max_size

@@ -149,6 +149,27 @@ class DashboardSettings(BaseSettings):
         description="Comma-separated list of allowed CORS origins",
     )
 
+    @model_validator(mode="after")
+    def _warn_default_secret_key(self) -> "DashboardSettings":
+        """Warn if default secret key is used in non-debug mode."""
+        default_key = "atp-dashboard-dev-secret-key-change-in-prod"
+        if self.secret_key.get_secret_value() == default_key and not self.debug:
+            import os
+
+            if os.environ.get("ATP_ENV", "").lower() in (
+                "production",
+                "prod",
+                "staging",
+            ):
+                raise ValueError(
+                    "Default secret key cannot be used in production. "
+                    "Set ATP_DASHBOARD_SECRET_KEY environment variable."
+                )
+            logger.warning(
+                "Using default secret key. Set ATP_DASHBOARD_SECRET_KEY in production."
+            )
+        return self
+
     @property
     def cors_origins_list(self) -> list[str]:
         """Get CORS origins as a list."""

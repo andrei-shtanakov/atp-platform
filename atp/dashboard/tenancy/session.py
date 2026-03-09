@@ -106,8 +106,8 @@ class TenantAwareSession:
             if self._is_postgres and self._schema_name != DEFAULT_TENANT_SCHEMA:
                 try:
                     await self._session.execute(text("SET search_path TO public"))
-                except Exception:
-                    pass  # Best effort
+                except Exception as e:
+                    logger.debug("Failed to reset search_path: %s", e)
 
             await self._session.close()
             self._session = None

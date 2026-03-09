@@ -204,9 +204,8 @@ class PluginManager:
                 metadata = dist.metadata
                 author = metadata.get("Author") or metadata.get("Author-email")
                 description = metadata.get("Summary")
-        except Exception:
-            # Distribution info not available
-            pass
+        except Exception as e:
+            logger.debug("Distribution info not available: %s", e)
 
         return PluginInfo(
             name=ep.name,
@@ -248,7 +247,8 @@ class PluginManager:
 
         try:
             return plugin.load()
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to load plugin %s/%s: %s", group, name, e)
             return None
 
     def list_plugins(self, group: str) -> list[str]:
@@ -466,7 +466,8 @@ class PluginManager:
         try:
             plugin_class = plugin.load()
             return get_plugin_config_schema(plugin_class)
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to get config schema for %s/%s: %s", group, name, e)
             return None
 
     def get_plugin_config_metadata(
@@ -585,7 +586,10 @@ class PluginManager:
 
         try:
             plugin_class = plugin.load()
-        except Exception:
+        except Exception as e:
+            logger.debug(
+                "Failed to load plugin %s/%s for validation: %s", group, name, e
+            )
             return None
 
         errors = validate_plugin(plugin_class, group, name)

@@ -1,5 +1,6 @@
 """Sandbox management for isolated test execution."""
 
+import atexit
 import logging
 import os
 import shutil
@@ -44,6 +45,7 @@ class SandboxManager:
         self.config = config or SandboxConfig()
         self._base_dir = base_dir
         self._active_sandboxes: dict[str, Path] = {}
+        atexit.register(self._atexit_cleanup)
 
     @property
     def base_dir(self) -> Path:
@@ -92,8 +94,8 @@ class SandboxManager:
                 os.chmod(workspace, stat.S_IRWXU)
                 os.chmod(sandbox_path / "logs", stat.S_IRWXU)
                 os.chmod(sandbox_path / "artifacts", stat.S_IRWXU)
-            except OSError:
-                pass  # May fail on some systems
+            except OSError as e:
+                logger.debug("chmod failed (may be unsupported): %s", e)
 
             self._active_sandboxes[sandbox_id] = sandbox_path
 
@@ -242,6 +244,15 @@ class SandboxManager:
                 sandbox_id=sandbox_id,
                 cause=e,
             ) from e
+
+    def _atexit_cleanup(self) -> None:
+        """Clean up sandboxes on process exit."""
+        if self._active_sandboxes:
+            logger.debug(
+                "Cleaning up %d orphan sandbox(es) on exit",
+                len(self._active_sandboxes),
+            )
+            self.cleanup_all()
 
     def cleanup_all(self) -> None:
         """Clean up all active sandboxes."""

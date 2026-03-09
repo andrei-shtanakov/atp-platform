@@ -90,8 +90,8 @@ class TestOrchestrator:
         self.parallel_tests = parallel_tests
         self.max_parallel_tests = max_parallel_tests
         self._sandbox_manager: SandboxManager | None = None
-        self._semaphore: asyncio.Semaphore | None = None
-        self._tests_semaphore: asyncio.Semaphore | None = None
+        self._semaphore = asyncio.Semaphore(max_parallel)
+        self._tests_semaphore = asyncio.Semaphore(max_parallel_tests)
 
     def _emit_progress(self, event: ProgressEvent) -> None:
         """Emit a progress event if callback is registered."""
@@ -464,12 +464,9 @@ class TestOrchestrator:
         Returns:
             List of RunResult objects, sorted by run_number.
         """
-        # Initialize semaphore if not already done
-        if self._semaphore is None:
-            self._semaphore = asyncio.Semaphore(self.max_parallel)
 
         async def run_with_semaphore(run_number: int) -> RunResult:
-            async with self._semaphore:  # type: ignore[union-attr]
+            async with self._semaphore:
                 return await self._execute_run(
                     test=test,
                     run_number=run_number,
@@ -528,16 +525,12 @@ class TestOrchestrator:
         Returns:
             List of TestResult objects, in the same order as input tests.
         """
-        # Initialize tests semaphore if not already done
-        if self._tests_semaphore is None:
-            self._tests_semaphore = asyncio.Semaphore(self.max_parallel_tests)
-
         # Create mapping to preserve order
         test_indices = {test.id: idx for idx, test in enumerate(tests)}
         metrics = get_metrics()
 
         async def run_test_with_semaphore(test: TestDefinition) -> TestResult:
-            async with self._tests_semaphore:  # type: ignore[union-attr]
+            async with self._tests_semaphore:
                 logger.info(
                     "Starting parallel test: %s (%s)",
                     test.name,
