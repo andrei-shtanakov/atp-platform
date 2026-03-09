@@ -85,7 +85,8 @@ class TestOrchestrator:
         self.progress_callback = progress_callback
         self.runs_per_test = runs_per_test
         self.fail_fast = fail_fast
-        self.parallel_runs = parallel_runs
+        # Default to parallel runs when multiple runs per test
+        self.parallel_runs = parallel_runs if parallel_runs else runs_per_test > 1
         self.max_parallel = max_parallel
         self.parallel_tests = parallel_tests
         self.max_parallel_tests = max_parallel_tests

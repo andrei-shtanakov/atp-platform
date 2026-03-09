@@ -1,12 +1,15 @@
 """Sandbox management for isolated test execution."""
 
 import atexit
+import json
 import logging
 import os
 import shutil
 import stat
+import time
 import uuid
 from pathlib import Path
+from typing import Any
 
 from atp.core.security import (
     SecurityEventType,
@@ -98,6 +101,7 @@ class SandboxManager:
                 logger.debug("chmod failed (may be unsupported): %s", e)
 
             self._active_sandboxes[sandbox_id] = sandbox_path
+            self._record_process(sandbox_id, test_id)
 
             logger.debug(
                 "Created sandbox %s for test %s at %s",
@@ -233,6 +237,7 @@ class SandboxManager:
             return
 
         sandbox_path = self._active_sandboxes.pop(sandbox_id)
+        self._unrecord_process(sandbox_id)
 
         try:
             if sandbox_path.exists():
@@ -448,8 +453,85 @@ class SandboxManager:
                 sandbox_id=sandbox_id,
             ) from e
 
+    # ── Process identity tracking ────────────────────────────────
+
+    @staticmethod
+    def _state_file() -> Path:
+        """Path to running-tests state file."""
+        state_dir = Path.home() / ".atp"
+        state_dir.mkdir(parents=True, exist_ok=True)
+        return state_dir / "running-tests.json"
+
+    def _record_process(self, sandbox_id: str, test_id: str | None) -> None:
+        """Record this process in the state file."""
+        state = self._load_state()
+        state[sandbox_id] = {
+            "pid": os.getpid(),
+            "start_time": time.time(),
+            "test_id": test_id,
+        }
+        self._save_state(state)
+
+    def _unrecord_process(self, sandbox_id: str) -> None:
+        """Remove process record from state file."""
+        state = self._load_state()
+        state.pop(sandbox_id, None)
+        self._save_state(state)
+
+    def _load_state(self) -> dict:
+        path = self._state_file()
+        if path.exists():
+            try:
+                return json.loads(path.read_text())
+            except (json.JSONDecodeError, OSError):
+                return {}
+        return {}
+
+    def _save_state(self, state: dict) -> None:
+        try:
+            self._state_file().write_text(json.dumps(state))
+        except OSError:
+            logger.debug("Failed to write state file")
+
+    def cleanup_orphans(self) -> int:
+        """Clean up sandboxes from dead processes.
+
+        Returns:
+            Number of orphan sandboxes cleaned up.
+        """
+        state = self._load_state()
+        cleaned = 0
+        to_remove = []
+
+        for sandbox_id, info in state.items():
+            pid = info.get("pid", 0)
+            if not _is_process_alive(pid):
+                sandbox_path = self.base_dir / sandbox_id
+                if sandbox_path.exists():
+                    try:
+                        shutil.rmtree(sandbox_path)
+                        logger.info(
+                            "Cleaned orphan sandbox %s (pid %d dead)",
+                            sandbox_id,
+                            pid,
+                        )
+                        cleaned += 1
+                    except OSError as e:
+                        logger.debug(
+                            "Failed to clean orphan %s: %s",
+                            sandbox_id,
+                            e,
+                        )
+                to_remove.append(sandbox_id)
+
+        for sid in to_remove:
+            state.pop(sid, None)
+        self._save_state(state)
+        return cleaned
+
     async def __aenter__(self) -> "SandboxManager":
         """Async context manager entry."""
+        self.cleanup_orphans()
         return self
 
     async def __aexit__(
@@ -460,3 +542,45 @@ class SandboxManager:
     ) -> None:
         """Async context manager exit - cleanup all sandboxes."""
         self.cleanup_all()
+
+
+def _is_process_alive(pid: int) -> bool:
+    """Check if a process is still running."""
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # process exists but we can't signal it
+
+
+def detect_scope_conflicts(
+    tests: list[dict[str, Any]],
+) -> list[tuple[str, str, str]]:
+    """Detect artifact path overlaps between tests.
+
+    Args:
+        tests: List of dicts with 'test_id' and 'artifact_paths' keys.
+
+    Returns:
+        List of (test_id_a, test_id_b, overlapping_path) tuples.
+    """
+    conflicts: list[tuple[str, str, str]] = []
+    paths_by_test: dict[str, set[str]] = {}
+
+    for test in tests:
+        test_id = test.get("test_id", "")
+        art_paths = test.get("artifact_paths", [])
+        paths_by_test[test_id] = set(art_paths)
+
+    test_ids = list(paths_by_test.keys())
+    for i in range(len(test_ids)):
+        for j in range(i + 1, len(test_ids)):
+            overlap = paths_by_test[test_ids[i]] & paths_by_test[test_ids[j]]
+            for path in sorted(overlap):
+                conflicts.append((test_ids[i], test_ids[j], path))
+
+    return conflicts

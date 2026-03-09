@@ -33,6 +33,7 @@ class EventBuffer:
                 "This may cause memory issues in long-running sessions."
             )
         self._events: deque[ATPEvent] = deque(maxlen=max_size)
+        self._sequence_index: dict[int, ATPEvent] = {}
         self._response: ATPResponse | None = None
         self._max_size = max_size
 
@@ -42,7 +43,12 @@ class EventBuffer:
         Args:
             event: Event to add.
         """
+        # If deque is full, the oldest event will be evicted
+        if self._max_size is not None and len(self._events) == self._max_size:
+            evicted = self._events[0]
+            self._sequence_index.pop(evicted.sequence, None)
         self._events.append(event)
+        self._sequence_index[event.sequence] = event
 
     def set_response(self, response: ATPResponse) -> None:
         """Set the final response.
@@ -70,10 +76,11 @@ class EventBuffer:
     def clear(self) -> None:
         """Clear all buffered events and response."""
         self._events.clear()
+        self._sequence_index.clear()
         self._response = None
 
     def get_by_sequence(self, sequence: int) -> ATPEvent | None:
-        """Get event by sequence number.
+        """Get event by sequence number (O(1) lookup).
 
         Args:
             sequence: The sequence number to look up.
@@ -81,10 +88,7 @@ class EventBuffer:
         Returns:
             Event with matching sequence or None if not found.
         """
-        for event in self._events:
-            if event.sequence == sequence:
-                return event
-        return None
+        return self._sequence_index.get(sequence)
 
     def get_by_type(self, event_type: EventType) -> list[ATPEvent]:
         """Get all events of a specific type.
