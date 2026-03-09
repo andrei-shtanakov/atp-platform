@@ -170,6 +170,25 @@ class DashboardSettings(BaseSettings):
             )
         return self
 
+    @model_validator(mode="after")
+    def _warn_wildcard_cors(self) -> "DashboardSettings":
+        """Warn or reject wildcard CORS in production."""
+        if self.cors_origins.strip() == "*" and not self.debug:
+            import os
+
+            env = os.environ.get("ATP_ENV", "").lower()
+            if env in ("production", "prod", "staging"):
+                raise ValueError(
+                    "Wildcard CORS origin '*' is not allowed in "
+                    "production. Set ATP_DASHBOARD_CORS_ORIGINS to "
+                    "a comma-separated list of allowed origins."
+                )
+            logger.warning(
+                "CORS allows all origins ('*'). "
+                "Set ATP_DASHBOARD_CORS_ORIGINS for production."
+            )
+        return self
+
     @property
     def cors_origins_list(self) -> list[str]:
         """Get CORS origins as a list."""

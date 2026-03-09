@@ -3,6 +3,7 @@
 import importlib
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from .base import AdapterConfig, AgentAdapter
@@ -234,6 +235,75 @@ class AdapterRegistry:
             True if adapter is registered, False otherwise.
         """
         return adapter_type in self._adapters or adapter_type in self._lazy
+
+    def load_from_config(self, config: dict[str, Any]) -> int:
+        """Register adapters from a config dict.
+
+        Config format::
+
+            adapters:
+              my-openai:
+                class: "atp.adapters.http.HTTPAdapter"
+                config_class: "atp.adapters.http.HTTPAdapterConfig"  # optional
+              my-groq:
+                class: "atp.adapters.http.HTTPAdapter"
+
+        Args:
+            config: Dict with ``adapters`` key mapping names to specs.
+
+        Returns:
+            Number of adapters registered.
+        """
+        adapters_section = config.get("adapters", {})
+        count = 0
+        for name, spec in adapters_section.items():
+            class_path = spec.get("class", "")
+            if not class_path or "." not in class_path:
+                logger.warning(
+                    "Skipping adapter '%s': invalid class path '%s'",
+                    name,
+                    class_path,
+                )
+                continue
+
+            module_path, class_name = class_path.rsplit(".", 1)
+            config_path = spec.get("config_class", "")
+            if config_path and "." in config_path:
+                _, cfg_class = config_path.rsplit(".", 1)
+            else:
+                cfg_class = "AdapterConfig"
+
+            entry = _LazyEntry(
+                module=module_path,
+                adapter_class_name=class_name,
+                config_class_name=cfg_class,
+            )
+            self._lazy[name] = entry
+            count += 1
+            logger.debug("Registered config-driven adapter '%s'", name)
+
+        return count
+
+    def load_from_yaml(self, path: str | Path) -> int:
+        """Register adapters from a YAML config file.
+
+        Args:
+            path: Path to YAML file with ``adapters:`` section.
+
+        Returns:
+            Number of adapters registered.
+        """
+        import yaml
+
+        file_path = Path(path)
+        if not file_path.exists():
+            logger.warning("Adapter config file not found: %s", file_path)
+            return 0
+
+        data = yaml.safe_load(file_path.read_text())
+        if not isinstance(data, dict):
+            return 0
+        return self.load_from_config(data)
 
 
 # Global registry instance
