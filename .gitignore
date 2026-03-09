@@ -6,6 +6,10 @@ dist/
 wheels/
 *.egg-info
 
+# SQLite databases (Alembic local dev)
+.atp-dashboard.db
+.atp-analytics.db
+
 # Virtual environments
 .venv
 
