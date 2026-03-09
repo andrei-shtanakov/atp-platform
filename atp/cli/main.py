@@ -707,7 +707,22 @@ async def _run_suite(
                 materialized_files.append(file_path)
 
         eval_results_list: list[Any] = []
-        try:
+
+        # Pre-evaluation guardrails: skip evaluators if preconditions fail
+        from atp.evaluators.guardrails import (
+            run_guardrails,
+            should_skip_evaluation,
+        )
+
+        guardrail_checks = run_guardrails(test_def, run.response)
+        skip_reason = should_skip_evaluation(guardrail_checks)
+
+        if skip_reason:
+            click.echo(
+                f"  Skipping evaluation for '{test_id}': {skip_reason}",
+                err=True,
+            )
+        else:
             for assertion in assertions:
                 try:
                     evaluator = evaluator_registry.create_for_assertion(assertion.type)
@@ -723,10 +738,10 @@ async def _run_suite(
                         f"  Warning: evaluator for '{assertion.type}' failed: {e}",
                         err=True,
                     )
-        finally:
-            # Clean up materialized artifacts
-            for f in materialized_files:
-                f.unlink(missing_ok=True)
+
+        # Clean up materialized artifacts
+        for f in materialized_files:
+            f.unlink(missing_ok=True)
 
         all_eval_results[test_id] = eval_results_list
 
