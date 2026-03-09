@@ -115,6 +115,33 @@ SECRET_PATTERNS: list[tuple[str, re.Pattern[str], str | None]] = [
         re.compile(r"-----BEGIN PGP PRIVATE KEY BLOCK-----"),
         None,
     ),
+    # AI provider keys
+    (
+        "openai_key",
+        re.compile(r"sk-[a-zA-Z0-9]{20,}"),
+        None,  # OpenAI API keys
+    ),
+    (
+        "anthropic_key",
+        re.compile(r"sk-ant-[a-zA-Z0-9_-]{20,}"),
+        None,  # Anthropic API keys
+    ),
+    (
+        "huggingface_token",
+        re.compile(r"hf_[a-zA-Z0-9]{20,}"),
+        None,  # HuggingFace tokens
+    ),
+    # Cloud provider keys
+    (
+        "gcp_service_account",
+        re.compile(r'"type"\s*:\s*"service_account"'),
+        None,  # GCP service account JSON
+    ),
+    (
+        "azure_key",
+        re.compile(r"[a-zA-Z0-9+/]{86}=="),
+        None,  # Azure storage account keys (88 chars base64)
+    ),
 ]
 
 # Environment variable patterns that should be filtered (sensitive)
@@ -133,6 +160,9 @@ SENSITIVE_ENV_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"^GOOGLE_.*", re.I),
     re.compile(r"^ANTHROPIC_.*", re.I),
     re.compile(r"^OPENAI_.*", re.I),
+    re.compile(r"^HF_.*", re.I),
+    re.compile(r"^HUGGING_FACE_.*", re.I),
+    re.compile(r"^HUGGINGFACE_.*", re.I),
     re.compile(r"^DATABASE_.*", re.I),
     re.compile(r"^DB_.*", re.I),
     re.compile(r"^PRIVATE_.*", re.I),

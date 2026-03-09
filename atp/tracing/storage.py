@@ -2,6 +2,7 @@
 
 import json
 import logging
+import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from atp.tracing.models import Trace, TraceSummary
 logger = logging.getLogger(__name__)
 
 DEFAULT_TRACES_DIR = Path.home() / ".atp" / "traces"
+DEFAULT_RETENTION_DAYS = 30
 
 
 class TraceStorage(ABC):
@@ -154,6 +156,44 @@ class FileTraceStorage(TraceStorage):
             path.unlink()
             return True
         return False
+
+    def apply_retention(self, max_age_days: int = DEFAULT_RETENTION_DAYS) -> int:
+        """Delete trace files older than max_age_days.
+
+        Args:
+            max_age_days: Maximum age in days. Traces older than
+                this are deleted.
+
+        Returns:
+            Number of traces deleted.
+        """
+        if not self._base_dir.exists():
+            return 0
+
+        cutoff = time.time() - (max_age_days * 86400)
+        deleted = 0
+
+        for path in self._base_dir.glob("*.json"):
+            try:
+                if path.stat().st_mtime < cutoff:
+                    path.unlink()
+                    deleted += 1
+            except OSError:
+                logger.debug("Failed to delete trace file: %s", path)
+
+        if deleted:
+            logger.info(
+                "Retention policy: deleted %d traces older than %d days",
+                deleted,
+                max_age_days,
+            )
+        return deleted
+
+    def count(self) -> int:
+        """Return the number of stored traces."""
+        if not self._base_dir.exists():
+            return 0
+        return len(list(self._base_dir.glob("*.json")))
 
 
 def get_default_storage() -> FileTraceStorage:
