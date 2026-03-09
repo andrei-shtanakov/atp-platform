@@ -1969,7 +1969,14 @@ async def _run_game_suite_from_test_cmd(
 
 
 def main() -> None:
-    """Main entry point for the CLI."""
+    """Main entry point for the CLI.
+
+    Loads .env file from CWD before running CLI commands.
+    Shell environment variables take priority over .env values.
+    """
+    from dotenv import load_dotenv
+
+    load_dotenv(override=False)
     cli(auto_envvar_prefix="ATP")
 
 
