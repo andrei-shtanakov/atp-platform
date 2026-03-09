@@ -96,6 +96,66 @@ class ConfigContext:
 pass_config = click.make_pass_decorator(ConfigContext, ensure=True)
 
 
+def _parse_adapter_config(
+    adapter_config: tuple[str, ...],
+) -> dict[str, Any]:
+    """Parse adapter config from CLI options.
+
+    Supports both repeated flags and comma-separated format:
+      --adapter-config endpoint=http://localhost:8001
+      --adapter-config allow_internal=true
+    or:
+      --adapter-config 'endpoint=http://localhost:8001,allow_internal=true'
+
+    Note: commas inside values are preserved if the value contains '='
+    after the first split (e.g. URLs with commas are safe because
+    only the first '=' splits key from value).
+    """
+    config: dict[str, Any] = {}
+    for item in adapter_config:
+        # Split by comma to support comma-separated format,
+        # but only if the comma is between key=value pairs
+        parts = _split_config_item(item)
+        for part in parts:
+            part = part.strip()
+            if "=" in part:
+                key, value = part.split("=", 1)
+                try:
+                    config[key] = json.loads(value)
+                except (json.JSONDecodeError, ValueError):
+                    config[key] = value
+    return config
+
+
+def _split_config_item(item: str) -> list[str]:
+    """Split a config item by commas, respecting key=value structure.
+
+    Splits on commas that separate key=value pairs. A comma is a
+    separator only if the text after it contains '='.
+
+    Examples:
+        "a=1,b=2"        → ["a=1", "b=2"]
+        "url=http://x,y" → ["url=http://x,y"]  (no '=' after last comma)
+        "a=1,b=http://x"  → ["a=1", "b=http://x"]
+    """
+    if "," not in item:
+        return [item]
+
+    # Try splitting and check if each part looks like key=value
+    parts = item.split(",")
+    result: list[str] = []
+    current = parts[0]
+    for part in parts[1:]:
+        if "=" in part:
+            result.append(current)
+            current = part
+        else:
+            # This comma was inside a value, rejoin
+            current += "," + part
+    result.append(current)
+    return result
+
+
 @click.group(invoke_without_command=True)
 @click.option(
     "--config",
@@ -385,14 +445,7 @@ def test_cmd(
             )
 
         # Then apply CLI adapter-config options (override file config)
-        for item in adapter_config:
-            if "=" in item:
-                key, value = item.split("=", 1)
-                # Try to parse as JSON for complex values
-                try:
-                    config_dict[key] = json.loads(value)
-                except (json.JSONDecodeError, ValueError):
-                    config_dict[key] = value
+        config_dict.update(_parse_adapter_config(adapter_config))
 
         # Run tests
         result = asyncio.run(
@@ -828,6 +881,7 @@ async def _run_suite(
             adapter_type=adapter_type,
             adapter_config=adapter_config,
             runs_per_test=runs_per_test,
+            scored_results=all_scored_results,
         )
 
     return result.success
@@ -867,6 +921,7 @@ async def _save_results_to_db(
     adapter_type: str,
     adapter_config: dict[str, Any],
     runs_per_test: int,
+    scored_results: dict[str, Any] | None = None,
 ) -> None:
     """Save test results to the dashboard database.
 
@@ -877,6 +932,7 @@ async def _save_results_to_db(
         adapter_type: Type of adapter used
         adapter_config: Adapter configuration
         runs_per_test: Number of runs per test
+        scored_results: Per-test scored results (test_id → ScoredTestResult)
     """
     from datetime import datetime
 
@@ -925,11 +981,17 @@ async def _save_results_to_db(
                         )
 
                 # Update test execution with results
+                test_score = None
+                if scored_results and test_result.test.id in scored_results:
+                    scored = scored_results[test_result.test.id]
+                    test_score = scored.score
+
                 await storage.update_test_execution(
                     test_exec,
                     completed_at=datetime.now(tz=UTC),
                     successful_runs=sum(1 for r in test_result.runs if r.success),
                     success=test_result.success,
+                    score=test_score,
                     status="completed" if test_result.success else "failed",
                 )
 
@@ -1060,13 +1122,7 @@ def validate_cmd(
             click.echo(f"Validating adapter: {adapter_type}")
 
         # Apply CLI adapter-config options
-        for item in adapter_config:
-            if "=" in item:
-                key, value = item.split("=", 1)
-                try:
-                    config_dict[key] = json.loads(value)
-                except (json.JSONDecodeError, ValueError):
-                    config_dict[key] = value
+        config_dict.update(_parse_adapter_config(adapter_config))
 
         try:
             from atp.adapters import create_adapter, get_registry
@@ -1373,14 +1429,7 @@ async def _run_and_save_baseline(
     click.echo(f"Running {len(suite.tests)} tests with {runs} runs each...")
 
     # Parse adapter config
-    config_dict: dict[str, Any] = {}
-    for item in adapter_config:
-        if "=" in item:
-            key, value = item.split("=", 1)
-            try:
-                config_dict[key] = json.loads(value)
-            except (json.JSONDecodeError, ValueError):
-                config_dict[key] = value
+    config_dict: dict[str, Any] = _parse_adapter_config(adapter_config)
 
     # Create adapter and run tests
     adapter_instance = create_adapter(adapter_type, config_dict)
@@ -1648,14 +1697,7 @@ async def _run_and_compare_baseline(
     click.echo(f"Running {len(suite.tests)} tests with {runs} runs each...")
 
     # Parse adapter config
-    config_dict: dict[str, Any] = {}
-    for item in adapter_config:
-        if "=" in item:
-            key, value = item.split("=", 1)
-            try:
-                config_dict[key] = json.loads(value)
-            except (json.JSONDecodeError, ValueError):
-                config_dict[key] = value
+    config_dict: dict[str, Any] = _parse_adapter_config(adapter_config)
 
     # Create adapter and run tests
     adapter_instance = create_adapter(adapter_type, config_dict)
