@@ -248,6 +248,14 @@ def version_cmd() -> None:
     help="Don't save results to dashboard database",
 )
 @click.option(
+    "--save-results",
+    type=click.Path(path_type=Path),
+    help=(
+        "Save JSON results to directory: DIR/{agent-name}/{suite}.json. "
+        "Use with --agent-name for multi-agent comparison."
+    ),
+)
+@click.option(
     "--live",
     is_flag=True,
     help="Enable Rich live display for streaming progress",
@@ -274,6 +282,7 @@ def test_cmd(
     output: str,
     output_file: Path | None,
     no_save: bool,
+    save_results: Path | None,
     live: bool,
     trace: bool,
 ) -> None:
@@ -300,6 +309,9 @@ def test_cmd(
 
       # Output results as JSON
       atp test tests/suite.yaml --output=json --output-file=results.json
+
+      # Save results for later comparison
+      atp test suite.yaml --agent-name=gpt-4o-mini --save-results=results/
 
     Exit Codes:
 
@@ -397,6 +409,7 @@ def test_cmd(
                 output_format=output,
                 output_file=output_file,
                 save_to_db=not no_save,
+                save_results_dir=save_results,
                 live=live,
                 enable_tracing=trace,
             )
@@ -496,6 +509,14 @@ def test_cmd(
     help="Don't save results to dashboard database",
 )
 @click.option(
+    "--save-results",
+    type=click.Path(path_type=Path),
+    help=(
+        "Save JSON results to directory: DIR/{agent-name}/{suite}.json. "
+        "Use with --agent-name for multi-agent comparison."
+    ),
+)
+@click.option(
     "--live",
     is_flag=True,
     help="Enable Rich live display for streaming progress",
@@ -522,6 +543,7 @@ def run(
     output: str,
     output_file: Path | None,
     no_save: bool,
+    save_results: Path | None,
     live: bool,
     trace: bool,
 ) -> None:
@@ -547,6 +569,7 @@ def run(
         output=output,
         output_file=output_file,
         no_save=no_save,
+        save_results=save_results,
         live=live,
         trace=trace,
     )
@@ -565,6 +588,7 @@ async def _run_suite(
     output_format: str,
     output_file: Path | None,
     save_to_db: bool = True,
+    save_results_dir: Path | None = None,
     live: bool = False,
     enable_tracing: bool = False,
 ) -> bool:
@@ -771,6 +795,15 @@ async def _run_suite(
     )
     reporter.report(report)
 
+    # Save results to structured directory for comparison
+    if save_results_dir is not None:
+        _save_results_to_dir(
+            report=report,
+            agent_name=agent_name,
+            suite_name=suite.test_suite,
+            results_dir=save_results_dir,
+        )
+
     # Save results to dashboard database
     if save_to_db:
         await _save_results_to_db(
@@ -783,6 +816,33 @@ async def _run_suite(
         )
 
     return result.success
+
+
+def _save_results_to_dir(
+    report: Any,
+    agent_name: str,
+    suite_name: str,
+    results_dir: Path,
+) -> None:
+    """Save JSON results to DIR/{agent_name}/{suite_name}.json.
+
+    Args:
+        report: SuiteReport with evaluation results.
+        agent_name: Name of the agent.
+        suite_name: Name of the test suite.
+        results_dir: Base directory for results.
+    """
+    from atp.reporters import create_reporter
+
+    agent_dir = results_dir / agent_name
+    agent_dir.mkdir(parents=True, exist_ok=True)
+
+    out_path = agent_dir / f"{suite_name}.json"
+    json_reporter = create_reporter(
+        "json", {"output_file": out_path, "include_details": True}
+    )
+    json_reporter.report(report)
+    click.echo(f"Results saved to {out_path}")
 
 
 async def _save_results_to_db(
