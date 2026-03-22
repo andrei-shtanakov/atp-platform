@@ -2,11 +2,11 @@
 
 import logging
 from importlib.metadata import EntryPoint, entry_points
+from importlib.metadata import version as _pkg_version
 from typing import Any
 
 from pydantic import BaseModel, Field
 
-import atp
 from atp.plugins.config import ConfigMetadata, PluginConfig
 from atp.plugins.interfaces import (
     PluginValidationError,
@@ -16,6 +16,7 @@ from atp.plugins.interfaces import (
     validate_plugin,
 )
 
+_atp_version = _pkg_version("atp-platform")
 logger = logging.getLogger(__name__)
 
 
@@ -365,7 +366,7 @@ class PluginManager:
             raise PluginValidationError(name, group, errors)
 
         # Check version compatibility
-        current_version = atp.__version__
+        current_version = _atp_version
         version_error = check_version_compatibility(plugin_class, current_version, name)
         if version_error:
             required_version = getattr(plugin_class, "atp_version", "1.0.0")
@@ -593,7 +594,7 @@ class PluginManager:
             return None
 
         errors = validate_plugin(plugin_class, group, name)
-        version_error = check_version_compatibility(plugin_class, atp.__version__, name)
+        version_error = check_version_compatibility(plugin_class, _atp_version, name)
 
         return errors, version_error
 

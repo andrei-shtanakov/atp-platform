@@ -9,6 +9,7 @@ resolution-markers = [
 
 [manifest]
 members = [
+    "atp-core",
     "atp-dashboard",
     "atp-platform",
 ]
@@ -136,6 +137,50 @@ wheels = [
 ]
 
 [[package]]
+name = "atp-core"
+version = "1.0.0"
+source = { editable = "packages/atp-core" }
+dependencies = [
+    { name = "cryptography" },
+    { name = "jsonschema" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-exporter-otlp-proto-grpc" },
+    { name = "opentelemetry-sdk" },
+    { name = "prometheus-client" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "pyyaml" },
+    { name = "ruamel-yaml" },
+    { name = "structlog" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-anyio" },
+    { name = "pytest-cov" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "cryptography", specifier = ">=46.0.5" },
+    { name = "jsonschema", specifier = ">=4.26.0" },
+    { name = "opentelemetry-api", specifier = ">=1.39.1" },
+    { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.39.1" },
+    { name = "opentelemetry-sdk", specifier = ">=1.39.1" },
+    { name = "prometheus-client", specifier = ">=0.24.1" },
+    { name = "pydantic", specifier = ">=2.0" },
+    { name = "pydantic-settings", specifier = ">=2.12.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
+    { name = "pytest-anyio", marker = "extra == 'dev'", specifier = ">=0.0.0" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "ruamel-yaml", specifier = ">=0.18" },
+    { name = "structlog", specifier = ">=25.5.0" },
+]
+provides-extras = ["dev"]
+
+[[package]]
 name = "atp-dashboard"
 version = "1.0.0"
 source = { editable = "packages/atp-dashboard" }
@@ -199,25 +244,15 @@ version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },
+    { name = "atp-core" },
     { name = "click" },
-    { name = "cryptography" },
     { name = "greenlet" },
     { name = "httpx" },
     { name = "jinja2" },
-    { name = "jsonschema" },
-    { name = "opentelemetry-api" },
-    { name = "opentelemetry-exporter-otlp-proto-grpc" },
-    { name = "opentelemetry-sdk" },
     { name = "pillow" },
-    { name = "prometheus-client" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
     { name = "python-dotenv" },
-    { name = "pyyaml" },
     { name = "rich" },
-    { name = "ruamel-yaml" },
     { name = "sqlalchemy" },
-    { name = "structlog" },
 ]
 
 [package.optional-dependencies]
@@ -290,6 +325,7 @@ dev = [
 requires-dist = [
     { name = "aiosqlite", specifier = ">=0.22.1" },
     { name = "anthropic", marker = "extra == 'llm'", specifier = ">=0.76.0" },
+    { name = "atp-core", editable = "packages/atp-core" },
     { name = "atp-dashboard", marker = "extra == 'dashboard'", editable = "packages/atp-dashboard" },
     { name = "atp-dashboard", extras = ["analytics"], marker = "extra == 'analytics'", editable = "packages/atp-dashboard" },
     { name = "atp-dashboard", extras = ["enterprise"], marker = "extra == 'enterprise'", editable = "packages/atp-dashboard" },
@@ -302,33 +338,22 @@ requires-dist = [
     { name = "boto3", marker = "extra == 'bedrock'", specifier = ">=1.42.39" },
     { name = "boto3", marker = "extra == 'cloud'", specifier = ">=1.42.39" },
     { name = "click", specifier = ">=8.3.1" },
-    { name = "cryptography", specifier = ">=46.0.5" },
     { name = "google-cloud-aiplatform", marker = "extra == 'cloud'", specifier = ">=1.135.0" },
     { name = "google-cloud-aiplatform", marker = "extra == 'vertex'", specifier = ">=1.135.0" },
     { name = "greenlet", specifier = ">=3.3.1" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "jinja2", specifier = ">=3.1.6" },
-    { name = "jsonschema", specifier = ">=4.26.0" },
     { name = "openai", marker = "extra == 'azure-openai'", specifier = ">=2.15.0" },
     { name = "openai", marker = "extra == 'cloud'", specifier = ">=2.15.0" },
-    { name = "opentelemetry-api", specifier = ">=1.39.1" },
-    { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.39.1" },
-    { name = "opentelemetry-sdk", specifier = ">=1.39.1" },
     { name = "pillow", specifier = ">=12.1.1" },
-    { name = "prometheus-client", specifier = ">=0.24.1" },
-    { name = "pydantic", specifier = ">=2.0" },
-    { name = "pydantic-settings", specifier = ">=2.12.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-anyio", marker = "extra == 'dev'", specifier = ">=0.0.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
-    { name = "pyyaml", specifier = ">=6.0" },
     { name = "rich", specifier = ">=13.0" },
     { name = "rich", marker = "extra == 'tui'", specifier = ">=13.0" },
-    { name = "ruamel-yaml", specifier = ">=0.18" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4" },
     { name = "sqlalchemy", specifier = ">=2.0.46" },
-    { name = "structlog", specifier = ">=25.5.0" },
     { name = "textual", marker = "extra == 'tui'", specifier = ">=0.47.0" },
 ]
 provides-extras = ["dev", "tui", "cloud", "bedrock", "vertex", "azure-openai", "dashboard", "enterprise", "analytics", "llm", "all"]

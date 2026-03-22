@@ -1,13 +1,13 @@
 """Tests for CLI main module."""
 
 from collections.abc import AsyncIterator
+from importlib.metadata import version
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
 
-from atp import __version__
 from atp.cli.main import (
     EXIT_ERROR,
     EXIT_FAILURE,
@@ -15,6 +15,8 @@ from atp.cli.main import (
     ConfigContext,
     cli,
 )
+
+__version__ = version("atp-platform")
 
 
 @pytest.fixture

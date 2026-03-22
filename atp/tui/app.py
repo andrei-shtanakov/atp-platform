@@ -5,6 +5,7 @@ Main application class for the ATP Terminal User Interface.
 
 from __future__ import annotations
 
+from importlib.metadata import version
 from typing import TYPE_CHECKING
 
 from textual.app import App, ComposeResult
@@ -13,10 +14,11 @@ from textual.containers import Container, Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Static
 
-from atp import __version__
 from atp.tui.screens.main_menu import MainScreen
 from atp.tui.screens.suite_editor import NewSuiteScreen
 from atp.tui.screens.test_editor import AddTestScreen
+
+__version__ = version("atp-platform")
 
 if TYPE_CHECKING:
     pass

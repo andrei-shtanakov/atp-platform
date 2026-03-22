@@ -5,13 +5,14 @@ import json
 import logging
 import sys
 from datetime import UTC
+from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
 import click
 import yaml
 
-from atp import __version__
+__version__ = version("atp-platform")
 from atp.cli.commands.benchmark import benchmark_command
 from atp.cli.commands.budget import budget_command
 from atp.cli.commands.compare import compare_command

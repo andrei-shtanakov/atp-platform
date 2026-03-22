@@ -3,6 +3,7 @@
 from typing import Any
 
 from atp.runner.models import SuiteResult, TestResult
+
 from atp.scoring.models import ScoredTestResult
 
 from .calculator import StatisticsCalculator

@@ -42,6 +42,7 @@ build-backend = "hatchling.build"
 packages = ["atp/dashboard", "atp/analytics"]
 
 [tool.uv.sources]
+atp-core = { workspace = true }
 atp-platform = { workspace = true }
 
 [tool.ruff]

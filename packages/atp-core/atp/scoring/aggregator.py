@@ -3,6 +3,7 @@
 import math
 
 from atp.evaluators.base import EvalResult
+
 from atp.loader.models import ScoringWeights
 from atp.protocol import ATPResponse
 

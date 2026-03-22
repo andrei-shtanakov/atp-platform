@@ -19,7 +19,9 @@ pytestmark = pytest.mark.skipif(
 )
 
 if HAS_TUI_DEPS:
-    from atp import __version__
+    from importlib.metadata import version
+
+    __version__ = version("atp-platform")
     from atp.tui import ATPTUI
     from atp.tui.app import (
         AgentsPanel,

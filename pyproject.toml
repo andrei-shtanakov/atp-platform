@@ -5,21 +5,11 @@ description = "Framework-agnostic platform for testing and evaluating AI agents"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "pydantic>=2.0",
-    "pyyaml>=6.0",
+    "atp-core>=1.0.0",
     "httpx>=0.27",
-    "ruamel-yaml>=0.18",
     "click>=8.3.1",
-    "jsonschema>=4.26.0",
     "jinja2>=3.1.6",
-    "pydantic-settings>=2.12.0",
     "rich>=13.0",
-    "structlog>=25.5.0",
-    "opentelemetry-api>=1.39.1",
-    "opentelemetry-sdk>=1.39.1",
-    "opentelemetry-exporter-otlp-proto-grpc>=1.39.1",
-    "prometheus-client>=0.24.1",
-    "cryptography>=46.0.5",
     "pillow>=12.1.1",
     "sqlalchemy>=2.0.46",
     "aiosqlite>=0.22.1",
@@ -207,6 +197,7 @@ ignore-missing-imports = [
 members = ["packages/*"]
 
 [tool.uv.sources]
+atp-core = { workspace = true }
 atp-dashboard = { workspace = true }
 
 [dependency-groups]
