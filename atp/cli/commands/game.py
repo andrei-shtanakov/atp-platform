@@ -161,6 +161,9 @@ async def _run_game_suite(
     else:
         _print_game_results(result, verbose)
 
+    # Store results in dashboard DB (if available)
+    await _store_game_result(result, suite, run_config)
+
     return True
 
 
@@ -413,6 +416,9 @@ async def _run_tournament(
             click.echo(output_text)
     else:
         _print_tournament_results(result, verbose)
+
+    # Store in dashboard DB
+    await _store_tournament_result(result, suite, mode, run_config)
 
     return True
 
@@ -721,6 +727,113 @@ def _print_benchmark_results(result: Any) -> None:
         for pid, payoff in game_result.average_payoffs.items():
             agent_name = game_result.agent_names.get(pid, pid)
             click.echo(f"    {agent_name}: {payoff:.4f}")
+
+
+async def _store_game_result(
+    result: Any,
+    suite: Any,
+    config: Any,
+) -> None:
+    """Store game result in dashboard database (if available).
+
+    Silently skips if dashboard is not installed.
+    """
+    try:
+        from atp.dashboard import init_database
+        from atp.dashboard.models import GameResult
+
+        db = await init_database()
+        async with db.session() as session:
+            from datetime import datetime
+
+            players = []
+            for pid, payoff in result.average_payoffs.items():
+                name = result.agent_names.get(pid, pid)
+                players.append(
+                    {
+                        "player_id": pid,
+                        "name": name,
+                        "average_payoff": payoff,
+                    }
+                )
+
+            episodes_data = []
+            for ep in result.episodes:
+                episodes_data.append(
+                    {
+                        "episode": ep.episode,
+                        "payoffs": ep.payoffs,
+                        "seed": ep.seed,
+                    }
+                )
+
+            game_result = GameResult(
+                game_name=result.game_name,
+                game_type=suite.game.variant or "one_shot",
+                num_players=len(result.agent_names),
+                num_rounds=suite.game.config.get("num_rounds", 1),
+                num_episodes=len(result.episodes),
+                status="completed",
+                completed_at=datetime.now(),
+                players_json=players,
+                episodes_json=episodes_data,
+                metadata_json={
+                    "suite_name": suite.name,
+                    "config": {
+                        "episodes": config.episodes,
+                    },
+                },
+            )
+            session.add(game_result)
+            await session.commit()
+            click.echo(f"Results saved to dashboard (game_id={game_result.id})")
+
+    except ImportError:
+        pass  # Dashboard not installed
+    except Exception as e:
+        click.echo(f"Warning: failed to save to dashboard: {e}", err=True)
+
+
+async def _store_tournament_result(
+    result: Any,
+    suite: Any,
+    mode: str,
+    config: Any,
+) -> None:
+    """Store tournament result in dashboard database (if available).
+
+    Silently skips if dashboard is not installed.
+    """
+    try:
+        from atp.dashboard import init_database
+        from atp.dashboard.models import TournamentResult
+
+        db = await init_database()
+        async with db.session() as session:
+            from datetime import datetime
+
+            standings = [s.to_dict() for s in result.standings]
+            matchups = [m.to_dict() for m in result.matches]
+
+            tournament = TournamentResult(
+                name=suite.name,
+                game_name=suite.game.type,
+                tournament_type=mode,
+                num_agents=len(result.standings),
+                episodes_per_matchup=config.episodes,
+                status="completed",
+                completed_at=datetime.now(),
+                standings_json=standings,
+                matchups_json=matchups,
+            )
+            session.add(tournament)
+            await session.commit()
+            click.echo(f"Results saved to dashboard (tournament_id={tournament.id})")
+
+    except ImportError:
+        pass  # Dashboard not installed
+    except Exception as e:
+        click.echo(f"Warning: failed to save to dashboard: {e}", err=True)
 
 
 @game_command.command(name="list")
