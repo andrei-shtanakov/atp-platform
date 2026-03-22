@@ -161,6 +161,24 @@ uv run pytest tests/ -v
 
 ## Optional Components
 
+### Install Extras
+
+ATP has optional dependency groups for specific features:
+
+```bash
+# Install with dashboard (web UI, analytics)
+uv sync --extra dashboard
+
+# Install with cloud adapters (AWS Bedrock, Google Vertex, Azure OpenAI)
+uv sync --extra cloud
+
+# Install with TUI (terminal UI)
+uv sync --extra tui
+
+# Install everything
+uv sync --all-extras
+```
+
 ### Enable Type Checking
 
 ```bash

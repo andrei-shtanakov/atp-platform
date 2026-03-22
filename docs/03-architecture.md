@@ -842,7 +842,13 @@ atp-platform/
 │   ├── core/
 │   │   ├── __init__.py
 │   │   ├── exceptions.py        # Custom exceptions
-│   │   └── security.py          # URL, DNS, path traversal validation
+│   │   ├── result.py            # Success/Failure result type
+│   │   ├── settings.py          # ATPSettings configuration
+│   │   ├── security.py          # URL, DNS, path traversal validation
+│   │   ├── logging.py           # Structured logging (structlog)
+│   │   ├── telemetry.py         # OpenTelemetry tracing
+│   │   ├── metrics.py           # Prometheus metrics
+│   │   └── observer.py          # Observer pattern for error tracking
 │   │
 │   ├── protocol/
 │   │   ├── __init__.py
@@ -870,19 +876,28 @@ atp-platform/
 │   │   ├── base.py              # AgentAdapter base class
 │   │   ├── registry.py          # AdapterRegistry
 │   │   ├── exceptions.py        # Adapter exceptions
+│   │   ├── fallback.py          # FallbackAdapter (chain with automatic fallback)
 │   │   ├── http.py              # HTTPAdapter
 │   │   ├── container.py         # ContainerAdapter
 │   │   ├── cli.py               # CLIAdapter
 │   │   ├── langgraph.py         # LangGraphAdapter
 │   │   ├── crewai.py            # CrewAIAdapter
 │   │   ├── autogen.py           # AutoGenAdapter
-│   │   ├── azure_openai.py      # AzureOpenAIAdapter
-│   │   ├── bedrock.py           # BedrockAdapter
-│   │   ├── vertex.py            # VertexAdapter
-│   │   └── mcp/                 # MCP adapter
-│   │       ├── __init__.py
+│   │   ├── mcp/                 # MCP adapter
+│   │   │   ├── adapter.py
+│   │   │   └── transport.py
+│   │   ├── bedrock/             # AWS Bedrock adapter
+│   │   │   ├── adapter.py
+│   │   │   ├── models.py
+│   │   │   └── auth.py
+│   │   ├── vertex/              # Google Vertex AI adapter
+│   │   │   ├── adapter.py
+│   │   │   ├── models.py
+│   │   │   └── auth.py
+│   │   └── azure_openai/        # Azure OpenAI adapter
 │   │       ├── adapter.py
-│   │       └── transport.py
+│   │       ├── models.py
+│   │       └── auth.py
 │   │
 │   ├── evaluators/
 │   │   ├── __init__.py
@@ -955,20 +970,36 @@ atp-platform/
 │   │
 │   ├── dashboard/
 │   │   ├── __init__.py
-│   │   ├── app.py               # FastAPI application
-│   │   ├── api.py               # REST API endpoints
-│   │   ├── database.py          # SQLAlchemy setup
+│   │   ├── __main__.py          # python -m atp.dashboard entry point
+│   │   ├── database.py          # SQLAlchemy async setup
 │   │   ├── storage.py           # Result persistence
-│   │   ├── models.py            # Domain models
-│   │   ├── schemas.py           # Pydantic schemas
-│   │   └── auth.py              # Authentication
+│   │   ├── models.py            # ORM models (User, Agent, SuiteExecution, etc.)
+│   │   ├── schemas.py           # Pydantic API schemas
+│   │   ├── audit.py             # Audit logging
+│   │   ├── audit_middleware.py  # Request audit middleware
+│   │   ├── query_cache.py       # Query result caching
+│   │   ├── optimized_queries.py # Optimized SQL queries
+│   │   ├── auth/                # Authentication & SSO (JWT, OIDC, SAML)
+│   │   ├── rbac/                # Role-based access control
+│   │   ├── tenancy/             # Multi-tenant support (schema isolation, quotas)
+│   │   └── v2/                  # Modular dashboard (FastAPI)
+│   │       ├── factory.py       # App factory with lifespan
+│   │       ├── config.py        # DashboardConfig
+│   │       ├── dependencies.py  # FastAPI dependency injection
+│   │       ├── routes/          # 28 route modules (agents, suites, analytics, etc.)
+│   │       ├── services/        # Business logic (agent, test, comparison, export)
+│   │       ├── websocket/       # Real-time updates (pub/sub, connection manager)
+│   │       ├── templates/       # Jinja2 HTML templates
+│   │       └── static/          # Static assets (CSS, JS)
 │   │
-│   ├── analytics/               # Cost tracking and analytics
+│   ├── analytics/               # Cost tracking, A/B testing, anomaly detection
 │   ├── benchmarks/              # Benchmark suites
-│   ├── chaos/                   # Chaos testing
-│   ├── generator/               # Test suite generation
+│   ├── chaos/                   # Chaos testing (injectors, profiles)
+│   ├── generator/               # Test suite generation (NL, templates, trace import)
 │   ├── plugins/                 # Plugin ecosystem management
-│   └── tui/                     # Terminal user interface
+│   ├── sdk/                     # Python SDK for programmatic use
+│   ├── tracing/                 # Agent trace recording and replay
+│   └── tui/                     # Terminal user interface (optional, requires [tui] extra)
 │
 ├── tests/
 │   ├── unit/                    # Unit tests (~70%)
@@ -1055,3 +1086,20 @@ secrets:
 - All YAML/JSON input validated against schemas
 - Artifact paths sanitized to prevent path traversal
 - Size limits on responses and artifacts
+
+---
+
+## Future: Package Decomposition
+
+> See [ADR-003](adr/003-monorepo-decomposition.md) for the full architecture decision.
+
+The platform is planned for decomposition into 4 independent packages within a monorepo using Python implicit namespace packages and uv workspaces:
+
+| Package | Contents | Dependencies |
+|---------|----------|-------------|
+| **atp-core** | protocol, core, loader, chaos, cost, scoring, statistics, streaming | pydantic, structlog, opentelemetry |
+| **atp-adapters** | All agent adapters (HTTP, CLI, Container, cloud, MCP) | atp-core, httpx |
+| **atp-platform** | runner, evaluators, reporters, cli, sdk, mock_tools, ... | atp-core, atp-adapters |
+| **atp-dashboard** | Web dashboard, analytics | atp-core, atp-platform, FastAPI, SQLAlchemy |
+
+All existing `from atp.X import Y` imports will continue working unchanged via shared namespace.

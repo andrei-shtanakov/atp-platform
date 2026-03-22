@@ -9,20 +9,20 @@ This document describes the development plan for Agent Test Platform (ATP). The 
 ## Timeline Overview
 
 ```
-2025 Q1          2025 Q2          2025 Q3          2025 Q4
-    │                │                │                │
-    ▼                ▼                ▼                ▼
-┌────────┐      ┌────────┐      ┌────────┐      ┌────────┐
-│Phase 1 │      │Phase 2 │      │Phase 3 │      │Phase 4 │
-│  MVP   │      │  Beta  │      │   GA   │      │ Growth │
-│   ✅   │      │   ✅   │      │   ✅   │      │   📋   │
-│Core    │      │Adapters│      │Dashboard│     │Ecosystem│
-│Protocol│      │CI/CD   │      │Security │     │Community│
-└────────┘      └────────┘      └────────┘      └────────┘
-  DONE           DONE            DONE           PLANNED
+2025 Q1     2025 Q2     2025 Q3     2025 Q4     2026 Q1     2026 Q2     2026 Q3
+    │           │           │           │           │           │           │
+    ▼           ▼           ▼           ▼           ▼           ▼           ▼
+┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐
+│Phase 1 │ │Phase 2 │ │Phase 3 │ │Phase 4 │ │Phase 5 │ │Phase 6 │ │Phase 7 │
+│  MVP   │ │  Beta  │ │   GA   │ │ Growth │ │ Games  │ │ Polish │ │Decomp. │
+│   ✅   │ │   ✅   │ │   ✅   │ │   ✅   │ │   ✅   │ │   🔄   │ │   📋   │
+│Core    │ │Adapters│ │Dashbrd │ │Ecosystm│ │GameEval│ │SDK,CI  │ │Packages│
+│Protocol│ │CI/CD   │ │Securty │ │Entrpris│ │Tournmt │ │TechDebt│ │Monorepo│
+└────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘
+  DONE       DONE       DONE      ~DONE       DONE     IN PROGRESS PROPOSED
 ```
 
-**Current Status**: Phases 1-3 complete. Phase 4 (Growth) planned for Q4 2025.
+**Current Status**: Phases 1-5 complete. Phase 6 (Polish & SDK) in progress. Phase 7 (Decomposition) proposed.
 
 ---
 
@@ -208,7 +208,7 @@ Stable release ready for broad adoption.
 
 ---
 
-## Phase 4: Growth (Q4 2025)
+## Phase 4: Growth (Q4 2025) ✅ MOSTLY COMPLETE
 
 ### Goal
 Expanding functionality and community building.
@@ -216,19 +216,19 @@ Expanding functionality and community building.
 ### Deliverables
 
 #### 4.1 Ecosystem (Weeks 1-4)
-- [ ] Plugin marketplace (evaluators, adapters)
+- [x] Plugin marketplace (evaluators, adapters) — dashboard marketplace routes implemented
 - [ ] Community test suites
 - [ ] Integration templates
 
 #### 4.2 Advanced Analytics (Weeks 3-6)
-- [ ] Agent comparison reports
-- [ ] Cost optimization recommendations
-- [ ] Anomaly detection
+- [x] Agent comparison reports — dashboard comparison routes + services
+- [x] Cost optimization recommendations — analytics cost tracking + estimator
+- [x] Anomaly detection — analytics.advanced module
 
 #### 4.3 Enterprise Features (Weeks 5-8)
-- [ ] Multi-tenant support
-- [ ] Role-based access control
-- [ ] Audit logging
+- [x] Multi-tenant support — dashboard tenancy module (manager, middleware, quotas, migration)
+- [x] Role-based access control — dashboard RBAC module (roles, permissions, user-role mapping)
+- [x] Audit logging — dashboard audit middleware
 - [ ] SLA reporting
 
 #### 4.4 Community (Ongoing)
@@ -236,6 +236,84 @@ Expanding functionality and community building.
 - [ ] Contributing guide
 - [ ] Community calls
 - [ ] Case studies
+
+---
+
+## Phase 5: Game-Theoretic Evaluation (Q1 2026) ✅ COMPLETE
+
+See [spec/phase5-tasks.md](../spec/phase5-tasks.md) for detailed task tracking.
+
+---
+
+## Phase 6: Polish, SDK & Ecosystem (Q1-Q2 2026) 📋 IN PROGRESS
+
+See [spec/phase6-tasks.md](../spec/phase6-tasks.md) for detailed task tracking.
+
+Key milestones:
+- M13: Release readiness & tech debt (LICENSE, pyrefly, v2 migration, entry points)
+- M14: Python SDK & programmatic API
+- M15: Benchmark integration & evaluation
+- M16: Agent debugging & observability
+- M17: CI/CD & ecosystem
+
+---
+
+## Phase 7: Monorepo Decomposition (Q2-Q3 2026) 📋 PROPOSED
+
+> See [ADR-003](adr/003-monorepo-decomposition.md) for the architecture decision.
+
+### Goal
+Decompose the monolith (~95K lines) into independent packages for separate release cycles, lighter installs, and clearer ownership boundaries.
+
+### Package Architecture
+
+```
+atp-core (protocol, core, loader, chaos, cost, scoring, statistics, streaming)
+    ↑
+    ├── atp-adapters (HTTP, CLI, Container, LangGraph, CrewAI, AutoGen, MCP, Bedrock, Vertex, Azure)
+    ↑       ↑
+    │       │
+    atp-platform (runner, evaluators, reporters, cli, sdk, mock_tools, ...)
+        ↑
+        │
+    atp-dashboard (web dashboard, analytics)
+```
+
+### Deliverables
+
+#### 7.1 Extract atp-dashboard (Weeks 1-3)
+- [ ] Split `atp.analytics.cost` into standalone `atp.cost` module
+- [ ] Move `atp/dashboard/` and `atp/analytics/` to `packages/atp-dashboard/`
+- [ ] Create `packages/atp-dashboard/pyproject.toml`
+- [ ] Update CLI lazy imports with helpful error messages
+- [ ] Move dashboard/analytics tests to package
+- [ ] Implement CostPersistenceBackend bridge
+
+**Prerequisites**: TASK-1303 (complete v2 migration, remove v1 monolith)
+
+#### 7.2 Extract atp-core (Weeks 4-6)
+- [ ] Remove `atp/__init__.py`, migrate `__version__` to `importlib.metadata`
+- [ ] Move protocol, core, loader, chaos, cost, scoring, statistics, streaming to `packages/atp-core/`
+- [ ] Create `packages/atp-core/pyproject.toml`
+- [ ] Update main pyproject.toml dependencies
+- [ ] Move unit tests to package
+- [ ] Configure uv workspace
+
+#### 7.3 Extract atp-adapters (Weeks 7-8)
+- [ ] Move `atp/adapters/` to `packages/atp-adapters/`
+- [ ] Migrate entry-points to new pyproject.toml
+- [ ] Create optional extras for cloud adapters (bedrock, vertex, azure-openai)
+- [ ] Move adapter tests to package
+- [ ] Verify plugin discovery via entry-points across packages
+
+**Prerequisites**: TASK-1306 (lazy adapter loading), TASK-1308 (split large adapter files)
+
+### Exit Criteria
+- [ ] All existing `from atp.X import Y` imports work unchanged
+- [ ] Each package has independent test suite that passes
+- [ ] CLI pipeline works end-to-end (`atp test`, `atp dashboard`)
+- [ ] uv workspace configured for local development
+- [ ] Entry-point plugin discovery works across packages
 
 ---
 
@@ -249,6 +327,8 @@ Expanding functionality and community building.
 | Framework fragmentation | Medium | Focus on top 3, clear adapter API |
 | Performance bottlenecks | Medium | Early benchmarking, async design |
 | Docker dependency | Low | Podman support, native option |
+| Namespace package tooling | Medium | Test with all major tools (pytest, mypy, ruff) before migration |
+| Cross-package breaking changes | High | Semantic versioning, CI matrix testing all packages together |
 
 ### Adoption Risks
 
@@ -358,8 +438,15 @@ Expanding functionality and community building.
 - [x] Performance optimization (TASK-023)
 - [x] Complete documentation (TASK-024)
 
-### Growth Milestone (End of Q4) 📋 PLANNED
-- [ ] Plugin ecosystem
-- [ ] Multi-tenant support
-- [ ] Advanced analytics
+### Growth Milestone (End of Q4) ✅ MOSTLY COMPLETE
+- [x] Plugin ecosystem — marketplace routes, plugin manager
+- [x] Multi-tenant support — tenancy module with schema isolation
+- [x] Advanced analytics — cost tracking, A/B testing, anomaly detection
 - [ ] Community building
+
+### Decomposition Milestone (Q3 2026) 📋 PROPOSED
+- [ ] atp-dashboard extracted as separate package
+- [ ] atp-core extracted as foundation library
+- [ ] atp-adapters extracted with entry-points
+- [ ] uv workspace configured
+- [ ] All import paths preserved
