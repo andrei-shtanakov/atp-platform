@@ -51,6 +51,7 @@ Thumbs.db
 # Generated artifacts
 art/
 SUGGESTIONS.md
+tools_list.json
 
 # Temp Office files
 ~$*
