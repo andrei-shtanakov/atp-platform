@@ -1,0 +1,52 @@
+[project]
+name = "atp-dashboard"
+version = "1.0.0"
+description = "Web dashboard and analytics for ATP Agent Test Platform"
+requires-python = ">=3.12"
+dependencies = [
+    "atp-platform>=1.0.0",
+    "fastapi>=0.128.0",
+    "uvicorn[standard]>=0.40.0",
+    "sqlalchemy>=2.0.46",
+    "aiosqlite>=0.22.1",
+    "jinja2>=3.1.6",
+    "python-multipart>=0.0.22",
+    "PyJWT>=2.0.0",
+    "bcrypt>=5.0.0",
+    "greenlet>=3.3.1",
+    "opentelemetry-instrumentation-fastapi>=0.60b1",
+]
+
+[project.optional-dependencies]
+enterprise = [
+    "authlib>=1.6.7",
+    "python3-saml>=1.16.0",
+]
+analytics = [
+    "openpyxl>=3.1.5",
+]
+postgres = [
+    "asyncpg>=0.31.0",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-anyio>=0.0.0",
+    "pytest-cov>=4.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["atp/dashboard", "atp/analytics"]
+
+[tool.uv.sources]
+atp-platform = { workspace = true }
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]

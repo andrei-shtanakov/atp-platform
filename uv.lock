@@ -7,6 +7,12 @@ resolution-markers = [
     "python_full_version < '3.13'",
 ]
 
+[manifest]
+members = [
+    "atp-dashboard",
+    "atp-platform",
+]
+
 [[package]]
 name = "aiosqlite"
 version = "0.22.1"
@@ -130,6 +136,64 @@ wheels = [
 ]
 
 [[package]]
+name = "atp-dashboard"
+version = "1.0.0"
+source = { editable = "packages/atp-dashboard" }
+dependencies = [
+    { name = "aiosqlite" },
+    { name = "atp-platform" },
+    { name = "bcrypt" },
+    { name = "fastapi" },
+    { name = "greenlet" },
+    { name = "jinja2" },
+    { name = "opentelemetry-instrumentation-fastapi" },
+    { name = "pyjwt" },
+    { name = "python-multipart" },
+    { name = "sqlalchemy" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.optional-dependencies]
+analytics = [
+    { name = "openpyxl" },
+]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-anyio" },
+    { name = "pytest-cov" },
+]
+enterprise = [
+    { name = "authlib" },
+    { name = "python3-saml" },
+]
+postgres = [
+    { name = "asyncpg" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiosqlite", specifier = ">=0.22.1" },
+    { name = "asyncpg", marker = "extra == 'postgres'", specifier = ">=0.31.0" },
+    { name = "atp-platform", editable = "." },
+    { name = "authlib", marker = "extra == 'enterprise'", specifier = ">=1.6.7" },
+    { name = "bcrypt", specifier = ">=5.0.0" },
+    { name = "fastapi", specifier = ">=0.128.0" },
+    { name = "greenlet", specifier = ">=3.3.1" },
+    { name = "jinja2", specifier = ">=3.1.6" },
+    { name = "openpyxl", marker = "extra == 'analytics'", specifier = ">=3.1.5" },
+    { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0.60b1" },
+    { name = "pyjwt", specifier = ">=2.0.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
+    { name = "pytest-anyio", marker = "extra == 'dev'", specifier = ">=0.0.0" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0" },
+    { name = "python-multipart", specifier = ">=0.0.22" },
+    { name = "python3-saml", marker = "extra == 'enterprise'", specifier = ">=1.16.0" },
+    { name = "sqlalchemy", specifier = ">=2.0.46" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.40.0" },
+]
+provides-extras = ["enterprise", "analytics", "postgres", "dev"]
+
+[[package]]
 name = "atp-platform"
 version = "1.0.0"
 source = { editable = "." }
@@ -158,28 +222,16 @@ dependencies = [
 
 [package.optional-dependencies]
 all = [
-    { name = "alembic" },
     { name = "anthropic" },
-    { name = "asyncpg" },
-    { name = "authlib" },
-    { name = "bcrypt" },
+    { name = "atp-dashboard", extra = ["analytics", "enterprise"] },
     { name = "boto3" },
-    { name = "fastapi" },
     { name = "google-cloud-aiplatform" },
     { name = "openai" },
-    { name = "openpyxl" },
-    { name = "opentelemetry-instrumentation-fastapi" },
-    { name = "opentelemetry-instrumentation-httpx" },
-    { name = "opentelemetry-instrumentation-logging" },
-    { name = "pyjwt" },
-    { name = "python-multipart" },
-    { name = "python3-saml" },
     { name = "rich" },
     { name = "textual" },
-    { name = "uvicorn", extra = ["standard"] },
 ]
 analytics = [
-    { name = "openpyxl" },
+    { name = "atp-dashboard", extra = ["analytics"] },
 ]
 azure-openai = [
     { name = "openai" },
@@ -193,16 +245,7 @@ cloud = [
     { name = "openai" },
 ]
 dashboard = [
-    { name = "alembic" },
-    { name = "asyncpg" },
-    { name = "bcrypt" },
-    { name = "fastapi" },
-    { name = "opentelemetry-instrumentation-fastapi" },
-    { name = "opentelemetry-instrumentation-httpx" },
-    { name = "opentelemetry-instrumentation-logging" },
-    { name = "pyjwt" },
-    { name = "python-multipart" },
-    { name = "uvicorn", extra = ["standard"] },
+    { name = "atp-dashboard" },
 ]
 dev = [
     { name = "pytest" },
@@ -211,8 +254,7 @@ dev = [
     { name = "ruff" },
 ]
 enterprise = [
-    { name = "authlib" },
-    { name = "python3-saml" },
+    { name = "atp-dashboard", extra = ["enterprise"] },
 ]
 llm = [
     { name = "anthropic" },
@@ -247,22 +289,20 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiosqlite", specifier = ">=0.22.1" },
-    { name = "alembic", marker = "extra == 'dashboard'", specifier = ">=1.18.0" },
     { name = "anthropic", marker = "extra == 'llm'", specifier = ">=0.76.0" },
-    { name = "asyncpg", marker = "extra == 'dashboard'", specifier = ">=0.31.0" },
+    { name = "atp-dashboard", marker = "extra == 'dashboard'", editable = "packages/atp-dashboard" },
+    { name = "atp-dashboard", extras = ["analytics"], marker = "extra == 'analytics'", editable = "packages/atp-dashboard" },
+    { name = "atp-dashboard", extras = ["enterprise"], marker = "extra == 'enterprise'", editable = "packages/atp-dashboard" },
     { name = "atp-platform", extras = ["analytics"], marker = "extra == 'all'" },
     { name = "atp-platform", extras = ["cloud"], marker = "extra == 'all'" },
     { name = "atp-platform", extras = ["dashboard"], marker = "extra == 'all'" },
     { name = "atp-platform", extras = ["enterprise"], marker = "extra == 'all'" },
     { name = "atp-platform", extras = ["llm"], marker = "extra == 'all'" },
     { name = "atp-platform", extras = ["tui"], marker = "extra == 'all'" },
-    { name = "authlib", marker = "extra == 'enterprise'", specifier = ">=1.6.7" },
-    { name = "bcrypt", marker = "extra == 'dashboard'", specifier = ">=5.0.0" },
     { name = "boto3", marker = "extra == 'bedrock'", specifier = ">=1.42.39" },
     { name = "boto3", marker = "extra == 'cloud'", specifier = ">=1.42.39" },
     { name = "click", specifier = ">=8.3.1" },
     { name = "cryptography", specifier = ">=46.0.5" },
-    { name = "fastapi", marker = "extra == 'dashboard'", specifier = ">=0.128.0" },
     { name = "google-cloud-aiplatform", marker = "extra == 'cloud'", specifier = ">=1.135.0" },
     { name = "google-cloud-aiplatform", marker = "extra == 'vertex'", specifier = ">=1.135.0" },
     { name = "greenlet", specifier = ">=3.3.1" },
@@ -271,24 +311,17 @@ requires-dist = [
     { name = "jsonschema", specifier = ">=4.26.0" },
     { name = "openai", marker = "extra == 'azure-openai'", specifier = ">=2.15.0" },
     { name = "openai", marker = "extra == 'cloud'", specifier = ">=2.15.0" },
-    { name = "openpyxl", marker = "extra == 'analytics'", specifier = ">=3.1.5" },
     { name = "opentelemetry-api", specifier = ">=1.39.1" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.39.1" },
-    { name = "opentelemetry-instrumentation-fastapi", marker = "extra == 'dashboard'", specifier = ">=0.60b1" },
-    { name = "opentelemetry-instrumentation-httpx", marker = "extra == 'dashboard'", specifier = ">=0.60b1" },
-    { name = "opentelemetry-instrumentation-logging", marker = "extra == 'dashboard'", specifier = ">=0.60b1" },
     { name = "opentelemetry-sdk", specifier = ">=1.39.1" },
     { name = "pillow", specifier = ">=12.1.1" },
     { name = "prometheus-client", specifier = ">=0.24.1" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pydantic-settings", specifier = ">=2.12.0" },
-    { name = "pyjwt", marker = "extra == 'dashboard'", specifier = ">=2.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-anyio", marker = "extra == 'dev'", specifier = ">=0.0.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
-    { name = "python-multipart", marker = "extra == 'dashboard'", specifier = ">=0.0.22" },
-    { name = "python3-saml", marker = "extra == 'enterprise'", specifier = ">=1.16.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rich", specifier = ">=13.0" },
     { name = "rich", marker = "extra == 'tui'", specifier = ">=13.0" },
@@ -297,7 +330,6 @@ requires-dist = [
     { name = "sqlalchemy", specifier = ">=2.0.46" },
     { name = "structlog", specifier = ">=25.5.0" },
     { name = "textual", marker = "extra == 'tui'", specifier = ">=0.47.0" },
-    { name = "uvicorn", extras = ["standard"], marker = "extra == 'dashboard'", specifier = ">=0.40.0" },
 ]
 provides-extras = ["dev", "tui", "cloud", "bedrock", "vertex", "azure-openai", "dashboard", "enterprise", "analytics", "llm", "all"]
 
@@ -1957,35 +1989,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/9c/e7/e7e5e50218cf488377209d85666b182fa2d4928bf52389411ceeee1b2b60/opentelemetry_instrumentation_fastapi-0.60b1.tar.gz", hash = "sha256:de608955f7ff8eecf35d056578346a5365015fd7d8623df9b1f08d1c74769c01", size = 24958, upload-time = "2025-12-11T13:36:59.35Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7d/cc/6e808328ba54662e50babdcab21138eae4250bc0fddf67d55526a615a2ca/opentelemetry_instrumentation_fastapi-0.60b1-py3-none-any.whl", hash = "sha256:af94b7a239ad1085fc3a820ecf069f67f579d7faf4c085aaa7bd9b64eafc8eaf", size = 13478, upload-time = "2025-12-11T13:36:00.811Z" },
-]
-
-[[package]]
-name = "opentelemetry-instrumentation-httpx"
-version = "0.60b1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "opentelemetry-api" },
-    { name = "opentelemetry-instrumentation" },
-    { name = "opentelemetry-semantic-conventions" },
-    { name = "opentelemetry-util-http" },
-    { name = "wrapt" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/86/08/11208bcfcab4fc2023252c3f322aa397fd9ad948355fea60f5fc98648603/opentelemetry_instrumentation_httpx-0.60b1.tar.gz", hash = "sha256:a506ebaf28c60112cbe70ad4f0338f8603f148938cb7b6794ce1051cd2b270ae", size = 20611, upload-time = "2025-12-11T13:37:01.661Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/43/59/b98e84eebf745ffc75397eaad4763795bff8a30cbf2373a50ed4e70646c5/opentelemetry_instrumentation_httpx-0.60b1-py3-none-any.whl", hash = "sha256:f37636dd742ad2af83d896ba69601ed28da51fa4e25d1ab62fde89ce413e275b", size = 15701, upload-time = "2025-12-11T13:36:04.56Z" },
-]
-
-[[package]]
-name = "opentelemetry-instrumentation-logging"
-version = "0.60b1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "opentelemetry-api" },
-    { name = "opentelemetry-instrumentation" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/60/a6/4515895b383113677fd2ad21813df5e56108a2df14ebb7916c962c9a0234/opentelemetry_instrumentation_logging-0.60b1.tar.gz", hash = "sha256:98f4b9c7aeb9314a30feee7c002c7ea9abea07c90df5f97fb058b850bc45b89a", size = 9968, upload-time = "2025-12-11T13:37:03.974Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f1/f9/8a4ce3901bc52277794e4b18c4ac43dc5929806eff01d22812364132f45f/opentelemetry_instrumentation_logging-0.60b1-py3-none-any.whl", hash = "sha256:f2e18cbc7e1dd3628c80e30d243897fdc93c5b7e0c8ae60abd2b9b6a99f82343", size = 12577, upload-time = "2025-12-11T13:36:08.123Z" },
 ]
 
 [[package]]

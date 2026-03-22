@@ -16,7 +16,7 @@ from atp.protocol import ATPEvent, ATPResponse
 from .base import EvalCheck, EvalResult, Evaluator
 
 if TYPE_CHECKING:
-    from atp.analytics.cost import CostTracker
+    from atp.cost import CostTracker
 
 logger = logging.getLogger(__name__)
 
@@ -532,13 +532,13 @@ Important:
         try:
             tracker = self._cost_tracker
             if tracker is None:
-                from atp.analytics.cost import get_cost_tracker
+                from atp.cost import get_cost_tracker
 
                 tracker = await get_cost_tracker()
 
             from datetime import datetime
 
-            from atp.analytics.cost import CostEvent
+            from atp.cost import CostEvent
 
             await tracker.track(
                 CostEvent(

@@ -936,7 +936,14 @@ async def _save_results_to_db(
     """
     from datetime import datetime
 
-    from atp.dashboard import ResultStorage, init_database
+    try:
+        from atp.dashboard import ResultStorage, init_database
+    except ImportError:
+        logger.warning(
+            "Dashboard not installed, skipping result storage. "
+            "Install with: uv add atp-dashboard"
+        )
+        return
 
     try:
         # Initialize database (creates tables if needed)
@@ -1817,8 +1824,8 @@ def dashboard_cmd(host: str | None, port: int | None, reload: bool) -> None:
         from atp.dashboard import run_server
     except ImportError:
         raise click.ClickException(
-            "Dashboard requires extra dependencies. "
-            "Install them with: uv add 'atp-platform[dashboard]'"
+            "Dashboard requires the atp-dashboard package. "
+            "Install it with: uv add atp-dashboard"
         )
 
     run_server(host=host, port=port, reload=reload)

@@ -21,7 +21,7 @@ from atp.core.telemetry import (
 from atp.protocol import ATPEvent, ATPRequest, ATPResponse
 
 if TYPE_CHECKING:
-    from atp.analytics.cost import CostTracker
+    from atp.cost import CostTracker
 
 logger = logging.getLogger(__name__)
 tracer = get_tracer(__name__)
@@ -345,11 +345,11 @@ async def track_response_cost(
 
     try:
         if cost_tracker is None:
-            from atp.analytics.cost import get_cost_tracker
+            from atp.cost import get_cost_tracker
 
             cost_tracker = await get_cost_tracker()
 
-        from atp.analytics.cost import CostEvent
+        from atp.cost import CostEvent
 
         await cost_tracker.track(
             CostEvent(

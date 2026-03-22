@@ -27,7 +27,7 @@ from atp.protocol import ATPEvent, ATPResponse
 from .base import EvalCheck, EvalResult, Evaluator
 
 if TYPE_CHECKING:
-    from atp.analytics.cost import CostTracker
+    from atp.cost import CostTracker
 
 logger = logging.getLogger(__name__)
 

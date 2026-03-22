@@ -122,8 +122,8 @@ def estimate_command(
     console = Console()
 
     try:
-        from atp.analytics.cost import PricingConfig
         from atp.analytics.estimator import CostEstimator
+        from atp.cost import PricingConfig
         from atp.loader import TestLoader
 
         # Load pricing config
