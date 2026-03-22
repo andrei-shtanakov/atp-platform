@@ -182,12 +182,14 @@ ignore-missing-imports = [
 ]
 
 [tool.uv.workspace]
-members = ["packages/*"]
+members = ["packages/*", "game-environments", "atp-games"]
 
 [tool.uv.sources]
 atp-core = { workspace = true }
 atp-adapters = { workspace = true }
 atp-dashboard = { workspace = true }
+atp-games = { workspace = true }
+game-environments = { workspace = true }
 
 [dependency-groups]
 dev = [
@@ -210,4 +212,6 @@ dev = [
     "fastapi>=0.128.0",
     "openai>=2.15.0",
     "anthropic>=0.76.0",
+    "atp-games",
+    "game-environments",
 ]

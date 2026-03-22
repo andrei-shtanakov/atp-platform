@@ -1,0 +1,37 @@
+# Prisoner's Dilemma: GPT-4o-mini vs AlwaysDefect
+#
+# Проверяем: научится ли LLM предавать в ответ на предательство?
+#
+# Запуск:
+#   1. Запустите агента: uv run python -m uvicorn demo-game.agents.openai_game_agent:app --port 8010
+#   2. Запустите тест:   uv run atp game run demo-game/suites/pd_llm_vs_defect.yaml --episodes=5
+
+type: game_suite
+name: "PD: GPT-4o-mini vs AlwaysDefect"
+version: "1.0"
+
+game:
+  type: prisoners_dilemma
+  variant: repeated
+  config:
+    num_rounds: 20
+    noise: 0.0
+    discount_factor: 1.0
+
+agents:
+  - name: gpt4o-mini
+    adapter: http
+    endpoint: http://localhost:8010
+    config:
+      timeout: 30
+      allow_internal: true
+
+  - name: always_defect
+    adapter: builtin
+    strategy: always_defect
+
+evaluation:
+  episodes: 5
+  metrics:
+    - type: average_payoff
+      weight: 1.0

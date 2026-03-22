@@ -37,8 +37,8 @@ project-includes = [
 ]
 
 [tool.uv.sources]
-atp-platform = { path = ".." }
-game-environments = { path = "../game-environments" }
+atp-platform = { workspace = true }
+game-environments = { workspace = true }
 
 [dependency-groups]
 dev = [
