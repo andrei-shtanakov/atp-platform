@@ -253,16 +253,39 @@ class GameSuiteLoader:
     ) -> dict[str, AgentAdapter]:
         """Resolve agent adapters from suite config.
 
+        Returns dict mapping player_id (player_0, player_1, ...) to
+        adapter instance. Agent names are stored as adapter attributes
+        for display purposes.
+
         Args:
             suite: Parsed game suite configuration.
 
         Returns:
-            Dict mapping agent name to adapter instance.
+            Dict mapping player_id to adapter instance.
         """
         agents: dict[str, AgentAdapter] = {}
-        for agent_cfg in suite.agents:
-            agents[agent_cfg.name] = _create_agent_adapter(agent_cfg)
+        for i, agent_cfg in enumerate(suite.agents):
+            pid = f"player_{i}"
+            adapter = _create_agent_adapter(agent_cfg)
+            adapter._agent_name = agent_cfg.name  # type: ignore[attr-defined]
+            agents[pid] = adapter
         return agents
+
+    def resolve_agent_names(
+        self,
+        suite: GameSuiteConfig,
+    ) -> dict[str, str]:
+        """Get mapping of player_id to agent name.
+
+        Args:
+            suite: Parsed game suite configuration.
+
+        Returns:
+            Dict mapping player_id to human-readable agent name.
+        """
+        return {
+            f"player_{i}": agent_cfg.name for i, agent_cfg in enumerate(suite.agents)
+        }
 
     def resolve_run_config(
         self,

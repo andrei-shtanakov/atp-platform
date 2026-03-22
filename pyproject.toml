@@ -206,4 +206,8 @@ dev = [
     "spec-runner>=0.1.4",
     "textual>=7.5.0",
     "alembic>=1.18.4",
+    "uvicorn>=0.40.0",
+    "fastapi>=0.128.0",
+    "openai>=2.15.0",
+    "anthropic>=0.76.0",
 ]

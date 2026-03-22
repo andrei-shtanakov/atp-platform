@@ -619,7 +619,7 @@ class TestResolution:
         assert "Prisoner's Dilemma" in game.name
 
     def test_resolve_agents(self) -> None:
-        """resolve_agents creates BuiltinAdapter instances."""
+        """resolve_agents creates BuiltinAdapter instances keyed by player_id."""
         from atp_games.runner.builtin_adapter import BuiltinAdapter
 
         loader = GameSuiteLoader()
@@ -627,10 +627,18 @@ class TestResolution:
         agents = loader.resolve_agents(suite)
 
         assert len(agents) == 2
-        assert "agent_a" in agents
-        assert "agent_b" in agents
-        assert isinstance(agents["agent_a"], BuiltinAdapter)
-        assert isinstance(agents["agent_b"], BuiltinAdapter)
+        assert "player_0" in agents
+        assert "player_1" in agents
+        assert isinstance(agents["player_0"], BuiltinAdapter)
+        assert isinstance(agents["player_1"], BuiltinAdapter)
+
+    def test_resolve_agent_names(self) -> None:
+        """resolve_agent_names maps player_id to agent name."""
+        loader = GameSuiteLoader()
+        suite = loader.load_string(MINIMAL_SUITE_YAML)
+        names = loader.resolve_agent_names(suite)
+
+        assert names == {"player_0": "agent_a", "player_1": "agent_b"}
 
     def test_resolve_run_config(self) -> None:
         """resolve_run_config creates GameRunConfig from evaluation."""

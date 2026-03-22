@@ -7,7 +7,6 @@ game:
   variant: one_shot
   config:
     auction_type: first_price
-    num_items: 1
     min_bid: 0.0
     max_bid: 100.0
 
