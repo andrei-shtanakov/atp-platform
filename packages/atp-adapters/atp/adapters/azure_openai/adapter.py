@@ -7,12 +7,6 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import Any, NoReturn
 
-from atp.adapters.base import AgentAdapter
-from atp.adapters.exceptions import (
-    AdapterConnectionError,
-    AdapterError,
-    AdapterTimeoutError,
-)
 from atp.protocol import (
     ArtifactStructured,
     ATPEvent,
@@ -21,6 +15,13 @@ from atp.protocol import (
     EventType,
     Metrics,
     ResponseStatus,
+)
+
+from atp.adapters.base import AgentAdapter
+from atp.adapters.exceptions import (
+    AdapterConnectionError,
+    AdapterError,
+    AdapterTimeoutError,
 )
 
 from .auth import get_openai_client

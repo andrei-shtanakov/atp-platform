@@ -5,8 +5,6 @@ import time
 from collections.abc import AsyncIterator
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
-
 from atp.protocol import (
     ArtifactStructured,
     ATPEvent,
@@ -16,6 +14,7 @@ from atp.protocol import (
     Metrics,
     ResponseStatus,
 )
+from pydantic import BaseModel, Field, field_validator
 
 from ..base import AdapterConfig, AgentAdapter
 from ..exceptions import (

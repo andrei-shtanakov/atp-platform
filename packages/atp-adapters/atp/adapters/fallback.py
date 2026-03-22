@@ -3,9 +3,10 @@
 import logging
 from collections.abc import AsyncIterator
 
+from atp.protocol import ATPEvent, ATPRequest, ATPResponse
+
 from atp.adapters.base import AdapterConfig, AgentAdapter
 from atp.adapters.exceptions import AdapterError
-from atp.protocol import ATPEvent, ATPRequest, ATPResponse
 
 logger = logging.getLogger(__name__)
 

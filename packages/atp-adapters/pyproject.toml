@@ -1,0 +1,51 @@
+[project]
+name = "atp-adapters"
+version = "1.0.0"
+description = "Agent adapters for ATP Agent Test Platform"
+requires-python = ">=3.12"
+dependencies = [
+    "atp-core>=1.0.0",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+bedrock = ["boto3>=1.42.39"]
+vertex = ["google-cloud-aiplatform>=1.135.0"]
+azure-openai = ["openai>=2.15.0"]
+cloud = [
+    "atp-adapters[bedrock,vertex,azure-openai]",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-anyio>=0.0.0",
+    "pytest-cov>=4.0",
+]
+
+[project.entry-points."atp.adapters"]
+http = "atp.adapters.http:HTTPAdapter"
+cli = "atp.adapters.cli:CLIAdapter"
+container = "atp.adapters.container:ContainerAdapter"
+langgraph = "atp.adapters.langgraph:LangGraphAdapter"
+crewai = "atp.adapters.crewai:CrewAIAdapter"
+autogen = "atp.adapters.autogen:AutoGenAdapter"
+bedrock = "atp.adapters.bedrock.adapter:BedrockAdapter"
+vertex = "atp.adapters.vertex.adapter:VertexAdapter"
+azure_openai = "atp.adapters.azure_openai.adapter:AzureOpenAIAdapter"
+mcp = "atp.adapters.mcp.adapter:MCPAdapter"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["atp/adapters"]
+
+[tool.uv.sources]
+atp-core = { workspace = true }
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]

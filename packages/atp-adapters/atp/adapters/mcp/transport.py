@@ -9,13 +9,13 @@ from enum import StrEnum
 from typing import Any
 
 import httpx
+from atp.core.security import filter_environment_variables
 from pydantic import BaseModel, Field, field_validator
 
 from atp.adapters.exceptions import (
     AdapterConnectionError,
     AdapterTimeoutError,
 )
-from atp.core.security import filter_environment_variables
 
 
 class TransportState(StrEnum):

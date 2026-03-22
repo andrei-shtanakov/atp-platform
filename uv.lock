@@ -9,6 +9,7 @@ resolution-markers = [
 
 [manifest]
 members = [
+    "atp-adapters",
     "atp-core",
     "atp-dashboard",
     "atp-platform",
@@ -137,6 +138,50 @@ wheels = [
 ]
 
 [[package]]
+name = "atp-adapters"
+version = "1.0.0"
+source = { editable = "packages/atp-adapters" }
+dependencies = [
+    { name = "atp-core" },
+    { name = "httpx" },
+]
+
+[package.optional-dependencies]
+azure-openai = [
+    { name = "openai" },
+]
+bedrock = [
+    { name = "boto3" },
+]
+cloud = [
+    { name = "boto3" },
+    { name = "google-cloud-aiplatform" },
+    { name = "openai" },
+]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-anyio" },
+    { name = "pytest-cov" },
+]
+vertex = [
+    { name = "google-cloud-aiplatform" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "atp-adapters", extras = ["bedrock", "vertex", "azure-openai"], marker = "extra == 'cloud'", editable = "packages/atp-adapters" },
+    { name = "atp-core", editable = "packages/atp-core" },
+    { name = "boto3", marker = "extra == 'bedrock'", specifier = ">=1.42.39" },
+    { name = "google-cloud-aiplatform", marker = "extra == 'vertex'", specifier = ">=1.135.0" },
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "openai", marker = "extra == 'azure-openai'", specifier = ">=2.15.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
+    { name = "pytest-anyio", marker = "extra == 'dev'", specifier = ">=0.0.0" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0" },
+]
+provides-extras = ["bedrock", "vertex", "azure-openai", "cloud", "dev"]
+
+[[package]]
 name = "atp-core"
 version = "1.0.0"
 source = { editable = "packages/atp-core" }
@@ -244,6 +289,7 @@ version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },
+    { name = "atp-adapters" },
     { name = "atp-core" },
     { name = "click" },
     { name = "greenlet" },
@@ -258,10 +304,8 @@ dependencies = [
 [package.optional-dependencies]
 all = [
     { name = "anthropic" },
+    { name = "atp-adapters", extra = ["cloud"] },
     { name = "atp-dashboard", extra = ["analytics", "enterprise"] },
-    { name = "boto3" },
-    { name = "google-cloud-aiplatform" },
-    { name = "openai" },
     { name = "rich" },
     { name = "textual" },
 ]
@@ -269,15 +313,13 @@ analytics = [
     { name = "atp-dashboard", extra = ["analytics"] },
 ]
 azure-openai = [
-    { name = "openai" },
+    { name = "atp-adapters", extra = ["azure-openai"] },
 ]
 bedrock = [
-    { name = "boto3" },
+    { name = "atp-adapters", extra = ["bedrock"] },
 ]
 cloud = [
-    { name = "boto3" },
-    { name = "google-cloud-aiplatform" },
-    { name = "openai" },
+    { name = "atp-adapters", extra = ["cloud"] },
 ]
 dashboard = [
     { name = "atp-dashboard" },
@@ -299,7 +341,7 @@ tui = [
     { name = "textual" },
 ]
 vertex = [
-    { name = "google-cloud-aiplatform" },
+    { name = "atp-adapters", extra = ["vertex"] },
 ]
 
 [package.dev-dependencies]
@@ -325,6 +367,11 @@ dev = [
 requires-dist = [
     { name = "aiosqlite", specifier = ">=0.22.1" },
     { name = "anthropic", marker = "extra == 'llm'", specifier = ">=0.76.0" },
+    { name = "atp-adapters", editable = "packages/atp-adapters" },
+    { name = "atp-adapters", extras = ["azure-openai"], marker = "extra == 'azure-openai'", editable = "packages/atp-adapters" },
+    { name = "atp-adapters", extras = ["bedrock"], marker = "extra == 'bedrock'", editable = "packages/atp-adapters" },
+    { name = "atp-adapters", extras = ["cloud"], marker = "extra == 'cloud'", editable = "packages/atp-adapters" },
+    { name = "atp-adapters", extras = ["vertex"], marker = "extra == 'vertex'", editable = "packages/atp-adapters" },
     { name = "atp-core", editable = "packages/atp-core" },
     { name = "atp-dashboard", marker = "extra == 'dashboard'", editable = "packages/atp-dashboard" },
     { name = "atp-dashboard", extras = ["analytics"], marker = "extra == 'analytics'", editable = "packages/atp-dashboard" },
@@ -335,16 +382,10 @@ requires-dist = [
     { name = "atp-platform", extras = ["enterprise"], marker = "extra == 'all'" },
     { name = "atp-platform", extras = ["llm"], marker = "extra == 'all'" },
     { name = "atp-platform", extras = ["tui"], marker = "extra == 'all'" },
-    { name = "boto3", marker = "extra == 'bedrock'", specifier = ">=1.42.39" },
-    { name = "boto3", marker = "extra == 'cloud'", specifier = ">=1.42.39" },
     { name = "click", specifier = ">=8.3.1" },
-    { name = "google-cloud-aiplatform", marker = "extra == 'cloud'", specifier = ">=1.135.0" },
-    { name = "google-cloud-aiplatform", marker = "extra == 'vertex'", specifier = ">=1.135.0" },
     { name = "greenlet", specifier = ">=3.3.1" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "jinja2", specifier = ">=3.1.6" },
-    { name = "openai", marker = "extra == 'azure-openai'", specifier = ">=2.15.0" },
-    { name = "openai", marker = "extra == 'cloud'", specifier = ">=2.15.0" },
     { name = "pillow", specifier = ">=12.1.1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-anyio", marker = "extra == 'dev'", specifier = ">=0.0.0" },

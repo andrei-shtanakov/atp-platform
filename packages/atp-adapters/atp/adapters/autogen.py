@@ -7,8 +7,6 @@ from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Any
 
-from pydantic import Field
-
 from atp.protocol import (
     ATPEvent,
     ATPRequest,
@@ -17,6 +15,7 @@ from atp.protocol import (
     Metrics,
     ResponseStatus,
 )
+from pydantic import Field
 
 from .base import AdapterConfig, AgentAdapter
 from .exceptions import (

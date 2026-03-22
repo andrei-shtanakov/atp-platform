@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "atp-core>=1.0.0",
+    "atp-adapters>=1.0.0",
     "httpx>=0.27",
     "click>=8.3.1",
     "jinja2>=3.1.6",
@@ -20,19 +21,8 @@ dependencies = [
 [project.scripts]
 atp = "atp.cli.main:main"
 
-# Plugin entry points for adapters, evaluators, and reporters
-[project.entry-points."atp.adapters"]
-http = "atp.adapters.http:HTTPAdapter"
-cli = "atp.adapters.cli:CLIAdapter"
-container = "atp.adapters.container:ContainerAdapter"
-langgraph = "atp.adapters.langgraph:LangGraphAdapter"
-crewai = "atp.adapters.crewai:CrewAIAdapter"
-autogen = "atp.adapters.autogen:AutoGenAdapter"
-bedrock = "atp.adapters.bedrock.adapter:BedrockAdapter"
-vertex = "atp.adapters.vertex.adapter:VertexAdapter"
-azure_openai = "atp.adapters.azure_openai.adapter:AzureOpenAIAdapter"
-mcp = "atp.adapters.mcp.adapter:MCPAdapter"
-
+# Plugin entry points for evaluators and reporters
+# Adapter entry-points are in packages/atp-adapters/pyproject.toml
 [project.entry-points."atp.evaluators"]
 artifact = "atp.evaluators.artifact:ArtifactEvaluator"
 behavior = "atp.evaluators.behavior:BehaviorEvaluator"
@@ -64,18 +54,16 @@ tui = [
     "textual>=0.47.0",
 ]
 cloud = [
-    "boto3>=1.42.39",
-    "google-cloud-aiplatform>=1.135.0",
-    "openai>=2.15.0",
+    "atp-adapters[cloud]",
 ]
 bedrock = [
-    "boto3>=1.42.39",
+    "atp-adapters[bedrock]",
 ]
 vertex = [
-    "google-cloud-aiplatform>=1.135.0",
+    "atp-adapters[vertex]",
 ]
 azure-openai = [
-    "openai>=2.15.0",
+    "atp-adapters[azure-openai]",
 ]
 dashboard = [
     "atp-dashboard>=1.0.0",
@@ -198,6 +186,7 @@ members = ["packages/*"]
 
 [tool.uv.sources]
 atp-core = { workspace = true }
+atp-adapters = { workspace = true }
 atp-dashboard = { workspace = true }
 
 [dependency-groups]

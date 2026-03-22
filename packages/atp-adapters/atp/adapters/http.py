@@ -5,8 +5,6 @@ from collections.abc import AsyncIterator
 from datetime import datetime
 
 import httpx
-from pydantic import Field, field_validator
-
 from atp.core.security import validate_url, validate_url_with_dns
 from atp.protocol import (
     ATPEvent,
@@ -14,6 +12,7 @@ from atp.protocol import (
     ATPResponse,
     EventType,
 )
+from pydantic import Field, field_validator
 
 from .base import AdapterConfig, AgentAdapter
 from .exceptions import (

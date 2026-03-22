@@ -9,8 +9,6 @@ from collections.abc import AsyncIterator
 from datetime import datetime
 from pathlib import Path
 
-from pydantic import Field
-
 from atp.core.security import (
     filter_environment_variables,
     sanitize_error_message,
@@ -21,6 +19,7 @@ from atp.protocol import (
     ATPResponse,
     EventType,
 )
+from pydantic import Field
 
 from .base import AdapterConfig, AgentAdapter
 from .exceptions import (

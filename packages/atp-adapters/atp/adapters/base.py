@@ -8,9 +8,6 @@ from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from opentelemetry.trace import SpanKind, Status, StatusCode
-from pydantic import BaseModel, Field
-
 from atp.core.metrics import get_metrics, record_llm_call
 from atp.core.telemetry import (
     add_span_event,
@@ -19,6 +16,8 @@ from atp.core.telemetry import (
     set_span_attribute,
 )
 from atp.protocol import ATPEvent, ATPRequest, ATPResponse
+from opentelemetry.trace import SpanKind, Status, StatusCode
+from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
     from atp.cost import CostTracker

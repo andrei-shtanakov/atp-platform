@@ -6,12 +6,6 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
-from atp.adapters.base import AgentAdapter
-from atp.adapters.exceptions import (
-    AdapterConnectionError,
-    AdapterError,
-    AdapterTimeoutError,
-)
 from atp.protocol import (
     ArtifactStructured,
     ATPEvent,
@@ -20,6 +14,13 @@ from atp.protocol import (
     EventType,
     Metrics,
     ResponseStatus,
+)
+
+from atp.adapters.base import AgentAdapter
+from atp.adapters.exceptions import (
+    AdapterConnectionError,
+    AdapterError,
+    AdapterTimeoutError,
 )
 
 from .auth import create_boto3_client
