@@ -83,67 +83,47 @@ Test Definition (YAML) → Loader → Runner → Adapter → Agent → Response 
 - **ATPResponse**: status, artifacts, metrics (tokens, steps, cost)
 - **ATPEvent**: streaming events (tool_call, llm_request, reasoning, error)
 
-## Project Structure
+## Project Structure (Monorepo)
+
+The project uses implicit namespace packages (PEP 420) with uv workspaces. Core modules live in `packages/` with symlinks in `atp/` for import compatibility.
 
 ```
-atp/
+packages/                    # Extracted packages (uv workspace members)
+├── atp-core/                # Protocol, core, loader, chaos, cost, scoring, statistics, streaming
+├── atp-adapters/            # All agent adapters (HTTP, CLI, Container, cloud, MCP)
+└── atp-dashboard/           # Web dashboard + analytics
+
+atp/                         # Namespace package (symlinks to packages/ + local modules)
 ├── cli/           # CLI entry point (atp test, validate, baseline, dashboard, etc.)
-├── core/          # Config, exceptions, security utilities
-├── protocol/      # ATP Request/Response/Event models
-├── loader/        # YAML/JSON test parsing, filtering
 ├── runner/        # Test orchestration, sandbox, progress
-├── adapters/      # Agent adapters (HTTP, Container, CLI, LangGraph, CrewAI, AutoGen, MCP, Bedrock, Vertex, Azure OpenAI)
-├── evaluators/    # Result evaluation (artifact, behavior, LLM-judge, code-exec, security, factuality, filesystem, style, performance)
-├── scoring/       # Score aggregation
-├── statistics/    # Statistical analysis (mean, CI, stability)
-├── baseline/      # Baseline storage, regression detection (Welch's t-test)
+├── evaluators/    # Result evaluation (artifact, behavior, LLM-judge, code-exec, security, etc.)
 ├── reporters/     # Output formatting (console, JSON, HTML, JUnit, game)
-├── streaming/     # Event streaming, buffering, validation
+├── baseline/      # Baseline storage, regression detection (Welch's t-test)
 ├── mock_tools/    # Mock tool server for deterministic testing
 ├── performance/   # Profiling, caching, memory tracking
-├── dashboard/     # Web interface (FastAPI, SQLAlchemy)
-├── analytics/     # Cost tracking and analytics
 ├── benchmarks/    # Benchmark suites
-├── chaos/         # Chaos testing
 ├── generator/     # Test suite generation
 ├── plugins/       # Plugin ecosystem management
 ├── sdk/           # Python SDK for programmatic test execution
 ├── tracing/       # Agent replay and trace management
-└── tui/           # Terminal user interface (optional, requires [tui] extra)
+├── tui/           # Terminal user interface (optional, requires [tui] extra)
+├── protocol/ → packages/atp-core/     # (symlink)
+├── core/     → packages/atp-core/     # (symlink)
+├── loader/   → packages/atp-core/     # (symlink)
+├── cost/     → packages/atp-core/     # (symlink)
+├── adapters/ → packages/atp-adapters/ # (symlink)
+├── dashboard/→ packages/atp-dashboard/# (symlink)
+└── analytics/→ packages/atp-dashboard/# (symlink)
+
+game-environments/           # Standalone game theory library (5 games, 19 strategies)
+atp-games/                   # ATP plugin for game-theoretic evaluation
+demo/                        # Demo agents (code writer) for functional testing
+demo-game/                   # LLM game agents (GPT-4o-mini plays Prisoner's Dilemma)
 
 spec/              # Task specifications and requirements
-├── tasks.md       # Phase 4 task definitions with dependencies
-├── phase5-tasks.md # Phase 5 game-theoretic evaluation tasks
-├── requirements.md
-├── phase5-requirements.md
-├── design.md
-├── phase5-design.md
-└── WORKFLOW.md    # Development workflow guide
-
-docs/              # Architecture documentation
-├── 01-07*.md      # Vision, requirements, architecture, protocol, evaluators, integration, roadmap
-├── adr/           # Architecture Decision Records
-├── guides/        # Practical tutorials (quickstart, installation, usage, etc.)
-└── reference/     # API reference, configuration, test format
-
-tests/             # Test suite
-├── unit/          # Unit tests (~70%)
-├── integration/   # Integration tests (~20%)
-├── contract/      # Protocol contract tests
-├── e2e/           # End-to-end tests (~10%)
-└── fixtures/      # Test fixtures and sample data
-    └── test_site/ # Test e-commerce site for web search agents (port 9876)
-
-examples/
-├── test_suites/   # Sample test suite YAML files
-├── games/         # Game-theoretic evaluation examples
-├── search_agent/  # Web search agent for testing (no API keys required)
-├── ci/            # CI/CD templates (GitHub, GitLab, Jenkins, Azure, CircleCI)
-├── docker/        # Docker deployment examples
-├── demo_agent.py  # File operations agent (no API keys required)
-├── openai_agent.py # OpenAI-powered agent with tool calling
-├── mcp_agent.py   # MCP-capable agent with OpenAI
-└── mcp_simple_agent.py # Simple MCP agent without LLM
+docs/              # Architecture documentation, guides, API reference
+tests/             # Test suite (unit, integration, contract, e2e)
+examples/          # Sample test suites, CI templates, example agents
 ```
 
 ## Code Style

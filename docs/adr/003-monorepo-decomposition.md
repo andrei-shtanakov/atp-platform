@@ -1,6 +1,6 @@
 # ADR-003: Monorepo Decomposition into Namespace Packages
 
-**Status**: Proposed
+**Status**: Implemented
 **Date**: 2026-03-22
 **Context**: ATP Platform has grown to ~95K lines across 24 subpackages. The dashboard alone is 27K lines (29%). Tight coupling between subsystems makes independent development, testing, and deployment difficult.
 

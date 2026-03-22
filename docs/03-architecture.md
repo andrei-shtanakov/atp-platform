@@ -1089,17 +1089,17 @@ secrets:
 
 ---
 
-## Future: Package Decomposition
+## Package Decomposition
 
-> See [ADR-003](adr/003-monorepo-decomposition.md) for the full architecture decision.
+> See [ADR-003](adr/003-monorepo-decomposition.md) for the architecture decision.
 
-The platform is planned for decomposition into 4 independent packages within a monorepo using Python implicit namespace packages and uv workspaces:
+The platform is decomposed into 4 packages within a monorepo using Python implicit namespace packages (PEP 420) and uv workspaces. Symlinks in `atp/` provide backward-compatible imports.
 
-| Package | Contents | Dependencies |
-|---------|----------|-------------|
-| **atp-core** | protocol, core, loader, chaos, cost, scoring, statistics, streaming | pydantic, structlog, opentelemetry |
-| **atp-adapters** | All agent adapters (HTTP, CLI, Container, cloud, MCP) | atp-core, httpx |
-| **atp-platform** | runner, evaluators, reporters, cli, sdk, mock_tools, ... | atp-core, atp-adapters |
-| **atp-dashboard** | Web dashboard, analytics | atp-core, atp-platform, FastAPI, SQLAlchemy |
+| Package | Location | Contents | Dependencies |
+|---------|----------|----------|-------------|
+| **atp-core** | `packages/atp-core/` | protocol, core, loader, chaos, cost, scoring, statistics, streaming | pydantic, structlog, opentelemetry |
+| **atp-adapters** | `packages/atp-adapters/` | All agent adapters (HTTP, CLI, Container, cloud, MCP) | atp-core, httpx |
+| **atp-platform** | root `pyproject.toml` | runner, evaluators, reporters, cli, sdk, mock_tools, ... | atp-core, atp-adapters |
+| **atp-dashboard** | `packages/atp-dashboard/` | Web dashboard, analytics | atp-core, atp-platform, FastAPI, SQLAlchemy |
 
-All existing `from atp.X import Y` imports will continue working unchanged via shared namespace.
+All existing `from atp.X import Y` imports continue working unchanged via shared namespace and symlinks.

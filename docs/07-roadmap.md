@@ -15,14 +15,14 @@ This document describes the development plan for Agent Test Platform (ATP). The 
 ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐
 │Phase 1 │ │Phase 2 │ │Phase 3 │ │Phase 4 │ │Phase 5 │ │Phase 6 │ │Phase 7 │
 │  MVP   │ │  Beta  │ │   GA   │ │ Growth │ │ Games  │ │ Polish │ │Decomp. │
-│   ✅   │ │   ✅   │ │   ✅   │ │   ✅   │ │   ✅   │ │   🔄   │ │   📋   │
+│   ✅   │ │   ✅   │ │   ✅   │ │   ✅   │ │   ✅   │ │   🔄   │ │   ✅   │
 │Core    │ │Adapters│ │Dashbrd │ │Ecosystm│ │GameEval│ │SDK,CI  │ │Packages│
 │Protocol│ │CI/CD   │ │Securty │ │Entrpris│ │Tournmt │ │TechDebt│ │Monorepo│
 └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘
-  DONE       DONE       DONE      ~DONE       DONE     IN PROGRESS PROPOSED
+  DONE       DONE       DONE      ~DONE       DONE     IN PROGRESS   DONE
 ```
 
-**Current Status**: Phases 1-5 complete. Phase 6 (Polish & SDK) in progress. Phase 7 (Decomposition) proposed.
+**Current Status**: Phases 1-5, 7 complete. Phase 6 (Polish & SDK) in progress.
 
 ---
 
@@ -258,7 +258,7 @@ Key milestones:
 
 ---
 
-## Phase 7: Monorepo Decomposition (Q2-Q3 2026) 📋 PROPOSED
+## Phase 7: Monorepo Decomposition (Q1 2026) ✅ COMPLETE
 
 > See [ADR-003](adr/003-monorepo-decomposition.md) for the architecture decision.
 
@@ -281,39 +281,33 @@ atp-core (protocol, core, loader, chaos, cost, scoring, statistics, streaming)
 
 ### Deliverables
 
-#### 7.1 Extract atp-dashboard (Weeks 1-3)
-- [ ] Split `atp.analytics.cost` into standalone `atp.cost` module
-- [ ] Move `atp/dashboard/` and `atp/analytics/` to `packages/atp-dashboard/`
-- [ ] Create `packages/atp-dashboard/pyproject.toml`
-- [ ] Update CLI lazy imports with helpful error messages
-- [ ] Move dashboard/analytics tests to package
-- [ ] Implement CostPersistenceBackend bridge
+#### 7.1 Extract atp-dashboard (Weeks 1-3) ✅
+- [x] Split `atp.analytics.cost` into standalone `atp.cost` module
+- [x] Move `atp/dashboard/` and `atp/analytics/` to `packages/atp-dashboard/`
+- [x] Create `packages/atp-dashboard/pyproject.toml`
+- [x] Update CLI lazy imports with helpful error messages
+- [x] Move dashboard/analytics tests to package
+- [x] Implement CostPersistenceBackend bridge
 
-**Prerequisites**: TASK-1303 (complete v2 migration, remove v1 monolith)
+#### 7.2 Extract atp-core (Weeks 4-6) ✅
+- [x] Remove `atp/__init__.py`, migrate `__version__` to `importlib.metadata`
+- [x] Move protocol, core, loader, chaos, cost, scoring, statistics, streaming to `packages/atp-core/`
+- [x] Create `packages/atp-core/pyproject.toml`
+- [x] Update main pyproject.toml dependencies
+- [x] Configure uv workspace
 
-#### 7.2 Extract atp-core (Weeks 4-6)
-- [ ] Remove `atp/__init__.py`, migrate `__version__` to `importlib.metadata`
-- [ ] Move protocol, core, loader, chaos, cost, scoring, statistics, streaming to `packages/atp-core/`
-- [ ] Create `packages/atp-core/pyproject.toml`
-- [ ] Update main pyproject.toml dependencies
-- [ ] Move unit tests to package
-- [ ] Configure uv workspace
+#### 7.3 Extract atp-adapters (Weeks 7-8) ✅
+- [x] Move `atp/adapters/` to `packages/atp-adapters/`
+- [x] Migrate entry-points to new pyproject.toml
+- [x] Create optional extras for cloud adapters (bedrock, vertex, azure-openai)
+- [x] Verify plugin discovery via entry-points across packages
 
-#### 7.3 Extract atp-adapters (Weeks 7-8)
-- [ ] Move `atp/adapters/` to `packages/atp-adapters/`
-- [ ] Migrate entry-points to new pyproject.toml
-- [ ] Create optional extras for cloud adapters (bedrock, vertex, azure-openai)
-- [ ] Move adapter tests to package
-- [ ] Verify plugin discovery via entry-points across packages
-
-**Prerequisites**: TASK-1306 (lazy adapter loading), TASK-1308 (split large adapter files)
-
-### Exit Criteria
-- [ ] All existing `from atp.X import Y` imports work unchanged
-- [ ] Each package has independent test suite that passes
-- [ ] CLI pipeline works end-to-end (`atp test`, `atp dashboard`)
-- [ ] uv workspace configured for local development
-- [ ] Entry-point plugin discovery works across packages
+### Exit Criteria ✅
+- [x] All existing `from atp.X import Y` imports work unchanged
+- [x] Each package has independent test suite that passes
+- [x] CLI pipeline works end-to-end (`atp test`, `atp dashboard`)
+- [x] uv workspace configured for local development
+- [x] Entry-point plugin discovery works across packages
 
 ---
 
@@ -444,9 +438,9 @@ atp-core (protocol, core, loader, chaos, cost, scoring, statistics, streaming)
 - [x] Advanced analytics — cost tracking, A/B testing, anomaly detection
 - [ ] Community building
 
-### Decomposition Milestone (Q3 2026) 📋 PROPOSED
-- [ ] atp-dashboard extracted as separate package
-- [ ] atp-core extracted as foundation library
-- [ ] atp-adapters extracted with entry-points
-- [ ] uv workspace configured
-- [ ] All import paths preserved
+### Decomposition Milestone (Q1 2026) ✅ COMPLETE
+- [x] atp-dashboard extracted as separate package
+- [x] atp-core extracted as foundation library
+- [x] atp-adapters extracted with entry-points
+- [x] uv workspace configured
+- [x] All import paths preserved via symlinks + namespace packages
