@@ -8,8 +8,8 @@ Contributions are welcome. This guide covers everything you need to get started.
 git clone https://github.com/yourusername/atp-platform.git
 cd atp-platform
 
-# Install all dependencies (including dev extras)
-uv sync --all-extras
+# Install all dependencies (including dev tools)
+uv sync --group dev
 
 # Verify the setup
 uv run pytest tests/ -v -m "not slow"
@@ -21,7 +21,7 @@ uv run pytest tests/ -v -m "not slow"
 uv run ruff format .       # format code
 uv run ruff check .        # lint
 uv run ruff check . --fix  # auto-fix lint issues
-pyrefly check              # type checking (run after every change)
+uv run pyrefly check       # type checking (run after every change)
 ```
 
 ## What to Contribute
@@ -65,7 +65,7 @@ See `game-environments/game_envs/games/prisoners_dilemma.py` as a reference.
 - **Line length**: 88 characters (enforced by ruff)
 - **Formatter**: ruff (`uv run ruff format .`)
 - **Linter**: ruff (`uv run ruff check .`)
-- **Type checker**: pyrefly (`pyrefly check`) — fix all errors before submitting
+- **Type checker**: pyrefly (`uv run pyrefly check`) — fix all errors before submitting
 - **Test coverage**: 80% minimum for new code
 - **Async testing**: use `anyio`, not `asyncio` directly
 - **Data models**: use Pydantic
@@ -80,7 +80,7 @@ See `game-environments/game_envs/games/prisoners_dilemma.py` as a reference.
    ```bash
    uv run ruff format .
    uv run ruff check .
-   pyrefly check
+   uv run pyrefly check
    uv run pytest tests/ -v -m "not slow"
    ```
 4. Open a pull request against `main` with a clear description of what and why

@@ -46,7 +46,7 @@ coverage:  ## Coverage report
 
 lint:  ## Check code (ruff + pyrefly)
 	uv run ruff check .
-	pyrefly check
+	uv run pyrefly check
 
 format:  ## Format code
 	uv run ruff format .

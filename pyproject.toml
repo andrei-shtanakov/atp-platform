@@ -96,12 +96,13 @@ llm = [
     "anthropic>=0.76.0",
 ]
 all = [
-    "atp-platform[cloud]",
-    "atp-platform[dashboard]",
-    "atp-platform[enterprise]",
-    "atp-platform[analytics]",
-    "atp-platform[llm]",
-    "atp-platform[tui]",
+    "atp-adapters[cloud]",
+    "atp-dashboard>=1.0.0",
+    "atp-dashboard[enterprise]",
+    "atp-dashboard[analytics]",
+    "anthropic>=0.76.0",
+    "rich>=13.0",
+    "textual>=0.47.0",
 ]
 
 [build-system]

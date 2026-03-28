@@ -64,6 +64,7 @@ spec/.executor-phase5-state.json
 spec/.executor-progress.txt
 
 # Hypothesis test cache
+.hypothesis/
 game-environments/.hypothesis/
 
 # Generated PDFs (rebuild via art/generate_quickstart_pdf.py)
