@@ -1,0 +1,21 @@
+# docker-compose.yml — ATP Platform quickstart
+#
+# Usage:
+#   docker compose up dashboard    # Start dashboard at http://localhost:8080
+#   docker compose run atp test examples/test_suites/01_smoke_tests.yaml --adapter=cli
+#
+services:
+  atp:
+    build: .
+    volumes:
+      - ./examples:/app/examples:ro
+      - ./atp-results:/app/results
+    entrypoint: ["uv", "run", "atp"]
+
+  dashboard:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./atp-results:/app/results
+    command: ["uv", "run", "atp", "dashboard", "--host", "0.0.0.0", "--port", "8080"]
