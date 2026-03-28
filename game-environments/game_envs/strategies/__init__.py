@@ -30,10 +30,17 @@ from game_envs.strategies.pg_strategies import (
     Punisher,
 )
 from game_envs.strategies.registry import StrategyRegistry
+from game_envs.strategies.stag_hunt_strategies import (
+    AlwaysHare,
+    AlwaysStag,
+    StagTitForTat,
+)
 
 __all__ = [
     "AlwaysCooperate",
     "AlwaysDefect",
+    "AlwaysHare",
+    "AlwaysStag",
     "ConcentratedAllocation",
     "ConditionalCooperator",
     "EpsilonGreedy",
@@ -48,6 +55,7 @@ __all__ = [
     "SelfishRouter",
     "ShadeBidder",
     "SocialOptimum",
+    "StagTitForTat",
     "StrategyRegistry",
     "TitForTat",
     "TruthfulBidder",

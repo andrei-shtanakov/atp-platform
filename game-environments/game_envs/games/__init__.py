@@ -6,6 +6,7 @@ from game_envs.games.congestion import CongestionConfig, CongestionGame, RouteDe
 from game_envs.games.prisoners_dilemma import PDConfig, PrisonersDilemma
 from game_envs.games.public_goods import PGConfig, PublicGoodsGame
 from game_envs.games.registry import GameRegistry, register_game
+from game_envs.games.stag_hunt import SHConfig, StagHunt
 
 __all__ = [
     "Auction",
@@ -20,5 +21,7 @@ __all__ = [
     "PrisonersDilemma",
     "PublicGoodsGame",
     "RouteDefinition",
+    "SHConfig",
+    "StagHunt",
     "register_game",
 ]
