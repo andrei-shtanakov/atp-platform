@@ -15,6 +15,7 @@ import yaml
 __version__ = version("atp-platform")
 from atp.cli.commands.benchmark import benchmark_command
 from atp.cli.commands.budget import budget_command
+from atp.cli.commands.catalog import catalog_command
 from atp.cli.commands.compare import compare_command
 from atp.cli.commands.estimate import estimate_command
 from atp.cli.commands.experiment import experiment_command
@@ -1921,6 +1922,7 @@ def list_tests(suite_file: Path, tags: str | None) -> None:
 # Register commands
 cli.add_command(benchmark_command)
 cli.add_command(budget_command)
+cli.add_command(catalog_command)
 cli.add_command(compare_command)
 cli.add_command(estimate_command)
 cli.add_command(experiment_command)
