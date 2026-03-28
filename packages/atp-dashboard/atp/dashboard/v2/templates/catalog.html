@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}ATP Catalog{% endblock %}
+
+{% block content %}
+<div id="catalog-root"></div>
+{% endblock %}
+
+{% block scripts %}
+<script type="text/babel">
+{% raw %}
+function CatalogPage() {
+    const [categories, setCategories] = React.useState([]);
+    const [loading, setLoading] = React.useState(true);
+    const [error, setError] = React.useState(null);
+
+    React.useEffect(() => {
+        fetch('/api/catalog/categories')
+            .then(r => r.ok ? r.json() : Promise.reject(r.statusText))
+            .then(data => { setCategories(data); setLoading(false); })
+            .catch(err => { setError(String(err)); setLoading(false); });
+    }, []);
+
+    if (loading) {
+        return <div className="p-8 text-gray-500">Loading catalog...</div>;
+    }
+
+    if (error) {
+        return <div className="p-8 text-red-500">Error: {error}</div>;
+    }
+
+    return (
+        <div className="p-8 max-w-5xl mx-auto">
+            <h1 className="text-3xl font-bold mb-6">Test Catalog</h1>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {categories.map(cat => (
+                    <div key={cat.slug} className="bg-white rounded-lg shadow p-5">
+                        <h2 className="text-xl font-semibold mb-1">{cat.name}</h2>
+                        {cat.description && (
+                            <p className="text-gray-600 text-sm mb-3">{cat.description}</p>
+                        )}
+                        <div className="text-sm text-gray-500 mb-3">
+                            {cat.suite_count} suite{cat.suite_count !== 1 ? 's' : ''} &bull; {cat.test_count} test{cat.test_count !== 1 ? 's' : ''}
+                        </div>
+                        <a
+                            href={`/catalog/${cat.slug}`}
+                            className="text-blue-600 hover:underline text-sm font-medium"
+                        >
+                            Browse suites &rarr;
+                        </a>
+                    </div>
+                ))}
+            </div>
+            {categories.length === 0 && (
+                <div className="text-gray-500 text-center mt-12">No catalog entries found.</div>
+            )}
+            <div className="mt-10">
+                <h2 className="text-2xl font-bold mb-4">Global Leaderboard</h2>
+                <GlobalLeaderboard />
+            </div>
+        </div>
+    );
+}
+
+function GlobalLeaderboard() {
+    const [entries, setEntries] = React.useState([]);
+    const [loading, setLoading] = React.useState(true);
+    const [error, setError] = React.useState(null);
+
+    React.useEffect(() => {
+        fetch('/api/catalog/leaderboard')
+            .then(r => r.ok ? r.json() : Promise.reject(r.statusText))
+            .then(data => { setEntries(data); setLoading(false); })
+            .catch(err => { setError(String(err)); setLoading(false); });
+    }, []);
+
+    if (loading) return <div className="text-gray-500 text-sm">Loading leaderboard...</div>;
+    if (error) return <div className="text-red-500 text-sm">Error: {error}</div>;
+    if (entries.length === 0) return <div className="text-gray-500 text-sm">No submissions yet.</div>;
+
+    return (
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+            <table className="min-w-full">
+                <thead className="bg-gray-50">
+                    <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rank</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Agent</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tests</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Avg Score</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Score</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                    {entries.map(e => (
+                        <tr key={e.agent_name} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 font-mono">{e.rank}</td>
+                            <td className="px-4 py-3 font-medium">{e.agent_name}</td>
+                            <td className="px-4 py-3">{e.tests_completed}</td>
+                            <td className="px-4 py-3">{e.avg_score.toFixed(1)}</td>
+                            <td className="px-4 py-3">{e.total_score.toFixed(1)}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
+const root = document.getElementById('catalog-root');
+if (root) {
+    ReactDOM.createRoot(root).render(<CatalogPage />);
+}
+{% endraw %}
+</script>
+{% endblock %}
