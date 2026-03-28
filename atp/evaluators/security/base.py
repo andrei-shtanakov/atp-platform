@@ -1,13 +1,13 @@
 """Base classes for security checkers."""
 
 from abc import ABC, abstractmethod
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 
-class Severity(str, Enum):
+class Severity(StrEnum):
     """Severity levels for security findings."""
 
     INFO = "info"

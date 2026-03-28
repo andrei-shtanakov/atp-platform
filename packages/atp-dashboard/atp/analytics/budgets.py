@@ -42,7 +42,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -55,7 +55,7 @@ from atp.analytics.repository import CostRepository
 logger = logging.getLogger(__name__)
 
 
-class BudgetPeriod(str, Enum):
+class BudgetPeriod(StrEnum):
     """Budget period types."""
 
     DAILY = "daily"

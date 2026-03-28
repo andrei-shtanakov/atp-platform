@@ -1,7 +1,7 @@
 """Code safety checker for detecting dangerous code patterns."""
 
 import re
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -14,7 +14,7 @@ from .base import (
 )
 
 
-class Language(str, Enum):
+class Language(StrEnum):
     """Supported programming languages."""
 
     PYTHON = "python"

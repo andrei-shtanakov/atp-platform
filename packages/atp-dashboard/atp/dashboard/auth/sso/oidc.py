@@ -17,7 +17,7 @@ Supported providers:
 
 import secrets
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 import httpx
@@ -30,7 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from atp.dashboard.models import User
 
 
-class OIDCProvider(str, Enum):
+class OIDCProvider(StrEnum):
     """Supported OIDC providers."""
 
     OKTA = "okta"

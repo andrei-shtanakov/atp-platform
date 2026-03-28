@@ -5,11 +5,11 @@ that can be used in testing timeline visualization and agent comparison features
 """
 
 from datetime import datetime, timedelta
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class EventType(str, Enum):
+class EventType(StrEnum):
     """Event types matching the ATP protocol."""
 
     TOOL_CALL = "tool_call"

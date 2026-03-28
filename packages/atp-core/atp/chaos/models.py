@@ -1,12 +1,12 @@
 """Data models for chaos engineering configuration."""
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
 
-class ErrorType(str, Enum):
+class ErrorType(StrEnum):
     """Types of errors that can be injected."""
 
     TIMEOUT = "timeout"
@@ -156,7 +156,7 @@ class ChaosConfig(BaseModel):
         )
 
 
-class ChaosProfile(str, Enum):
+class ChaosProfile(StrEnum):
     """Predefined chaos profiles for common test scenarios."""
 
     NONE = "none"

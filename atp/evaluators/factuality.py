@@ -15,7 +15,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class VerificationMethod(str, Enum):
+class VerificationMethod(StrEnum):
     """Method for verifying factual claims."""
 
     RAG = "rag"
@@ -40,7 +40,7 @@ class VerificationMethod(str, Enum):
     GROUND_TRUTH = "ground_truth"
 
 
-class ClaimType(str, Enum):
+class ClaimType(StrEnum):
     """Type of factual claim."""
 
     DATE = "date"

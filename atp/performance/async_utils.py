@@ -284,7 +284,7 @@ async def gather_with_limit[T](
     )
 
 
-async def chunked_gather(
+async def chunked_gather[T, R](
     items: list[T],
     func: Callable[[T], Awaitable[R]],
     chunk_size: int = 10,
@@ -317,7 +317,7 @@ async def chunked_gather(
     return results
 
 
-async def timeout_wrapper(
+async def timeout_wrapper[T](
     coro: Awaitable[T],
     timeout: float,
     default: T | None = None,
@@ -479,7 +479,7 @@ class AsyncPool[T]:
         self._created = 0
 
 
-async def stream_with_timeout(
+async def stream_with_timeout[T](
     stream: AsyncIterator[T],
     timeout: float,
     on_timeout: Callable[[], T] | None = None,

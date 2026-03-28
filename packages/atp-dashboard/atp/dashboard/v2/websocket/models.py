@@ -4,13 +4,13 @@ Defines Pydantic models for WebSocket messages, subscriptions, and client info.
 """
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 
-class WSMessageType(str, Enum):
+class WSMessageType(StrEnum):
     """WebSocket message types."""
 
     # Client -> Server

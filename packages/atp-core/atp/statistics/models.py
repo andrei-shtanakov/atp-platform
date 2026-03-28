@@ -1,12 +1,12 @@
 """Data models for statistical analysis of test runs."""
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 
-class StabilityLevel(str, Enum):
+class StabilityLevel(StrEnum):
     """Stability level based on coefficient of variation."""
 
     STABLE = "stable"

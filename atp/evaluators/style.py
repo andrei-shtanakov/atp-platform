@@ -1,7 +1,7 @@
 """Style and Tone evaluator for assessing writing style and readability."""
 
 import re
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -11,7 +11,7 @@ from atp.loader.models import Assertion, TestDefinition
 from atp.protocol import ATPEvent, ATPResponse
 
 
-class ToneType(str, Enum):
+class ToneType(StrEnum):
     """Supported tone types for analysis."""
 
     PROFESSIONAL = "professional"

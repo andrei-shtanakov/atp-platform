@@ -18,7 +18,7 @@ import math
 import random
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -151,7 +151,7 @@ def _utcnow() -> datetime:
 # ==================== Enums ====================
 
 
-class ExperimentStatus(str, Enum):
+class ExperimentStatus(StrEnum):
     """Status of an A/B experiment."""
 
     DRAFT = "draft"  # Experiment is being configured
@@ -161,14 +161,14 @@ class ExperimentStatus(str, Enum):
     ROLLED_BACK = "rolled_back"  # Experiment rolled back due to degradation
 
 
-class VariantType(str, Enum):
+class VariantType(StrEnum):
     """Type of experiment variant."""
 
     CONTROL = "control"  # Baseline variant (A)
     TREATMENT = "treatment"  # Test variant (B)
 
 
-class WinnerDecision(str, Enum):
+class WinnerDecision(StrEnum):
     """Winner determination result."""
 
     CONTROL = "control"  # Control variant wins
@@ -177,7 +177,7 @@ class WinnerDecision(str, Enum):
     TIE = "tie"  # Both variants perform equally
 
 
-class MetricType(str, Enum):
+class MetricType(StrEnum):
     """Type of metric to track in experiment."""
 
     SCORE = "score"  # Test score (higher is better)

@@ -9,13 +9,13 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-class Topic(str, Enum):
+class Topic(StrEnum):
     """Available subscription topics."""
 
     # Suite-level topics

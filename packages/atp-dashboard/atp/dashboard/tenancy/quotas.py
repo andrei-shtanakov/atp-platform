@@ -16,7 +16,7 @@ Quota Types:
 import logging
 import time
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -32,7 +32,7 @@ _storage_cache: dict[str, tuple[float, float]] = {}
 STORAGE_CACHE_TTL_SECONDS = 300  # 5 minutes
 
 
-class QuotaType(str, Enum):
+class QuotaType(StrEnum):
     """Types of quotas that can be enforced."""
 
     TESTS_PER_DAY = "tests_per_day"

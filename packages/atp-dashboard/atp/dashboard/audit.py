@@ -25,7 +25,7 @@ import hashlib
 import json
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-from enum import Enum
+from enum import StrEnum
 from typing import Any, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -39,7 +39,7 @@ from atp.dashboard.models import DEFAULT_TENANT_ID, Base, User
 T = TypeVar("T")
 
 
-class AuditCategory(str, Enum):
+class AuditCategory(StrEnum):
     """Categories of audit events."""
 
     AUTHENTICATION = "authentication"
@@ -51,7 +51,7 @@ class AuditCategory(str, Enum):
     SECURITY = "security"
 
 
-class AuditAction(str, Enum):
+class AuditAction(StrEnum):
     """Specific audit actions within categories."""
 
     # Authentication actions
@@ -118,7 +118,7 @@ class AuditAction(str, Enum):
     SECURITY_VIOLATION = "security_violation"
 
 
-class AuditSeverity(str, Enum):
+class AuditSeverity(StrEnum):
     """Severity levels for audit events."""
 
     DEBUG = "debug"  # Detailed debugging info

@@ -18,7 +18,7 @@ Legend: R=Read, W=Write, X=Execute, D=Delete
 
 from collections.abc import Callable
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, status
@@ -29,7 +29,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from atp.dashboard.models import Base, User
 
 
-class Permission(str, Enum):
+class Permission(StrEnum):
     """Enumeration of all available permissions.
 
     Permissions follow the format: RESOURCE_ACTION where:

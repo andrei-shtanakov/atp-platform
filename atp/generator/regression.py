@@ -12,7 +12,7 @@ import hashlib
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -34,7 +34,7 @@ from atp.protocol.models import (
 )
 
 
-class AnonymizationLevel(str, Enum):
+class AnonymizationLevel(StrEnum):
     """Level of data anonymization."""
 
     NONE = "none"
@@ -42,7 +42,7 @@ class AnonymizationLevel(str, Enum):
     STRICT = "strict"  # All potentially sensitive data
 
 
-class RecordingStatus(str, Enum):
+class RecordingStatus(StrEnum):
     """Status of a recording session."""
 
     ACTIVE = "active"

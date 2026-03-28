@@ -13,7 +13,7 @@ The implementation uses python3-saml library which is based on OneLogin's toolki
 
 import secrets
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 from urllib.parse import urlparse
 
@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from atp.dashboard.models import User
 
 
-class SAMLProvider(str, Enum):
+class SAMLProvider(StrEnum):
     """Supported SAML identity providers."""
 
     OKTA = "okta"
@@ -88,7 +88,7 @@ class SAMLAttributeMapping(BaseModel):
     )
 
 
-class SAMLNameIDFormat(str, Enum):
+class SAMLNameIDFormat(StrEnum):
     """Supported NameID formats for SAML assertions."""
 
     EMAIL = "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"

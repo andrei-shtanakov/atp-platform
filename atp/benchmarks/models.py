@@ -1,12 +1,12 @@
 """Data models for benchmark definitions and results."""
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 
-class BenchmarkCategory(str, Enum):
+class BenchmarkCategory(StrEnum):
     """Categories of benchmarks."""
 
     CODING = "coding"
@@ -15,7 +15,7 @@ class BenchmarkCategory(str, Enum):
     DATA_PROCESSING = "data_processing"
 
 
-class BenchmarkDifficulty(str, Enum):
+class BenchmarkDifficulty(StrEnum):
     """Difficulty levels for benchmarks."""
 
     EASY = "easy"

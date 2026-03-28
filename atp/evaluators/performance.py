@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -28,7 +28,7 @@ from .base import EvalCheck, EvalResult, Evaluator
 logger = logging.getLogger(__name__)
 
 
-class PerformanceMetricType(str, Enum):
+class PerformanceMetricType(StrEnum):
     """Types of performance metrics."""
 
     LATENCY_P50 = "latency_p50"
@@ -41,7 +41,7 @@ class PerformanceMetricType(str, Enum):
     MEMORY_USAGE = "memory_usage"
 
 
-class RegressionStatus(str, Enum):
+class RegressionStatus(StrEnum):
     """Status of regression detection."""
 
     NO_BASELINE = "no_baseline"

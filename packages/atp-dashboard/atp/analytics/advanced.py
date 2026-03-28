@@ -13,7 +13,7 @@ import io
 import sysconfig
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -58,7 +58,7 @@ stats_mean = _stdlib_stats.mean
 stats_stdev = _stdlib_stats.stdev
 
 
-class TrendDirection(str, Enum):
+class TrendDirection(StrEnum):
     """Direction of a trend."""
 
     IMPROVING = "improving"
@@ -67,7 +67,7 @@ class TrendDirection(str, Enum):
     INSUFFICIENT_DATA = "insufficient_data"
 
 
-class AnomalyType(str, Enum):
+class AnomalyType(StrEnum):
     """Type of detected anomaly."""
 
     SCORE_SPIKE = "score_spike"
@@ -77,7 +77,7 @@ class AnomalyType(str, Enum):
     COST_SPIKE = "cost_spike"
 
 
-class CorrelationStrength(str, Enum):
+class CorrelationStrength(StrEnum):
     """Strength of a correlation."""
 
     STRONG_POSITIVE = "strong_positive"
@@ -185,14 +185,14 @@ class CorrelationAnalysisResponse(BaseModel):
     factors_analyzed: list[str]
 
 
-class ExportFormat(str, Enum):
+class ExportFormat(StrEnum):
     """Supported export formats."""
 
     CSV = "csv"
     EXCEL = "excel"
 
 
-class ScheduledReportFrequency(str, Enum):
+class ScheduledReportFrequency(StrEnum):
     """Frequency for scheduled reports."""
 
     DAILY = "daily"
