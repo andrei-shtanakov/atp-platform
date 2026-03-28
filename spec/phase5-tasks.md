@@ -364,7 +364,7 @@ Implement YAML parser for game suite definitions and CLI integration.
 - [x] Create 3 builtin suite YAMLs:
   - [ ] `prisoners_dilemma.yaml` — basic repeated PD evaluation
   - [ ] `auction_battery.yaml` — first-price + second-price with baselines
-  - [ ] `alympics_lite.yaml` — battery of all 5 games
+  - [ ] `alympics_lite.yaml` — battery of all 7 games
 - [x] Write tests: YAML parsing, validation errors, variable substitution
 
 **Traces to:** [AG-FR-004]
@@ -496,10 +496,10 @@ Implement tournament mode, cross-play matrix, and adversarial stress-test.
 🟡 P2 | ✅ DONE | Est: 3-4h
 
 **Description:**
-Create standardized benchmark battery covering all 5 games, inspired by Alympics paper.
+Create standardized benchmark battery covering all 7 games, inspired by Alympics paper.
 
 **Checklist:**
-- [x] Design benchmark suite: all 5 games, standardized configs, fixed episodes
+- [x] Design benchmark suite: all 7 games, standardized configs, fixed episodes
 - [x] Define composite score: weighted aggregate across games
 - [x] Categories: strategic reasoning, cooperation, fairness, robustness
 - [x] Implement `alympics_lite.yaml` suite with all games + baselines

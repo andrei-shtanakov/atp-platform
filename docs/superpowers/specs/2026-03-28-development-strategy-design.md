@@ -56,7 +56,7 @@ Two parallel work tracks converging in a unified launch.
 
 ### Track 2: Game Theory Audit
 
-- **Game coverage:** audit 5 existing games and 19 strategies — verify payoff matrices, Nash equilibria correctness.
+- **Game coverage:** audit 7 existing games and 25 strategies — verify payoff matrices, Nash equilibria correctness.
 - **Edge cases:** review hypothesis property-based test coverage for boundary conditions (zero rounds, identical strategies, extreme payoffs).
 - **LLM agent stability:** verify GPT-4o-mini agent reliability in Prisoner's Dilemma — retry logic, timeout handling, cost tracking.
 - **Gap identification:** which classic games are missing and needed for a compelling research story.
@@ -101,7 +101,7 @@ Two parallel work tracks converging in a unified launch.
 - Persistence: tournament history saved to dashboard DB
 
 **LLM Agent Benchmarks:**
-- Standard set: 3-5 models (GPT-4o-mini, Claude Haiku, Gemini Flash, Llama) x 5 games x 100 rounds
+- Standard set: 3-5 models (GPT-4o-mini, Claude Haiku, Gemini Flash, Llama) x 7 games x 100 rounds
 - Metrics: cooperation rate, adaptation speed, consistency, cost per game
 - Reproducibility: seed-based randomization, fixed prompts
 
@@ -178,7 +178,7 @@ Integration test at end of Phase 1: install all packages from PyPI, run tourname
 ### At launch (~10 weeks):
 
 - **Platform:** all 5 packages on PyPI, `pip install atp-platform && atp quickstart` works in < 5 minutes
-- **Research:** at least 3 models tested across 5 games, results published and reproducible
+- **Research:** at least 3 models tested across 7 games, results published and reproducible
 - **Documentation:** quickstart, comparison page, contributing guide, 1 blog post
 - **Quality:** 0 pyrefly errors, test coverage >= 80%, CI green
 

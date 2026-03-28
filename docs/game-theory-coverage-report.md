@@ -69,7 +69,7 @@ Tournament infrastructure lives in `atp-games/atp_games/suites/`.
 | Single Elimination | `tournament.py` | Bracket-based single elimination |
 | Double Elimination | `tournament.py` | Bracket-based double elimination with losers bracket |
 | Cross-Play Suite | `cross_play.py` | Mixed strategy vs strategy experiments |
-| Alympics Benchmark | `alympics.py` | Composite scoring across all 5 games (strategic 30%, cooperation 25%, fairness 25%, robustness 20%) |
+| Alympics Benchmark | `alympics.py` | Composite scoring across all 7 games (strategic 30%, cooperation 25%, fairness 25%, robustness 20%) |
 | Stress Tests | `stress_test.py` | Best-response generation and exploitability measurement |
 | Game Suite Loader | `game_suite_loader.py` | YAML-based suite definition loading |
 
@@ -95,7 +95,7 @@ Five evaluators are implemented in `atp-games/atp_games/evaluators/`:
 
 | Test File | Type | What It Covers |
 |-----------|------|---------------|
-| `test_action_properties.py` | Property-based (Hypothesis, 100–200 examples per property) | Action space sampling, validation invariants for all 5 games |
+| `test_action_properties.py` | Property-based (Hypothesis, 100–200 examples per property) | Action space sampling, validation invariants for all 7 games |
 | `test_game.py` | Unit | Core `Game` base class lifecycle |
 | `test_prisoners_dilemma.py` | Unit | PD payoff matrix, repeated play |
 | `test_auction.py` | Unit | First-price and second-price mechanics |

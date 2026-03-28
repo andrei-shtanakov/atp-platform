@@ -9,7 +9,7 @@ An honest comparison of ATP against the most commonly used alternatives.
 | Feature | ATP | DeepEval | Promptfoo | Inspect AI |
 |---|---|---|---|---|
 | **Framework-agnostic protocol** | Yes — any agent via unified ATP Protocol | Primarily LLM/RAG pipelines | Primarily LLM prompt testing | Primarily LLM tasks |
-| **Agent adapters** | 9 types (HTTP, CLI, Container, LangGraph, CrewAI, AutoGen, MCP, Bedrock, Vertex, Azure OpenAI) | Python SDK integration | Provider configs (OpenAI, Anthropic, etc.) | Python task definitions |
+| **Agent adapters** | 10 types (HTTP, CLI, Container, LangGraph, CrewAI, AutoGen, MCP, Bedrock, Vertex, Azure OpenAI) | Python SDK integration | Provider configs (OpenAI, Anthropic, etc.) | Python task definitions |
 | **Game-theoretic evaluation** | Yes — 7 games, tournaments, Elo ratings, Nash analysis | No | No | No |
 | **Statistical analysis** | Yes — 95% CI, Welch's t-test, regression detection, Elo | Basic pass/fail aggregation | Score aggregation | Basic metrics |
 | **Evaluator types** | 10 (artifact, behavior, LLM-judge, code-exec, security, factuality, style, filesystem, performance, composite) | LLM-judge, G-Eval, RAG metrics | LLM-judge, custom assertions | LLM-judge, custom |

@@ -71,6 +71,17 @@ atp test smoke.yaml --adapter=http \
   --adapter-config='endpoint=http://localhost:8000'
 ```
 
+## Test Catalog
+
+Browse and run curated test suites from the catalog:
+
+```bash
+atp catalog list                    # browse categories
+atp catalog list coding             # browse suites in a category
+atp catalog info coding/file-operations  # suite details
+atp catalog run coding/file-operations --adapter=http --adapter-config endpoint=http://localhost:8000
+```
+
 ## Dashboard
 
 View results and history in the web UI:

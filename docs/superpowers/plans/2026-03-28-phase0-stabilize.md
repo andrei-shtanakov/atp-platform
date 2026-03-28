@@ -907,7 +907,7 @@ Run: `uv run ruff format tests/unit/test_game_correctness.py`
 
 ```bash
 git add tests/unit/test_game_correctness.py
-git commit -m "test: add game-theoretic correctness tests for all 5 games"
+git commit -m "test: add game-theoretic correctness tests for all 7 games"
 ```
 
 ---
@@ -1047,7 +1047,7 @@ This document summarizes the audit findings and identifies gaps for Phase 1.
 | Colonel Blotto | Allocation strategies | ~3 |
 | Congestion | Route selection strategies | ~3 |
 
-**Total: ~19 strategies across 5 games**
+**Total: ~25 strategies across 7 games**
 
 ## Analysis Modules
 
@@ -1066,7 +1066,7 @@ This document summarizes the audit findings and identifies gaps for Phase 1.
 ## Testing Coverage
 
 - **Property-based tests** (hypothesis): Action spaces, game state invariants
-- **Correctness tests**: Payoff matrix verification for all 5 games
+- **Correctness tests**: Payoff matrix verification for all 7 games
 - **Edge cases**: Boundary conditions, invalid actions, minimum/maximum players
 - **Tournament tests**: Round-robin, elimination bracket, standings calculation
 

@@ -52,10 +52,10 @@ Contributing games:
 
 ### Robustness (20%)
 
-Measures consistency across all 5 game types.
+Measures consistency across all 7 game types.
 
 Contributing games (equal weight):
-- All 5 games contribute equally (20% each)
+- All 7 games contribute equally
 
 ## Per-Game Score Normalisation
 
