@@ -1,0 +1,78 @@
+# LLM Agent Benchmark Configuration
+# Run: atp game benchmark --config examples/experiments/llm_benchmark_config.yaml
+#
+# Tests LLM agents across all canonical games to measure:
+# - Cooperation rate
+# - Adaptation speed
+# - Strategic consistency
+# - Cost per game
+
+name: llm-agent-benchmark
+description: Standard benchmark for evaluating LLM agents in game-theoretic settings
+
+games:
+  - name: prisoners_dilemma
+    config:
+      num_rounds: 50
+      discount_factor: 0.99
+    episodes: 100
+
+  - name: stag_hunt
+    config:
+      num_rounds: 50
+      discount_factor: 0.99
+    episodes: 100
+
+  - name: battle_of_sexes
+    config:
+      num_rounds: 50
+      discount_factor: 0.99
+    episodes: 100
+
+  - name: public_goods
+    config:
+      num_players: 3
+      num_rounds: 30
+      endowment: 20.0
+      multiplier: 1.6
+    episodes: 50
+
+  - name: auction
+    config:
+      num_rounds: 30
+      auction_type: second_price
+    episodes: 50
+
+tournament:
+  mode: round_robin
+  elo:
+    enabled: true
+    k_factor: 32
+    initial_rating: 1500
+
+metrics:
+  - cooperation_rate
+  - adaptation_speed
+  - consistency
+  - cost_per_game
+
+# Baseline agents (built-in strategies)
+agents:
+  - name: baseline-tft
+    type: builtin
+    strategy: tit_for_tat
+
+  - name: baseline-random
+    type: builtin
+    strategy: random
+
+# LLM agents added via CLI:
+# atp game benchmark \
+#   --agent "gpt-4o-mini:http://localhost:8001" \
+#   --agent "claude-haiku:http://localhost:8002" \
+#   --agent "gemini-flash:http://localhost:8003"
+
+output:
+  format: json
+  save_to: results/llm-benchmark/
+  include_traces: true
