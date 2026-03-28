@@ -1,0 +1,80 @@
+# GitHub Actions workflow for ATP game-theoretic evaluation
+#
+# This workflow runs game tournament and Alympics benchmark evaluation
+# on every push to main and on pull requests.
+#
+# Copy this file to .github/workflows/atp-game-eval.yml in your repository.
+# Provide agent implementations and update the suite file paths as needed.
+
+name: ATP Game Evaluation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  game-evaluation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install ATP and game packages
+        run: |
+          uv pip install atp-platform game-environments atp-games
+
+      # Run round-robin tournament against the built-in Prisoner's Dilemma suite.
+      # Replace the suite path with your own suite YAML if you have custom agents.
+      - name: Run tournament evaluation
+        id: tournament
+        run: |
+          uv run atp game tournament \
+            atp-games/atp_games/suites/builtin/prisoners_dilemma.yaml \
+            --mode=round_robin \
+            --output=json \
+            --output-file=tournament-results.json
+        continue-on-error: true
+
+      # Run the Alympics benchmark: all 5 canonical games, composite scores.
+      - name: Run Alympics benchmark
+        id: benchmark
+        run: |
+          uv run atp game benchmark \
+            --suite=alympics \
+            --output=json \
+            --output-file=benchmark-results.json
+        continue-on-error: true
+
+      - name: Upload game evaluation results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: game-evaluation-results
+          path: |
+            tournament-results.json
+            benchmark-results.json
+          retention-days: 30
+
+      # Fail the workflow if either evaluation step failed.
+      - name: Check evaluation outcomes
+        if: always()
+        run: |
+          if [ "${{ steps.tournament.outcome }}" = "failure" ]; then
+            echo "Tournament evaluation failed"
+            exit 1
+          fi
+          if [ "${{ steps.benchmark.outcome }}" = "failure" ]; then
+            echo "Alympics benchmark failed"
+            exit 1
+          fi
+          echo "All game evaluations passed"
