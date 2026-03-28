@@ -4,6 +4,18 @@ version = "1.0.0"
 description = "Framework-agnostic platform for testing and evaluating AI agents"
 readme = "README.md"
 requires-python = ">=3.12"
+authors = [{ name = "ATP Platform Contributors" }]
+keywords = ["ai-agents", "testing", "evaluation", "game-theory", "framework-agnostic"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Testing",
+]
 dependencies = [
     "atp-core>=1.0.0",
     "atp-adapters>=1.0.0",
@@ -41,6 +53,12 @@ html = "atp.reporters.html_reporter:HTMLReporter"
 json = "atp.reporters.json_reporter:JSONReporter"
 junit = "atp.reporters.junit_reporter:JUnitReporter"
 game = "atp.reporters.game_reporter:GameReporter"
+
+[project.urls]
+Homepage = "https://github.com/atp-platform/atp-platform"
+Repository = "https://github.com/atp-platform/atp-platform"
+Documentation = "https://github.com/atp-platform/atp-platform"
+Changelog = "https://github.com/atp-platform/atp-platform/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [
