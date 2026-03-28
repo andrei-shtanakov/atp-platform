@@ -1,12 +1,29 @@
 [project]
 name = "atp-games"
-version = "0.1.0"
+version = "1.0.0"
 description = "ATP plugin for game-theoretic agent evaluation"
 readme = "README.md"
 requires-python = ">=3.12"
+authors = [{ name = "ATP Platform Contributors" }]
+keywords = ["game-theory", "ai-agents", "atp", "evaluation", "tournament"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
     "pydantic>=2.0",
+    "game-environments>=1.0.0",
+    "atp-platform>=1.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/atp-platform/atp-platform"
+Repository = "https://github.com/atp-platform/atp-platform"
+Documentation = "https://github.com/atp-platform/atp-platform"
 
 [project.entry-points."atp.plugins"]
 game = "atp_games.plugin:register"

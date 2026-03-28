@@ -287,9 +287,11 @@ provides-extras = ["enterprise", "analytics", "postgres", "dev"]
 
 [[package]]
 name = "atp-games"
-version = "0.1.0"
+version = "1.0.0"
 source = { editable = "atp-games" }
 dependencies = [
+    { name = "atp-platform" },
+    { name = "game-environments" },
     { name = "pydantic" },
 ]
 
@@ -304,7 +306,11 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "pydantic", specifier = ">=2.0" }]
+requires-dist = [
+    { name = "atp-platform", editable = "." },
+    { name = "game-environments", editable = "game-environments" },
+    { name = "pydantic", specifier = ">=2.0" },
+]
 
 [package.metadata.requires-dev]
 dev = [
