@@ -15,6 +15,7 @@ from atp.adapters.base import AgentAdapter
 from game_envs.core.game import Game
 
 from atp_games.models import GameResult, GameRunConfig
+from atp_games.rating.elo import EloCalculator, EloRating
 from atp_games.runner.game_runner import GameRunner
 
 logger = logging.getLogger(__name__)
@@ -100,12 +101,14 @@ class TournamentResult:
         standings: Sorted list of standings (best first).
         matches: All match results.
         bracket: Elimination bracket structure (if applicable).
+        elo_ratings: Elo ratings per agent, or None if not tracked.
     """
 
     mode: str
     standings: list[Standing]
     matches: list[MatchResult] = field(default_factory=list)
     bracket: list[list[MatchResult]] | None = None
+    elo_ratings: dict[str, EloRating] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
@@ -116,6 +119,17 @@ class TournamentResult:
         }
         if self.bracket is not None:
             result["bracket"] = [[m.to_dict() for m in rnd] for rnd in self.bracket]
+        if self.elo_ratings is not None:
+            result["elo_ratings"] = {
+                name: {
+                    "rating": round(r.rating, 4),
+                    "games_played": r.games_played,
+                    "wins": r.wins,
+                    "losses": r.losses,
+                    "draws": r.draws,
+                }
+                for name, r in self.elo_ratings.items()
+            }
         return result
 
 
@@ -178,6 +192,7 @@ async def run_round_robin(
     agents: dict[str, AgentAdapter],
     config: GameRunConfig | None = None,
     runner: GameRunner | None = None,
+    elo_calculator: EloCalculator | None = None,
 ) -> TournamentResult:
     """Run a round-robin tournament.
 
@@ -189,6 +204,10 @@ async def run_round_robin(
         agents: Mapping of agent name to adapter.
         config: Run configuration per match.
         runner: Optional GameRunner (created if not provided).
+        elo_calculator: Optional Elo calculator for skill ratings.
+            When provided, ratings are updated after each match and
+            stored in TournamentResult.elo_ratings. When None,
+            elo_ratings will be None (backward compatible).
 
     Returns:
         TournamentResult with standings and match details.
@@ -201,6 +220,11 @@ async def run_round_robin(
         name: Standing(agent=name) for name in agent_names
     }
     matches: list[MatchResult] = []
+
+    # Initialize Elo ratings if calculator provided
+    elo_ratings: dict[str, EloRating] | None = None
+    if elo_calculator is not None:
+        elo_ratings = {name: elo_calculator.create_rating(name) for name in agent_names}
 
     # Generate all pairs
     pairs: list[tuple[str, str]] = []
@@ -243,6 +267,14 @@ async def run_round_robin(
             standings_map[b_name].wins += 1
             standings_map[a_name].losses += 1
 
+        # Update Elo ratings after each match
+        if elo_calculator is not None and elo_ratings is not None:
+            elo_calculator.update(
+                elo_ratings[a_name],
+                elo_ratings[b_name],
+                match.winner,
+            )
+
     # Handle bye for odd number of agents
     if len(agent_names) % 2 == 1:
         for name in agent_names:
@@ -261,6 +293,7 @@ async def run_round_robin(
         mode="round_robin",
         standings=standings,
         matches=matches,
+        elo_ratings=elo_ratings,
     )
 
 
