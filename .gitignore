@@ -68,3 +68,6 @@ game-environments/.hypothesis/
 
 # Generated PDFs (rebuild via art/generate_quickstart_pdf.py)
 docs/*.pdf
+
+# Experiment output directories
+results/
