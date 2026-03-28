@@ -8,7 +8,7 @@ import logging
 
 from atp.catalog.repository import CatalogRepository
 from atp.catalog.sync import sync_builtin_catalog
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel
 
 from atp.dashboard.v2.dependencies import DBSession
@@ -216,7 +216,7 @@ async def get_suite_leaderboard(
     category_slug: str,
     suite_slug: str,
     session: DBSession,
-    limit: int = 10,
+    limit: int = Query(default=10, ge=1, le=1000),
 ) -> dict[str, list[SubmissionResponse]]:
     """Get per-test leaderboards for a suite.
 
@@ -224,7 +224,7 @@ async def get_suite_leaderboard(
         category_slug: Category slug.
         suite_slug: Suite slug within the category.
         session: Database session.
-        limit: Max submissions per test (default 10).
+        limit: Max submissions per test (default 10, max 1000).
 
     Returns:
         Dict mapping test slug to ranked submission list.
@@ -264,13 +264,13 @@ async def get_suite_leaderboard(
 @router.get("/leaderboard", response_model=list[GlobalLeaderboardEntry])
 async def get_global_leaderboard(
     session: DBSession,
-    limit: int = 50,
+    limit: int = Query(default=50, ge=1, le=1000),
 ) -> list[GlobalLeaderboardEntry]:
     """Get global agent rankings across all catalog tests.
 
     Args:
         session: Database session.
-        limit: Max number of entries (default 50).
+        limit: Max number of entries (default 50, max 1000).
 
     Returns:
         List of GlobalLeaderboardEntry ranked by avg score descending.

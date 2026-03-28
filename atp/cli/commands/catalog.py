@@ -329,6 +329,7 @@ async def _execute_catalog_run(
             duration_seconds=duration,
         )
         await repo.update_test_stats(catalog_test.id)
+        await session.refresh(catalog_test)
 
         comparison_rows.append(
             {

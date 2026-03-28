@@ -75,7 +75,9 @@ class CatalogRepository:
         """
         stmt = (
             select(CatalogCategory)
-            .options(selectinload(CatalogCategory.suites))
+            .options(
+                selectinload(CatalogCategory.suites).selectinload(CatalogSuite.tests)
+            )
             .order_by(CatalogCategory.slug)
         )
         result = await self._session.execute(stmt)
