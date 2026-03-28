@@ -254,6 +254,7 @@ uv run atp budget               # Budget management
 uv run atp experiment           # Run experiments
 uv run atp plugins              # Manage plugins
 uv run atp game suite.yaml      # Game-theoretic evaluation
+uv run atp catalog              # Browse and run tests from the catalog
 uv run atp tui                  # Terminal user interface
 uv run atp compare              # Multi-model comparison
 uv run atp estimate             # Cost estimation
@@ -378,9 +379,11 @@ ATP includes a game-theoretic evaluation framework for testing agent strategic r
 
 ### Built-in Games
 
-Five canonical games with known Nash equilibria for rigorous evaluation:
+Seven canonical games with known Nash equilibria for rigorous evaluation:
 
 - **Prisoner's Dilemma** -- cooperation vs defection with configurable payoff matrix
+- **Stag Hunt** -- trust vs safety, two pure Nash equilibria
+- **Battle of the Sexes** -- coordination under conflicting preferences
 - **Public Goods Game** -- N-player contribution with multiplier and optional punishment
 - **Auction** -- first-price and second-price sealed-bid with private values
 - **Colonel Blotto** -- resource allocation across multiple battlefields

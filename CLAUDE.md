@@ -54,6 +54,7 @@ uv run atp budget                  # Budget management
 uv run atp experiment              # Run experiments
 uv run atp plugins                 # Manage plugins
 uv run atp game                    # Game-theoretic evaluation
+uv run atp catalog                 # Browse and run tests from the catalog
 uv run atp compare                 # Multi-model comparison
 uv run atp estimate                # Cost estimation
 uv run atp traces                  # Trace management
@@ -103,6 +104,7 @@ atp/                         # Namespace package (symlinks to packages/ + local 
 ├── performance/   # Profiling, caching, memory tracking
 ├── benchmarks/    # Benchmark suites
 ├── generator/     # Test suite generation
+├── catalog/       # Test catalog (browse, run, publish curated/community test suites)
 ├── plugins/       # Plugin ecosystem management
 ├── sdk/           # Python SDK for programmatic test execution
 ├── tracing/       # Agent replay and trace management

@@ -995,6 +995,7 @@ atp-platform/
 │   ├── analytics/               # Cost tracking, A/B testing, anomaly detection
 │   ├── benchmarks/              # Benchmark suites
 │   ├── chaos/                   # Chaos testing (injectors, profiles)
+│   ├── catalog/                 # Test catalog (browse, run, publish curated/community suites)
 │   ├── generator/               # Test suite generation (NL, templates, trace import)
 │   ├── plugins/                 # Plugin ecosystem management
 │   ├── sdk/                     # Python SDK for programmatic use
