@@ -268,3 +268,59 @@ async def test_get_top_submissions(repo: CatalogRepository) -> None:
     assert "completeness_score" in avgs
     assert "efficiency_score" in avgs
     assert "cost_score" in avgs
+
+
+@pytest.mark.anyio
+async def test_get_global_leaderboard(repo: CatalogRepository) -> None:
+    """Test global leaderboard aggregates across agents."""
+    cat = await repo.upsert_category(slug="coding", name="Coding")
+    suite = await repo.upsert_suite(
+        category_id=cat.id,
+        slug="basic-python",
+        name="Basic Python",
+        author="curated",
+        source="builtin",
+        suite_yaml="name: basic-python",
+    )
+    test = await repo.upsert_test(
+        suite_id=suite.id,
+        slug="hello-world",
+        name="Hello World",
+        task_description="Print hello world",
+    )
+
+    # agent-alpha scores: 80, 100 → avg 90
+    for score in [80.0, 100.0]:
+        await repo.create_submission(
+            test_id=test.id,
+            agent_name="agent-alpha",
+            agent_type="http",
+            score=score,
+        )
+
+    # agent-beta scores: 60 → avg 60
+    await repo.create_submission(
+        test_id=test.id,
+        agent_name="agent-beta",
+        agent_type="http",
+        score=60.0,
+    )
+
+    leaderboard = await repo.get_global_leaderboard(limit=10)
+
+    assert len(leaderboard) == 2
+    # sorted by avg score descending → alpha first
+    assert leaderboard[0]["agent_name"] == "agent-alpha"
+    assert leaderboard[0]["tests_completed"] == 2
+    assert leaderboard[0]["avg_score"] == pytest.approx(90.0)
+    assert leaderboard[0]["total_score"] == pytest.approx(180.0)
+
+    assert leaderboard[1]["agent_name"] == "agent-beta"
+    assert leaderboard[1]["avg_score"] == pytest.approx(60.0)
+
+
+@pytest.mark.anyio
+async def test_get_global_leaderboard_empty(repo: CatalogRepository) -> None:
+    """Test global leaderboard returns empty list when no submissions."""
+    leaderboard = await repo.get_global_leaderboard()
+    assert leaderboard == []

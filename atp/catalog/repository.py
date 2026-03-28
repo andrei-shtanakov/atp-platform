@@ -364,6 +364,41 @@ class CatalogRepository:
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
+    async def get_global_leaderboard(self, limit: int = 50) -> list[dict]:
+        """Get global agent rankings across all catalog tests.
+
+        Groups submissions by agent_name and aggregates count, average
+        score, and total score, ordered by average score descending.
+
+        Args:
+            limit: Maximum number of entries to return.
+
+        Returns:
+            List of dicts with keys: agent_name, tests_completed,
+            avg_score, total_score.
+        """
+        stmt = (
+            select(
+                CatalogSubmission.agent_name,
+                func.count(CatalogSubmission.id).label("tests_completed"),
+                func.avg(CatalogSubmission.score).label("avg_score"),
+                func.sum(CatalogSubmission.score).label("total_score"),
+            )
+            .group_by(CatalogSubmission.agent_name)
+            .order_by(func.avg(CatalogSubmission.score).desc())
+            .limit(limit)
+        )
+        result = await self._session.execute(stmt)
+        return [
+            {
+                "agent_name": row.agent_name,
+                "tests_completed": row.tests_completed,
+                "avg_score": float(row.avg_score or 0.0),
+                "total_score": float(row.total_score or 0.0),
+            }
+            for row in result.all()
+        ]
+
     async def get_avg_scores_for_test(self, test_id: int) -> dict[str, float]:
         """Get average score breakdown for a test.
 

@@ -179,6 +179,36 @@ def create_app(
                 name="analytics.html",
             )
 
+        @app.get("/catalog", response_class=HTMLResponse)
+        @app.get("/catalog/", response_class=HTMLResponse)
+        async def catalog(
+            request: Request,
+        ) -> HTMLResponse:
+            """Render the catalog browser page."""
+            return templates.TemplateResponse(
+                request=request,
+                name="catalog.html",
+            )
+
+        @app.get(
+            "/catalog/{category_slug}/{suite_slug}",
+            response_class=HTMLResponse,
+        )
+        async def catalog_suite(
+            request: Request,
+            category_slug: str,
+            suite_slug: str,
+        ) -> HTMLResponse:
+            """Render the catalog suite detail page."""
+            return templates.TemplateResponse(
+                request=request,
+                name="catalog_suite.html",
+                context={
+                    "category_slug": category_slug,
+                    "suite_slug": suite_slug,
+                },
+            )
+
     return app
 
 
