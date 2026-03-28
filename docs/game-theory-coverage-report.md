@@ -8,7 +8,7 @@
 
 ## 1. Implemented Games
 
-Five canonical games are implemented in `game-environments/game_envs/games/`.
+Seven games are implemented in `game-environments/game_envs/games/`.
 
 | Game | File | Players | Action Space | Nash Equilibrium | Test Status |
 |------|------|---------|--------------|-----------------|-------------|
@@ -17,8 +17,10 @@ Five canonical games are implemented in `game-environments/game_envs/games/`.
 | Public Goods Game | `public_goods.py` | 2–20 | Continuous [0, endowment] | Full free-riding (Nash), full contribution (social optimum) | Correctness + edge cases |
 | Colonel Blotto | `colonel_blotto.py` | 2 | Structured (allocation vector) | Mixed strategy NE (no pure strategy NE) | Correctness + edge cases |
 | Congestion Game | `congestion.py` | 2–50 | Discrete (route name) | Wardrop equilibrium (pure strategy NE always exists) | Correctness + edge cases |
+| Stag Hunt | `stag_hunt.py` | 2 | Discrete {stag, hare} | Two pure NE: (Stag, Stag) and (Hare, Hare) | Correctness + edge cases |
+| Battle of the Sexes | `battle_of_sexes.py` | 2 | Discrete {A, B} | Two pure NE: (A, A) and (B, B) + one mixed NE | Correctness + edge cases |
 
-All five games support repeated play via `num_rounds` and a `discount_factor` parameter. All use `@register_game` for registry lookup.
+All seven games support repeated play via `num_rounds` and a `discount_factor` parameter. All use `@register_game` for registry lookup.
 
 ---
 
@@ -33,8 +35,10 @@ Strategies live in `game-environments/game_envs/strategies/`.
 | Colonel Blotto | `UniformAllocation`, `ConcentratedAllocation`, `NashMixed` | 3 |
 | Congestion Game | `SelfishRouter`, `SocialOptimum`, `EpsilonGreedy` | 3 |
 | Public Goods Game | `FullContributor`, `FreeRider`, `ConditionalCooperator`, `Punisher` | 4 |
+| Stag Hunt | `AlwaysStag`, `AlwaysHare`, `StagTitForTat` | 3 |
+| Battle of the Sexes | `AlwaysA`, `AlwaysB`, `Alternating` | 3 |
 
-**Total: 19 strategies across 5 games.**
+**Total: 25 strategies across 7 games.**
 
 Each strategy implements the `Strategy` protocol: `name: str` property and `choose_action(observation: Observation) -> Any`. Stateful strategies expose a `reset()` method.
 
@@ -145,20 +149,25 @@ When a player provides an unknown route name, `CongestionGame.step()` raises `Ke
 
 ---
 
-## 7. Identified Gaps for Phase 1
+## 7. Resolved Gaps (Implemented in Phase 1)
 
-### 7.1 Missing Games
+### 7.1 Games Added
 
-| Game | Priority | Rationale |
-|------|----------|-----------|
-| Stag Hunt | HIGH | Classic coordination game (two pure NE: both hunt stag, both hunt hare). Needed to test risk-dominance vs. payoff-dominance reasoning in LLMs. Structurally simple to implement on top of the existing PD skeleton. |
-| Battle of the Sexes | MEDIUM | Coordination with conflicting preferences. Two pure NE + one mixed NE. Useful for testing LLM preference alignment under incomplete information. |
+| Game | Status | Implementation |
+|------|--------|----------------|
+| Stag Hunt | DONE | `game-environments/game_envs/games/stag_hunt.py` with 3 strategies (`AlwaysStag`, `AlwaysHare`, `StagTitForTat`) |
+| Battle of the Sexes | DONE | `game-environments/game_envs/games/battle_of_sexes.py` with 3 strategies (`AlwaysA`, `AlwaysB`, `Alternating`) |
 
-### 7.2 Missing Infrastructure Features
+### 7.2 Infrastructure Features Added
+
+| Feature | Status | Implementation |
+|---------|--------|----------------|
+| Elo rating system | DONE | `atp-games/atp_games/rating/elo.py` — `EloCalculator` with configurable K-factor, integrated into `run_round_robin` as optional parameter |
+
+### 7.3 Remaining Gaps
 
 | Feature | Priority | Rationale |
 |---------|----------|-----------|
-| Elo rating system | HIGH | Current `Standing` uses win/loss/draw points (soccer-style). Elo provides continuous, transitive skill ratings useful for cross-game LLM comparisons. No Elo implementation exists anywhere in `atp-games/`. |
 | Result caching | MEDIUM | Game results are recomputed on every tournament run. A cache keyed on (game_id, strategy_a, strategy_b, seed) would eliminate redundant computation in large round-robin tournaments. |
 | LLM reproducibility via `temperature=0` | MEDIUM | The `demo-game` OpenAI agent uses `temperature=0.3`. For deterministic evaluation runs, `temperature=0` is required. This is not enforced or documented in the ATP game runner configuration. |
 
@@ -172,19 +181,15 @@ When a player provides an unknown route name, `CongestionGame.step()` raises `Ke
 
 ---
 
-## 8. Recommendations for Phase 1
+## 8. Remaining Recommendations
 
-1. **Implement Stag Hunt game** in `game-environments/game_envs/games/stag_hunt.py` following the PD skeleton. Include 3 strategies: `HuntStag`, `HuntHare`, `RandomStrategy`. Add tests matching the pattern in `test_game_correctness.py`.
+1. **Fix Congestion `KeyError`** in `game-environments/game_envs/games/congestion.py` — guard the route dict lookup with a clear `ValueError` before the `KeyError` can propagate.
 
-2. **Implement Elo rating** in `atp-games/atp_games/suites/elo.py`. Expose it as a post-processing step in `RoundRobinTournament`. Initial K-factor: 32.
+2. **Add input validation to Auction and Public Goods `step()`** — decide whether to clamp (lenient) or raise (strict). Document the chosen behavior explicitly.
 
-3. **Fix Congestion `KeyError`** in `game-environments/game_envs/games/congestion.py` — guard the route dict lookup with a clear `ValueError` before the `KeyError` can propagate.
+3. **Enforce `temperature=0` in ATP game runner** for evaluation suites. Expose it as a config parameter in `GameRunConfig` (currently absent) so reproducibility is explicit rather than agent-specific.
 
-4. **Add input validation to Auction and Public Goods `step()`** — decide whether to clamp (lenient) or raise (strict). Document the chosen behavior explicitly.
-
-5. **Enforce `temperature=0` in ATP game runner** for evaluation suites. Expose it as a config parameter in `GameRunConfig` (currently absent) so reproducibility is explicit rather than agent-specific.
-
-6. **Implement Battle of the Sexes** (MEDIUM priority, after Stag Hunt is stable). Useful for testing mixed-strategy behavior in LLMs.
+4. **Add result caching** for tournament runs to avoid redundant computation in large round-robin brackets.
 
 ---
 
@@ -193,8 +198,8 @@ When a player provides an unknown route name, `CongestionGame.step()` raises `Ke
 ```
 game-environments/
   game_envs/
-    games/           5 game files + registry.py
-    strategies/      5 strategy files + registry.py
+    games/           7 game files + registry.py
+    strategies/      7 strategy files + registry.py
     analysis/        nash_solver.py, cooperation.py, exploitability.py,
                      fairness.py, population.py, models.py
   tests/             ~20 test files (unit + property-based)

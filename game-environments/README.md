@@ -355,7 +355,7 @@ Serializable types: `Message`, `RoundResult`, `GameState`, `Observation`, `StepR
 
 ## Built-in Games
 
-Five canonical games are included, each registered via `@register_game` and instantiable through `GameRegistry`:
+Seven canonical games are included, each registered via `@register_game` and instantiable through `GameRegistry`:
 
 | Game | Players | Action Space | Key Feature |
 |---|---|---|---|
@@ -364,6 +364,8 @@ Five canonical games are included, each registered via `@register_game` and inst
 | **Auction** | 2+ | Continuous (`[min_bid, max_bid]`) | First-price & second-price (Vickrey), private values |
 | **Colonel Blotto** | 2 | Structured (allocation vector) | Multiple battlefields, troop allocation |
 | **Congestion** | 2-50 | Discrete (route choice) | Network routing, latency functions |
+| **Stag Hunt** | 2 | Discrete (`stag`/`hare`) | Two pure NE, tests trust vs safety |
+| **Battle of the Sexes** | 2 | Discrete (`A`/`B`) | Coordination with conflicting preferences |
 
 ### Using built-in games
 
@@ -372,7 +374,7 @@ from game_envs import GameRegistry, GameConfig
 
 # List available games
 print(GameRegistry.list_games())
-# ['prisoners_dilemma', 'public_goods', 'auction', 'colonel_blotto', 'congestion']
+# ['prisoners_dilemma', 'public_goods', 'auction', 'colonel_blotto', 'congestion', 'stag_hunt', 'battle_of_sexes']
 
 # Create via registry
 game = GameRegistry.create("prisoners_dilemma", {
@@ -439,6 +441,8 @@ Baseline strategies are provided for each game:
 | **Auction** | `TruthfulBidder`, `ShadeBidder(factor)`, `RandomBidder` |
 | **Colonel Blotto** | `UniformAllocation`, `ConcentratedAllocation`, `NashMixed` |
 | **Congestion** | `SelfishRouter`, `SocialOptimum`, `EpsilonGreedy` |
+| **Stag Hunt** | `AlwaysStag`, `AlwaysHare`, `StagTitForTat` |
+| **Battle of the Sexes** | `AlwaysA`, `AlwaysB`, `Alternating` |
 
 ```python
 from game_envs import StrategyRegistry, TitForTat

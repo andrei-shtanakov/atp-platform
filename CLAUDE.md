@@ -25,7 +25,7 @@ uv run pytest tests/ -v -m "not slow"                        # Fast tests
 uv run ruff format .               # Format code
 uv run ruff check .                # Lint check
 uv run ruff check . --fix          # Auto-fix lint issues
-pyrefly check                      # Type checking (run after every change)
+uv run pyrefly check               # Type checking (run after every change)
 
 # Task management (parses spec/tasks.md)
 python task.py list                # List all tasks
@@ -115,7 +115,7 @@ atp/                         # Namespace package (symlinks to packages/ + local 
 ├── dashboard/→ packages/atp-dashboard/# (symlink)
 └── analytics/→ packages/atp-dashboard/# (symlink)
 
-game-environments/           # Standalone game theory library (5 games, 19 strategies)
+game-environments/           # Standalone game theory library (7 games, 25+ strategies)
 atp-games/                   # ATP plugin for game-theoretic evaluation
 demo/                        # Demo agents (code writer) for functional testing
 demo-game/                   # LLM game agents (GPT-4o-mini plays Prisoner's Dilemma)
