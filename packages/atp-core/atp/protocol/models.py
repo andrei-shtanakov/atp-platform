@@ -8,6 +8,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from atp.protocol._version import PROTOCOL_VERSION, SUPPORTED_VERSIONS
+
 # Maximum lengths for various fields
 MAX_TASK_ID_LENGTH = 128
 MAX_DESCRIPTION_LENGTH = 100_000
@@ -160,7 +162,10 @@ class Context(BaseModel):
 class ATPRequest(BaseModel):
     """ATP Protocol request message."""
 
-    version: str = Field("1.0", description="Protocol version")
+    version: str = Field(
+        default=PROTOCOL_VERSION,
+        description="Protocol version",
+    )
     task_id: str = Field(..., description="Unique task identifier")
     task: Task = Field(..., description="Task specification")
     constraints: dict[str, Any] = Field(
@@ -193,6 +198,18 @@ class ATPRequest(BaseModel):
             return v
         if len(v) > MAX_METADATA_KEYS:
             raise ValueError(f"Too many metadata keys: {len(v)} > {MAX_METADATA_KEYS}")
+        return v
+
+    @field_validator("version")
+    @classmethod
+    def validate_version(cls, v: str) -> str:
+        """Ensure version is supported."""
+        if v not in SUPPORTED_VERSIONS:
+            msg = (
+                f"Unsupported protocol version '{v}'. "
+                f"Supported: {sorted(SUPPORTED_VERSIONS)}"
+            )
+            raise ValueError(msg)
         return v
 
 
@@ -312,7 +329,10 @@ Artifact = ArtifactFile | ArtifactStructured | ArtifactReference
 class ATPResponse(BaseModel):
     """ATP Protocol response message."""
 
-    version: str = Field("1.0", description="Protocol version")
+    version: str = Field(
+        default=PROTOCOL_VERSION,
+        description="Protocol version",
+    )
     task_id: str = Field(..., description="Task identifier from request")
     status: ResponseStatus = Field(..., description="Execution status")
     artifacts: list[Artifact] = Field(
@@ -345,6 +365,18 @@ class ATPResponse(BaseModel):
         """Validate artifacts count limit."""
         if len(v) > MAX_ARTIFACTS_COUNT:
             raise ValueError(f"Too many artifacts: {len(v)} > {MAX_ARTIFACTS_COUNT}")
+        return v
+
+    @field_validator("version")
+    @classmethod
+    def validate_version(cls, v: str) -> str:
+        """Ensure version is supported."""
+        if v not in SUPPORTED_VERSIONS:
+            msg = (
+                f"Unsupported protocol version '{v}'. "
+                f"Supported: {sorted(SUPPORTED_VERSIONS)}"
+            )
+            raise ValueError(msg)
         return v
 
 
@@ -410,7 +442,10 @@ EventPayload = (
 class ATPEvent(BaseModel):
     """ATP Protocol event message for streaming."""
 
-    version: str = Field("1.0", description="Protocol version")
+    version: str = Field(
+        default=PROTOCOL_VERSION,
+        description="Protocol version",
+    )
     task_id: str = Field(..., description="Task identifier")
     timestamp: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
@@ -426,4 +461,16 @@ class ATPEvent(BaseModel):
         """Validate task_id is not empty."""
         if not v or not v.strip():
             raise ValueError("task_id cannot be empty")
+        return v
+
+    @field_validator("version")
+    @classmethod
+    def validate_version(cls, v: str) -> str:
+        """Ensure version is supported."""
+        if v not in SUPPORTED_VERSIONS:
+            msg = (
+                f"Unsupported protocol version '{v}'. "
+                f"Supported: {sorted(SUPPORTED_VERSIONS)}"
+            )
+            raise ValueError(msg)
         return v

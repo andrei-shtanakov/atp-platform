@@ -1,5 +1,6 @@
 """ATP Protocol models for agent communication."""
 
+from atp.protocol._version import PROTOCOL_VERSION, SUPPORTED_VERSIONS
 from atp.protocol.models import (
     ArtifactFile,
     ArtifactReference,
@@ -20,6 +21,8 @@ from atp.protocol.models import (
 )
 
 __all__ = [
+    "PROTOCOL_VERSION",
+    "SUPPORTED_VERSIONS",
     "ATPRequest",
     "ATPResponse",
     "ATPEvent",
