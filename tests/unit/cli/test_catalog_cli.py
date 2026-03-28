@@ -285,13 +285,29 @@ class TestCatalogRun:
 
         assert result.exit_code == 1
 
-    def test_catalog_run_shows_instructions(self, runner: CliRunner) -> None:
-        """run shows usage instructions when suite is found."""
+    def test_catalog_run_executes_suite(self, runner: CliRunner) -> None:
+        """run executes the suite and prints results when suite is found."""
+        from atp.runner.models import SuiteResult
+
         mock_db = _make_mock_db()
         mock_suite = MagicMock()
         mock_suite.name = "File Operations"
         mock_suite.difficulty = "beginner"
+        mock_suite.suite_yaml = "test_suite: test\ntests: []"
         mock_suite.tests = []
+
+        mock_suite_result = MagicMock(spec=SuiteResult)
+        mock_suite_result.passed_tests = 0
+        mock_suite_result.total_tests = 0
+        mock_suite_result.tests = []
+
+        mock_loader = MagicMock()
+        mock_loader.load_string.return_value = MagicMock(tests=[])
+
+        mock_orchestrator = AsyncMock()
+        mock_orchestrator.__aenter__ = AsyncMock(return_value=mock_orchestrator)
+        mock_orchestrator.__aexit__ = AsyncMock(return_value=False)
+        mock_orchestrator.run_suite = AsyncMock(return_value=mock_suite_result)
 
         with (
             patch(
@@ -302,6 +318,18 @@ class TestCatalogRun:
                 "atp.catalog.repository.CatalogRepository.get_suite_by_path",
                 new=AsyncMock(return_value=mock_suite),
             ),
+            patch(
+                "atp.cli.commands.catalog.TestLoader",
+                return_value=mock_loader,
+            ),
+            patch(
+                "atp.cli.commands.catalog.create_adapter",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "atp.cli.commands.catalog.TestOrchestrator",
+                return_value=mock_orchestrator,
+            ),
         ):
             result = runner.invoke(
                 cli,
@@ -309,7 +337,7 @@ class TestCatalogRun:
             )
 
         assert result.exit_code == 0
-        assert "atp test" in result.output
+        assert "Completed" in result.output
 
 
 class TestCatalogResults:

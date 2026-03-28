@@ -3,14 +3,19 @@
 import asyncio
 import sys
 from pathlib import Path
+from typing import Any
 
 import click
 from rich.console import Console
 from rich.table import Table
 
+from atp.adapters import create_adapter
+from atp.catalog.comparison import format_comparison_table
 from atp.catalog.repository import CatalogRepository
 from atp.catalog.sync import parse_catalog_yaml, sync_builtin_catalog
 from atp.dashboard.database import init_database
+from atp.loader.loader import TestLoader
+from atp.runner.orchestrator import TestOrchestrator
 
 # Exit codes
 EXIT_SUCCESS = 0
@@ -212,41 +217,183 @@ async def _do_info(path: str) -> None:
         console.print(tests_table)
 
 
-async def _do_run(
-    path: str, adapter: str, adapter_config: str, agent_name: str
+def _parse_adapter_config(config_str: str) -> dict[str, Any]:
+    """Parse adapter config string 'key=value,key2=value2' into a dict.
+
+    Args:
+        config_str: Comma-separated key=value pairs.
+
+    Returns:
+        Parsed config dict, empty dict for empty/blank input.
+    """
+    if not config_str or not config_str.strip():
+        return {}
+    result: dict[str, Any] = {}
+    for pair in config_str.split(","):
+        pair = pair.strip()
+        if not pair:
+            continue
+        if "=" in pair:
+            key, _, value = pair.partition("=")
+            result[key.strip()] = value.strip()
+        else:
+            result[pair] = True
+    return result
+
+
+async def _execute_catalog_run(
+    session: Any,
+    category_slug: str,
+    suite_slug: str,
+    adapter_type: str,
+    adapter_config: dict[str, Any],
+    agent_name: str,
+    runs_per_test: int,
 ) -> None:
-    """Show run instructions for a catalog suite.
+    """Run a catalog suite via TestOrchestrator and record submissions.
+
+    Args:
+        session: SQLAlchemy async session.
+        category_slug: Category slug.
+        suite_slug: Suite slug.
+        adapter_type: Adapter type string.
+        adapter_config: Adapter configuration dict.
+        agent_name: Name of the agent being tested.
+        runs_per_test: Number of runs per test.
+    """
+    repo = CatalogRepository(session)
+    catalog_suite = await repo.get_suite_by_path(category_slug, suite_slug)
+
+    if catalog_suite is None:
+        click.echo(f"Suite not found: {category_slug}/{suite_slug!r}", err=True)
+        sys.exit(EXIT_FAILURE)
+
+    # Load ATP test suite from stored YAML
+    loader = TestLoader()
+    suite = loader.load_string(catalog_suite.suite_yaml)
+
+    # Create adapter
+    adapter = create_adapter(adapter_type, adapter_config)
+
+    # Run via orchestrator
+    click.echo(f"Running suite: {catalog_suite.name} ({len(suite.tests)} tests)...")
+    async with TestOrchestrator(
+        adapter=adapter,
+        runs_per_test=runs_per_test,
+    ) as orchestrator:
+        suite_result = await orchestrator.run_suite(
+            suite=suite,
+            agent_name=agent_name,
+            runs_per_test=runs_per_test,
+        )
+
+    # Build slug → CatalogTest mapping for submission creation
+    test_by_slug = {ct.slug: ct for ct in catalog_suite.tests}
+
+    # Create submissions and update stats
+    comparison_rows: list[dict] = []
+    for test_result in suite_result.tests:
+        test_slug = test_result.test.id
+        catalog_test = test_by_slug.get(test_slug)
+        if catalog_test is None:
+            continue
+
+        score = (
+            100.0 * test_result.successful_runs / test_result.total_runs
+            if test_result.total_runs > 0
+            else 0.0
+        )
+
+        # Extract metrics from the first run if available
+        total_tokens: int | None = None
+        cost_usd: float | None = None
+        duration: float | None = test_result.duration_seconds
+
+        if test_result.runs:
+            first_run = test_result.runs[0]
+            if first_run.response and first_run.response.metrics:
+                m = first_run.response.metrics
+                if m.total_tokens is not None:
+                    total_tokens = m.total_tokens
+                elif m.input_tokens is not None or m.output_tokens is not None:
+                    total_tokens = (m.input_tokens or 0) + (m.output_tokens or 0)
+                cost_usd = m.cost_usd
+
+        await repo.create_submission(
+            test_id=catalog_test.id,
+            agent_name=agent_name,
+            agent_type=adapter_type,
+            score=score,
+            total_tokens=total_tokens,
+            cost_usd=cost_usd,
+            duration_seconds=duration,
+        )
+        await repo.update_test_stats(catalog_test.id)
+
+        comparison_rows.append(
+            {
+                "name": catalog_test.name or test_slug,
+                "score": score,
+                "avg": catalog_test.avg_score,
+                "best": catalog_test.best_score,
+            }
+        )
+
+    await session.commit()
+
+    # Collect top-3 agents across all tests for comparison table
+    top3_scores: dict[str, list[float]] = {}
+    for catalog_test in catalog_suite.tests:
+        submissions = await repo.get_top_submissions(catalog_test.id, limit=5)
+        for sub in submissions:
+            top3_scores.setdefault(sub.agent_name, []).append(sub.score)
+
+    top3 = sorted(
+        [
+            {"name": name, "score": sum(scores) / len(scores)}
+            for name, scores in top3_scores.items()
+        ],
+        key=lambda x: x["score"],
+        reverse=True,
+    )[:3]
+
+    table_str = format_comparison_table(comparison_rows, top3)
+    click.echo(table_str)
+    click.echo(
+        f"\nCompleted: {suite_result.passed_tests}/{suite_result.total_tests} passed"
+    )
+
+
+async def _do_run(
+    path: str,
+    adapter: str,
+    adapter_config: str,
+    agent_name: str,
+    runs: int,
+) -> None:
+    """Run a catalog suite against an agent via TestOrchestrator.
 
     Args:
         path: 'category/suite' path string.
         adapter: Adapter type.
-        adapter_config: Adapter configuration string.
+        adapter_config: Adapter configuration string (key=value pairs).
         agent_name: Agent name.
+        runs: Number of runs per test.
     """
     category_slug, suite_slug = _parse_path(path)
+    config_dict = _parse_adapter_config(adapter_config)
 
     db = await init_database()
     async with db.session() as session:
-        repo = CatalogRepository(session)
-        suite = await repo.get_suite_by_path(category_slug, suite_slug)
-
-        if suite is None:
-            click.echo(f"Suite not found: {path!r}", err=True)
-            sys.exit(EXIT_FAILURE)
-
-    click.echo(f"Suite: {suite.name}")
-    click.echo(f"  Category:   {category_slug}")
-    click.echo(f"  Difficulty: {suite.difficulty or 'N/A'}")
-    click.echo(f"  Tests:      {len(suite.tests)}")
-    click.echo()
-    click.echo(
-        "Run functionality requires a running agent. Save the suite YAML and use:"
-    )
-    config_flag = f" --adapter-config {adapter_config}" if adapter_config else ""
-    click.echo(
-        f"  atp test <suite.yaml> --adapter={adapter}"
-        f"{config_flag} --agent-name={agent_name}"
-    )
+        await _execute_catalog_run(
+            session=session,
+            category_slug=category_slug,
+            suite_slug=suite_slug,
+            adapter_type=adapter,
+            adapter_config=config_dict,
+            agent_name=agent_name,
+            runs_per_test=runs,
+        )
 
 
 async def _do_publish(file_path: Path) -> None:
@@ -496,24 +643,30 @@ def info_cmd(path: str) -> None:
 @click.option(
     "--adapter-config",
     default="",
-    help="Adapter configuration as key=value pairs",
+    help="Adapter configuration as key=value pairs (e.g. url=http://localhost:8080)",
 )
 @click.option(
     "--agent-name",
     default="my-agent",
     help="Name of the agent being tested",
 )
-def run_cmd(path: str, adapter: str, adapter_config: str, agent_name: str) -> None:
-    """Show how to run a catalog suite against an agent.
+@click.option(
+    "--runs",
+    default=1,
+    show_default=True,
+    help="Number of runs per test",
+)
+def run_cmd(
+    path: str, adapter: str, adapter_config: str, agent_name: str, runs: int
+) -> None:
+    """Run a catalog suite against an agent via TestOrchestrator.
 
     PATH must be in 'category/suite' format (e.g., 'coding/file-operations').
-
-    Note: Full run integration is a work-in-progress. This command
-    shows the equivalent 'atp test' invocation to run the suite.
 
     Examples:
 
       atp catalog run coding/file-operations --adapter=http
+      atp catalog run coding/file-operations --adapter=http --runs=3
 
     Exit Codes:
 
@@ -522,7 +675,7 @@ def run_cmd(path: str, adapter: str, adapter_config: str, agent_name: str) -> No
       2 - Error occurred
     """
     try:
-        asyncio.run(_do_run(path, adapter, adapter_config, agent_name))
+        asyncio.run(_do_run(path, adapter, adapter_config, agent_name, runs))
     except SystemExit:
         raise
     except Exception as e:
