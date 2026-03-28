@@ -1,88 +1,34 @@
-# Agent Test Platform (ATP)
+# ATP — Agent Test Platform
 
-> Framework-agnostic platform for testing and evaluating AI agents
+**The framework-agnostic platform for testing and evaluating AI agents.**
 
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Coverage](https://img.shields.io/badge/coverage-80%25+-green.svg)](https://github.com/yourusername/atp-platform)
 
-## Overview
+## Why ATP?
 
-ATP (Agent Test Platform) is a framework-agnostic platform for testing and evaluating AI agents. It provides a unified protocol and infrastructure for testing agents regardless of their implementation framework (LangGraph, CrewAI, AutoGen, custom, etc.).
-
-**Key principle**: Agent = black box with a contract (input → output + events via ATP Protocol).
-
-### The Problem
-
-Modern AI agents are complex systems with non-deterministic behavior, multi-step logic, and dependencies on external tools. Traditional software testing approaches don't work for agents:
-
-- **Stochasticity**: same prompt yields different results
-- **Emergent behavior**: system behavior isn't the sum of components
-- **Decision chains**: early errors manifest later
-- **Framework dependency**: each team uses different stack
-
-### The Solution
-
-ATP provides:
-- **Unified Protocol**: Standard interface for all agents
-- **Declarative Testing**: YAML-based test definitions
-- **Multi-Level Evaluation**: Artifact checks → behavior analysis → LLM-as-judge
-- **Statistical Reliability**: Multiple runs with confidence intervals
-- **Framework Agnostic**: Works with any agent implementation
-- **CI/CD Ready**: JUnit XML, HTML reports, GitHub Actions integration
+- **Framework-agnostic** — test any agent (LangGraph, CrewAI, AutoGen, HTTP endpoint, CLI, container, cloud) through a single unified protocol. No vendor lock-in.
+- **Game-theoretic evaluation** — the only platform with built-in multi-agent game evaluation: Prisoner's Dilemma, Public Goods, Auction, Colonel Blotto, Congestion Game, and more. Measure strategic reasoning, cooperation, and equilibrium play.
+- **Statistical rigor** — multiple runs per test, 95% confidence intervals, Welch's t-test regression detection, and Elo ratings. Know when a change is real, not noise.
+- **Production-ready** — web dashboard, SQLite/PostgreSQL storage, JUnit XML for CI/CD, HTML reports, cost tracking, and security evaluation out of the box.
 
 ## Quick Start
 
-### Installation
-
 ```bash
-# Clone repository
-git clone https://github.com/yourusername/atp-platform.git
-cd atp-platform
-
-# Install dependencies (requires uv)
-uv sync
-
-# Verify installation
-uv run pytest tests/ -v
+pip install atp-platform
+atp quickstart
 ```
 
-### Run Your First Test
+See the [Quick Start Guide](docs/guides/quickstart.md) for a full walkthrough.
+
+## Quick Start (from source)
 
 ```bash
-# Quick demo - run file operations agent (no API keys required)
-uv run atp test examples/test_suites/demo_file_agent.yaml \
-  --adapter=cli \
-  --adapter-config='command=python' \
-  --adapter-config='args=["examples/demo_agent.py"]' \
-  -v
-
-# Run OpenAI-powered agent (requires OPENAI_API_KEY)
-export OPENAI_API_KEY='sk-...'
-uv run atp test examples/test_suites/openai_agent.yaml \
-  --adapter=cli \
-  --adapter-config='command=python' \
-  --adapter-config='args=["examples/openai_agent.py"]' \
-  --adapter-config='inherit_environment=true' \
-  --adapter-config='allowed_env_vars=["OPENAI_API_KEY","OPENAI_MODEL"]' \
-  -v
-
-# Run with multiple iterations for statistical reliability
-uv run atp test suite.yaml --adapter=http \
-  --adapter-config='endpoint=http://localhost:8000' \
-  --runs=5
-
-# Run specific tags
-uv run atp test suite.yaml --adapter=cli \
-  --adapter-config='command=python' \
-  --adapter-config='args=["agent.py"]' \
-  --tags=smoke
-
-# Generate JSON report
-uv run atp test suite.yaml --adapter=cli \
-  --adapter-config='command=python' \
-  --adapter-config='args=["agent.py"]' \
-  --output=json --output-file=results.json
+git clone https://github.com/yourusername/atp-platform.git
+cd atp-platform
+uv sync
+uv run pytest tests/ -v  # verify installation
 ```
 
 ### Your First Test Suite
