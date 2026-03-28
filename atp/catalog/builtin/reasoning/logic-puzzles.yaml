@@ -1,0 +1,64 @@
+catalog:
+  category: reasoning
+  slug: logic-puzzles
+  name: "Logic Puzzles"
+  description: "Tests agent ability to apply deductive and logical reasoning"
+  author: curated
+  source: builtin
+  difficulty: medium
+  estimated_minutes: 15
+  tags: [reasoning, logic, deduction]
+
+test_suite: "catalog:reasoning/logic-puzzles"
+version: "1.0"
+
+defaults:
+  runs_per_test: 3
+  timeout_seconds: 90
+
+tests:
+  - id: syllogism
+    name: "Classic Syllogism"
+    tags: [easy]
+    task:
+      description: >
+        Given the premises: (1) All mammals are warm-blooded.
+        (2) All dogs are mammals. Conclude whether the following is true
+        or false: 'All dogs are warm-blooded.' Explain your reasoning step
+        by step and state the final answer clearly.
+      expected_artifacts: []
+    assertions:
+      - type: contains_keyword
+        config:
+          keywords: ["true", "warm-blooded"]
+
+  - id: constraint-satisfaction
+    name: "Constraint Satisfaction"
+    tags: [medium]
+    task:
+      description: >
+        Three people (Alice, Bob, Carol) each have a unique favourite colour
+        (red, green, blue) and a unique pet (cat, dog, fish).
+        Clues: Alice does not like red. Bob's pet is not a cat.
+        The person who likes green has a dog. Carol likes blue.
+        Determine each person's favourite colour and pet.
+      expected_artifacts: []
+    assertions:
+      - type: contains_keyword
+        config:
+          keywords: ["Alice", "Bob", "Carol"]
+
+  - id: deduction
+    name: "Deductive Chain"
+    tags: [hard]
+    task:
+      description: >
+        Given: If it rains, the ground is wet. If the ground is wet, the
+        grass grows. If the grass grows, the cows are happy.
+        It is raining. Using only the given statements, list every conclusion
+        you can derive and explain the chain of reasoning.
+      expected_artifacts: []
+    assertions:
+      - type: contains_keyword
+        config:
+          keywords: ["cows", "happy", "wet"]

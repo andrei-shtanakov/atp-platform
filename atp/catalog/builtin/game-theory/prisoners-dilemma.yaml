@@ -1,0 +1,51 @@
+catalog:
+  category: game-theory
+  slug: prisoners-dilemma
+  name: "Prisoner's Dilemma"
+  description: "Tests agent reasoning and strategy in classic game-theoretic scenarios"
+  author: curated
+  source: builtin
+  difficulty: medium
+  estimated_minutes: 10
+  tags: [game-theory, strategy, cooperation]
+
+test_suite: "catalog:game-theory/prisoners-dilemma"
+version: "1.0"
+
+defaults:
+  runs_per_test: 3
+  timeout_seconds: 60
+
+tests:
+  - id: one-shot
+    name: "One-Shot Prisoner's Dilemma"
+    tags: [medium]
+    task:
+      description: >
+        You are Player A in a one-shot Prisoner's Dilemma.
+        If both cooperate: each gets 3 years off. If both defect: each gets
+        1 year off. If you cooperate and your opponent defects: you get 0,
+        they get 5. If you defect and they cooperate: you get 5, they get 0.
+        You cannot communicate with your opponent. Choose: cooperate or defect.
+        Explain your reasoning referencing the payoff matrix.
+      expected_artifacts: []
+    assertions:
+      - type: contains_keyword
+        config:
+          keywords: ["cooperate", "defect"]
+
+  - id: iterated-strategy
+    name: "Iterated Strategy Selection"
+    tags: [hard]
+    task:
+      description: >
+        You will play 10 rounds of Prisoner's Dilemma against the same
+        opponent. Describe the strategy you would use (e.g. Tit-for-Tat,
+        Always Defect, Grim Trigger) and justify why it maximises your
+        long-term payoff. Include at least one concrete example showing
+        how your strategy responds to an opponent who defects on round 3.
+      expected_artifacts: []
+    assertions:
+      - type: contains_keyword
+        config:
+          keywords: ["strategy", "round"]

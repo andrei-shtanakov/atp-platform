@@ -1,0 +1,65 @@
+catalog:
+  category: coding
+  slug: file-operations
+  name: "File Operations"
+  description: "Tests agent ability to create, read, transform, and refactor files"
+  author: curated
+  source: builtin
+  difficulty: easy
+  estimated_minutes: 10
+  tags: [coding, files, io]
+
+test_suite: "catalog:coding/file-operations"
+version: "1.0"
+
+defaults:
+  runs_per_test: 3
+  timeout_seconds: 60
+
+tests:
+  - id: create-file
+    name: "Create a File"
+    tags: [easy]
+    task:
+      description: >
+        Create a file named 'hello.txt' in the current working directory
+        containing the single line: Hello, World!
+      expected_artifacts: ["hello.txt"]
+    assertions:
+      - type: artifact_exists
+        config:
+          path: "hello.txt"
+      - type: artifact_contains
+        config:
+          path: "hello.txt"
+          text: "Hello, World!"
+
+  - id: read-and-transform
+    name: "Read and Transform a File"
+    tags: [easy]
+    task:
+      description: >
+        Read the contents of 'input.txt' and write a new file 'output.txt'
+        containing the same text converted to uppercase.
+      expected_artifacts: ["output.txt"]
+    assertions:
+      - type: artifact_exists
+        config:
+          path: "output.txt"
+
+  - id: multi-file-refactor
+    name: "Multi-file Refactor"
+    tags: [medium]
+    task:
+      description: >
+        Given two Python files 'utils.py' and 'main.py', move the helper
+        function 'add_numbers' from 'main.py' into 'utils.py' and update
+        'main.py' to import it from 'utils'.
+      expected_artifacts: ["utils.py", "main.py"]
+    assertions:
+      - type: artifact_exists
+        config:
+          path: "utils.py"
+      - type: artifact_exists
+        config:
+          path: "main.py"
