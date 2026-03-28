@@ -22,6 +22,7 @@ from atp.cli.commands.game import game_command
 from atp.cli.commands.generate import generate_command
 from atp.cli.commands.init import init_command
 from atp.cli.commands.plugins import plugins_command
+from atp.cli.commands.quickstart import quickstart_command
 from atp.cli.commands.traces import replay_command, traces_command
 from atp.loader import TestLoader
 
@@ -1924,6 +1925,7 @@ cli.add_command(compare_command)
 cli.add_command(estimate_command)
 cli.add_command(experiment_command)
 cli.add_command(init_command)
+cli.add_command(quickstart_command)
 cli.add_command(generate_command)
 cli.add_command(plugins_command)
 cli.add_command(game_command)
