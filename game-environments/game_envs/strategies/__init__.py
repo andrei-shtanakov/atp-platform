@@ -10,6 +10,11 @@ from game_envs.strategies.blotto_strategies import (
     NashMixed,
     UniformAllocation,
 )
+from game_envs.strategies.bos_strategies import (
+    Alternating,
+    AlwaysA,
+    AlwaysB,
+)
 from game_envs.strategies.congestion_strategies import (
     EpsilonGreedy,
     SelfishRouter,
@@ -37,6 +42,9 @@ from game_envs.strategies.stag_hunt_strategies import (
 )
 
 __all__ = [
+    "Alternating",
+    "AlwaysA",
+    "AlwaysB",
     "AlwaysCooperate",
     "AlwaysDefect",
     "AlwaysHare",

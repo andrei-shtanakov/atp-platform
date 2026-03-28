@@ -482,7 +482,7 @@ class TestBuiltinRegistration:
         import game_envs  # noqa: F401
 
         result = GameRegistry.list_games(with_metadata=True)
-        assert len(result) == 6
+        assert len(result) == 7
         names = [e["name"] for e in result]
         assert "prisoners_dilemma" in names
         assert "auction" in names
