@@ -12,7 +12,8 @@ ATP (Agent Test Platform) is a framework-agnostic platform for testing and evalu
 
 ```bash
 # Package management (ONLY use uv, never pip)
-uv add <package>                    # Install package
+uv sync --group dev                 # Install all deps including dev tools
+uv add <package>                    # Add a new package
 uv run <tool>                       # Run tool
 uv add --dev <package> --upgrade-package <package>  # Upgrade dev package
 
@@ -32,11 +33,16 @@ python task.py list                # List all tasks
 python task.py next                # Show ready tasks
 python task.py start TASK-001      # Start a task
 python task.py done TASK-001       # Complete a task
+python task.py show TASK-001       # Show task details
+python task.py stats               # Task statistics
+python task.py graph               # Dependency graph
 
 # Task executor (automated via Claude CLI)
 python executor.py run             # Execute next task
 python executor.py run --task=TASK-001  # Execute specific task
 python executor.py status          # Check execution status
+python executor.py retry           # Retry failed task
+python executor.py logs            # View execution logs
 
 # CLI commands
 uv run atp test suite.yaml --adapter=cli  # Run tests
@@ -48,6 +54,7 @@ uv run atp list-agents             # List available adapters
 uv run atp dashboard               # Start web dashboard
 uv run atp tui                     # Start terminal UI (requires [tui] extra)
 uv run atp init                    # Initialize ATP project
+uv run atp quickstart              # Quick project scaffolding
 uv run atp generate                # Generate test suites
 uv run atp benchmark               # Run benchmarks
 uv run atp budget                  # Budget management
@@ -70,7 +77,7 @@ uv run atp version                 # Show version info
 2. **Adapters** (`atp/adapters/`) - Translate between ATP Protocol and agent types (HTTP, Container, CLI, LangGraph, CrewAI, AutoGen, MCP, Bedrock, Vertex, Azure OpenAI)
 3. **Runner** (`atp/runner/`) - Orchestrates test execution, manages sandboxes
 4. **Evaluators** (`atp/evaluators/`) - Assess agent results (artifact, behavior, LLM-judge, code-exec, security, factuality, filesystem, style, performance, composite)
-5. **Reporters** (`atp/reporters/`) - Format output (console, JSON, JUnit, HTML)
+5. **Reporters** (`atp/reporters/`) - Format output (console, JSON, JUnit, HTML, game)
 
 ### Data Flow
 
@@ -113,6 +120,10 @@ atp/                         # Namespace package (symlinks to packages/ + local 
 ├── core/     → packages/atp-core/     # (symlink)
 ├── loader/   → packages/atp-core/     # (symlink)
 ├── cost/     → packages/atp-core/     # (symlink)
+├── chaos/    → packages/atp-core/     # (symlink)
+├── scoring/  → packages/atp-core/     # (symlink)
+├── statistics/→ packages/atp-core/    # (symlink)
+├── streaming/→ packages/atp-core/     # (symlink)
 ├── adapters/ → packages/atp-adapters/ # (symlink)
 ├── dashboard/→ packages/atp-dashboard/# (symlink)
 └── analytics/→ packages/atp-dashboard/# (symlink)
