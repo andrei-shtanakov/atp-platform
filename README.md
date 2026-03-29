@@ -269,6 +269,7 @@ uv run atp replay               # Replay agent traces
 - [Installation Guide](docs/guides/installation.md) - Setup and dependencies
 - [Quick Start Guide](docs/guides/quickstart.md) - First test suite
 - [Basic Usage](docs/guides/usage.md) - Common workflows
+- [Agent Testing Guide](https://github.com/andrei-shtanakov/atp-platform-testing) - Step-by-step test planning, examples, and a runnable lab
 
 ### Reference
 
