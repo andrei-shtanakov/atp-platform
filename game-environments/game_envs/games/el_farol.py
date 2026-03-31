@@ -45,11 +45,14 @@ from game_envs.games.registry import register_game
 # ---------------------------------------------------------------------------
 
 
+MAX_SLOTS_PER_DAY = 8
+
+
 class ElFarolActionSpace(ActionSpace):
     """Action space for El Farol Bar: a list of time-slot indices.
 
-    A valid action is a (possibly empty) list of integers in
-    [0, num_slots), each slot representing a 30-minute window.
+    A valid action is a list of unique integers in [0, num_slots),
+    with at most ``MAX_SLOTS_PER_DAY`` entries.
     """
 
     def __init__(self, num_slots: int = 16) -> None:
@@ -58,11 +61,41 @@ class ElFarolActionSpace(ActionSpace):
     def contains(self, action: Any) -> bool:
         if not isinstance(action, list):
             return False
+        if len(action) > MAX_SLOTS_PER_DAY:
+            return False
+        if len(action) != len(set(action)):
+            return False
         return all(isinstance(s, int) and 0 <= s < self.num_slots for s in action)
+
+    def sanitize(self, action: Any) -> list[int]:
+        """Convert any input to a safe slot list.
+
+        Handles None, non-list types, duplicates, out-of-range
+        values, and oversized lists. Returns an empty list for
+        completely invalid input.
+        """
+        if action is None:
+            return []
+        if not isinstance(action, (list, tuple)):
+            return []
+        seen: set[int] = set()
+        result: list[int] = []
+        for s in action:
+            if not isinstance(s, int):
+                continue
+            if s < 0 or s >= self.num_slots:
+                continue
+            if s in seen:
+                continue
+            seen.add(s)
+            result.append(s)
+            if len(result) >= MAX_SLOTS_PER_DAY:
+                break
+        return result
 
     def sample(self, rng: random.Random | None = None) -> list[int]:
         r = rng or random.Random()
-        length = r.randint(4, 8)
+        length = r.randint(4, MAX_SLOTS_PER_DAY)
         start = r.randint(0, max(0, self.num_slots - length))
         return list(range(start, min(start + length, self.num_slots)))
 
@@ -72,9 +105,11 @@ class ElFarolActionSpace(ActionSpace):
     def to_description(self) -> str:
         return (
             f"Choose which time slots to attend today. "
-            f"Provide a list of integers in 0–{self.num_slots - 1} "
-            f"(each slot = 30 min). You may attend at most 8 consecutive "
-            f"slots per session. Example: [4, 5, 6, 7, 8]. "
+            f"Provide a list of unique integers in "
+            f"0–{self.num_slots - 1} "
+            f"(each slot = 30 min). "
+            f"At most {MAX_SLOTS_PER_DAY} slots per day. "
+            f"Example: [4, 5, 6, 7, 8]. "
             f"Return an empty list [] to stay home."
         )
 
@@ -247,23 +282,29 @@ class ElFarolBar(Game):
         c = self._ef_config
         num_slots = c.num_slots
         threshold = c.capacity_threshold
+        aspace = self.action_space(self.player_ids[0])
 
         # ------------------------------------------------------------------
-        # 1. Compute per-slot occupancy
+        # 1. Sanitize actions (deduplicate, bound, handle bad input)
+        # ------------------------------------------------------------------
+        clean: dict[str, list[int]] = {}
+        for pid in self.player_ids:
+            clean[pid] = aspace.sanitize(actions.get(pid))
+
+        # ------------------------------------------------------------------
+        # 2. Compute per-slot occupancy
         # ------------------------------------------------------------------
         daily_occupancy: list[float] = [0.0] * num_slots
         for pid in self.player_ids:
-            slots = list(actions.get(pid, []))
-            for s in slots:
-                if 0 <= s < num_slots:
-                    daily_occupancy[s] += 1
+            for s in clean[pid]:
+                daily_occupancy[s] += 1
 
         # ------------------------------------------------------------------
-        # 2. Update player stats and compute payoffs
+        # 3. Update player stats and compute payoffs
         # ------------------------------------------------------------------
         payoffs: dict[str, float] = {}
         for pid in self.player_ids:
-            slots = [s for s in actions.get(pid, []) if 0 <= s < num_slots]
+            slots = clean[pid]
             happy = sum(1 for s in slots if daily_occupancy[s] < threshold)
             crowded = sum(1 for s in slots if daily_occupancy[s] >= threshold)
             self._t_happy[pid] += happy
@@ -271,17 +312,17 @@ class ElFarolBar(Game):
             payoffs[pid] = float(happy - crowded)
 
         # ------------------------------------------------------------------
-        # 3. Record attendance history
+        # 4. Record attendance history
         # ------------------------------------------------------------------
         self._attendance_history.append(daily_occupancy)
 
         # ------------------------------------------------------------------
-        # 4. Record round in game history
+        # 5. Record round in game history
         # ------------------------------------------------------------------
         current_round = self._current_round
         rr = RoundResult(
             round_number=current_round,
-            actions={pid: list(actions.get(pid, [])) for pid in self.player_ids},
+            actions={pid: clean[pid] for pid in self.player_ids},
             payoffs=payoffs,
         )
         self._history.add_round(rr)
