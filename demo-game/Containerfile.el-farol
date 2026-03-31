@@ -1,0 +1,21 @@
+# El Farol Bar — LLM Game Agent
+#
+# Build:
+#   podman build -f demo-game/Containerfile.el-farol -t el-farol-agent .
+#
+# Run:
+#   podman run --rm -p 8011:8011 -e OPENAI_API_KEY=sk-... el-farol-agent
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir fastapi uvicorn openai
+
+COPY demo-game/agents/el_farol_agent.py .
+
+ENV PYTHONUNBUFFERED=1
+
+EXPOSE 8011
+
+CMD ["uvicorn", "el_farol_agent:app", "--host", "0.0.0.0", "--port", "8011"]

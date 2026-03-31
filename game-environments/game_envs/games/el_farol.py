@@ -40,10 +40,10 @@ from game_envs.core.state import (
 )
 from game_envs.games.registry import register_game
 
-
 # ---------------------------------------------------------------------------
 # Action space
 # ---------------------------------------------------------------------------
+
 
 class ElFarolActionSpace(ActionSpace):
     """Action space for El Farol Bar: a list of time-slot indices.
@@ -58,10 +58,7 @@ class ElFarolActionSpace(ActionSpace):
     def contains(self, action: Any) -> bool:
         if not isinstance(action, list):
             return False
-        return all(
-            isinstance(s, int) and 0 <= s < self.num_slots
-            for s in action
-        )
+        return all(isinstance(s, int) and 0 <= s < self.num_slots for s in action)
 
     def sample(self, rng: random.Random | None = None) -> list[int]:
         r = rng or random.Random()
@@ -86,6 +83,7 @@ class ElFarolActionSpace(ActionSpace):
 # Config
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class ElFarolConfig(GameConfig):
     """Configuration for El Farol Bar.
@@ -103,7 +101,7 @@ class ElFarolConfig(GameConfig):
     num_rounds: int = 30
     num_slots: int = 16
     capacity_threshold: int = 60
-    min_total_hours: float = 20.0
+    min_total_hours: float = 0.0
     slot_duration: float = 0.5  # hours
 
     def __post_init__(self) -> None:
@@ -119,14 +117,13 @@ class ElFarolConfig(GameConfig):
                 f"min_total_hours must be >= 0, got {self.min_total_hours}"
             )
         if self.slot_duration <= 0:
-            raise ValueError(
-                f"slot_duration must be > 0, got {self.slot_duration}"
-            )
+            raise ValueError(f"slot_duration must be > 0, got {self.slot_duration}")
 
 
 # ---------------------------------------------------------------------------
 # Game
 # ---------------------------------------------------------------------------
+
 
 @register_game("el_farol", ElFarolConfig)
 class ElFarolBar(Game):
@@ -250,7 +247,6 @@ class ElFarolBar(Game):
         c = self._ef_config
         num_slots = c.num_slots
         threshold = c.capacity_threshold
-        slot_dur = c.slot_duration
 
         # ------------------------------------------------------------------
         # 1. Compute per-slot occupancy
@@ -301,8 +297,7 @@ class ElFarolBar(Game):
                 "game": self.name,
                 "attendance_history": self._attendance_history,
                 "crowded_slots_today": [
-                    s for s, occ in enumerate(daily_occupancy)
-                    if occ >= threshold
+                    s for s, occ in enumerate(daily_occupancy) if occ >= threshold
                 ],
                 "max_occupancy_today": max(daily_occupancy),
             },
@@ -391,29 +386,34 @@ class ElFarolBar(Game):
         """Describe the El Farol scenario for LLM agents."""
         c = self._ef_config
         slot_hours = c.num_slots * c.slot_duration
-        return "\n".join([
-            f"This is the El Farol Bar Problem with {c.num_players} players.",
-            "",
-            "Rules:",
-            f"- Each day has {c.num_slots} time slots of {c.slot_duration:.1f} h each "
-            f"({slot_hours:.0f} hours total).",
-            f"- You choose which slots to attend (list of integers 0–{c.num_slots - 1}).",
-            f"- If {c.capacity_threshold} or more players attend a slot simultaneously, "
-            f"it becomes *crowded* (unpleasant).",
-            "- You can only observe past attendance — not what others plan today.",
-            "",
-            "Scoring:",
-            "  score = total_happy_slots / max(total_crowded_slots, 0.1)",
-            f"  (must attend at least {c.min_total_hours} hours to avoid disqualification)",
-            "",
-            "Strategy note:",
-            "  The Nash equilibrium has each player attend each slot with probability "
-            f"  p* = {c.capacity_threshold}/{c.num_players} = "
-            f"  {c.capacity_threshold / c.num_players:.2f}. "
-            "  Heterogeneous learning strategies often outperform this.",
-            "",
-            f"This game is repeated for {c.num_rounds} days.",
-        ])
+        return "\n".join(
+            [
+                f"This is the El Farol Bar Problem with {c.num_players} players.",
+                "",
+                "Rules:",
+                f"- Each day has {c.num_slots} time slots "
+                f"of {c.slot_duration:.1f} h each "
+                f"({slot_hours:.0f} h total).",
+                "- You choose which slots to attend "
+                f"(list of integers 0–{c.num_slots - 1}).",
+                f"- If {c.capacity_threshold}+ players attend "
+                "a slot, it becomes *crowded*.",
+                "- You can only observe past attendance — not what others plan today.",
+                "",
+                "Scoring:",
+                "  score = total_happy_slots / max(total_crowded_slots, 0.1)",
+                f"  (must attend >= {c.min_total_hours} h to avoid disqualification)",
+                "",
+                "Strategy note:",
+                "  The Nash equilibrium has each player "
+                "attend each slot with probability"
+                f"  p* = {c.capacity_threshold}/{c.num_players} = "
+                f"  {c.capacity_threshold / c.num_players:.2f}. "
+                "  Heterogeneous learning strategies often outperform this.",
+                "",
+                f"This game is repeated for {c.num_rounds} days.",
+            ]
+        )
 
     # ------------------------------------------------------------------
     # Convenience: attendance history as numpy array

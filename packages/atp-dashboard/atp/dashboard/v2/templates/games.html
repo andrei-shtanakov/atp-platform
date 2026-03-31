@@ -1,0 +1,427 @@
+{% extends "base.html" %}
+{% from "components/navigation.html" import navbar, nav_scripts %}
+
+{% block title %}ATP Dashboard - Games{% endblock %}
+
+{% block content %}
+{{ navbar(current_page="games") }}
+{{ nav_scripts() }}
+
+<div class="container mx-auto px-4 py-6">
+    <div id="games-root"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="text/babel">
+{% raw %}
+
+// ─── Utility helpers ───────────────────────────────────────────
+
+function formatDate(iso) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleString();
+}
+
+function formatFloat(v, digits = 2) {
+    if (v == null) return '—';
+    return Number(v).toFixed(digits);
+}
+
+const GAME_COLORS = [
+    '#3B82F6', '#EF4444', '#10B981', '#F59E0B',
+    '#8B5CF6', '#EC4899', '#06B6D4', '#F97316',
+];
+
+// ─── Summary cards ─────────────────────────────────────────────
+
+function GamesSummary({ games }) {
+    const total = games.length;
+    const completed = games.filter(g => g.status === 'completed').length;
+    const uniqueGames = [...new Set(games.map(g => g.game_name))].length;
+    const totalEpisodes = games.reduce((s, g) => s + (g.num_episodes || 0), 0);
+
+    const cards = [
+        { label: 'Total Runs', value: total },
+        { label: 'Completed', value: completed },
+        { label: 'Game Types', value: uniqueGames },
+        { label: 'Total Episodes', value: totalEpisodes },
+    ];
+
+    return (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            {cards.map((c, i) => (
+                <div key={i} className="bg-white p-4 rounded-lg shadow">
+                    <h3 className="text-gray-500 text-sm">{c.label}</h3>
+                    <p className="text-2xl font-bold">{c.value}</p>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+// ─── Game list table ───────────────────────────────────────────
+
+function GameList({ games, onSelect }) {
+    if (!games || games.length === 0) {
+        return (
+            <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+                No game results yet. Run a game suite to see results here.
+                <pre className="mt-4 text-sm text-left bg-gray-50 p-4 rounded max-w-lg mx-auto">
+uv run atp game run examples/test_suites/13_game_el_farol.yaml
+                </pre>
+            </div>
+        );
+    }
+
+    return (
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+            <table className="min-w-full">
+                <thead className="bg-gray-50">
+                    <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Game</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Players</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rounds</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Episodes</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                    {games.map(g => (
+                        <tr
+                            key={g.id}
+                            className="hover:bg-gray-50 cursor-pointer"
+                            onClick={() => onSelect(g.id)}
+                        >
+                            <td className="px-4 py-3 text-sm text-gray-400">#{g.id}</td>
+                            <td className="px-4 py-3 font-medium">{g.game_name}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{g.game_type || '—'}</td>
+                            <td className="px-4 py-3 text-sm">{g.num_players}</td>
+                            <td className="px-4 py-3 text-sm">{g.num_rounds}</td>
+                            <td className="px-4 py-3 text-sm">{g.num_episodes}</td>
+                            <td className="px-4 py-3"><StatusBadge status={g.status} /></td>
+                            <td className="px-4 py-3 text-sm text-gray-500">{formatDate(g.created_at)}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
+// ─── Player payoff bar chart (Chart.js) ────────────────────────
+
+function PayoffChart({ players }) {
+    const canvasRef = React.useRef(null);
+    const chartRef = React.useRef(null);
+
+    React.useEffect(() => {
+        if (!canvasRef.current || !players || players.length === 0) return;
+        if (chartRef.current) chartRef.current.destroy();
+
+        const sorted = [...players].sort((a, b) => b.average_payoff - a.average_payoff);
+
+        chartRef.current = new Chart(canvasRef.current, {
+            type: 'bar',
+            data: {
+                labels: sorted.map(p => p.strategy || p.player_id),
+                datasets: [{
+                    label: 'Average Payoff',
+                    data: sorted.map(p => p.average_payoff),
+                    backgroundColor: sorted.map((_, i) => GAME_COLORS[i % GAME_COLORS.length]),
+                    borderRadius: 4,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: 'y',
+                plugins: {
+                    legend: { display: false },
+                    title: { display: true, text: 'Average Payoff by Strategy' },
+                },
+                scales: {
+                    x: { beginAtZero: true },
+                },
+            },
+        });
+
+        return () => { if (chartRef.current) chartRef.current.destroy(); };
+    }, [players]);
+
+    return (
+        <div className="bg-white rounded-lg shadow p-4" style={{ height: Math.max(200, (players?.length || 2) * 50 + 80) }}>
+            <canvas ref={canvasRef}></canvas>
+        </div>
+    );
+}
+
+// ─── Episode payoff line chart ─────────────────────────────────
+
+function EpisodeChart({ episodes, players }) {
+    const canvasRef = React.useRef(null);
+    const chartRef = React.useRef(null);
+
+    React.useEffect(() => {
+        if (!canvasRef.current || !episodes || episodes.length === 0) return;
+        if (chartRef.current) chartRef.current.destroy();
+
+        const playerIds = players ? players.map(p => p.player_id) : [];
+        const labels = episodes.map((_, i) => `Ep ${i + 1}`);
+
+        const datasets = playerIds.map((pid, idx) => ({
+            label: (players[idx]?.strategy) || pid,
+            data: episodes.map(ep => ep.payoffs?.[pid] ?? null),
+            borderColor: GAME_COLORS[idx % GAME_COLORS.length],
+            backgroundColor: GAME_COLORS[idx % GAME_COLORS.length] + '33',
+            tension: 0.3,
+            pointRadius: 3,
+        }));
+
+        chartRef.current = new Chart(canvasRef.current, {
+            type: 'line',
+            data: { labels, datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    title: { display: true, text: 'Payoff per Episode' },
+                    legend: { position: 'bottom' },
+                },
+                scales: {
+                    y: { beginAtZero: true },
+                },
+            },
+        });
+
+        return () => { if (chartRef.current) chartRef.current.destroy(); };
+    }, [episodes, players]);
+
+    if (!episodes || episodes.length <= 1) return null;
+
+    return (
+        <div className="bg-white rounded-lg shadow p-4" style={{ height: 320 }}>
+            <canvas ref={canvasRef}></canvas>
+        </div>
+    );
+}
+
+// ─── Player stats table ────────────────────────────────────────
+
+function PlayerTable({ players }) {
+    if (!players || players.length === 0) return null;
+
+    const sorted = [...players].sort((a, b) => b.average_payoff - a.average_payoff);
+
+    return (
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="px-4 py-3 bg-gray-50 border-b">
+                <h3 className="font-medium text-gray-700">Player Results</h3>
+            </div>
+            <table className="min-w-full">
+                <thead className="bg-gray-50">
+                    <tr>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Rank</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Player</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Strategy</th>
+                        <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Avg Payoff</th>
+                        <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Total Payoff</th>
+                        <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Cooperation</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                    {sorted.map((p, i) => (
+                        <tr key={p.player_id} className={i === 0 ? 'bg-yellow-50' : ''}>
+                            <td className="px-4 py-2 text-sm">{i === 0 ? '\u{1F3C6}' : `#${i + 1}`}</td>
+                            <td className="px-4 py-2 text-sm font-mono">{p.player_id}</td>
+                            <td className="px-4 py-2 text-sm font-medium">{p.strategy || '—'}</td>
+                            <td className="px-4 py-2 text-sm text-right font-mono">{formatFloat(p.average_payoff)}</td>
+                            <td className="px-4 py-2 text-sm text-right font-mono">{formatFloat(p.total_payoff)}</td>
+                            <td className="px-4 py-2 text-sm text-right">
+                                {p.cooperation_rate != null
+                                    ? `${(p.cooperation_rate * 100).toFixed(0)}%`
+                                    : '—'}
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
+// ─── Game detail view ──────────────────────────────────────────
+
+function GameDetail({ gameId, onBack }) {
+    const [game, setGame] = React.useState(null);
+    const [loading, setLoading] = React.useState(true);
+    const [error, setError] = React.useState(null);
+
+    const loadGame = React.useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const data = await api.get(`/games/${gameId}`);
+            setGame(data);
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    }, [gameId]);
+
+    React.useEffect(() => { loadGame(); }, [loadGame]);
+
+    if (loading) {
+        return (
+            <div>
+                <SkeletonBox className="h-8 w-48 mb-4" />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <SkeletonChart />
+                    <SkeletonChart />
+                </div>
+            </div>
+        );
+    }
+
+    if (error) {
+        return <ErrorDisplay error={{ message: error }} onRetry={loadGame} title="Failed to load game" />;
+    }
+
+    if (!game) return null;
+
+    return (
+        <div>
+            {/* Header */}
+            <div className="flex items-center gap-4 mb-6">
+                <button
+                    onClick={onBack}
+                    className="px-3 py-1 text-sm bg-gray-200 hover:bg-gray-300 rounded transition-colors"
+                >
+                    Back
+                </button>
+                <div>
+                    <h2 className="text-xl font-bold">{game.game_name}</h2>
+                    <p className="text-sm text-gray-500">
+                        {game.game_type} &middot; {game.num_players} players &middot;
+                        {game.num_rounds} rounds &middot; {game.num_episodes} episodes
+                        &middot; <StatusBadge status={game.status} />
+                    </p>
+                </div>
+                <div className="ml-auto flex gap-2">
+                    <a
+                        href={`/api/games/${gameId}/export/csv`}
+                        className="px-3 py-1 text-sm bg-blue-100 text-blue-700 hover:bg-blue-200 rounded transition-colors"
+                    >
+                        CSV
+                    </a>
+                    <a
+                        href={`/api/games/${gameId}/export/json`}
+                        className="px-3 py-1 text-sm bg-blue-100 text-blue-700 hover:bg-blue-200 rounded transition-colors"
+                    >
+                        JSON
+                    </a>
+                </div>
+            </div>
+
+            {/* Charts */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+                <PayoffChart players={game.players} />
+                <EpisodeChart episodes={game.episodes} players={game.players} />
+            </div>
+
+            {/* Player table */}
+            <div className="mb-6">
+                <PlayerTable players={game.players} />
+            </div>
+
+            {/* Metadata */}
+            {game.metadata && Object.keys(game.metadata).length > 0 && (
+                <div className="bg-white rounded-lg shadow p-4">
+                    <h3 className="font-medium text-gray-700 mb-2">Metadata</h3>
+                    <pre className="text-xs bg-gray-50 p-3 rounded overflow-x-auto">
+                        {JSON.stringify(game.metadata, null, 2)}
+                    </pre>
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ─── Main page component ───────────────────────────────────────
+
+function GamesPage() {
+    const [games, setGames] = React.useState([]);
+    const [loading, setLoading] = React.useState(true);
+    const [error, setError] = React.useState(null);
+    const [selectedId, setSelectedId] = React.useState(null);
+
+    const loadGames = React.useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const data = await api.get('/games?limit=100');
+            setGames(data.items || []);
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    React.useEffect(() => { loadGames(); }, [loadGames]);
+
+    // Detail view
+    if (selectedId) {
+        return (
+            <GameDetail
+                gameId={selectedId}
+                onBack={() => setSelectedId(null)}
+            />
+        );
+    }
+
+    // Loading state
+    if (loading) {
+        return (
+            <div>
+                <SkeletonDashboardSummary />
+                <SkeletonSuiteList rows={5} />
+            </div>
+        );
+    }
+
+    // Error state
+    if (error) {
+        return <ErrorDisplay error={{ message: error }} onRetry={loadGames} title="Failed to load games" />;
+    }
+
+    // List view
+    return (
+        <ErrorBoundary title="Games Error" message="Unable to display game results.">
+            <div className="mb-6">
+                <h1 className="text-2xl font-bold text-gray-900">Game Results</h1>
+                <p className="text-sm text-gray-500 mt-1">
+                    Game-theoretic evaluations and tournament results
+                </p>
+            </div>
+            <GamesSummary games={games} />
+            <GameList games={games} onSelect={setSelectedId} />
+        </ErrorBoundary>
+    );
+}
+
+// ─── Mount ─────────────────────────────────────────────────────
+
+const gamesRoot = document.getElementById('games-root');
+if (gamesRoot) {
+    const root = ReactDOM.createRoot(gamesRoot);
+    root.render(<GamesPage />);
+}
+
+{% endraw %}
+</script>
+{% endblock %}

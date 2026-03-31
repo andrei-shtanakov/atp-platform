@@ -31,6 +31,7 @@ dependencies = [
     "bcrypt>=5.0.0",
     "pyjwt>=2.11.0",
     "authlib>=1.6.9",
+    "python-multipart>=0.0.22",
 ]
 
 [project.scripts]
@@ -236,4 +237,5 @@ dev = [
     "anthropic>=0.76.0",
     "atp-games",
     "game-environments",
+    "python3-saml>=1.16.0",
 ]

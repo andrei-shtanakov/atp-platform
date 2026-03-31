@@ -24,10 +24,10 @@ import numpy as np
 from game_envs.core.state import Observation
 from game_envs.core.strategy import Strategy
 
-
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _get_best_window(
     occupancy: list[float] | np.ndarray,
@@ -77,6 +77,7 @@ def _num_slots(observation: Observation) -> int:
 # ---------------------------------------------------------------------------
 # Strategies
 # ---------------------------------------------------------------------------
+
 
 class Traditionalist(Strategy):
     """Repeat the quietest time window from yesterday.
@@ -182,6 +183,7 @@ class Gambler(Strategy):
     ) -> None:
         self._min_window = min_window
         self._max_window = max_window
+        self._seed = seed
         self._rng = random.Random(seed)
 
     @property
@@ -196,8 +198,7 @@ class Gambler(Strategy):
         return list(range(start, min(start + length, slots)))
 
     def reset(self) -> None:
-        # Re-seed each episode for cleaner reproducibility
-        self._rng = random.Random(None)
+        self._rng = random.Random(self._seed)
 
 
 class SmartPredictor(Strategy):
@@ -206,7 +207,7 @@ class SmartPredictor(Strategy):
     Computes the expected occupancy for each slot by extrapolating the
     linear trend of the last ``lookback`` days:
 
-        prediction[s] = occupancy[day-1][s] + (occupancy[day-1][s] - occupancy[day-2][s])
+        prediction[s] = occ[d-1][s] + (occ[d-1][s] - occ[d-2][s])
 
     Selects the ``window_size``-slot contiguous block with the lowest
     predicted occupancy.  Falls back to TrendFollower logic when there
@@ -270,6 +271,7 @@ class Scout(Strategy):
         self._recon_window = recon_window
         self._main_window_size = main_window_size
         self._threshold = threshold
+        self._seed = seed
         self._rng = random.Random(seed)
 
     @property
@@ -314,4 +316,4 @@ class Scout(Strategy):
         return result
 
     def reset(self) -> None:
-        self._rng = random.Random(None)
+        self._rng = random.Random(self._seed)

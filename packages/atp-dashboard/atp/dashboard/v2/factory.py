@@ -149,6 +149,14 @@ def create_app(
                 context={"execution_id": execution_id},
             )
 
+        @app.get("/games", response_class=HTMLResponse)
+        async def games(request: Request) -> HTMLResponse:
+            """Render the game results page template."""
+            return templates.TemplateResponse(
+                request=request,
+                name="games.html",
+            )
+
         @app.get("/comparison", response_class=HTMLResponse)
         async def comparison(
             request: Request,

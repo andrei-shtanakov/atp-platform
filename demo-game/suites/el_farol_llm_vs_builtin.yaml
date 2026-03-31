@@ -1,0 +1,62 @@
+# El Farol Bar: GPT-4o-mini vs built-in strategies
+#
+# LLM agent plays alongside 5 deterministic strategies.
+# Tests whether LLM can learn to avoid crowded slots.
+#
+# Run:
+#   1. Start agent:
+#      podman run --rm -p 8011:8011 -e OPENAI_API_KEY=sk-... el-farol-agent
+#      # or locally:
+#      uv run python -m uvicorn demo-game.agents.el_farol_agent:app --port 8011
+#
+#   2. Run evaluation:
+#      uv run atp game run demo-game/suites/el_farol_llm_vs_builtin.yaml --episodes=5 -v
+
+type: game_suite
+name: "El Farol: GPT-4o-mini vs Baselines"
+version: "1.0"
+
+game:
+  type: el_farol
+  variant: repeated
+  config:
+    num_players: 6
+    num_rounds: 30
+    num_slots: 16
+    capacity_threshold: 4
+    min_total_hours: 0.0
+    slot_duration: 0.5
+
+agents:
+  - name: gpt4o-mini
+    adapter: http
+    endpoint: http://localhost:8011
+    config:
+      timeout: 30
+      allow_internal: true
+
+  - name: traditionalist
+    adapter: builtin
+    strategy: traditionalist
+
+  - name: trend_follower
+    adapter: builtin
+    strategy: trend_follower
+
+  - name: contrarian
+    adapter: builtin
+    strategy: contrarian
+
+  - name: gambler
+    adapter: builtin
+    strategy: gambler
+
+  - name: smart_predictor
+    adapter: builtin
+    strategy: smart_predictor
+
+evaluation:
+  episodes: 5
+  metrics:
+    - type: average_payoff
+      weight: 1.0

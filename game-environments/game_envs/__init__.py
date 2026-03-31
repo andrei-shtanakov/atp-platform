@@ -55,6 +55,7 @@ from game_envs.core.strategy import Strategy
 from game_envs.games.auction import Auction, AuctionConfig
 from game_envs.games.colonel_blotto import BlottoConfig, ColonelBlotto
 from game_envs.games.congestion import CongestionConfig, CongestionGame, RouteDefinition
+from game_envs.games.el_farol import ElFarolBar, ElFarolConfig
 from game_envs.games.prisoners_dilemma import PDConfig, PrisonersDilemma
 from game_envs.games.public_goods import PGConfig, PublicGoodsGame
 from game_envs.games.registry import GameRegistry, register_game
@@ -63,20 +64,26 @@ from game_envs.strategies import (
     AlwaysDefect,
     ConcentratedAllocation,
     ConditionalCooperator,
+    Contrarian,
     EpsilonGreedy,
     FreeRider,
     FullContributor,
+    Gambler,
     GrimTrigger,
     NashMixed,
     Pavlov,
     Punisher,
     RandomBidder,
     RandomStrategy,
+    Scout,
     SelfishRouter,
     ShadeBidder,
+    SmartPredictor,
     SocialOptimum,
     StrategyRegistry,
     TitForTat,
+    Traditionalist,
+    TrendFollower,
     TruthfulBidder,
     UniformAllocation,
 )
@@ -95,15 +102,19 @@ __all__ = [
     "ConditionalCooperator",
     "CongestionConfig",
     "CongestionGame",
+    "Contrarian",
     "ContinuousActionSpace",
     "CooperationMetrics",
     "DiscreteActionSpace",
     "EmpiricalStrategy",
+    "ElFarolBar",
+    "ElFarolConfig",
     "EpsilonGreedy",
     "ExploitabilityResult",
     "FairnessMetrics",
     "FreeRider",
     "FullContributor",
+    "Gambler",
     "Game",
     "GameConfig",
     "GameHistory",
@@ -132,16 +143,20 @@ __all__ = [
     "RandomBidder",
     "RandomStrategy",
     "ReplicatorDynamics",
+    "Scout",
     "RouteDefinition",
     "RoundResult",
     "SelfishRouter",
     "ShadeBidder",
+    "SmartPredictor",
     "SocialOptimum",
     "StepResult",
     "Strategy",
     "StrategyRegistry",
     "StructuredActionSpace",
     "TitForTat",
+    "Traditionalist",
+    "TrendFollower",
     "TruthfulBidder",
     "UniformAllocation",
     "compute_best_response",
@@ -181,3 +196,9 @@ StrategyRegistry.register("nash_mixed", NashMixed)
 StrategyRegistry.register("selfish_router", SelfishRouter)
 StrategyRegistry.register("social_optimum", SocialOptimum)
 StrategyRegistry.register("epsilon_greedy", EpsilonGreedy)
+StrategyRegistry.register("traditionalist", Traditionalist)
+StrategyRegistry.register("trend_follower", TrendFollower)
+StrategyRegistry.register("contrarian", Contrarian)
+StrategyRegistry.register("gambler", Gambler)
+StrategyRegistry.register("smart_predictor", SmartPredictor)
+StrategyRegistry.register("scout", Scout)
