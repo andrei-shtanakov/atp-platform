@@ -127,7 +127,7 @@ function PayoffChart({ players }) {
         chartRef.current = new Chart(canvasRef.current, {
             type: 'bar',
             data: {
-                labels: sorted.map(p => p.strategy || p.player_id),
+                labels: sorted.map(p => p.strategy || p.name || p.player_id),
                 datasets: [{
                     label: 'Average Payoff',
                     data: sorted.map(p => p.average_payoff),
@@ -237,7 +237,7 @@ function PlayerTable({ players }) {
                         <tr key={p.player_id} className={i === 0 ? 'bg-yellow-50' : ''}>
                             <td className="px-4 py-2 text-sm">{i === 0 ? '\u{1F3C6}' : `#${i + 1}`}</td>
                             <td className="px-4 py-2 text-sm font-mono">{p.player_id}</td>
-                            <td className="px-4 py-2 text-sm font-medium">{p.strategy || '—'}</td>
+                            <td className="px-4 py-2 text-sm font-medium">{p.strategy || p.name || '—'}</td>
                             <td className="px-4 py-2 text-sm text-right font-mono">{formatFloat(p.average_payoff)}</td>
                             <td className="px-4 py-2 text-sm text-right font-mono">{formatFloat(p.total_payoff)}</td>
                             <td className="px-4 py-2 text-sm text-right">

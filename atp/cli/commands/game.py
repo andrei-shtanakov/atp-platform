@@ -753,6 +753,7 @@ async def _store_game_result(
                     {
                         "player_id": pid,
                         "name": name,
+                        "strategy": name,
                         "average_payoff": payoff,
                     }
                 )
