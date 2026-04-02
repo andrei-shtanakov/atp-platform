@@ -1048,3 +1048,10 @@ class TournamentResult(Base):
             f"TournamentResult(id={self.id}, name={self.name!r}, "
             f"game={self.game_name!r})"
         )
+
+
+from atp.dashboard.benchmark.models import (  # noqa: F401, E402
+    Benchmark,
+    Run,
+    TaskResult,
+)
