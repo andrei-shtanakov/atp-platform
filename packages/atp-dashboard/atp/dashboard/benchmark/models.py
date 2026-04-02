@@ -114,7 +114,7 @@ class Run(Base):
         nullable=False,
     )
     agent_name: Mapped[str] = mapped_column(String(200), nullable=False)
-    adapter_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    adapter_type: Mapped[str] = mapped_column(String(50), nullable=False, default="sdk")
     status: Mapped[str] = mapped_column(
         String(20),
         nullable=False,
