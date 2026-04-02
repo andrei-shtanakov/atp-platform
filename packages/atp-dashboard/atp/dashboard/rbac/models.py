@@ -95,6 +95,18 @@ class Permission(StrEnum):
     AUDIT_EXPORT = "audit:export"
     AUDIT_MANAGE = "audit:manage"  # For retention policy management
 
+    # Benchmark permissions
+    BENCHMARKS_READ = "benchmarks:read"
+    BENCHMARKS_WRITE = "benchmarks:write"
+    BENCHMARKS_EXECUTE = "benchmarks:execute"
+    BENCHMARKS_DELETE = "benchmarks:delete"
+
+    # Tournament permissions
+    TOURNAMENTS_READ = "tournaments:read"
+    TOURNAMENTS_WRITE = "tournaments:write"
+    TOURNAMENTS_EXECUTE = "tournaments:execute"
+    TOURNAMENTS_DELETE = "tournaments:delete"
+
     # Marketplace permissions (TASK-803)
     MARKETPLACE_READ = "marketplace:read"
     MARKETPLACE_WRITE = "marketplace:write"
@@ -153,6 +165,10 @@ DEVELOPER_PERMISSIONS: frozenset[Permission] = frozenset(
         Permission.ANALYTICS_EXPORT,
         # Roles: R (can see roles but not modify)
         Permission.ROLES_READ,
+        # Benchmarks: RWX
+        Permission.BENCHMARKS_READ,
+        Permission.BENCHMARKS_WRITE,
+        Permission.BENCHMARKS_EXECUTE,
         # Marketplace: R + publish + review
         Permission.MARKETPLACE_READ,
         Permission.MARKETPLACE_WRITE,

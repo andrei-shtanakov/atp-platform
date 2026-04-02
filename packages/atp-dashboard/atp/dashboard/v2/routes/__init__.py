@@ -42,6 +42,9 @@ from atp.dashboard.v2.routes.agents import router as agents_router
 from atp.dashboard.v2.routes.analytics import router as analytics_router
 from atp.dashboard.v2.routes.audit import router as audit_router
 from atp.dashboard.v2.routes.auth import router as auth_router
+from atp.dashboard.v2.routes.benchmark_api import (
+    router as benchmark_api_router,
+)
 from atp.dashboard.v2.routes.budgets import router as budgets_router
 from atp.dashboard.v2.routes.catalog import router as catalog_router
 from atp.dashboard.v2.routes.comparison import router as comparison_router
@@ -102,10 +105,12 @@ router.include_router(users_router)
 router.include_router(websocket_router)
 router.include_router(agent_traces_router)
 router.include_router(catalog_router)
+router.include_router(benchmark_api_router)
 
 __all__ = [
     "router",
     "agent_traces_router",
+    "benchmark_api_router",
     "catalog_router",
     "agents_router",
     "analytics_router",
