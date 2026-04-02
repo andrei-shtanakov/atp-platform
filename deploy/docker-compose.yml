@@ -19,6 +19,8 @@ services:
 
   nginx:
     image: nginx:alpine
+    environment:
+      DOMAIN: "${DOMAIN:-atp.example.com}"
     ports:
       - "443:443"
       - "80:80"
