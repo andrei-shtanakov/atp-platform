@@ -213,6 +213,7 @@ atp-adapters = { workspace = true }
 atp-dashboard = { workspace = true }
 atp-games = { workspace = true }
 game-environments = { workspace = true }
+atp-sdk = { workspace = true }
 
 [dependency-groups]
 dev = [
@@ -238,4 +239,5 @@ dev = [
     "atp-games",
     "game-environments",
     "python3-saml>=1.16.0",
+    "atp-sdk",
 ]
