@@ -71,19 +71,19 @@ async def client(
 
 @pytest.mark.anyio
 class TestListBenchmarks:
-    """Tests for GET /api/api/v1/benchmarks."""
+    """Tests for GET /api/v1/benchmarks."""
 
     async def test_empty_list(self, client: AsyncClient) -> None:
-        resp = await client.get("/api/api/v1/benchmarks")
+        resp = await client.get("/api/v1/benchmarks")
         assert resp.status_code == 200
         assert resp.json() == []
 
     async def test_list_after_create(self, client: AsyncClient) -> None:
         await client.post(
-            "/api/api/v1/benchmarks",
+            "/api/v1/benchmarks",
             json={"name": "B1", "suite": SAMPLE_SUITE},
         )
-        resp = await client.get("/api/api/v1/benchmarks")
+        resp = await client.get("/api/v1/benchmarks")
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) == 1
@@ -93,11 +93,11 @@ class TestListBenchmarks:
 
 @pytest.mark.anyio
 class TestCreateBenchmark:
-    """Tests for POST /api/api/v1/benchmarks."""
+    """Tests for POST /api/v1/benchmarks."""
 
     async def test_create_returns_201(self, client: AsyncClient) -> None:
         resp = await client.post(
-            "/api/api/v1/benchmarks",
+            "/api/v1/benchmarks",
             json={"name": "NewBench", "suite": SAMPLE_SUITE},
         )
         assert resp.status_code == 201
@@ -109,19 +109,19 @@ class TestCreateBenchmark:
 
 @pytest.mark.anyio
 class TestGetBenchmark:
-    """Tests for GET /api/api/v1/benchmarks/{id}."""
+    """Tests for GET /api/v1/benchmarks/{id}."""
 
     async def test_not_found(self, client: AsyncClient) -> None:
-        resp = await client.get("/api/api/v1/benchmarks/999")
+        resp = await client.get("/api/v1/benchmarks/999")
         assert resp.status_code == 404
 
     async def test_get_existing(self, client: AsyncClient) -> None:
         create_resp = await client.post(
-            "/api/api/v1/benchmarks",
+            "/api/v1/benchmarks",
             json={"name": "FindMe", "suite": SAMPLE_SUITE},
         )
         bm_id = create_resp.json()["id"]
-        resp = await client.get(f"/api/api/v1/benchmarks/{bm_id}")
+        resp = await client.get(f"/api/v1/benchmarks/{bm_id}")
         assert resp.status_code == 200
         assert resp.json()["name"] == "FindMe"
 
@@ -132,13 +132,13 @@ class TestRunLifecycle:
 
     async def test_start_run(self, client: AsyncClient) -> None:
         bm = await client.post(
-            "/api/api/v1/benchmarks",
+            "/api/v1/benchmarks",
             json={"name": "RunBench", "suite": SAMPLE_SUITE},
         )
         bm_id = bm.json()["id"]
 
         resp = await client.post(
-            f"/api/api/v1/benchmarks/{bm_id}/start?agent_name=my-agent",
+            f"/api/v1/benchmarks/{bm_id}/start?agent_name=my-agent",
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -147,16 +147,16 @@ class TestRunLifecycle:
 
     async def test_next_task_returns_atp_request(self, client: AsyncClient) -> None:
         bm = await client.post(
-            "/api/api/v1/benchmarks",
+            "/api/v1/benchmarks",
             json={"name": "NTBench", "suite": SAMPLE_SUITE},
         )
         bm_id = bm.json()["id"]
         run = await client.post(
-            f"/api/api/v1/benchmarks/{bm_id}/start",
+            f"/api/v1/benchmarks/{bm_id}/start",
         )
         run_id = run.json()["id"]
 
-        resp = await client.get(f"/api/api/v1/runs/{run_id}/next-task")
+        resp = await client.get(f"/api/v1/runs/{run_id}/next-task")
         assert resp.status_code == 200
         data = resp.json()
         assert "task_id" in data
@@ -165,44 +165,45 @@ class TestRunLifecycle:
 
     async def test_204_when_tasks_exhausted(self, client: AsyncClient) -> None:
         bm = await client.post(
-            "/api/api/v1/benchmarks",
+            "/api/v1/benchmarks",
             json={"name": "ExBench", "suite": SAMPLE_SUITE},
         )
         bm_id = bm.json()["id"]
         run = await client.post(
-            f"/api/api/v1/benchmarks/{bm_id}/start",
+            f"/api/v1/benchmarks/{bm_id}/start",
         )
         run_id = run.json()["id"]
 
         # Consume both tasks
-        await client.get(f"/api/api/v1/runs/{run_id}/next-task")
-        await client.get(f"/api/api/v1/runs/{run_id}/next-task")
+        await client.get(f"/api/v1/runs/{run_id}/next-task")
+        await client.get(f"/api/v1/runs/{run_id}/next-task")
 
-        resp = await client.get(f"/api/api/v1/runs/{run_id}/next-task")
+        resp = await client.get(f"/api/v1/runs/{run_id}/next-task")
         assert resp.status_code == 204
 
     async def test_submit_result(self, client: AsyncClient) -> None:
         bm = await client.post(
-            "/api/api/v1/benchmarks",
+            "/api/v1/benchmarks",
             json={"name": "SubBench", "suite": SAMPLE_SUITE},
         )
         bm_id = bm.json()["id"]
         run = await client.post(
-            f"/api/api/v1/benchmarks/{bm_id}/start",
+            f"/api/v1/benchmarks/{bm_id}/start",
         )
         run_id = run.json()["id"]
 
         # Get first task
-        await client.get(f"/api/api/v1/runs/{run_id}/next-task")
+        await client.get(f"/api/v1/runs/{run_id}/next-task")
 
         # Submit result
         resp = await client.post(
-            f"/api/api/v1/runs/{run_id}/submit",
+            f"/api/v1/runs/{run_id}/submit",
             json={
                 "response": {
                     "task_id": "test-1",
                     "status": "completed",
-                }
+                },
+                "task_index": 0,
             },
         )
         assert resp.status_code == 200
@@ -212,47 +213,48 @@ class TestRunLifecycle:
 
     async def test_cancel_run(self, client: AsyncClient) -> None:
         bm = await client.post(
-            "/api/api/v1/benchmarks",
+            "/api/v1/benchmarks",
             json={"name": "CancelBench", "suite": SAMPLE_SUITE},
         )
         bm_id = bm.json()["id"]
         run = await client.post(
-            f"/api/api/v1/benchmarks/{bm_id}/start",
+            f"/api/v1/benchmarks/{bm_id}/start",
         )
         run_id = run.json()["id"]
 
-        resp = await client.post(f"/api/api/v1/runs/{run_id}/cancel")
+        resp = await client.post(f"/api/v1/runs/{run_id}/cancel")
         assert resp.status_code == 200
         assert resp.json()["status"] == "cancelled"
 
         # Verify via status endpoint
-        status_resp = await client.get(f"/api/api/v1/runs/{run_id}/status")
+        status_resp = await client.get(f"/api/v1/runs/{run_id}/status")
         assert status_resp.json()["status"] == "CANCELLED"
 
     async def test_run_status_with_completed_tasks(self, client: AsyncClient) -> None:
         bm = await client.post(
-            "/api/api/v1/benchmarks",
+            "/api/v1/benchmarks",
             json={"name": "StatusBench", "suite": SAMPLE_SUITE},
         )
         bm_id = bm.json()["id"]
         run = await client.post(
-            f"/api/api/v1/benchmarks/{bm_id}/start",
+            f"/api/v1/benchmarks/{bm_id}/start",
         )
         run_id = run.json()["id"]
 
         # Submit one task
-        await client.get(f"/api/api/v1/runs/{run_id}/next-task")
+        await client.get(f"/api/v1/runs/{run_id}/next-task")
         await client.post(
-            f"/api/api/v1/runs/{run_id}/submit",
+            f"/api/v1/runs/{run_id}/submit",
             json={
                 "response": {
                     "task_id": "test-1",
                     "status": "completed",
-                }
+                },
+                "task_index": 0,
             },
         )
 
-        resp = await client.get(f"/api/api/v1/runs/{run_id}/status")
+        resp = await client.get(f"/api/v1/runs/{run_id}/status")
         assert resp.status_code == 200
         data = resp.json()
         assert data["tasks_count"] == 2

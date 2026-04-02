@@ -122,12 +122,15 @@ class SDKAdapter(AgentAdapter):
         """Resolve a task with the agent's response.
 
         Stores the response and signals the waiting execute() call.
+        If no one is waiting (task already timed out), the response
+        is discarded to prevent memory leaks.
 
         Args:
             task_id: The task ID to resolve.
             response: The agent's response.
         """
+        if task_id not in self._events:
+            return  # No one waiting, discard
         self._results[task_id] = response
-        event = self._events.get(task_id)
-        if event is not None:
-            event.set()
+        event = self._events.pop(task_id)
+        event.set()

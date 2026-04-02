@@ -226,7 +226,8 @@ class TestSubmit:
             response={
                 "task_id": "test-1",
                 "status": "completed",
-            }
+            },
+            task_index=0,
         )
         tr = svc.submit(run.id, data)
 
@@ -246,7 +247,8 @@ class TestSubmit:
                 "task_id": "test-1",
                 "status": "failed",
                 "error": "oops",
-            }
+            },
+            task_index=0,
         )
         tr = svc.submit(run.id, data)
 
@@ -265,13 +267,19 @@ class TestSubmit:
         svc.next_task(run.id)
         svc.submit(
             run.id,
-            SubmitRequest(response={"task_id": "t1", "status": "completed"}),
+            SubmitRequest(
+                response={"task_id": "t1", "status": "completed"},
+                task_index=0,
+            ),
         )
 
         svc.next_task(run.id)
         svc.submit(
             run.id,
-            SubmitRequest(response={"task_id": "t2", "status": "failed", "error": "e"}),
+            SubmitRequest(
+                response={"task_id": "t2", "status": "failed", "error": "e"},
+                task_index=1,
+            ),
         )
 
         svc.session.refresh(run)
@@ -316,12 +324,18 @@ class TestLeaderboard:
         svc.next_task(run1.id)
         svc.submit(
             run1.id,
-            SubmitRequest(response={"task_id": "t1", "status": "completed"}),
+            SubmitRequest(
+                response={"task_id": "t1", "status": "completed"},
+                task_index=0,
+            ),
         )
         svc.next_task(run1.id)
         svc.submit(
             run1.id,
-            SubmitRequest(response={"task_id": "t2", "status": "completed"}),
+            SubmitRequest(
+                response={"task_id": "t2", "status": "completed"},
+                task_index=1,
+            ),
         )
 
         run2 = svc.start_run(
@@ -332,12 +346,18 @@ class TestLeaderboard:
         svc.next_task(run2.id)
         svc.submit(
             run2.id,
-            SubmitRequest(response={"task_id": "t1", "status": "failed", "error": "e"}),
+            SubmitRequest(
+                response={"task_id": "t1", "status": "failed", "error": "e"},
+                task_index=0,
+            ),
         )
         svc.next_task(run2.id)
         svc.submit(
             run2.id,
-            SubmitRequest(response={"task_id": "t2", "status": "failed", "error": "e"}),
+            SubmitRequest(
+                response={"task_id": "t2", "status": "failed", "error": "e"},
+                task_index=1,
+            ),
         )
 
         lb = svc.get_leaderboard(bm.id)

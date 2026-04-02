@@ -12,7 +12,8 @@ from typing import Any
 from atp.loader.models import TestSuite
 from atp.protocol import ATPRequest, ATPResponse, Task
 from fastapi import APIRouter, HTTPException, Query, Response, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 
 from atp.dashboard.benchmark.models import (
     Benchmark,
@@ -31,7 +32,7 @@ from atp.dashboard.benchmark.schemas import (
 )
 from atp.dashboard.v2.dependencies import DBSession
 
-router = APIRouter(prefix="/api/v1", tags=["benchmarks"])
+router = APIRouter(prefix="/v1", tags=["benchmarks"])
 
 
 # ------------------------------------------------------------------
@@ -175,14 +176,29 @@ async def next_task(
 
     Returns 204 No Content when all tasks have been consumed.
     """
-    run = await session.get(Run, run_id)
-    if run is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Run {run_id} not found",
-        )
+    # Atomic increment: avoids read-then-write race condition
+    stmt = (
+        update(Run)
+        .where(Run.id == run_id, Run.status == RunStatus.IN_PROGRESS)
+        .values(current_task_index=Run.current_task_index + 1)
+        .returning(Run.current_task_index, Run.benchmark_id)
+    )
+    result = await session.execute(stmt)
+    row = result.one_or_none()
+    if row is None:
+        # Either run doesn't exist or is not in progress
+        run = await session.get(Run, run_id)
+        if run is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Run {run_id} not found",
+            )
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-    bm = await session.get(Benchmark, run.benchmark_id)
+    new_index, benchmark_id = row
+    idx = new_index - 1  # We incremented, so actual index is new - 1
+
+    bm = await session.get(Benchmark, benchmark_id)
     if bm is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -190,15 +206,11 @@ async def next_task(
         )
 
     suite = TestSuite.model_validate(bm.suite)
-    idx = run.current_task_index
 
     if idx >= len(suite.tests):
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     test_def = suite.tests[idx]
-
-    # Increment task index
-    run.current_task_index = idx + 1
     await session.flush()
 
     # Build constraints
@@ -226,7 +238,7 @@ async def next_task(
             "test_id": test_def.id,
             "test_name": test_def.name,
             "task_index": idx,
-            "run_id": run.id,
+            "run_id": run_id,
         },
     )
     return request.model_dump()
@@ -246,11 +258,7 @@ async def submit_result(
             detail=f"Run {run_id} not found",
         )
 
-    # Count existing results to determine task_index
-    count_result = await session.execute(
-        select(func.count(TaskResult.id)).where(TaskResult.run_id == run_id)
-    )
-    task_index: int = count_result.scalar() or 0
+    task_index = data.task_index
 
     response = ATPResponse.model_validate(data.response)
     score = 100.0 if response.status == "completed" else 0.0
@@ -265,7 +273,14 @@ async def submit_result(
         submitted_at=datetime.now(),
     )
     session.add(tr)
-    await session.flush()
+    try:
+        await session.flush()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(f"Duplicate submission for run {run_id} task_index {task_index}"),
+        )
     await session.refresh(tr)
 
     # Check if all tasks done

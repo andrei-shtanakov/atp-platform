@@ -61,7 +61,7 @@ class ATPClient:
         return BenchmarkRun(
             http=self._http,
             run_id=data["id"],
-            benchmark_id=int(benchmark_id),
+            benchmark_id=benchmark_id,
         )
 
     def get_leaderboard(self, benchmark_id: str | int) -> list[dict[str, Any]]:

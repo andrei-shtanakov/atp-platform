@@ -78,6 +78,8 @@ def test_adapters_exports() -> None:
         "AdapterConnectionError",
         "AdapterResponseError",
         "AdapterNotFoundError",
+        "SDKAdapter",
+        "SDKAdapterConfig",
     }
     actual = set(adapters.__all__)
     missing = expected - actual

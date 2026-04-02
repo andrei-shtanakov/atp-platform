@@ -20,7 +20,7 @@ class BenchmarkRun:
         self,
         http: httpx.Client,
         run_id: int,
-        benchmark_id: int,
+        benchmark_id: str | int,
     ) -> None:
         self._http = http
         self.run_id = run_id
@@ -38,10 +38,20 @@ class BenchmarkRun:
     def submit(
         self,
         response: dict[str, Any],
+        task_index: int,
         events: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
-        """Submit a task response and optional events."""
-        payload: dict[str, Any] = {"response": response}
+        """Submit a task response and optional events.
+
+        Args:
+            response: ATPResponse as a dict.
+            task_index: Task index from ATPRequest.metadata.task_index.
+            events: Optional list of ATPEvent dicts.
+        """
+        payload: dict[str, Any] = {
+            "response": response,
+            "task_index": task_index,
+        }
         if events is not None:
             payload["events"] = events
         resp = self._http.post(

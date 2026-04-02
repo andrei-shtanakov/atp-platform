@@ -18,8 +18,8 @@ from atp.dashboard.database import init_database
 from atp.dashboard.v2.factory import create_test_app
 
 # The factory mounts api_router at "/api" and benchmark_api_router
-# has prefix="/api/v1", so full prefix is "/api/api/v1".
-BASE = "/api/api/v1"
+# has prefix="/api/v1", so full prefix is "/api/v1".
+BASE = "/api/v1"
 
 DB_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -107,6 +107,7 @@ async def test_full_benchmark_flow(client: AsyncClient) -> None:
                     "status": "completed",
                     "artifacts": [],
                 },
+                "task_index": task["metadata"]["task_index"],
             },
         )
         assert submit_resp.status_code == 200, submit_resp.text

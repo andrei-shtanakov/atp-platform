@@ -49,6 +49,10 @@ class SubmitRequest(BaseModel):
 
     response: dict[str, Any]  # ATPResponse as JSON
     events: list[dict[str, Any]] | None = Field(default=None)
+    task_index: int = Field(
+        ...,
+        description="Task index from ATPRequest.metadata.task_index",
+    )
 
 
 class TaskResultResponse(BaseModel):

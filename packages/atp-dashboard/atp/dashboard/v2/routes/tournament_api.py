@@ -15,7 +15,7 @@ from atp.dashboard.tournament.schemas import (
 )
 from atp.dashboard.v2.dependencies import DBSession
 
-router = APIRouter(prefix="/api/v1/tournaments", tags=["tournaments"])
+router = APIRouter(prefix="/v1/tournaments", tags=["tournaments"])
 
 
 # ------------------------------------------------------------------

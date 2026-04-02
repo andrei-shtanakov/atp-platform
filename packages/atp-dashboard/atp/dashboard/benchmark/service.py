@@ -157,14 +157,7 @@ class BenchmarkService:
         if run is None:
             raise ValueError(f"Run {run_id} not found")
 
-        # Determine task_index from existing results
-        existing_count: int = (
-            self.session.query(func.count(TaskResult.id))
-            .filter(TaskResult.run_id == run_id)
-            .scalar()
-            or 0
-        )
-        task_index = existing_count
+        task_index = data.task_index
 
         response = ATPResponse.model_validate(data.response)
         score = self._evaluate_sync(response)

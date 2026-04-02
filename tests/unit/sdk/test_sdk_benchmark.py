@@ -73,11 +73,13 @@ def test_benchmark_run_submit() -> None:
     run = _make_run(httpx.MockTransport(handler))
     result = run.submit(
         {"answer": "x=1"},
+        task_index=0,
         events=[{"type": "tool_call", "name": "calc"}],
     )
 
     assert result["score"] == 0.95
     assert captured_body["response"] == {"answer": "x=1"}
+    assert captured_body["task_index"] == 0
     assert len(captured_body["events"]) == 1
 
 
@@ -92,8 +94,9 @@ def test_benchmark_run_submit_no_events() -> None:
         return httpx.Response(200, json={"score": 1.0})
 
     run = _make_run(httpx.MockTransport(handler))
-    run.submit({"answer": "42"})
+    run.submit({"answer": "42"}, task_index=0)
     assert "events" not in captured_body
+    assert captured_body["task_index"] == 0
 
 
 def test_benchmark_run_status() -> None:
