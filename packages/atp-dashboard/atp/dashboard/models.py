@@ -1055,3 +1055,9 @@ from atp.dashboard.benchmark.models import (  # noqa: F401, E402
     Run,
     TaskResult,
 )
+from atp.dashboard.tournament.models import (  # noqa: F401, E402
+    Action,
+    Participant,
+    Round,
+    Tournament,
+)
