@@ -23,7 +23,7 @@ from atp.dashboard.schemas import (
     EventSummary,
     SideBySideComparisonResponse,
 )
-from atp.dashboard.v2.factory import create_app
+from atp.dashboard.v2.factory import create_test_app
 from atp.dashboard.v2.routes.comparison import (
     _format_event_summary,
 )
@@ -57,9 +57,9 @@ def _mock_admin_user() -> User:
 
 
 @pytest.fixture
-def client() -> TestClient:
+def client(disable_dashboard_auth: None) -> TestClient:
     """Create a test client with auth bypass."""
-    app = create_app()
+    app = create_test_app()
     app.dependency_overrides[get_current_active_user] = _mock_admin_user
     client = TestClient(app, raise_server_exceptions=False)
     yield client  # type: ignore

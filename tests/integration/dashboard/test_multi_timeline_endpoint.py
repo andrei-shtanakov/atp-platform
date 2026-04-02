@@ -22,7 +22,7 @@ from atp.dashboard.models import (
     User,
 )
 from atp.dashboard.v2.dependencies import get_db_session
-from atp.dashboard.v2.factory import create_app
+from atp.dashboard.v2.factory import create_test_app
 from tests.fixtures.comparison import generate_realistic_event_sequence
 from tests.fixtures.comparison.factories import reset_all_factories
 
@@ -178,11 +178,13 @@ async def multi_agent_data(async_session: AsyncSession) -> dict:
 
 @pytest.fixture
 async def client_with_data(
-    async_session: AsyncSession, multi_agent_data: dict
+    async_session: AsyncSession,
+    multi_agent_data: dict,
+    disable_dashboard_auth: None,
 ) -> AsyncGenerator[AsyncClient, None]:
     """Create an async HTTP client with test data."""
 
-    test_app = create_app()
+    test_app = create_test_app()
 
     # Override the session dependency
     async def override_get_db_session() -> AsyncGenerator[AsyncSession, None]:
@@ -469,6 +471,7 @@ class TestMultiTimelineEndpointIntegration:
             assert timeline["test_execution_id"] > 0
 
 
+@pytest.mark.usefixtures("disable_dashboard_auth")
 class TestMultiTimelineEdgeCases:
     """Edge case tests for multi-agent timeline endpoint."""
 
@@ -555,7 +558,7 @@ class TestMultiTimelineEdgeCases:
         async def override_get_db_session() -> AsyncGenerator[AsyncSession, None]:
             yield async_session
 
-        test_app = create_app()
+        test_app = create_test_app()
         test_app.dependency_overrides[get_db_session] = override_get_db_session
         test_app.dependency_overrides[get_current_active_user] = _mock_admin_user
 
