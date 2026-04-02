@@ -64,14 +64,19 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
 - [ ] Расширить atp-dashboard: catalog API + tournament API route-группы
 - [ ] Добавить GitHub как OIDC-провайдер в существующий SSO-модуль
 - [ ] Добавить Device Flow для CLI-логина (проверить, поддерживает ли текущий OIDC-модуль)
-- [ ] Создать SDKAdapter в atp-adapters (pull-модель как AgentAdapter)
+- [ ] Создать SDKAdapter в atp-adapters (asyncio.Event + timeout, pull-модель как AgentAdapter)
 - [ ] Создать packages/atp-sdk/ — Python SDK для участников
 - [ ] Новые SQLAlchemy-модели (Benchmark, Run, TaskResult, Tournament, Participant, Round, Action)
 - [ ] Alembic-миграция для новых таблиц
 - [ ] Sandbox для evaluators на сервере (subprocess + timeout + rlimits)
+- [ ] Cancel endpoint + серверный таймаут прогонов (status=partial)
+- [ ] Benchmark family_tag + parent_id для версионирования
+- [ ] Run.adapter_type для аналитики (sdk/http/cli/...)
 - [ ] Опубликовать atp-sdk на PyPI
 
 ### Post-MVP
+- [ ] `?batch=N` для параллельного получения задач (зарезервировано в API)
+- [ ] Redis pub/sub для SDKAdapter (замена asyncio.Event, переживает рестарт)
 - [ ] Автоматический трекинг токенов в SDK (обёртка над LLM-вызовами)
 - [ ] Event streaming в SDK (отправка ATPEvent во время выполнения)
 - [ ] Workspace management в SDK (скачивание/загрузка файлов-артефактов)
