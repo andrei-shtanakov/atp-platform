@@ -156,12 +156,18 @@ POST   /api/v1/tournaments/{id}/action         → действие агента
 GET    /api/v1/tournaments/{id}/results        → итоги
 ```
 
+> **Примечание (rev.3):** Tournament API намеренно менее детализирован чем Catalog API.
+> Турниры — второй приоритет. Cancel турнира, серверные таймауты раундов, обработка
+> пропущенных дедлайнов будут детализированы при реализации.
+
 ### 3.4 Принципы API
 
 - Все эндпоинты возвращают JSON
 - Версионирование: `/api/v1/`
 - ATPRequest/ATPResponse — Pydantic-модели из atp-core
 - Задачи выдаются по одной (next-task). Параметр `?batch=N` зарезервирован для параллельного получения (не в MVP)
+- **Атомарность next-task**: выдача задачи использует атомарный инкремент `current_task_index` (SELECT ... FOR UPDATE или аналог). Два одновременных вызова next-task для одного run не получат одну и ту же задачу
+- **Лидерборд**: лучший `total_score` per user per benchmark, сортировка по score desc, пагинация. Глобальный лидерборд — агрегация лучших скоров по benchmark families
 - При submit сервер прогоняет evaluators из atp-core и записывает скор
 - Бенчмарки immutable — нельзя изменить после публикации
 - RBAC из dashboard контролирует доступ (создание бенчмарков = admin, прогон = authenticated user)
@@ -218,7 +224,7 @@ packages/atp-sdk/
 ### 4.3 Ключевые решения
 
 - `for task in run` — скрывает polling. BenchmarkRun.__iter__ вызывает GET /next-task
-- atp-core как зависимость — ATPRequest/ATPResponse из единого источника
+- atp-core как зависимость — SDK импортирует только `atp.protocol` (ATPRequest/ATPResponse/ATPEvent). Protocol-модуль изолирован: зависит только от pydantic, не тянет evaluators/otel/prometheus. Если вес станет проблемой — выделим `atp-protocol` как отдельный пакет
 - httpx — sync и async
 - Device Flow для auth — `atp-sdk login` → браузер → OIDC (GitHub) → токен в ~/.atp/config.json
 - Минимум зависимостей: httpx, pydantic

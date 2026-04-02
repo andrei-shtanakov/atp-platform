@@ -88,3 +88,5 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
 - [ ] Федерация — приватный atp-server
 - [ ] Webhooks для CI/CD-уведомлений по завершении прогона
 - [ ] Rate limiting на уровне приложения
+- [ ] Выделить atp-protocol как отдельный лёгкий пакет (если вес atp-core станет проблемой для SDK)
+- [ ] Детализировать Tournament API (cancel, серверные таймауты раундов, пропуск дедлайнов)
