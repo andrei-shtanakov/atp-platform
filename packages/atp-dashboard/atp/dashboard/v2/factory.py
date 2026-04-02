@@ -247,6 +247,7 @@ def create_test_app(
         database_echo=False,
         debug=True,
         secret_key="test-secret-key",
+        disable_auth=True,
     )
     return create_app(config=config, **kwargs)
 
