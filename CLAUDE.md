@@ -74,10 +74,13 @@ uv run atp version                 # Show version info
 ### Core Components
 
 1. **Protocol** (`atp/protocol/`) - ATP Request/Response/Event models defining the contract
-2. **Adapters** (`atp/adapters/`) - Translate between ATP Protocol and agent types (HTTP, Container, CLI, LangGraph, CrewAI, AutoGen, MCP, Bedrock, Vertex, Azure OpenAI)
+2. **Adapters** (`atp/adapters/`) - Translate between ATP Protocol and agent types (HTTP, Container, CLI, LangGraph, CrewAI, AutoGen, MCP, Bedrock, Vertex, Azure OpenAI, SDK)
 3. **Runner** (`atp/runner/`) - Orchestrates test execution, manages sandboxes
 4. **Evaluators** (`atp/evaluators/`) - Assess agent results (artifact, behavior, LLM-judge, code-exec, security, factuality, filesystem, style, performance, composite)
 5. **Reporters** (`atp/reporters/`) - Format output (console, JSON, JUnit, HTML, game)
+6. **Benchmark API** (`atp/dashboard/benchmark/`) - REST API for pull-model benchmarks with leaderboard (`/api/v1/benchmarks`, `/api/v1/runs`)
+7. **Tournament API** (`atp/dashboard/tournament/`) - REST API for game-theoretic tournaments (`/api/v1/tournaments`)
+8. **SDK** (`packages/atp-sdk/`) - Python SDK for benchmark participants (ATPClient, BenchmarkRun iterator)
 
 ### Data Flow
 
@@ -98,8 +101,9 @@ The project uses implicit namespace packages (PEP 420) with uv workspaces. Core 
 ```
 packages/                    # Extracted packages (uv workspace members)
 ├── atp-core/                # Protocol, core, loader, chaos, cost, scoring, statistics, streaming
-├── atp-adapters/            # All agent adapters (HTTP, CLI, Container, cloud, MCP)
-└── atp-dashboard/           # Web dashboard + analytics
+├── atp-adapters/            # All agent adapters (HTTP, CLI, Container, cloud, MCP, SDK)
+├── atp-dashboard/           # Web dashboard + analytics + benchmark/tournament API
+└── atp-sdk/                 # Python SDK for benchmark platform participants (pull-model)
 
 atp/                         # Namespace package (symlinks to packages/ + local modules)
 ├── cli/           # CLI entry point (atp test, validate, baseline, dashboard, etc.)

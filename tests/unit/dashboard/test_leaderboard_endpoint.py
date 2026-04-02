@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from atp.dashboard.auth import get_current_active_user
 from atp.dashboard.models import User
-from atp.dashboard.v2.factory import create_app
+from atp.dashboard.v2.factory import create_test_app
 from atp.dashboard.v2.routes.leaderboard import (
     _calculate_difficulty,
     _detect_pattern,
@@ -33,9 +33,9 @@ def _mock_admin_user() -> User:
 
 
 @pytest.fixture
-def client() -> TestClient:
+def client(disable_dashboard_auth: None) -> TestClient:
     """Create a test client with auth bypass."""
-    app = create_app()
+    app = create_test_app()
     app.dependency_overrides[get_current_active_user] = _mock_admin_user
     client = TestClient(app, raise_server_exceptions=False)
     yield client  # type: ignore

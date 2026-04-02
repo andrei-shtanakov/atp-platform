@@ -14,6 +14,7 @@ members = [
     "atp-dashboard",
     "atp-games",
     "atp-platform",
+    "atp-sdk",
     "game-environments",
 ]
 
@@ -392,6 +393,7 @@ dev = [
     { name = "alembic" },
     { name = "anthropic" },
     { name = "atp-games" },
+    { name = "atp-sdk" },
     { name = "fastapi" },
     { name = "fpdf2" },
     { name = "game-environments" },
@@ -459,6 +461,7 @@ dev = [
     { name = "alembic", specifier = ">=1.18.4" },
     { name = "anthropic", specifier = ">=0.76.0" },
     { name = "atp-games", editable = "atp-games" },
+    { name = "atp-sdk", editable = "packages/atp-sdk" },
     { name = "fastapi", specifier = ">=0.128.0" },
     { name = "fpdf2", specifier = ">=2.8.5" },
     { name = "game-environments", editable = "game-environments" },
@@ -479,6 +482,32 @@ dev = [
     { name = "uvicorn", specifier = ">=0.40.0" },
     { name = "werkzeug", specifier = ">=3.1.6" },
 ]
+
+[[package]]
+name = "atp-sdk"
+version = "0.1.0"
+source = { editable = "packages/atp-sdk" }
+dependencies = [
+    { name = "atp-core" },
+    { name = "httpx" },
+    { name = "pydantic" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-anyio" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "atp-core", editable = "packages/atp-core" },
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "pydantic", specifier = ">=2.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
+    { name = "pytest-anyio", marker = "extra == 'dev'" },
+]
+provides-extras = ["dev"]
 
 [[package]]
 name = "attrs"

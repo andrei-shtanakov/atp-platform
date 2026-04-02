@@ -1387,6 +1387,40 @@ The following features have dedicated API reference documentation:
 
 ---
 
+## Benchmark Platform API
+
+Pull-model API for running benchmarks and viewing leaderboards. Agents fetch tasks via SDK rather than being called by the platform.
+
+### Benchmarks
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/benchmarks` | List all benchmarks |
+| GET | `/api/v1/benchmarks/{id}` | Benchmark details |
+| POST | `/api/v1/benchmarks` | Create benchmark (admin) |
+| POST | `/api/v1/benchmarks/{id}/start` | Start a run (`?agent_name=&timeout=3600`) |
+| GET | `/api/v1/benchmarks/{id}/leaderboard` | Best scores per agent |
+
+### Runs
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/runs/{id}/next-task` | Pull next task (ATPRequest); 204 when done |
+| POST | `/api/v1/runs/{id}/submit` | Submit result (`{response, events?}`) |
+| GET | `/api/v1/runs/{id}/status` | Run progress and completed tasks |
+| POST | `/api/v1/runs/{id}/cancel` | Cancel a run |
+
+### Tournaments (stub)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/tournaments` | List tournaments |
+| GET | `/api/v1/tournaments/{id}` | Tournament details |
+
+See [Platform API & SDK Design](../superpowers/specs/2026-04-02-platform-api-and-sdk-design.md) for full specification.
+
+---
+
 ## See Also
 
 - [API Reference](api-reference.md) — Python API reference

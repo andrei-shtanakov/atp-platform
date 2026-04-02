@@ -358,6 +358,7 @@ class TestLazyLoading:
             "bedrock",
             "vertex",
             "azure_openai",
+            "sdk",
         }
         assert expected == set(adapters)
 

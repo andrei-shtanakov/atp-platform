@@ -147,7 +147,7 @@ atp-platform/
 │   ├── protocol/             # ATP Request/Response/Event models
 │   ├── loader/               # YAML/JSON test parsing
 │   ├── runner/               # Test orchestration, sandbox
-│   ├── adapters/             # Agent adapters (HTTP, Docker, CLI, LangGraph, CrewAI, AutoGen, MCP, Bedrock, Vertex, Azure OpenAI)
+│   ├── adapters/             # Agent adapters (HTTP, Docker, CLI, LangGraph, CrewAI, AutoGen, MCP, Bedrock, Vertex, Azure OpenAI, SDK)
 │   ├── evaluators/           # Result evaluation (artifact, behavior, LLM, code, security, factuality, style, performance)
 │   ├── scoring/              # Score aggregation
 │   ├── statistics/           # Statistical analysis
@@ -165,6 +165,11 @@ atp-platform/
 │   ├── sdk/                  # Python SDK for programmatic use
 │   ├── tracing/              # Agent replay and trace management
 │   └── tui/                  # Terminal user interface (optional)
+├── packages/                  # Extracted packages (uv workspace members)
+│   ├── atp-core/             # Protocol, core, loader, scoring, statistics
+│   ├── atp-adapters/         # All agent adapters
+│   ├── atp-dashboard/        # Web dashboard + benchmark/tournament API
+│   └── atp-sdk/              # Python SDK for benchmark platform participants
 ├── game-environments/        # Standalone game theory library (Phase 5)
 │   └── game_envs/            # Games, strategies, analysis (Nash, exploitability)
 ├── atp-games/                # ATP plugin for game-theoretic evaluation (Phase 5)

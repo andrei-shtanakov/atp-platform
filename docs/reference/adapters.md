@@ -20,6 +20,7 @@ ATP supports multiple adapter types:
 - **Bedrock** - AWS Bedrock agents
 - **Vertex** - Google Vertex AI agents
 - **Azure OpenAI** - Azure OpenAI agents
+- **SDK** - In-process pull-model agent communication (for benchmark platform)
 
 ## Agent Configuration Structure
 

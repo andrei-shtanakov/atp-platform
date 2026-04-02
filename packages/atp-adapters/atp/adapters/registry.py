@@ -68,6 +68,11 @@ _BUILTIN_ADAPTERS: dict[str, _LazyEntry] = {
         "AzureOpenAIAdapter",
         "AzureOpenAIAdapterConfig",
     ),
+    "sdk": _LazyEntry(
+        "atp.adapters.sdk_adapter",
+        "SDKAdapter",
+        "SDKAdapterConfig",
+    ),
 }
 
 
