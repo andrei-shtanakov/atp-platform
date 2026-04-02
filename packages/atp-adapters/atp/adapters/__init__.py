@@ -40,6 +40,7 @@ if TYPE_CHECKING:
         MCPServerInfo,
         MCPTool,
     )
+    from atp.adapters.sdk_adapter import SDKAdapter, SDKAdapterConfig
     from atp.adapters.vertex import VertexAdapter, VertexAdapterConfig
 
 # Mapping from public name to (module_path, attribute_name).
@@ -113,6 +114,12 @@ _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
         "atp.adapters.vertex",
         "VertexAdapterConfig",
     ),
+    # SDK
+    "SDKAdapter": ("atp.adapters.sdk_adapter", "SDKAdapter"),
+    "SDKAdapterConfig": (
+        "atp.adapters.sdk_adapter",
+        "SDKAdapterConfig",
+    ),
 }
 
 
@@ -167,6 +174,9 @@ __all__ = [
     # Vertex
     "VertexAdapter",
     "VertexAdapterConfig",
+    # SDK
+    "SDKAdapter",
+    "SDKAdapterConfig",
     # Registry
     "AdapterRegistry",
     "get_registry",
