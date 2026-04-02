@@ -161,8 +161,10 @@ class TaskResult(Base):
     task_index: Mapped[int] = mapped_column(Integer, nullable=False)
     request: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     response: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    events: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
-    eval_results: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    events: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
+    eval_results: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSON, nullable=True
+    )
     score: Mapped[float | None] = mapped_column(Float, nullable=True)
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
