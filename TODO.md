@@ -55,3 +55,31 @@ uv add atp-platform atp-games game-environments
 
 - `game-environments`: needs a new `.github/workflows/game-environments-publish.yml`
 - `atp-games`: existing `.github/workflows/atp-games-ci.yml` already has a publish job triggered by `atp-games-v*` tags — just needs Trusted Publisher configured on PyPI
+
+## Platform API & SDK (atp-sdk)
+
+See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md`
+
+### MVP
+- [ ] Расширить atp-dashboard: catalog API + tournament API route-группы
+- [ ] Добавить GitHub как OIDC-провайдер в существующий SSO-модуль
+- [ ] Добавить Device Flow для CLI-логина (проверить, поддерживает ли текущий OIDC-модуль)
+- [ ] Создать SDKAdapter в atp-adapters (pull-модель как AgentAdapter)
+- [ ] Создать packages/atp-sdk/ — Python SDK для участников
+- [ ] Новые SQLAlchemy-модели (Benchmark, Run, TaskResult, Tournament, Participant, Round, Action)
+- [ ] Alembic-миграция для новых таблиц
+- [ ] Sandbox для evaluators на сервере (subprocess + timeout + rlimits)
+- [ ] Опубликовать atp-sdk на PyPI
+
+### Post-MVP
+- [ ] Автоматический трекинг токенов в SDK (обёртка над LLM-вызовами)
+- [ ] Event streaming в SDK (отправка ATPEvent во время выполнения)
+- [ ] Workspace management в SDK (скачивание/загрузка файлов-артефактов)
+- [ ] Async API в SDK (async for task in run)
+- [ ] Retry/reconnect при обрывах в SDK
+- [ ] TypeScript SDK
+- [ ] WebSocket для real-time турниров (инфраструктура в dashboard уже есть)
+- [ ] Container-изоляция evaluators (Podman/Docker)
+- [ ] Федерация — приватный atp-server
+- [ ] Webhooks для CI/CD-уведомлений по завершении прогона
+- [ ] Rate limiting на уровне приложения
