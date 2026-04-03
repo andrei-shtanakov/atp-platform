@@ -89,10 +89,12 @@ class TestUIRoutes:
         assert "Upload YAML Suite" in resp.text
 
     @pytest.mark.anyio
-    async def test_placeholder_analytics(self, client) -> None:
-        """GET /ui/analytics returns placeholder page."""
+    async def test_analytics_page_returns_html(self, client) -> None:
+        """GET /ui/analytics returns 200 with analytics content."""
         resp = await client.get("/ui/analytics")
         assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        assert "Analytics" in resp.text
 
     @pytest.mark.anyio
     async def test_login_page(self, client) -> None:

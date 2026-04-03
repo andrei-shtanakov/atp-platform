@@ -1,0 +1,104 @@
+{% extends "ui/base_ui.html" %}
+
+{% block title %}Analytics - ATP Platform{% endblock %}
+
+{% block content %}
+<h2>Analytics</h2>
+<p>Platform statistics and agent performance overview.</p>
+
+<h3>Platform Overview</h3>
+<div class="stat-cards">
+    <div class="stat-card">
+        <div class="value">{{ total_benchmarks }}</div>
+        <div class="label">Benchmarks</div>
+    </div>
+    <div class="stat-card">
+        <div class="value">{{ total_suites }}</div>
+        <div class="label">Suite Definitions</div>
+    </div>
+    <div class="stat-card">
+        <div class="value">{{ total_runs }}</div>
+        <div class="label">Total Runs</div>
+    </div>
+    <div class="stat-card">
+        <div class="value">{{ completed_runs }}</div>
+        <div class="label">Completed Runs</div>
+    </div>
+    <div class="stat-card">
+        <div class="value">{% if avg_score is not none %}{{ "%.2f"|format(avg_score) }}{% else %}—{% endif %}</div>
+        <div class="label">Avg Score</div>
+    </div>
+    <div class="stat-card">
+        <div class="value">{{ total_agents }}</div>
+        <div class="label">Distinct Agents</div>
+    </div>
+</div>
+
+<h3>Runs by Status</h3>
+{% if runs_by_status %}
+<table>
+    <thead>
+        <tr>
+            <th>Status</th>
+            <th>Count</th>
+            <th>Percentage</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in runs_by_status %}
+        <tr>
+            <td>{{ row.status }}</td>
+            <td>{{ row.count }}</td>
+            <td>{% if total_runs > 0 %}{{ "%.0f"|format(row.count / total_runs * 100) }}%{% else %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>No runs yet.</p>
+{% endif %}
+
+<h3>Top Agents</h3>
+{% if top_agents %}
+<table>
+    <thead>
+        <tr>
+            <th>Agent</th>
+            <th>Avg Score</th>
+            <th>Best Score</th>
+            <th>Runs</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for agent in top_agents %}
+        <tr>
+            <td>{{ agent.agent_name or "unnamed" }}</td>
+            <td>{% if agent.avg_score is not none %}{{ "%.2f"|format(agent.avg_score) }}{% else %}—{% endif %}</td>
+            <td>{% if agent.best_score is not none %}{{ "%.2f"|format(agent.best_score) }}{% else %}—{% endif %}</td>
+            <td>{{ agent.run_count }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>No completed runs yet.</p>
+{% endif %}
+
+<h3>Recent Activity</h3>
+{% if recent_runs %}
+    {% for run in recent_runs %}
+    <div class="activity-item">
+        <span>
+            Run #{{ run.id }}
+            {% if run.status.value == "COMPLETED" %}completed{% elif run.status.value == "IN_PROGRESS" %}started{% else %}{{ run.status.value }}{% endif %}
+            — {{ run.agent_name or "unnamed" }}
+        </span>
+        <span class="time">
+            {% if run.started_at %}{{ run.started_at.strftime("%Y-%m-%d %H:%M") }}{% endif %}
+        </span>
+    </div>
+    {% endfor %}
+{% else %}
+<p>No activity yet.</p>
+{% endif %}
+{% endblock %}

@@ -480,13 +480,71 @@ async def ui_create_benchmark(
 
 
 @router.get("/analytics", response_class=HTMLResponse)
-async def ui_analytics(request: Request) -> HTMLResponse:
-    """Analytics placeholder."""
+async def ui_analytics(request: Request, session: DBSession) -> HTMLResponse:
+    """Render analytics page with platform stats and agent rankings."""
+    result = await session.execute(select(func.count(Benchmark.id)))
+    total_benchmarks = result.scalar() or 0
+
+    result = await session.execute(select(func.count(SuiteDefinition.id)))
+    total_suites = result.scalar() or 0
+
+    result = await session.execute(select(func.count(Run.id)))
+    total_runs = result.scalar() or 0
+
+    result = await session.execute(
+        select(func.count(Run.id)).where(Run.status == RunStatus.COMPLETED)
+    )
+    completed_runs = result.scalar() or 0
+
+    result = await session.execute(
+        select(func.avg(Run.total_score)).where(Run.status == RunStatus.COMPLETED)
+    )
+    avg_score = result.scalar()
+
+    result = await session.execute(select(func.count(func.distinct(Run.agent_name))))
+    total_agents = result.scalar() or 0
+
+    result = await session.execute(
+        select(Run.status, func.count(Run.id).label("count"))
+        .group_by(Run.status)
+        .order_by(func.count(Run.id).desc())
+    )
+    runs_by_status = [
+        {"status": row.status.value, "count": row.count} for row in result.all()
+    ]
+
+    result = await session.execute(
+        select(
+            Run.agent_name,
+            func.avg(Run.total_score).label("avg_score"),
+            func.max(Run.total_score).label("best_score"),
+            func.count(Run.id).label("run_count"),
+        )
+        .where(Run.status == RunStatus.COMPLETED)
+        .group_by(Run.agent_name)
+        .order_by(func.avg(Run.total_score).desc())
+        .limit(10)
+    )
+    top_agents = result.all()
+
+    result = await session.execute(
+        select(Run).order_by(Run.started_at.desc()).limit(20)
+    )
+    recent_runs = result.scalars().all()
+
     return _templates(request).TemplateResponse(
         request=request,
-        name="ui/placeholder.html",
+        name="ui/analytics.html",
         context={
             "active_page": "analytics",
-            "page_title": "Analytics",
+            "total_benchmarks": total_benchmarks,
+            "total_suites": total_suites,
+            "total_runs": total_runs,
+            "completed_runs": completed_runs,
+            "avg_score": avg_score,
+            "total_agents": total_agents,
+            "runs_by_status": runs_by_status,
+            "top_agents": top_agents,
+            "recent_runs": recent_runs,
         },
     )
