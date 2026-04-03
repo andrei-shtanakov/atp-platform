@@ -66,6 +66,16 @@ class DashboardConfig(BaseSettings):
         description="Disable authentication (WARNING: For development only!)",
     )
 
+    # GitHub OAuth settings (for Device Flow)
+    github_client_id: str | None = Field(
+        default=None,
+        description="GitHub OAuth App client ID for device flow",
+    )
+    github_client_secret: str | None = Field(
+        default=None,
+        description="GitHub OAuth App client secret for device flow",
+    )
+
     # App metadata
     title: str = Field(
         default="ATP Dashboard",
@@ -106,6 +116,8 @@ class DashboardConfig(BaseSettings):
             "port": self.port,
             "debug": self.debug,
             "disable_auth": self.disable_auth,
+            "github_client_id": self.github_client_id,
+            "github_client_secret": "***" if self.github_client_secret else None,
             "title": self.title,
             "version": self.version,
         }
