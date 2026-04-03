@@ -14,7 +14,7 @@ members = [
     "atp-dashboard",
     "atp-games",
     "atp-platform",
-    "atp-sdk",
+    "atp-platform-sdk",
     "game-environments",
 ]
 
@@ -393,7 +393,7 @@ dev = [
     { name = "alembic" },
     { name = "anthropic" },
     { name = "atp-games" },
-    { name = "atp-sdk" },
+    { name = "atp-platform-sdk" },
     { name = "fastapi" },
     { name = "fpdf2" },
     { name = "game-environments" },
@@ -461,7 +461,7 @@ dev = [
     { name = "alembic", specifier = ">=1.18.4" },
     { name = "anthropic", specifier = ">=0.76.0" },
     { name = "atp-games", editable = "atp-games" },
-    { name = "atp-sdk", editable = "packages/atp-sdk" },
+    { name = "atp-platform-sdk", editable = "packages/atp-sdk" },
     { name = "fastapi", specifier = ">=0.128.0" },
     { name = "fpdf2", specifier = ">=2.8.5" },
     { name = "game-environments", editable = "game-environments" },
@@ -484,7 +484,7 @@ dev = [
 ]
 
 [[package]]
-name = "atp-sdk"
+name = "atp-platform-sdk"
 version = "0.1.0"
 source = { editable = "packages/atp-sdk" }
 dependencies = [
