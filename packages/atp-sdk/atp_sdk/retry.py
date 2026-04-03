@@ -59,6 +59,8 @@ async def retry_request(
     - HTTP 429 (using Retry-After header if present)
 
     Does NOT retry on other 4xx responses.
+    HTTP 500 is not retried — only 502, 503, 504 are considered transient
+    server errors.
 
     When all retries are exhausted:
     - Raises the last exception for transport errors.
@@ -143,5 +145,8 @@ async def retry_request(
     # All retries exhausted
     if last_exc is not None:
         raise last_exc
-    assert last_response is not None
+    if last_response is None:
+        raise RuntimeError(
+            "retry_request: exhausted retries with no response or exception"
+        )
     return last_response

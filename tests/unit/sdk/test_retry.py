@@ -251,6 +251,38 @@ async def test_retry_on_429_with_retry_after(monkeypatch: pytest.MonkeyPatch) ->
 
 
 @pytest.mark.anyio
+async def test_retry_on_429_invalid_retry_after_falls_back_to_jitter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Invalid Retry-After header falls back to jitter delay without crashing."""
+    slept: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        slept.append(seconds)
+
+    monkeypatch.setattr("atp_sdk.retry.anyio.sleep", fake_sleep)
+    # Force random.uniform to return a deterministic value for assertion
+    monkeypatch.setattr("atp_sdk.retry.random.uniform", lambda a, b: b)
+
+    call_count = 0
+
+    async def sender() -> httpx.Response:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return make_response(429, headers={"Retry-After": "not-a-number"})
+        return make_response(200)
+
+    cfg = RetryConfig(max_retries=2, retry_backoff=1.0, max_retry_delay=30.0)
+    response = await retry_request(sender, cfg)
+    assert response.status_code == 200
+    assert call_count == 2
+    # Should have fallen back to jitter delay (not crashed)
+    assert len(slept) == 1
+    assert slept[0] >= 0.0
+
+
+@pytest.mark.anyio
 async def test_retry_on_429_retry_after_capped(monkeypatch: pytest.MonkeyPatch) -> None:
     """Retry-After is capped at max_retry_delay."""
     slept: list[float] = []
