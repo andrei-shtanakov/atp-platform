@@ -1,0 +1,41 @@
+{% extends "ui/base_ui.html" %}
+
+{% block title %}Home - ATP Platform{% endblock %}
+
+{% block content %}
+<h2>Welcome to ATP Platform</h2>
+<p>Agent Test Platform — benchmark and evaluate AI agents</p>
+
+<div class="stat-cards">
+    <div class="stat-card">
+        <div class="value">{{ total_benchmarks }}</div>
+        <div class="label">Benchmarks</div>
+    </div>
+    <div class="stat-card">
+        <div class="value">{{ total_runs }}</div>
+        <div class="label">Total Runs</div>
+    </div>
+    <div class="stat-card">
+        <div class="value">{{ active_runs }}</div>
+        <div class="label">Active Runs</div>
+    </div>
+</div>
+
+<h3>Recent Activity</h3>
+{% if recent_runs %}
+    {% for run in recent_runs %}
+    <div class="activity-item">
+        <span>
+            Run #{{ run.id }}
+            {% if run.status.value == "completed" %}completed{% elif run.status.value == "in_progress" %}started{% else %}{{ run.status.value }}{% endif %}
+            — {{ run.agent_name or "unnamed" }}
+        </span>
+        <span class="time">
+            {% if run.started_at %}{{ run.started_at.strftime("%Y-%m-%d %H:%M") }}{% endif %}
+        </span>
+    </div>
+    {% endfor %}
+{% else %}
+    <p>No activity yet. Start a benchmark run to see results here.</p>
+{% endif %}
+{% endblock %}
