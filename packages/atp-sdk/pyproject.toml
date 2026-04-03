@@ -1,6 +1,6 @@
 [project]
 name = "atp-platform-sdk"
-version = "0.1.0"
+version = "2.0.0"
 description = "Python SDK for ATP benchmark platform — run benchmarks, submit results, view leaderboards"
 requires-python = ">=3.12"
 license = { text = "MIT" }
