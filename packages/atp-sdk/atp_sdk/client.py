@@ -8,12 +8,19 @@ from typing import Any
 
 import httpx
 
+from atp_sdk.auth import load_token, login
 from atp_sdk.benchmark import BenchmarkRun
 from atp_sdk.models import BenchmarkInfo
 
 
 class ATPClient:
-    """Client for the ATP benchmark platform API."""
+    """Client for the ATP benchmark platform API.
+
+    Token resolution order:
+    1. Explicit ``token`` argument
+    2. ``ATP_TOKEN`` environment variable
+    3. Saved token from ``~/.atp/config.json``
+    """
 
     def __init__(
         self,
@@ -21,7 +28,11 @@ class ATPClient:
         token: str | None = None,
     ) -> None:
         self.platform_url = platform_url.rstrip("/")
-        self.token = token or os.environ.get("ATP_TOKEN")
+        self.token = (
+            token
+            or os.environ.get("ATP_TOKEN")
+            or load_token(platform_url=self.platform_url)
+        )
         headers: dict[str, str] = {}
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
@@ -29,6 +40,22 @@ class ATPClient:
             base_url=self.platform_url,
             headers=headers,
         )
+
+    def login(self, open_browser: bool = True) -> str:
+        """Perform Device Flow login and update client token.
+
+        Args:
+            open_browser: Whether to auto-open the browser.
+
+        Returns:
+            JWT access token.
+        """
+        self.token = login(
+            platform_url=self.platform_url,
+            open_browser=open_browser,
+        )
+        self._http.headers["Authorization"] = f"Bearer {self.token}"
+        return self.token
 
     def list_benchmarks(self) -> list[BenchmarkInfo]:
         """List all available benchmarks."""
