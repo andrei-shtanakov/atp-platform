@@ -84,6 +84,14 @@ class DashboardConfig(BaseSettings):
         description="Maximum batch size for next-task endpoint",
     )
 
+    # Upload settings
+    upload_max_size_mb: int = Field(
+        default=1,
+        ge=1,
+        le=50,
+        description="Maximum YAML upload file size in MB",
+    )
+
     # App metadata
     title: str = Field(
         default="ATP Dashboard",
@@ -127,6 +135,7 @@ class DashboardConfig(BaseSettings):
             "github_client_id": self.github_client_id,
             "github_client_secret": "***" if self.github_client_secret else None,
             "batch_max_size": self.batch_max_size,
+            "upload_max_size_mb": self.upload_max_size_mb,
             "title": self.title,
             "version": self.version,
         }
