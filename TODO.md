@@ -72,8 +72,8 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
 - [x] Login/Register UI + RBAC seed + auto-admin для первого пользователя
 - [x] Создать packages/atp-sdk/ — Python SDK для участников (client, benchmark iterator, auth)
 - [x] Создать SDKAdapter в atp-adapters (asyncio.Event + timeout, pull-модель как AgentAdapter)
-- [ ] Sandbox для evaluators на сервере (subprocess + timeout + rlimits)
-- [ ] Опубликовать atp-sdk на PyPI
+- [x] Sandbox для evaluators на сервере (subprocess + timeout + rlimits)
+- [x] Опубликовать atp-sdk на PyPI (как atp-platform-sdk)
 
 ### Post-MVP
 - [ ] `?batch=N` для параллельного получения задач (зарезервировано в API)
