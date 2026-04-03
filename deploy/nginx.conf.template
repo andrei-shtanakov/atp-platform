@@ -8,18 +8,21 @@ server {
     listen 443 ssl;
     server_name _;
 
-    # Replace atp.example.com with your actual domain name
-    ssl_certificate /etc/letsencrypt/live/atp.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/atp.example.com/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
 
     client_max_body_size 10M;
+
+    sub_filter 'http://${DOMAIN}' 'https://${DOMAIN}';
+    sub_filter_once off;
+    sub_filter_types text/html;
 
     location / {
         proxy_pass http://platform:8080;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto https;
     }
 
     location /ws {

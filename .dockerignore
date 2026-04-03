@@ -14,8 +14,8 @@ demo-game/
 spec/
 examples/
 .codemie/
-*.md
-!alembic.ini
+docs/
+!README.md
 
 # IDE
 .idea/

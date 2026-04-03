@@ -4,12 +4,13 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile
     command: >
-      uvicorn atp.dashboard.v2.factory:app
+      uv run --no-sync uvicorn atp.dashboard.v2.factory:app
       --host 0.0.0.0 --port 8080 --workers 2
     environment:
-      ATP_DATABASE_URL: "sqlite+aiosqlite:///data/atp.db"
+      ATP_DATABASE_URL: "sqlite+aiosqlite:////data/atp.db"
       ATP_SECRET_KEY: "${SECRET_KEY}"
       ATP_ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
+      ATP_DISABLE_AUTH: "${ATP_DISABLE_AUTH:-false}"
       ATP_ENV: production
     ports:
       - "127.0.0.1:8080:8080"
@@ -25,7 +26,7 @@ services:
       - "443:443"
       - "80:80"
     volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./nginx.conf.template:/etc/nginx/templates/default.conf.template
       - /etc/letsencrypt:/etc/letsencrypt:ro
     depends_on:
       - platform
