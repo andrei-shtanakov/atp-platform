@@ -7,7 +7,7 @@ All packages published.
 | Package | PyPI | Status |
 |---|---|---|
 | `atp-platform` | [atp-platform](https://pypi.org/project/atp-platform/) | Published v1.0.0 |
-| `atp-platform-sdk` | [atp-platform-sdk](https://pypi.org/project/atp-platform-sdk/) | Published v1.0.0 |
+| `atp-platform-sdk` | [atp-platform-sdk](https://pypi.org/project/atp-platform-sdk/) | Published v2.0.0 |
 | `game-environments` | [game-environments](https://pypi.org/project/game-environments/) | Published v1.0.0 |
 | `atp-games` | [atp-games](https://pypi.org/project/atp-games/) | Published v1.0.0 |
 

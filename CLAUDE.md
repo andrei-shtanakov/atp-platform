@@ -67,6 +67,11 @@ uv run atp estimate                # Cost estimation
 uv run atp traces                  # Trace management
 uv run atp replay                  # Replay agent traces
 uv run atp version                 # Show version info
+
+# Suite sync commands (push/pull/sync YAML suites to/from remote server)
+uv run atp push suite.yaml --server=https://atp.example.com  # Upload YAML to server
+uv run atp pull --server=https://atp.example.com             # Download suites from server
+uv run atp sync                    # Sync local YAML suites with remote server
 ```
 
 ## Architecture
@@ -80,9 +85,11 @@ uv run atp version                 # Show version info
 5. **Reporters** (`atp/reporters/`) - Format output (console, JSON, JUnit, HTML, game)
 6. **Benchmark API** (`atp/dashboard/benchmark/`) - REST API for pull-model benchmarks with leaderboard (`/api/v1/benchmarks`, `/api/v1/runs`)
 7. **Tournament API** (`atp/dashboard/tournament/`) - REST API for game-theoretic tournaments (`/api/v1/tournaments`)
-8. **SDK** (`packages/atp-sdk/`) - Python SDK for benchmark participants (ATPClient, BenchmarkRun iterator). PyPI package name: `atp-platform-sdk`
+8. **SDK** (`packages/atp-sdk/`) - Python SDK v2.0.0 for benchmark participants (`AsyncATPClient` + sync `ATPClient` wrapper, `BenchmarkRun` async iterator, `next_batch(n)`, exponential-backoff retry). PyPI package name: `atp-platform-sdk`
 9. **Auth** (`atp/dashboard/auth/`) - Authentication system with GitHub OAuth (OIDC), Device Flow for CLI login, JWT tokens
 10. **RBAC** (`atp/dashboard/rbac/`) - Role-based access control with auto-admin for first user
+11. **Dashboard UI** (`atp/dashboard/v2/routes/ui.py`) - HTMX + Pico CSS frontend served at `/ui/` (login, benchmarks, games, runs, leaderboard, suites, analytics)
+12. **YAML Upload** (`POST /api/suite-definitions/upload`) - Upload YAML test suites to the server; used by `atp push`
 
 ### Data Flow
 

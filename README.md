@@ -145,7 +145,9 @@ tests:
 - **Tournament API** (`/api/v1/tournaments`) - Game-theoretic tournament management
 - **Auth** - GitHub OAuth (OIDC) + Device Flow for CLI login + JWT tokens
 - **RBAC** - Role-based access control with auto-admin for first user
-- **Python SDK** (`atp-platform-sdk` on PyPI) - ATPClient, BenchmarkRun iterator, Device Flow auth
+- **Python SDK v2.0.0** (`atp-platform-sdk` on PyPI) - `AsyncATPClient` + sync wrapper, `BenchmarkRun` async iterator, `next_batch(n)` batch API, exponential-backoff retry, Device Flow auth
+- **Dashboard UI** - HTMX + Pico CSS frontend at `/ui/` (benchmarks, games, runs, leaderboard, suites, analytics)
+- **YAML Upload** (`POST /api/suite-definitions/upload`) - upload and validate test suites server-side
 
 ## Project Structure
 
@@ -275,6 +277,11 @@ uv run atp compare              # Multi-model comparison
 uv run atp estimate             # Cost estimation
 uv run atp traces               # Trace management
 uv run atp replay               # Replay agent traces
+
+# Suite sync (push/pull/sync YAML test suites to/from remote server)
+uv run atp push suite.yaml --server=https://atp.example.com  # Upload YAML to server
+uv run atp pull --server=https://atp.example.com             # Download suites from server
+uv run atp sync                                               # Sync local suites with remote
 ```
 
 ## Documentation
