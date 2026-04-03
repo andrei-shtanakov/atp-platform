@@ -49,7 +49,7 @@ All error responses (400, 413, 409, 422) use the same `UploadResponse` schema wi
 ## Validation Steps
 
 1. **File check:** Extension must be `.yaml` or `.yml`. Content-Type must be one of `{"application/yaml", "text/yaml", "text/plain", "application/x-yaml", "application/octet-stream"}`. Size <= max.
-2. **YAML parse:** `yaml.safe_load()` with memory protection — wrap in `try/except` and limit parsed output size (reject if parsed object exceeds 10MB in-memory via `sys.getsizeof` deep check). This mitigates YAML alias bombs where 1MB YAML can expand to hundreds of MB.
+2. **YAML parse:** `yaml.safe_load()` with memory protection — wrap in `try/except` and limit parsed output size. Use recursive `deep_sizeof()` helper (not bare `sys.getsizeof` which doesn't count nested objects). Reject if parsed structure exceeds 10MB. This mitigates YAML alias bombs where 1MB YAML can expand to hundreds of MB.
 3. **Schema validation:** `TestSuite.model_validate(data)` — catch `ValidationError`, report each error with field path.
 4. **Assertion validation:** For each test, check that assertion types exist in evaluator registry. Unknown types → error.
 5. **Warnings:** Tests with empty assertions list, empty descriptions.
@@ -82,6 +82,21 @@ Log via `logging.getLogger("atp.dashboard")`:
 | Modify | `packages/atp-dashboard/atp/dashboard/v2/routes/__init__.py` | Register upload router |
 | Modify | `packages/atp-dashboard/atp/dashboard/v2/config.py` | Add `upload_max_size_mb` setting |
 | Create | `tests/unit/dashboard/test_upload.py` | Endpoint tests |
+
+## Test Scenarios
+
+Minimum coverage for `tests/unit/dashboard/test_upload.py`:
+
+- Valid YAML → 201 + suite created
+- Invalid YAML syntax → 422
+- Schema validation error (missing required fields) → 422
+- Unknown assertion type → 422
+- Warnings only (no assertions) → 201 + warnings present
+- Duplicate suite name → 409
+- File too large → 413
+- Wrong file extension (.txt) → 400
+- YAML alias bomb (expands beyond 10MB) → 422
+- Missing auth token → 401
 
 ## Scope
 
