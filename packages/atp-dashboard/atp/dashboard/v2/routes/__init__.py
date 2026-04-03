@@ -18,6 +18,7 @@ Each module handles a specific domain of functionality:
 - marketplace: Test suite marketplace (TASK-803)
 - games: Game-theoretic evaluation results (TASK-920)
 - definitions: Suite definition CRUD and YAML export
+- upload: YAML suite file upload with validation
 - templates: Test template discovery
 - traces: Debug endpoint for OpenTelemetry traces (dev mode only)
 - users: User management (list, get, role assignment)
@@ -75,6 +76,7 @@ from atp.dashboard.v2.routes.tournament_api import (
 )
 from atp.dashboard.v2.routes.traces import router as traces_router
 from atp.dashboard.v2.routes.trends import router as trends_router
+from atp.dashboard.v2.routes.upload import router as upload_router
 from atp.dashboard.v2.routes.users import router as users_router
 from atp.dashboard.v2.routes.websocket import router as websocket_router
 
@@ -95,6 +97,7 @@ router.include_router(public_leaderboard_router)
 router.include_router(marketplace_router)
 router.include_router(timeline_router)
 router.include_router(definitions_router)
+router.include_router(upload_router)
 router.include_router(templates_router)
 router.include_router(traces_router)
 router.include_router(metrics_router)
@@ -129,6 +132,7 @@ __all__ = [
     "comparison_router",
     "costs_router",
     "definitions_router",
+    "upload_router",
     "experiments_router",
     "games_router",
     "home_router",
