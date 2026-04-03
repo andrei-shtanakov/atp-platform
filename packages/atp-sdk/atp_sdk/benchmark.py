@@ -2,40 +2,140 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from typing import Any
+import asyncio
+import logging
+from collections import deque
+from collections.abc import AsyncIterator, Iterator
+from typing import TYPE_CHECKING, Any
 
-import httpx
+if TYPE_CHECKING:
+    from atp_sdk.client import AsyncATPClient
+
+logger = logging.getLogger("atp_sdk")
 
 
 class BenchmarkRun:
-    """Iterator that pulls tasks from the platform API.
+    """Async iterator that pulls tasks from the platform API.
 
     Yields ATPRequest dicts from the next-task endpoint and provides
     methods to submit results, check status, cancel, and view the
     leaderboard.
+
+    Supports both async iteration (``async for task in run``) and batch
+    pulls via ``next_batch(n)``.  Sync iteration via ``for task in run``
+    is supported only outside a running event loop; inside an async
+    context it raises ``RuntimeError``.
     """
 
     def __init__(
         self,
-        http: httpx.Client,
+        client: AsyncATPClient,
         run_id: int,
         benchmark_id: str | int,
+        batch_size: int = 1,
     ) -> None:
-        self._http = http
+        self._client = client
         self.run_id = run_id
         self.benchmark_id = benchmark_id
+        self.batch_size = batch_size
+        self._exhausted: bool = False
+        self._buffer: deque[dict[str, Any]] = deque()
+
+    async def _fetch_batch(self, batch: int | None = None) -> list[dict[str, Any]]:
+        """Fetch up to *batch* tasks from the server.
+
+        Args:
+            batch: Number of tasks to request. None / 1 → no query param.
+
+        Returns:
+            List of task dicts. Empty list when server returns 204.
+        """
+        if self._exhausted:
+            return []
+
+        n = batch if batch is not None else self.batch_size
+        params: dict[str, Any] = {}
+        if n > 1:
+            params["batch"] = n
+
+        resp = await self._client._request(
+            "GET",
+            f"/api/v1/runs/{self.run_id}/next-task",
+            params=params if params else None,
+        )
+
+        if resp.status_code == 204:
+            self._exhausted = True
+            logger.debug("run %d exhausted (204)", self.run_id)
+            return []
+
+        resp.raise_for_status()
+        data: Any = resp.json()
+
+        # Server may return a single dict (batch=1 compat) or a list
+        if isinstance(data, dict):
+            data = [data]
+
+        logger.debug("run %d fetched %d tasks", self.run_id, len(data))
+        return data
+
+    async def next_batch(self, n: int) -> list[dict[str, Any]]:
+        """Pull up to *n* tasks from the server.
+
+        Returns an empty list when the run is exhausted. Never raises
+        ``StopIteration``.
+
+        Args:
+            n: Maximum number of tasks to retrieve.
+
+        Returns:
+            List of task dicts (may be shorter than *n* or empty).
+        """
+        return await self._fetch_batch(n)
+
+    def __aiter__(self) -> AsyncIterator[dict[str, Any]]:
+        return self
+
+    async def __anext__(self) -> dict[str, Any]:
+        # Drain the local buffer first
+        if self._buffer:
+            return self._buffer.popleft()
+
+        if self._exhausted:
+            raise StopAsyncIteration
+
+        tasks = await self._fetch_batch(self.batch_size)
+        if not tasks:
+            raise StopAsyncIteration
+
+        # Queue all but the first
+        for task in tasks[1:]:
+            self._buffer.append(task)
+        return tasks[0]
 
     def __iter__(self) -> Iterator[dict[str, Any]]:
-        """Yield ATPRequest dicts until the server returns 204."""
-        while True:
-            resp = self._http.get(f"/api/v1/runs/{self.run_id}/next-task")
-            if resp.status_code == 204:
-                return
-            resp.raise_for_status()
-            yield resp.json()
+        """Sync iteration — only valid outside a running event loop.
 
-    def submit(
+        Raises:
+            RuntimeError: If called from inside a running event loop.
+        """
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError(
+                "Cannot use sync iteration inside async context. "
+                "Use 'async for task in run:' instead."
+            )
+        except RuntimeError as exc:
+            if "async context" in str(exc):
+                raise
+            # No running loop — proceed with asyncio.run
+
+        async def _collect_all() -> list[dict[str, Any]]:
+            return [task async for task in self]
+
+        return iter(asyncio.run(_collect_all()))
+
+    async def submit(
         self,
         response: dict[str, Any],
         task_index: int,
@@ -47,6 +147,9 @@ class BenchmarkRun:
             response: ATPResponse as a dict.
             task_index: Task index from ATPRequest.metadata.task_index.
             events: Optional list of ATPEvent dicts.
+
+        Returns:
+            Score dict from the server.
         """
         payload: dict[str, Any] = {
             "response": response,
@@ -54,26 +157,37 @@ class BenchmarkRun:
         }
         if events is not None:
             payload["events"] = events
-        resp = self._http.post(
+
+        resp = await self._client._request(
+            "POST",
             f"/api/v1/runs/{self.run_id}/submit",
             json=payload,
         )
         resp.raise_for_status()
         return resp.json()
 
-    def status(self) -> dict[str, Any]:
+    async def status(self) -> dict[str, Any]:
         """Get the current run status."""
-        resp = self._http.get(f"/api/v1/runs/{self.run_id}/status")
+        resp = await self._client._request(
+            "GET",
+            f"/api/v1/runs/{self.run_id}/status",
+        )
         resp.raise_for_status()
         return resp.json()
 
-    def cancel(self) -> None:
+    async def cancel(self) -> None:
         """Cancel the benchmark run."""
-        resp = self._http.post(f"/api/v1/runs/{self.run_id}/cancel")
+        resp = await self._client._request(
+            "POST",
+            f"/api/v1/runs/{self.run_id}/cancel",
+        )
         resp.raise_for_status()
 
-    def leaderboard(self) -> list[dict[str, Any]]:
+    async def leaderboard(self) -> list[dict[str, Any]]:
         """Get the leaderboard for this benchmark."""
-        resp = self._http.get(f"/api/v1/benchmarks/{self.benchmark_id}/leaderboard")
+        resp = await self._client._request(
+            "GET",
+            f"/api/v1/benchmarks/{self.benchmark_id}/leaderboard",
+        )
         resp.raise_for_status()
         return resp.json()
