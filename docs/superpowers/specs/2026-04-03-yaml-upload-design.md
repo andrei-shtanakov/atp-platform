@@ -1,7 +1,7 @@
 # YAML Upload Endpoint
 
 **Date:** 2026-04-03
-**Status:** Approved
+**Status:** Approved (rev.2)
 
 ## Overview
 
@@ -16,8 +16,9 @@ Add `POST /api/v1/suite-definitions/upload` endpoint that accepts a YAML test su
 - **Input:** Single file field `file` (`.yaml` or `.yml`, max 1MB configurable via `ATP_UPLOAD_MAX_SIZE_MB` env var, default 1)
 - **Success (201):** `UploadResponse` with suite definition + validation report
 - **Validation failure (422):** `UploadResponse` with errors, no suite created
-- **File too large (413):** Request Entity Too Large
-- **Wrong file type (400):** Only .yaml/.yml accepted
+- **File too large (413):** `UploadResponse` with error
+- **Wrong file type (400):** `UploadResponse` with error
+- **Duplicate name (409):** `UploadResponse` with error
 
 ## Request
 
@@ -40,21 +41,38 @@ class ValidationReport(BaseModel):
 class UploadResponse(BaseModel):
     suite: SuiteDefinitionResponse | None  # None when valid=False
     validation: ValidationReport
+    filename: str  # Original uploaded filename
 ```
+
+All error responses (400, 413, 409, 422) use the same `UploadResponse` schema with `suite=None` for API consistency.
 
 ## Validation Steps
 
-1. **File check:** Extension must be `.yaml` or `.yml`, size <= max
-2. **YAML parse:** `yaml.safe_load()` — catch `yaml.YAMLError`
-3. **Schema validation:** `TestSuite.model_validate(data)` — catch `ValidationError`, report each error
+1. **File check:** Extension must be `.yaml` or `.yml`. Content-Type must be one of `{"application/yaml", "text/yaml", "text/plain", "application/x-yaml", "application/octet-stream"}`. Size <= max.
+2. **YAML parse:** `yaml.safe_load()` with memory protection — wrap in `try/except` and limit parsed output size (reject if parsed object exceeds 10MB in-memory via `sys.getsizeof` deep check). This mitigates YAML alias bombs where 1MB YAML can expand to hundreds of MB.
+3. **Schema validation:** `TestSuite.model_validate(data)` — catch `ValidationError`, report each error with field path.
 4. **Assertion validation:** For each test, check that assertion types exist in evaluator registry. Unknown types → error.
-5. **Warnings:** Tests with empty assertions list, empty descriptions
+5. **Warnings:** Tests with empty assertions list, empty descriptions.
 
-If step 2 or 3 fails, return 422 immediately with errors. If step 4 finds errors, still return 422. Warnings alone don't block creation.
+If any step produces errors, return 422 immediately. Warnings alone don't block creation.
 
-## Suite Definition Creation
+## Duplicate Handling
 
-On successful validation, create a `SuiteDefinition` record in the database using the existing service layer (`SuiteDefinitionService.create()`). The suite name comes from the YAML `test_suite` field.
+If a suite definition with the same `test_suite` name already exists: return **409 Conflict** with error message `"Suite definition '{name}' already exists (id={id})"`. No upsert, no silent duplicates. User must rename or delete the existing one first.
+
+## Transactionality
+
+Suite creation is atomic. If `SuiteDefinitionService.create()` fails after validation passes, the transaction rolls back and the endpoint returns 500 with no partial state. The handler wraps creation in the existing DB session transaction.
+
+## Logging
+
+Log via `logging.getLogger("atp.dashboard")`:
+
+| Event | Level | Content |
+|-------|-------|---------|
+| Upload received | INFO | `Upload: {filename}, {size}B, user={user_id}` |
+| Validation failed | WARNING | `Upload rejected: {filename}, errors={count}` |
+| Suite created | INFO | `Suite created from upload: {name}, id={id}, user={user_id}` |
 
 ## Files
 
