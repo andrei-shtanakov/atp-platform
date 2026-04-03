@@ -1,0 +1,82 @@
+{% extends "ui/base_ui.html" %}
+
+{% block title %}Suites - ATP Platform{% endblock %}
+
+{% block content %}
+<h2>Suites</h2>
+<p>{{ total }} suite{{ "s" if total != 1 else "" }} available</p>
+
+<details>
+    <summary>Upload YAML Suite</summary>
+    <form
+        hx-post="/ui/suites/upload"
+        hx-encoding="multipart/form-data"
+        hx-target="#upload-result"
+        hx-swap="innerHTML"
+        style="margin-top:1rem">
+        <input type="file" name="file" accept=".yaml,.yml" required>
+        <button type="submit">Upload</button>
+    </form>
+    <div id="upload-result" style="margin-top:0.5rem"></div>
+</details>
+
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Version</th>
+            <th>Tests</th>
+            <th>Created</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for sd in suites %}
+        <tr>
+            <td>{{ sd.name }}</td>
+            <td>{{ sd.version or "—" }}</td>
+            <td>{{ sd.tests_json|length }}</td>
+            <td>
+                {% if sd.created_at %}
+                    {{ sd.created_at.strftime("%Y-%m-%d") }}
+                {% else %}
+                    —
+                {% endif %}
+            </td>
+            <td>
+                <button
+                    hx-post="/ui/suites/{{ sd.id }}/create-benchmark"
+                    hx-target="#action-result"
+                    hx-swap="innerHTML"
+                    class="secondary outline"
+                    style="padding:4px 12px;font-size:0.85rem">
+                    Create Benchmark
+                </button>
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="5">No suites found. Upload a YAML file to get started.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<div id="action-result" style="margin-top:1rem"></div>
+
+{% if total_pages > 1 %}
+<nav>
+    <ul>
+        {% for p in range(1, total_pages + 1) %}
+        <li>
+            {% if p == page %}
+            <a href="#" aria-current="page"><strong>{{ p }}</strong></a>
+            {% else %}
+            <a href="/ui/suites?page={{ p }}">{{ p }}</a>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+</nav>
+{% endif %}
+{% endblock %}

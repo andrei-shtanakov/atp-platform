@@ -62,10 +62,13 @@ class TestUIRoutes:
         assert resp.status_code == 200
 
     @pytest.mark.anyio
-    async def test_placeholder_suites(self, client) -> None:
-        """GET /ui/suites returns placeholder page."""
+    async def test_suites_page_returns_html(self, client) -> None:
+        """GET /ui/suites returns suites page with table."""
         resp = await client.get("/ui/suites")
         assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        assert "Suites" in resp.text
+        assert "Upload YAML Suite" in resp.text
 
     @pytest.mark.anyio
     async def test_placeholder_analytics(self, client) -> None:
@@ -103,6 +106,94 @@ class TestUIRoutes:
         """Pages include Pico CSS CDN."""
         resp = await client.get("/ui/")
         assert "pico" in resp.text.lower()
+
+
+class TestSuitesPage:
+    """Tests for suites page routes."""
+
+    @pytest.mark.anyio
+    async def test_suites_create_benchmark_missing(self, client) -> None:
+        """POST /ui/suites/999/create-benchmark returns 404 for unknown suite."""
+        resp = await client.post("/ui/suites/999/create-benchmark")
+        assert resp.status_code == 404
+        assert "not found" in resp.text.lower()
+
+    @pytest.mark.anyio
+    async def test_suites_upload_invalid_yaml(self, client) -> None:
+        """POST /ui/suites/upload with invalid YAML returns error fragment."""
+        import io
+
+        bad_yaml = b": invalid: yaml: ["
+        resp = await client.post(
+            "/ui/suites/upload",
+            files={"file": ("bad.yaml", io.BytesIO(bad_yaml), "application/yaml")},
+        )
+        assert resp.status_code == 200
+        assert "failed" in resp.text.lower() or "error" in resp.text.lower()
+
+    @pytest.mark.anyio
+    async def test_suites_upload_valid_yaml(self, client) -> None:
+        """POST /ui/suites/upload with valid YAML creates a suite."""
+        import io
+
+        yaml_content = b"""test_suite: ui-test-suite
+version: "1.0"
+tests:
+  - id: t1
+    name: Say Hello
+    task:
+      prompt: "Say hello"
+      description: "Simple hello test"
+    assertions:
+      - type: contains
+        config:
+          value: hello
+"""
+        resp = await client.post(
+            "/ui/suites/upload",
+            files={
+                "file": ("suite.yaml", io.BytesIO(yaml_content), "application/yaml")
+            },
+        )
+        assert resp.status_code == 200
+        assert "ui-test-suite" in resp.text
+
+    @pytest.mark.anyio
+    async def test_suites_create_benchmark_from_uploaded(self, client) -> None:
+        """Upload a suite then create a benchmark from it."""
+        import io
+
+        yaml_content = b"""test_suite: benchmark-from-suite
+version: "1.0"
+tests:
+  - id: t1
+    name: Say Hello
+    task:
+      prompt: "Say hello"
+      description: "Simple hello test"
+    assertions:
+      - type: contains
+        config:
+          value: hello
+"""
+        upload_resp = await client.post(
+            "/ui/suites/upload",
+            files={
+                "file": ("suite.yaml", io.BytesIO(yaml_content), "application/yaml")
+            },
+        )
+        assert upload_resp.status_code == 200
+        # Extract suite id from response text (id=N)
+        import re
+
+        match = re.search(r"id=(\d+)", upload_resp.text)
+        assert match, f"No suite id in upload response: {upload_resp.text}"
+        suite_id = int(match.group(1))
+
+        resp = await client.post(f"/ui/suites/{suite_id}/create-benchmark")
+        assert resp.status_code == 200
+        assert "benchmark-from-suite" in resp.text
+        assert "created" in resp.text.lower()
 
 
 class TestBenchmarkDetail:

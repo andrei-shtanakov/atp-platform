@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, UploadFile
 from fastapi.responses import HTMLResponse
 from sqlalchemy import func, select
 
 from atp.dashboard.benchmark.models import Benchmark, Run, RunStatus
+from atp.dashboard.models import SuiteDefinition
 from atp.dashboard.v2.dependencies import DBSession
 
 logger = logging.getLogger("atp.dashboard")
@@ -206,12 +207,157 @@ async def ui_leaderboard(request: Request) -> HTMLResponse:
 
 
 @router.get("/suites", response_class=HTMLResponse)
-async def ui_suites(request: Request) -> HTMLResponse:
-    """Suites placeholder."""
+async def ui_suites(
+    request: Request,
+    session: DBSession,
+    page: int = 1,
+) -> HTMLResponse:
+    """Render suites list page."""
+    per_page = 50
+    offset = (page - 1) * per_page
+
+    result = await session.execute(select(func.count(SuiteDefinition.id)))
+    total = result.scalar() or 0
+
+    result = await session.execute(
+        select(SuiteDefinition)
+        .order_by(SuiteDefinition.id.desc())
+        .limit(per_page)
+        .offset(offset)
+    )
+    suites = result.scalars().all()
+
+    total_pages = (total + per_page - 1) // per_page
+
     return _templates(request).TemplateResponse(
         request=request,
-        name="ui/placeholder.html",
-        context={"active_page": "suites", "page_title": "Suites"},
+        name="ui/suites.html",
+        context={
+            "active_page": "suites",
+            "suites": suites,
+            "page": page,
+            "total_pages": total_pages,
+            "total": total,
+        },
+    )
+
+
+@router.post("/suites/upload", response_class=HTMLResponse)
+async def ui_suites_upload(
+    request: Request,
+    file: UploadFile,
+    session: DBSession,
+) -> HTMLResponse:
+    """Handle YAML suite file upload and return HTML fragment."""
+    from atp.loader.models import TestSuite
+    from sqlalchemy import select as sa_select
+
+    from atp.dashboard.v2.routes.upload import _validate_yaml
+
+    filename = file.filename or "unknown.yaml"
+    raw = await file.read()
+
+    parsed_data, report = _validate_yaml(raw, filename)
+
+    if not report.valid:
+        errors_html = "".join(f"<li>{e}</li>" for e in report.errors)
+        return HTMLResponse(
+            f'<p style="color:red"><strong>Upload failed:</strong></p>'
+            f"<ul>{errors_html}</ul>"
+        )
+
+    assert parsed_data is not None
+
+    suite_name = parsed_data.get("test_suite", filename)
+    stmt = sa_select(SuiteDefinition).where(SuiteDefinition.name == suite_name)
+    result = await session.execute(stmt)
+    existing = result.scalar_one_or_none()
+    if existing is not None:
+        return HTMLResponse(
+            f'<p style="color:orange">Suite <strong>{suite_name}</strong> '
+            f"already exists (id={existing.id}).</p>"
+        )
+
+    suite_model = TestSuite.model_validate(parsed_data)
+    tests_list = [
+        t.model_dump(mode="json", exclude_none=False) for t in suite_model.tests
+    ]
+    for test_dict in tests_list:
+        if "constraints" in test_dict and isinstance(test_dict["constraints"], dict):
+            test_dict["constraints"] = {
+                k: v for k, v in test_dict["constraints"].items() if v is not None
+            }
+
+    suite_def = SuiteDefinition(
+        name=suite_name,
+        version=parsed_data.get("version", "1.0"),
+        description=parsed_data.get("description"),
+        defaults_json=parsed_data.get("defaults", {}),
+        agents_json=parsed_data.get("agents", []),
+        tests_json=tests_list,
+    )
+    session.add(suite_def)
+    await session.commit()
+    await session.refresh(suite_def)
+
+    warnings_html = ""
+    if report.warnings:
+        w = "".join(f"<li>{w}</li>" for w in report.warnings)
+        warnings_html = f"<ul>{w}</ul>"
+
+    return HTMLResponse(
+        f'<p style="color:green">Suite <strong>{suite_name}</strong> uploaded '
+        f"successfully (id={suite_def.id}, {len(tests_list)} tests).</p>"
+        f"{warnings_html}"
+        "<script>window.location.reload();</script>"
+    )
+
+
+@router.post("/suites/{suite_id}/create-benchmark", response_class=HTMLResponse)
+async def ui_create_benchmark(
+    request: Request,
+    suite_id: int,
+    session: DBSession,
+) -> HTMLResponse:
+    """Create a benchmark from a suite definition and return HTML fragment."""
+    from atp.loader.models import TestSuite
+
+    sd = await session.get(SuiteDefinition, suite_id)
+    if sd is None:
+        return HTMLResponse(
+            f'<p style="color:red">Suite #{suite_id} not found.</p>',
+            status_code=404,
+        )
+
+    try:
+        suite = TestSuite.model_validate(
+            {
+                "test_suite": sd.name,
+                "version": sd.version or "1.0",
+                "tests": sd.tests_json,
+            }
+        )
+        suite_dict = suite.model_dump(mode="json")
+        bm = Benchmark(
+            name=sd.name,
+            description=sd.description or "",
+            suite=suite_dict,
+            tasks_count=len(suite.tests),
+            tags=[],
+            version=sd.version,
+        )
+        session.add(bm)
+        await session.commit()
+        await session.refresh(bm)
+    except Exception as exc:
+        logger.exception("Failed to create benchmark from suite %d", suite_id)
+        return HTMLResponse(
+            f'<p style="color:red">Failed to create benchmark: {exc}</p>'
+        )
+
+    return HTMLResponse(
+        f'<p style="color:green">Benchmark <strong>{bm.name}</strong> created '
+        f'(id={bm.id}). <a href="/ui/benchmarks/{bm.id}">View</a></p>'
     )
 
 
