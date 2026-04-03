@@ -42,11 +42,12 @@ class TestUIRoutes:
         assert "Benchmarks" in resp.text
 
     @pytest.mark.anyio
-    async def test_placeholder_games(self, client) -> None:
-        """GET /ui/games returns placeholder page."""
+    async def test_games_page_returns_html(self, client) -> None:
+        """GET /ui/games returns 200 with Games heading."""
         resp = await client.get("/ui/games")
         assert resp.status_code == 200
-        assert "Coming soon" in resp.text
+        assert "text/html" in resp.headers["content-type"]
+        assert "Games" in resp.text
 
     @pytest.mark.anyio
     async def test_runs_page_returns_html(self, client) -> None:

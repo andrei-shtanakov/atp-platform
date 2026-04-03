@@ -175,12 +175,51 @@ async def ui_benchmark_detail(
 
 
 @router.get("/games", response_class=HTMLResponse)
-async def ui_games(request: Request) -> HTMLResponse:
-    """Games placeholder."""
+async def ui_games(request: Request, session: DBSession) -> HTMLResponse:
+    """Render games page with game registry and tournaments."""
+    games: list[dict] = []
+    try:
+        from game_envs.games import (  # noqa: PLC0415
+            auction,
+            battle_of_sexes,
+            colonel_blotto,
+            congestion,
+            el_farol,
+            prisoners_dilemma,
+            public_goods,
+            stag_hunt,
+        )
+        from game_envs.games.registry import GameRegistry  # noqa: PLC0415
+
+        _ = (
+            auction,
+            battle_of_sexes,
+            colonel_blotto,
+            congestion,
+            el_farol,
+            prisoners_dilemma,
+            public_goods,
+            stag_hunt,
+        )
+        games = GameRegistry.list_games(with_metadata=True)  # type: ignore[assignment]
+    except Exception:
+        logger.debug("game_envs not available; showing empty games list")
+
+    from atp.dashboard.tournament.models import Tournament  # noqa: PLC0415
+
+    result = await session.execute(
+        select(Tournament).order_by(Tournament.id.desc()).limit(50)
+    )
+    tournaments = result.scalars().all()
+
     return _templates(request).TemplateResponse(
         request=request,
-        name="ui/placeholder.html",
-        context={"active_page": "games", "page_title": "Games"},
+        name="ui/games.html",
+        context={
+            "active_page": "games",
+            "games": games,
+            "tournaments": tournaments,
+        },
     )
 
 

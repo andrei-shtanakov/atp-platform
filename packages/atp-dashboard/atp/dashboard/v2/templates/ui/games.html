@@ -1,0 +1,69 @@
+{% extends "ui/base_ui.html" %}
+
+{% block title %}Games - ATP Platform{% endblock %}
+
+{% block content %}
+<h2>Games</h2>
+
+<section>
+    <h3>Available Game Environments</h3>
+    {% if games %}
+    <p>{{ games | length }} game{{ "s" if games | length != 1 else "" }} registered</p>
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Description</th>
+                <th>Type</th>
+                <th>Move Order</th>
+                <th>Players</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for game in games %}
+            <tr>
+                <td><code>{{ game.name }}</code></td>
+                <td>{{ game.description }}</td>
+                <td>{{ game.game_type }}</td>
+                <td>{{ game.move_order }}</td>
+                <td>{{ game.num_players }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>No game environments found. Install the <code>game-environments</code> package to see available games.</p>
+    {% endif %}
+</section>
+
+<section>
+    <h3>Tournaments</h3>
+    {% if tournaments %}
+    <p>{{ tournaments | length }} tournament{{ "s" if tournaments | length != 1 else "" }}</p>
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Game Type</th>
+                <th>Status</th>
+                <th>Starts At</th>
+                <th>Ends At</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for t in tournaments %}
+            <tr>
+                <td>{{ t.id }}</td>
+                <td>{{ t.game_type }}</td>
+                <td>{{ t.status }}</td>
+                <td>{{ t.starts_at.strftime("%Y-%m-%d %H:%M") if t.starts_at else "—" }}</td>
+                <td>{{ t.ends_at.strftime("%Y-%m-%d %H:%M") if t.ends_at else "—" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>No tournaments yet. Tournaments will appear here once created via the API.</p>
+    {% endif %}
+</section>
+{% endblock %}
