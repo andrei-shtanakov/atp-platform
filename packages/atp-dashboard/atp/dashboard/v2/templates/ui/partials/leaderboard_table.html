@@ -1,0 +1,36 @@
+{% if entries %}
+{% for entry in entries %}
+<tr>
+    <td>
+        <strong>
+            {% if loop.index == 1 %}🥇 1
+            {% elif loop.index == 2 %}🥈 2
+            {% elif loop.index == 3 %}🥉 3
+            {% else %}{{ loop.index }}
+            {% endif %}
+        </strong>
+    </td>
+    <td>{{ entry.agent_name }}</td>
+    <td>
+        {% set score = entry.best_score or 0 %}
+        {% if score > 80 %}
+        <span style="color:var(--pico-color-green-500, #2d9f4a)"><strong>{{ "%.1f"|format(score) }}</strong></span>
+        {% elif score > 50 %}
+        <span style="color:var(--pico-color-orange-500, #c47a1e)">{{ "%.1f"|format(score) }}</span>
+        {% else %}
+        <span style="color:var(--pico-color-red-500, #c0392b)">{{ "%.1f"|format(score) }}</span>
+        {% endif %}
+    </td>
+    <td>{{ entry.run_count }}</td>
+    {% if not selected_benchmark_id %}
+    <td>{{ entry.benchmark_count }}</td>
+    {% endif %}
+</tr>
+{% endfor %}
+{% else %}
+<tr>
+    <td colspan="{{ 5 if not selected_benchmark_id else 4 }}" style="text-align:center">
+        No completed runs yet.
+    </td>
+</tr>
+{% endif %}

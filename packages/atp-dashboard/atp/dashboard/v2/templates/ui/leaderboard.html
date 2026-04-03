@@ -1,0 +1,43 @@
+{% extends "ui/base_ui.html" %}
+
+{% block title %}Leaderboard - ATP Platform{% endblock %}
+
+{% block content %}
+<h2>Leaderboard</h2>
+
+<form hx-get="/ui/leaderboard" hx-target="#leaderboard-table-body" hx-swap="innerHTML"
+      hx-include="[name='benchmark_id']" style="margin-bottom:1rem;">
+    <label for="benchmark_id">Filter by benchmark:</label>
+    <select name="benchmark_id" id="benchmark_id"
+            hx-get="/ui/leaderboard"
+            hx-target="#leaderboard-table-body"
+            hx-swap="innerHTML"
+            hx-params="benchmark_id"
+            hx-trigger="change"
+            hx-include="[name='benchmark_id']">
+        <option value="">All benchmarks</option>
+        {% for bm in benchmarks %}
+        <option value="{{ bm.id }}" {% if selected_benchmark_id == bm.id %}selected{% endif %}>
+            {{ bm.name }}
+        </option>
+        {% endfor %}
+    </select>
+</form>
+
+<table>
+    <thead>
+        <tr>
+            <th>Rank</th>
+            <th>Agent</th>
+            <th>Best Score</th>
+            <th>Runs</th>
+            {% if not selected_benchmark_id %}
+            <th>Benchmarks</th>
+            {% endif %}
+        </tr>
+    </thead>
+    <tbody id="leaderboard-table-body">
+        {% include "ui/partials/leaderboard_table.html" %}
+    </tbody>
+</table>
+{% endblock %}

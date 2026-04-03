@@ -239,14 +239,48 @@ async def ui_cancel_run(
 
 
 @router.get("/leaderboard", response_class=HTMLResponse)
-async def ui_leaderboard(request: Request) -> HTMLResponse:
-    """Leaderboard placeholder."""
+async def ui_leaderboard(
+    request: Request,
+    session: DBSession,
+    benchmark_id: int | None = None,
+) -> HTMLResponse:
+    """Render global leaderboard page with optional benchmark filter."""
+    result = await session.execute(select(Benchmark).order_by(Benchmark.name))
+    benchmarks = result.scalars().all()
+
+    stmt = select(
+        Run.agent_name,
+        func.max(Run.total_score).label("best_score"),
+        func.count(Run.id).label("run_count"),
+        func.count(func.distinct(Run.benchmark_id)).label("benchmark_count"),
+    ).where(Run.status == RunStatus.COMPLETED)
+
+    if benchmark_id is not None:
+        stmt = stmt.where(Run.benchmark_id == benchmark_id)
+
+    stmt = stmt.group_by(Run.agent_name).order_by(func.max(Run.total_score).desc())
+    result = await session.execute(stmt)
+    entries = result.all()
+
+    partial = request.query_params.get("partial")
+    if partial:
+        return _templates(request).TemplateResponse(
+            request=request,
+            name="ui/partials/leaderboard_table.html",
+            context={
+                "entries": entries,
+                "selected_benchmark_id": benchmark_id,
+            },
+        )
+
     return _templates(request).TemplateResponse(
         request=request,
-        name="ui/placeholder.html",
+        name="ui/leaderboard.html",
         context={
             "active_page": "leaderboard",
-            "page_title": "Leaderboard",
+            "benchmarks": benchmarks,
+            "entries": entries,
+            "selected_benchmark_id": benchmark_id,
         },
     )
 

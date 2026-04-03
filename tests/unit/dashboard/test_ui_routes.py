@@ -57,10 +57,26 @@ class TestUIRoutes:
         assert "Runs" in resp.text
 
     @pytest.mark.anyio
-    async def test_placeholder_leaderboard(self, client) -> None:
-        """GET /ui/leaderboard returns placeholder page."""
+    async def test_leaderboard_page_returns_html(self, client) -> None:
+        """GET /ui/leaderboard returns 200 with leaderboard heading."""
         resp = await client.get("/ui/leaderboard")
         assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        assert "Leaderboard" in resp.text
+
+    @pytest.mark.anyio
+    async def test_leaderboard_benchmark_filter(self, client) -> None:
+        """GET /ui/leaderboard?benchmark_id=1 returns 200."""
+        resp = await client.get("/ui/leaderboard?benchmark_id=1")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+
+    @pytest.mark.anyio
+    async def test_leaderboard_partial(self, client) -> None:
+        """GET /ui/leaderboard?partial=1 returns table fragment."""
+        resp = await client.get("/ui/leaderboard?partial=1")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
 
     @pytest.mark.anyio
     async def test_suites_page_returns_html(self, client) -> None:
