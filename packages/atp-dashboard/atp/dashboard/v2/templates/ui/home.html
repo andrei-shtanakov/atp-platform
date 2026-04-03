@@ -27,7 +27,7 @@
     <div class="activity-item">
         <span>
             Run #{{ run.id }}
-            {% if run.status.value == "completed" %}completed{% elif run.status.value == "in_progress" %}started{% else %}{{ run.status.value }}{% endif %}
+            {% if run.status.value == "COMPLETED" %}completed{% elif run.status.value == "IN_PROGRESS" %}started{% else %}{{ run.status.value }}{% endif %}
             — {{ run.agent_name or "unnamed" }}
         </span>
         <span class="time">
