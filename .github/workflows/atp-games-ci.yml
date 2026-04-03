@@ -116,7 +116,7 @@ jobs:
           version: "latest"
 
       - name: Build package
-        run: uv build
+        run: uv build --out-dir dist
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
