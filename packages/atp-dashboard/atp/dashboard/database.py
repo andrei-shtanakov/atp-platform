@@ -151,7 +151,7 @@ def set_database(db: Database) -> None:
 async def init_database(url: str | None = None, echo: bool = False) -> Database:
     """Initialize and return the database.
 
-    Creates tables if they don't exist.
+    Creates tables if they don't exist. Seeds default RBAC roles.
 
     Args:
         url: Database URL.
@@ -163,4 +163,35 @@ async def init_database(url: str | None = None, echo: bool = False) -> Database:
     global _database
     _database = Database(url=url, echo=echo)
     await _database.create_tables()
+    await _seed_default_roles(_database)
     return _database
+
+
+async def _seed_default_roles(db: Database) -> None:
+    """Create default RBAC roles if they don't exist."""
+    from atp.dashboard.rbac.models import (
+        DEFAULT_ROLES,
+        Role,
+        RolePermission,
+    )
+
+    async with db.session_factory() as session:
+        for role_name, role_def in DEFAULT_ROLES.items():
+            from sqlalchemy import select
+
+            result = await session.execute(select(Role).where(Role.name == role_name))
+            if result.scalar_one_or_none() is not None:
+                continue
+
+            role = Role(
+                name=role_name,
+                description=role_def.description,
+                is_system=role_def.is_system,
+            )
+            session.add(role)
+            await session.flush()
+
+            for perm in role_def.permissions:
+                session.add(RolePermission(role_id=role.id, permission=perm.value))
+
+        await session.commit()
