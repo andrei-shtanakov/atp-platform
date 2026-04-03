@@ -9,8 +9,8 @@ from __future__ import annotations
 import httpx
 import pytest
 from atp_sdk.benchmark import BenchmarkRun
-from atp_sdk.client import ATPClient
 from atp_sdk.models import BenchmarkInfo
+from atp_sdk.sync import ATPClient
 
 pytestmark = pytest.mark.skip(
     reason="Sync ATPClient will be re-implemented in Task 3; skipping until then."

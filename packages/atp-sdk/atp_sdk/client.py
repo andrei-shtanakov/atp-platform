@@ -150,7 +150,3 @@ class AsyncATPClient:
         exc_tb: TracebackType | None,
     ) -> None:
         await self.close()
-
-
-# Keep ATPClient as a thin alias until Task 3 re-implements sync wrapper
-ATPClient = AsyncATPClient

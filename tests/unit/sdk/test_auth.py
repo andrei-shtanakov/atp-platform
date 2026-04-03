@@ -70,28 +70,28 @@ class TestATPClientTokenResolution:
     @pytest.mark.anyio
     async def test_explicit_token(self) -> None:
         """Explicit token takes priority."""
-        from atp_sdk.client import ATPClient
+        from atp_sdk.client import AsyncATPClient
 
         with patch("atp_sdk.client.load_token", return_value="saved"):
-            async with ATPClient(token="explicit") as client:
+            async with AsyncATPClient(token="explicit") as client:
                 assert client.token == "explicit"
 
     @pytest.mark.anyio
     async def test_env_var_token(self) -> None:
         """ATP_TOKEN env var is second priority."""
-        from atp_sdk.client import ATPClient
+        from atp_sdk.client import AsyncATPClient
 
         with (
             patch.dict("os.environ", {"ATP_TOKEN": "from-env"}),
             patch("atp_sdk.client.load_token", return_value="saved"),
         ):
-            async with ATPClient() as client:
+            async with AsyncATPClient() as client:
                 assert client.token == "from-env"
 
     @pytest.mark.anyio
     async def test_saved_token(self) -> None:
         """Saved token from config file is last priority."""
-        from atp_sdk.client import ATPClient
+        from atp_sdk.client import AsyncATPClient
 
         with (
             patch.dict("os.environ", {}, clear=True),
@@ -100,5 +100,5 @@ class TestATPClientTokenResolution:
             import os
 
             os.environ.pop("ATP_TOKEN", None)
-            async with ATPClient() as client:
+            async with AsyncATPClient() as client:
                 assert client.token == "saved-tok"
