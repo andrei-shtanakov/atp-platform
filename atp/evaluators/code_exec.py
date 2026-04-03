@@ -1,7 +1,9 @@
 """Code execution evaluator for running tests and linters."""
 
 import asyncio
+import platform
 import re
+import resource
 import shlex
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +13,34 @@ from atp.loader.models import Assertion, TestDefinition
 from atp.protocol import ATPEvent, ATPResponse
 
 from .base import EvalCheck, EvalResult, Evaluator
+
+# Resource limits for sandboxed subprocess
+_MAX_CPU_SECONDS = 60
+_MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
+_MAX_OPEN_FILES = 256
+
+
+def _set_subprocess_limits() -> None:
+    """Set resource limits for the subprocess (called via preexec_fn)."""
+    resource.setrlimit(resource.RLIMIT_CPU, (_MAX_CPU_SECONDS, _MAX_CPU_SECONDS))
+    resource.setrlimit(
+        resource.RLIMIT_FSIZE,
+        (_MAX_FILE_SIZE_BYTES, _MAX_FILE_SIZE_BYTES),
+    )
+    resource.setrlimit(resource.RLIMIT_NOFILE, (_MAX_OPEN_FILES, _MAX_OPEN_FILES))
+    # RLIMIT_NPROC not available on macOS
+    if platform.system() == "Linux":
+        resource.setrlimit(resource.RLIMIT_NPROC, (64, 64))
+
+
+def _safe_env() -> dict[str, str]:
+    """Build a minimal environment for sandboxed subprocess."""
+    return {
+        "PATH": "/usr/local/bin:/usr/bin:/bin",
+        "HOME": "/tmp",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+    }
 
 
 @dataclass
@@ -127,18 +157,19 @@ class CodeExecEvaluator(Evaluator):
         working_dir: str | Path | None = None,
         timeout: int = 300,
         env: dict[str, str] | None = None,
+        sandboxed: bool = False,
     ) -> CommandResult:
-        """
-        Execute a command asynchronously.
+        """Execute a command asynchronously.
+
+        Uses create_subprocess_exec (not shell) to prevent injection.
+        When sandboxed=True, applies rlimits and minimal env.
 
         Args:
             command: Command to execute (string or list of args).
             working_dir: Working directory for execution.
             timeout: Timeout in seconds.
             env: Environment variables.
-
-        Returns:
-            CommandResult with output and return code.
+            sandboxed: If True, apply rlimits and minimal env.
         """
         if isinstance(command, str):
             cmd_args = shlex.split(command)
@@ -146,6 +177,9 @@ class CodeExecEvaluator(Evaluator):
             cmd_args = command
 
         cwd = Path(working_dir) if working_dir else None
+        preexec_fn = _set_subprocess_limits if sandboxed else None
+        if sandboxed and env is None:
+            env = _safe_env()
 
         try:
             process = await asyncio.create_subprocess_exec(
@@ -154,6 +188,7 @@ class CodeExecEvaluator(Evaluator):
                 stderr=asyncio.subprocess.PIPE,
                 cwd=cwd,
                 env=env,
+                preexec_fn=preexec_fn,
             )
 
             try:
