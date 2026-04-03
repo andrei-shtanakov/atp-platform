@@ -133,12 +133,13 @@ tests:
 - GitLab CI template
 - Azure Pipelines, CircleCI, Jenkins examples
 - Exit codes: 0=success, 1=failures, 2=error
+- **Deploy pipeline** (`.github/workflows/deploy.yml`) — SSH deploy via `[deploy]` tag in commit message or `workflow_dispatch`
 
-✅ **Web Dashboard** (optional)
-- FastAPI backend
+✅ **Web Dashboard**
+- FastAPI backend with HTMX + Pico CSS frontend at `/ui/`
 - Results storage (SQLite/PostgreSQL)
-- Historical trends
-- Agent comparison
+- Working UI pages: Benchmarks (upload + create), Runs (status badges + cancel), Leaderboard (benchmark filter), Games (registry + tournaments), Suites (upload YAML), Analytics (stats + agent rankings)
+- GitHub OAuth login, Device Flow for CLI auth, JWT tokens, RBAC
 
 ✅ **Platform API & SDK**
 - **Benchmark API** (`/api/v1/benchmarks`, `/api/v1/runs`) - Pull-model benchmark execution with leaderboard

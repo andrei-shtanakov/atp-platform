@@ -177,6 +177,15 @@ Key environment variables for the dashboard and SDK:
 - Test pyramid: ~70% unit, ~20% integration, ~10% e2e
 - Test fixtures in `tests/fixtures/`
 
+## Deploy Workflow
+
+Production is deployed via `.github/workflows/deploy.yml` using SSH to a VPS (Namecheap). Trigger options:
+
+- **Automatic**: push to `main` with commit message containing `[deploy]`
+- **Manual**: `workflow_dispatch` from GitHub Actions UI
+
+The workflow SSHes into the VPS, pulls latest code, rebuilds the Docker image, and restarts the container via `docker compose up -d platform`. Requires `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY` secrets in GitHub.
+
 ## Task Workflow
 
 Tasks are defined in `spec/tasks.md` with dependencies and checklists. The `task.py` CLI manages task status, and `executor.py` can auto-execute tasks via Claude CLI.
