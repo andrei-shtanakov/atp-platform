@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from atp_sdk.auth import load_token, save_token
 
 
@@ -66,16 +67,17 @@ class TestSaveLoadToken:
 class TestATPClientTokenResolution:
     """Tests for ATPClient token resolution order."""
 
-    def test_explicit_token(self) -> None:
+    @pytest.mark.anyio
+    async def test_explicit_token(self) -> None:
         """Explicit token takes priority."""
         from atp_sdk.client import ATPClient
 
         with patch("atp_sdk.client.load_token", return_value="saved"):
-            client = ATPClient(token="explicit")
-            assert client.token == "explicit"
-            client.close()
+            async with ATPClient(token="explicit") as client:
+                assert client.token == "explicit"
 
-    def test_env_var_token(self) -> None:
+    @pytest.mark.anyio
+    async def test_env_var_token(self) -> None:
         """ATP_TOKEN env var is second priority."""
         from atp_sdk.client import ATPClient
 
@@ -83,11 +85,11 @@ class TestATPClientTokenResolution:
             patch.dict("os.environ", {"ATP_TOKEN": "from-env"}),
             patch("atp_sdk.client.load_token", return_value="saved"),
         ):
-            client = ATPClient()
-            assert client.token == "from-env"
-            client.close()
+            async with ATPClient() as client:
+                assert client.token == "from-env"
 
-    def test_saved_token(self) -> None:
+    @pytest.mark.anyio
+    async def test_saved_token(self) -> None:
         """Saved token from config file is last priority."""
         from atp_sdk.client import ATPClient
 
@@ -95,10 +97,8 @@ class TestATPClientTokenResolution:
             patch.dict("os.environ", {}, clear=True),
             patch("atp_sdk.client.load_token", return_value="saved-tok"),
         ):
-            # Remove ATP_TOKEN if set
             import os
 
             os.environ.pop("ATP_TOKEN", None)
-            client = ATPClient()
-            assert client.token == "saved-tok"
-            client.close()
+            async with ATPClient() as client:
+                assert client.token == "saved-tok"
