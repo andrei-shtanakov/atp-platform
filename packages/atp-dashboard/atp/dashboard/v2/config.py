@@ -76,6 +76,14 @@ class DashboardConfig(BaseSettings):
         description="GitHub OAuth App client secret for device flow",
     )
 
+    # Batch settings
+    batch_max_size: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="Maximum batch size for next-task endpoint",
+    )
+
     # App metadata
     title: str = Field(
         default="ATP Dashboard",
@@ -118,6 +126,7 @@ class DashboardConfig(BaseSettings):
             "disable_auth": self.disable_auth,
             "github_client_id": self.github_client_id,
             "github_client_secret": "***" if self.github_client_secret else None,
+            "batch_max_size": self.batch_max_size,
             "title": self.title,
             "version": self.version,
         }

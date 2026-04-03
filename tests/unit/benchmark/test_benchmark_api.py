@@ -230,6 +230,23 @@ class TestRunLifecycle:
         status_resp = await client.get(f"/api/v1/runs/{run_id}/status")
         assert status_resp.json()["status"] == "CANCELLED"
 
+    async def test_next_task_batch_returns_list(self, client: AsyncClient) -> None:
+        bm = await client.post(
+            "/api/v1/benchmarks",
+            json={"name": "BatchBench", "suite": SAMPLE_SUITE},
+        )
+        bm_id = bm.json()["id"]
+        run = await client.post(f"/api/v1/benchmarks/{bm_id}/start")
+        run_id = run.json()["id"]
+
+        resp = await client.get(f"/api/v1/runs/{run_id}/next-task?batch=2")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data, list)
+        assert len(data) == 2
+        assert data[0]["metadata"]["task_index"] == 0
+        assert data[1]["metadata"]["task_index"] == 1
+
     async def test_run_status_with_completed_tasks(self, client: AsyncClient) -> None:
         bm = await client.post(
             "/api/v1/benchmarks",
@@ -260,3 +277,66 @@ class TestRunLifecycle:
         assert data["tasks_count"] == 2
         assert len(data["completed_tasks"]) == 1
         assert data["completed_tasks"][0]["score"] == 100.0
+
+
+@pytest.mark.anyio
+class TestNextTaskBatch:
+    """Tests for GET /api/v1/runs/{run_id}/next-task?batch=N."""
+
+    async def _create_run(self, client: AsyncClient, name: str) -> int:
+        """Helper: create a benchmark + run, return run_id."""
+        bm = await client.post(
+            "/api/v1/benchmarks",
+            json={"name": name, "suite": SAMPLE_SUITE},
+        )
+        bm_id = bm.json()["id"]
+        run = await client.post(f"/api/v1/benchmarks/{bm_id}/start")
+        return run.json()["id"]
+
+    async def test_batch_returns_multiple_tasks(self, client: AsyncClient) -> None:
+        """batch=2 returns a list of 2 task dicts."""
+        run_id = await self._create_run(client, "BatchMulti")
+
+        resp = await client.get(f"/api/v1/runs/{run_id}/next-task?batch=2")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data, list)
+        assert len(data) == 2
+        assert data[0]["metadata"]["task_index"] == 0
+        assert data[1]["metadata"]["task_index"] == 1
+
+    async def test_batch_default_returns_single_dict(self, client: AsyncClient) -> None:
+        """No batch param (default=1) returns a single dict, not a list."""
+        run_id = await self._create_run(client, "BatchDefault")
+
+        resp = await client.get(f"/api/v1/runs/{run_id}/next-task")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data, dict)
+        assert "task_id" in data
+        assert data["metadata"]["task_index"] == 0
+
+    async def test_batch_partial_at_end(self, client: AsyncClient) -> None:
+        """batch=10 with only 1 task left returns a list of 1."""
+        run_id = await self._create_run(client, "BatchPartial")
+
+        # Consume first task individually
+        await client.get(f"/api/v1/runs/{run_id}/next-task")
+
+        # Request a large batch — only 1 task remains
+        resp = await client.get(f"/api/v1/runs/{run_id}/next-task?batch=10")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data, list)
+        assert len(data) == 1
+        assert data[0]["metadata"]["task_index"] == 1
+
+    async def test_batch_204_when_exhausted(self, client: AsyncClient) -> None:
+        """After all tasks consumed, batch=5 returns 204."""
+        run_id = await self._create_run(client, "BatchExhausted")
+
+        # Consume all tasks (suite has 2)
+        await client.get(f"/api/v1/runs/{run_id}/next-task?batch=2")
+
+        resp = await client.get(f"/api/v1/runs/{run_id}/next-task?batch=5")
+        assert resp.status_code == 204

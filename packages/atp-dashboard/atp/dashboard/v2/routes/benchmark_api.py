@@ -171,16 +171,25 @@ async def start_run(
 async def next_task(
     run_id: int,
     session: DBSession,
+    batch: int = Query(default=1, ge=1),
 ) -> Any:
-    """Get the next task for a run as an ATPRequest dict.
+    """Get the next task(s) for a run as ATPRequest dict(s).
 
-    Returns 204 No Content when all tasks have been consumed.
+    Use ``?batch=N`` to fetch up to N tasks atomically.  When ``batch=1``
+    (default) a single dict is returned for backward compatibility.  When
+    ``batch>1`` a list is returned.  Returns 204 No Content when all tasks
+    have been consumed.
     """
-    # Atomic increment: avoids read-then-write race condition
+    from atp.dashboard.v2.config import get_config
+
+    config = get_config()
+    batch = min(batch, config.batch_max_size)
+
+    # Atomic increment by batch: avoids read-then-write race condition
     stmt = (
         update(Run)
         .where(Run.id == run_id, Run.status == RunStatus.IN_PROGRESS)
-        .values(current_task_index=Run.current_task_index + 1)
+        .values(current_task_index=Run.current_task_index + batch)
         .returning(Run.current_task_index, Run.benchmark_id)
     )
     result = await session.execute(stmt)
@@ -196,7 +205,7 @@ async def next_task(
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     new_index, benchmark_id = row
-    idx = new_index - 1  # We incremented, so actual index is new - 1
+    start_idx = new_index - batch
 
     bm = await session.get(Benchmark, benchmark_id)
     if bm is None:
@@ -207,41 +216,51 @@ async def next_task(
 
     suite = TestSuite.model_validate(bm.suite)
 
-    if idx >= len(suite.tests):
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    tasks: list[dict[str, Any]] = []
+    for idx in range(start_idx, new_index):
+        if idx >= len(suite.tests):
+            break
+        test_def = suite.tests[idx]
 
-    test_def = suite.tests[idx]
+        # Build constraints
+        constraints: dict[str, Any] = {}
+        if test_def.constraints.max_steps is not None:
+            constraints["max_steps"] = test_def.constraints.max_steps
+        if test_def.constraints.max_tokens is not None:
+            constraints["max_tokens"] = test_def.constraints.max_tokens
+        if test_def.constraints.timeout_seconds is not None:
+            constraints["timeout_seconds"] = test_def.constraints.timeout_seconds
+        if test_def.constraints.allowed_tools is not None:
+            constraints["allowed_tools"] = test_def.constraints.allowed_tools
+        if test_def.constraints.budget_usd is not None:
+            constraints["budget_usd"] = test_def.constraints.budget_usd
+
+        request = ATPRequest(
+            task_id=str(uuid.uuid4()),
+            task=Task(
+                description=test_def.task.description,
+                input_data=test_def.task.input_data,
+                expected_artifacts=test_def.task.expected_artifacts,
+            ),
+            constraints=constraints,
+            metadata={
+                "test_id": test_def.id,
+                "test_name": test_def.name,
+                "task_index": idx,
+                "run_id": run_id,
+            },
+        )
+        tasks.append(request.model_dump())
+
     await session.flush()
 
-    # Build constraints
-    constraints: dict[str, Any] = {}
-    if test_def.constraints.max_steps is not None:
-        constraints["max_steps"] = test_def.constraints.max_steps
-    if test_def.constraints.max_tokens is not None:
-        constraints["max_tokens"] = test_def.constraints.max_tokens
-    if test_def.constraints.timeout_seconds is not None:
-        constraints["timeout_seconds"] = test_def.constraints.timeout_seconds
-    if test_def.constraints.allowed_tools is not None:
-        constraints["allowed_tools"] = test_def.constraints.allowed_tools
-    if test_def.constraints.budget_usd is not None:
-        constraints["budget_usd"] = test_def.constraints.budget_usd
+    if not tasks:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-    request = ATPRequest(
-        task_id=str(uuid.uuid4()),
-        task=Task(
-            description=test_def.task.description,
-            input_data=test_def.task.input_data,
-            expected_artifacts=test_def.task.expected_artifacts,
-        ),
-        constraints=constraints,
-        metadata={
-            "test_id": test_def.id,
-            "test_name": test_def.name,
-            "task_index": idx,
-            "run_id": run_id,
-        },
-    )
-    return request.model_dump()
+    # Backward compat: batch=1 returns a single dict, not a list
+    if batch == 1:
+        return tasks[0]
+    return tasks
 
 
 @router.post("/runs/{run_id}/submit")
