@@ -187,6 +187,22 @@ def create_app(
                 name="analytics.html",
             )
 
+        @app.get("/login", response_class=HTMLResponse)
+        async def login(request: Request) -> HTMLResponse:
+            """Render the login page."""
+            return templates.TemplateResponse(
+                request=request,
+                name="login.html",
+            )
+
+        @app.get("/register", response_class=HTMLResponse)
+        async def register(request: Request) -> HTMLResponse:
+            """Render the registration page."""
+            return templates.TemplateResponse(
+                request=request,
+                name="register.html",
+            )
+
         @app.get("/catalog", response_class=HTMLResponse)
         @app.get("/catalog/", response_class=HTMLResponse)
         async def catalog(

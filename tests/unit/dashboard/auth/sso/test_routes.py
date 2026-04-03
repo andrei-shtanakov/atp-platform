@@ -147,13 +147,14 @@ class TestListProvidersEndpoint:
         assert response.status_code == 200
         data = response.json()
 
-        assert len(data) == 5  # Okta, Auth0, Azure AD, Google, Generic
+        assert len(data) == 6  # Okta, Auth0, Azure AD, Google, GitHub, Generic
 
         provider_names = [p["provider"] for p in data]
         assert "okta" in provider_names
         assert "auth0" in provider_names
         assert "azure_ad" in provider_names
         assert "google" in provider_names
+        assert "github" in provider_names
         assert "generic" in provider_names
 
 

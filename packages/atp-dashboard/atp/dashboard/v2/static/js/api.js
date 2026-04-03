@@ -14,10 +14,14 @@ const api = {
         const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
         try {
             const res = await fetch(`/api${path}`, { headers });
+            if (res.status === 401) {
+                localStorage.removeItem('token');
+                window.location.href = '/login';
+                throw new Error('Session expired. Redirecting to login...');
+            }
             if (!res.ok) {
                 const errorMessages = {
                     400: 'Invalid request. Please check your input and try again.',
-                    401: 'You are not authorized. Please log in and try again.',
                     403: 'Access denied. You do not have permission to access this resource.',
                     404: 'The requested data was not found. It may have been deleted or moved.',
                     408: 'Request timed out. Please check your connection and try again.',
@@ -56,10 +60,14 @@ const api = {
                 headers,
                 body: JSON.stringify(data)
             });
+            if (res.status === 401) {
+                localStorage.removeItem('token');
+                window.location.href = '/login';
+                throw new Error('Session expired. Redirecting to login...');
+            }
             if (!res.ok) {
                 const errorMessages = {
                     400: 'Invalid request. Please check your input and try again.',
-                    401: 'You are not authorized. Please log in and try again.',
                     403: 'Access denied. You do not have permission to perform this action.',
                     404: 'The requested resource was not found.',
                     422: 'Invalid data format. Please check your input.',
