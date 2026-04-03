@@ -58,13 +58,13 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
 - [x] Опубликовать atp-sdk на PyPI (как atp-platform-sdk)
 
 ### Post-MVP
-- [ ] `?batch=N` для параллельного получения задач (зарезервировано в API)
+- [x] `?batch=N` для параллельного получения задач (SDK v2.0.0)
 - [ ] Redis pub/sub для SDKAdapter (замена asyncio.Event, переживает рестарт)
 - [ ] Автоматический трекинг токенов в SDK (обёртка над LLM-вызовами)
 - [ ] Event streaming в SDK (отправка ATPEvent во время выполнения)
 - [ ] Workspace management в SDK (скачивание/загрузка файлов-артефактов)
-- [ ] Async API в SDK (async for task in run)
-- [ ] Retry/reconnect при обрывах в SDK
+- [x] Async API в SDK — AsyncATPClient + async for task in run (SDK v2.0.0)
+- [x] Retry/reconnect при обрывах в SDK — exponential backoff + full jitter (SDK v2.0.0)
 - [ ] TypeScript SDK
 - [ ] WebSocket для real-time турниров (инфраструктура в dashboard уже есть)
 - [ ] Container-изоляция evaluators (Podman/Docker)
