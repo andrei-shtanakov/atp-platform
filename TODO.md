@@ -61,17 +61,18 @@ uv add atp-platform atp-games game-environments
 See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md`
 
 ### MVP
-- [ ] Расширить atp-dashboard: catalog API + tournament API route-группы
-- [ ] Добавить GitHub как OIDC-провайдер в существующий SSO-модуль
-- [ ] Добавить Device Flow для CLI-логина (проверить, поддерживает ли текущий OIDC-модуль)
+- [x] Расширить atp-dashboard: catalog API + tournament API route-группы
+- [x] Добавить GitHub как OIDC-провайдер в существующий SSO-модуль
+- [x] Добавить Device Flow для CLI-логина
+- [x] Новые SQLAlchemy-модели (Benchmark, Run, TaskResult, Tournament, Participant, Round, Action)
+- [x] Alembic-миграция для новых таблиц
+- [x] Cancel endpoint + серверный таймаут прогонов (status=partial)
+- [x] Benchmark family_tag + parent_id для версионирования
+- [x] Run.adapter_type для аналитики (sdk/http/cli/...)
+- [x] Login/Register UI + RBAC seed + auto-admin для первого пользователя
+- [x] Создать packages/atp-sdk/ — Python SDK для участников (client, benchmark iterator, auth)
 - [ ] Создать SDKAdapter в atp-adapters (asyncio.Event + timeout, pull-модель как AgentAdapter)
-- [ ] Создать packages/atp-sdk/ — Python SDK для участников
-- [ ] Новые SQLAlchemy-модели (Benchmark, Run, TaskResult, Tournament, Participant, Round, Action)
-- [ ] Alembic-миграция для новых таблиц
 - [ ] Sandbox для evaluators на сервере (subprocess + timeout + rlimits)
-- [ ] Cancel endpoint + серверный таймаут прогонов (status=partial)
-- [ ] Benchmark family_tag + parent_id для версионирования
-- [ ] Run.adapter_type для аналитики (sdk/http/cli/...)
 - [ ] Опубликовать atp-sdk на PyPI
 
 ### Post-MVP
