@@ -87,16 +87,69 @@
                 pollDeviceFlow(data.device_code, data.interval);
             } catch(e) {
                 showError('Failed to start login: ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.removeAttribute('aria-busy');
             }
         }
+
+        async function pollDeviceFlow(deviceCode, interval) {
+            const poll = async () => {
+                try {
+                    const resp = await fetch('/api/auth/device/poll', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({device_code: deviceCode}),
+                    });
+                    if (resp.status === 428) {
+                        setTimeout(poll, interval * 1000);
+                        return;
+                    }
+                    if (resp.status === 410) {
+                        showError('Code expired. Please try again.');
+                        return;
+                    }
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        document.cookie = 'atp_token=' + data.access_token + ';path=/;SameSite=Strict';
+                        const next = new URLSearchParams(window.location.search).get('next');
+                        window.location.href = (next && next.startsWith('/ui/')) ? next : '/ui/';
+                    }
+                } catch(e) {
+                    showError('Poll error: ' + e.message);
+                }
+            };
+            setTimeout(poll, interval * 1000);
+        }
+
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            try {
+                const resp = await fetch('/api/auth/token', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                    body: new URLSearchParams({username, password}),
+                });
+                if (!resp.ok) {
+                    const data = await resp.json().catch(() => ({}));
+                    showError(data.detail || 'Invalid credentials');
+                    return;
+                }
+                const data = await resp.json();
+                document.cookie = 'atp_token=' + data.access_token + ';path=/;SameSite=Strict';
+                const next = new URLSearchParams(window.location.search).get('next');
+                window.location.href = (next && next.startsWith('/ui/')) ? next : '/ui/';
+            } catch(e) {
+                showError('Login failed: ' + e.message);
+            }
+        });
 
         function showError(msg) {
             const el = document.getElementById('error-msg');
             el.textContent = msg;
             el.style.display = 'block';
-            const btn = document.getElementById('start-login');
-            btn.disabled = false;
-            btn.removeAttribute('aria-busy');
         }
     </script>
 </body>
