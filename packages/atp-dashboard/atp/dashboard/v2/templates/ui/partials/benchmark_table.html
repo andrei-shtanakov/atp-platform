@@ -1,0 +1,12 @@
+{% for bm in benchmarks %}
+<tr>
+    <td><a href="/ui/benchmarks/{{ bm.id }}">{{ bm.name }}</a></td>
+    <td>{{ bm.version or "—" }}</td>
+    <td>{{ bm.tasks_count }}</td>
+    <td>{% if bm.created_at %}{{ bm.created_at.strftime("%Y-%m-%d") }}{% else %}—{% endif %}</td>
+</tr>
+{% else %}
+<tr>
+    <td colspan="4">No benchmarks found.</td>
+</tr>
+{% endfor %}
