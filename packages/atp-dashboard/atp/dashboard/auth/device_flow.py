@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 import httpx
 
 GITHUB_DEVICE_VERIFY_URI = "https://github.com/login/device"
-GITHUB_DEVICE_AUTH_URL = "https://github.com/login/oauth/device/code"
+GITHUB_DEVICE_AUTH_URL = "https://github.com/login/device/code"
 GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
 GITHUB_USER_API = "https://api.github.com/user"
 GITHUB_USER_EMAILS_API = "https://api.github.com/user/emails"
