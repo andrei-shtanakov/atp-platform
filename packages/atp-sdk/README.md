@@ -5,7 +5,7 @@ Python SDK for the [ATP (Agent Test Platform)](https://github.com/andrei-shtanak
 ## Installation
 
 ```bash
-pip install atp-platform-sdk
+uv add atp-platform-sdk
 ```
 
 ## Quick Start

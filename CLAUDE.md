@@ -76,11 +76,13 @@ uv run atp version                 # Show version info
 1. **Protocol** (`atp/protocol/`) - ATP Request/Response/Event models defining the contract
 2. **Adapters** (`atp/adapters/`) - Translate between ATP Protocol and agent types (HTTP, Container, CLI, LangGraph, CrewAI, AutoGen, MCP, Bedrock, Vertex, Azure OpenAI, SDK)
 3. **Runner** (`atp/runner/`) - Orchestrates test execution, manages sandboxes
-4. **Evaluators** (`atp/evaluators/`) - Assess agent results (artifact, behavior, LLM-judge, code-exec, security, factuality, filesystem, style, performance, composite)
+4. **Evaluators** (`atp/evaluators/`) - Assess agent results (artifact, behavior, LLM-judge, code-exec, security, factuality, filesystem, style, performance, composite, git-commit, guardrails)
 5. **Reporters** (`atp/reporters/`) - Format output (console, JSON, JUnit, HTML, game)
 6. **Benchmark API** (`atp/dashboard/benchmark/`) - REST API for pull-model benchmarks with leaderboard (`/api/v1/benchmarks`, `/api/v1/runs`)
 7. **Tournament API** (`atp/dashboard/tournament/`) - REST API for game-theoretic tournaments (`/api/v1/tournaments`)
-8. **SDK** (`packages/atp-sdk/`) - Python SDK for benchmark participants (ATPClient, BenchmarkRun iterator)
+8. **SDK** (`packages/atp-sdk/`) - Python SDK for benchmark participants (ATPClient, BenchmarkRun iterator). PyPI package name: `atp-platform-sdk`
+9. **Auth** (`atp/dashboard/auth/`) - Authentication system with GitHub OAuth (OIDC), Device Flow for CLI login, JWT tokens
+10. **RBAC** (`atp/dashboard/rbac/`) - Role-based access control with auto-admin for first user
 
 ### Data Flow
 
@@ -132,7 +134,7 @@ atp/                         # Namespace package (symlinks to packages/ + local 
 ├── dashboard/→ packages/atp-dashboard/# (symlink)
 └── analytics/→ packages/atp-dashboard/# (symlink)
 
-game-environments/           # Standalone game theory library (7 games, 25+ strategies)
+game-environments/           # Standalone game theory library (8 games, 25+ strategies)
 atp-games/                   # ATP plugin for game-theoretic evaluation
 demo/                        # Demo agents (code writer) for functional testing
 demo-game/                   # LLM game agents (GPT-4o-mini plays Prisoner's Dilemma)
@@ -142,6 +144,15 @@ docs/              # Architecture documentation, guides, API reference
 tests/             # Test suite (unit, integration, contract, e2e)
 examples/          # Sample test suites, CI templates, example agents
 ```
+
+## Environment Variables
+
+Key environment variables for the dashboard and SDK:
+
+- `ATP_GITHUB_CLIENT_ID` - GitHub OAuth App client ID (required for GitHub login)
+- `ATP_GITHUB_CLIENT_SECRET` - GitHub OAuth App client secret (required for GitHub login)
+- `ATP_SECRET_KEY` - JWT signing secret for auth tokens
+- `ATP_DATABASE_URL` - Database connection string (default: SQLite)
 
 ## Code Style
 

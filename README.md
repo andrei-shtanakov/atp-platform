@@ -4,7 +4,7 @@
 
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Coverage](https://img.shields.io/badge/coverage-80%25+-green.svg)](https://github.com/yourusername/atp-platform)
+[![Coverage](https://img.shields.io/badge/coverage-80%25+-green.svg)](https://github.com/andrei-shtanakov/atp-platform)
 
 ## Why ATP?
 
@@ -16,7 +16,7 @@
 ## Quick Start
 
 ```bash
-pip install atp-platform
+uv add atp-platform
 atp quickstart
 ```
 
@@ -25,7 +25,7 @@ See the [Quick Start Guide](docs/guides/quickstart.md) for a full walkthrough.
 ## Quick Start (from source)
 
 ```bash
-git clone https://github.com/yourusername/atp-platform.git
+git clone https://github.com/andrei-shtanakov/atp-platform.git
 cd atp-platform
 uv sync --group dev
 uv run pytest tests/ -v  # verify installation
@@ -91,6 +91,7 @@ tests:
 - **BedrockAdapter** - AWS Bedrock integration
 - **VertexAdapter** - Google Vertex AI integration
 - **AzureOpenAIAdapter** - Azure OpenAI integration
+- **SDKAdapter** - Pull-model adapter for SDK-based benchmark participants
 
 ✅ **Evaluators** - Multi-level result assessment
 - **ArtifactEvaluator** - File existence, content, schema validation
@@ -103,6 +104,8 @@ tests:
 - **FilesystemEvaluator** - Workspace file existence, content, directory checks
 - **PerformanceEvaluator** - Latency, throughput, regression detection
 - **CompositeEvaluator** - Boolean logic (AND/OR/NOT) over nested assertions
+- **GitCommitEvaluator** - Git commit message and diff analysis
+- **GuardrailsEvaluator** - Custom guardrails enforcement
 
 ✅ **Reporters** - Multiple output formats
 - **Console** - Colored terminal output with progress
@@ -137,6 +140,13 @@ tests:
 - Historical trends
 - Agent comparison
 
+✅ **Platform API & SDK**
+- **Benchmark API** (`/api/v1/benchmarks`, `/api/v1/runs`) - Pull-model benchmark execution with leaderboard
+- **Tournament API** (`/api/v1/tournaments`) - Game-theoretic tournament management
+- **Auth** - GitHub OAuth (OIDC) + Device Flow for CLI login + JWT tokens
+- **RBAC** - Role-based access control with auto-admin for first user
+- **Python SDK** (`atp-platform-sdk` on PyPI) - ATPClient, BenchmarkRun iterator, Device Flow auth
+
 ## Project Structure
 
 ```
@@ -147,8 +157,8 @@ atp-platform/
 │   ├── protocol/             # ATP Request/Response/Event models
 │   ├── loader/               # YAML/JSON test parsing
 │   ├── runner/               # Test orchestration, sandbox
-│   ├── adapters/             # Agent adapters (HTTP, Docker, CLI, LangGraph, CrewAI, AutoGen, MCP, Bedrock, Vertex, Azure OpenAI, SDK)
-│   ├── evaluators/           # Result evaluation (artifact, behavior, LLM, code, security, factuality, style, performance)
+│   ├── adapters/             # Agent adapters (HTTP, Docker, CLI, LangGraph, CrewAI, AutoGen, MCP, Bedrock, Vertex, Azure OpenAI, SDK/pull-model)
+│   ├── evaluators/           # Result evaluation (artifact, behavior, LLM, code, security, factuality, style, performance, git-commit, guardrails)
 │   ├── scoring/              # Score aggregation
 │   ├── statistics/           # Statistical analysis
 │   ├── baseline/             # Baseline management, regression detection
@@ -368,7 +378,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/atp-platform/issues)
+- **Issues**: [GitHub Issues](https://github.com/andrei-shtanakov/atp-platform/issues)
 - **Documentation**: [docs/](docs/)
 - **Examples**: [examples/](examples/)
 
@@ -382,10 +392,11 @@ ATP includes a game-theoretic evaluation framework for testing agent strategic r
 |---|---|---|
 | [`game-environments`](game-environments/) | Standalone game theory library (zero ATP dependency) | [README](game-environments/README.md) |
 | [`atp-games`](atp-games/) | ATP plugin for game-theoretic evaluation | [README](atp-games/README.md) |
+| [`atp-platform-sdk`](packages/atp-sdk/) | Python SDK for benchmark participants | [README](packages/atp-sdk/README.md) |
 
 ### Built-in Games
 
-Seven canonical games with known Nash equilibria for rigorous evaluation:
+Eight canonical games with known Nash equilibria for rigorous evaluation:
 
 - **Prisoner's Dilemma** -- cooperation vs defection with configurable payoff matrix
 - **Stag Hunt** -- trust vs safety, two pure Nash equilibria
@@ -394,6 +405,7 @@ Seven canonical games with known Nash equilibria for rigorous evaluation:
 - **Auction** -- first-price and second-price sealed-bid with private values
 - **Colonel Blotto** -- resource allocation across multiple battlefields
 - **Congestion Game** -- network routing with latency-dependent costs
+- **El Farol Bar** -- bounded rationality and minority game dynamics
 
 ### Game-Theoretic Evaluators
 
@@ -443,6 +455,7 @@ All core features implemented:
 - ✅ Beta: Framework adapters, Statistics, LLM-Judge, Baseline, HTML reports, CI/CD
 - ✅ GA: Dashboard, Security hardening, Performance optimization
 - ✅ Phase 5: Game-theoretic evaluation (game-environments + atp-games)
+- ✅ Platform API & SDK: Benchmark/Tournament REST API, GitHub OAuth, Device Flow, Python SDK (`atp-platform-sdk`)
 
 ### Specifications Directory
 
