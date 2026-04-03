@@ -50,6 +50,9 @@ from atp.dashboard.v2.routes.catalog import router as catalog_router
 from atp.dashboard.v2.routes.comparison import router as comparison_router
 from atp.dashboard.v2.routes.costs import router as costs_router
 from atp.dashboard.v2.routes.definitions import router as definitions_router
+from atp.dashboard.v2.routes.device_auth import (
+    router as device_auth_router,
+)
 from atp.dashboard.v2.routes.experiments import router as experiments_router
 from atp.dashboard.v2.routes.games import router as games_router
 from atp.dashboard.v2.routes.home import router as home_router
@@ -80,6 +83,7 @@ router = APIRouter()
 
 # Include all domain-specific routers
 router.include_router(auth_router)
+router.include_router(device_auth_router)
 router.include_router(home_router)
 router.include_router(agents_router)
 router.include_router(suites_router)
@@ -120,6 +124,7 @@ __all__ = [
     "analytics_router",
     "audit_router",
     "auth_router",
+    "device_auth_router",
     "budgets_router",
     "comparison_router",
     "costs_router",
