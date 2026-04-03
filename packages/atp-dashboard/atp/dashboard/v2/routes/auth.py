@@ -18,6 +18,7 @@ from atp.dashboard.auth import (
     create_user,
 )
 from atp.dashboard.models import User
+from atp.dashboard.rbac.models import Role, UserRole
 from atp.dashboard.schemas import Token, UserCreate, UserResponse
 from atp.dashboard.v2.dependencies import DBSession, RequiredUser
 
@@ -87,6 +88,16 @@ async def register(session: DBSession, user_data: UserCreate) -> UserResponse:
             password=user_data.password,
             is_admin=is_first_user,
         )
+
+        # Assign default role: admin for first user, viewer for others
+        default_role_name = "admin" if is_first_user else "viewer"
+        role_result = await session.execute(
+            select(Role).where(Role.name == default_role_name)
+        )
+        role = role_result.scalar_one_or_none()
+        if role is not None:
+            session.add(UserRole(user_id=user.id, role_id=role.id))
+
         await session.commit()
         return UserResponse.model_validate(user)
     except ValueError as e:
