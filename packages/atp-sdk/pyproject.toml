@@ -1,13 +1,28 @@
 [project]
 name = "atp-sdk"
 version = "0.1.0"
-description = "Python SDK for ATP benchmark platform"
+description = "Python SDK for ATP benchmark platform — run benchmarks, submit results, view leaderboards"
 requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Andrei Shtanakov" }]
+readme = "README.md"
+keywords = ["ai", "agents", "benchmarks", "testing", "evaluation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Testing",
+]
 dependencies = [
     "httpx>=0.27",
     "pydantic>=2.0",
-    "atp-core>=1.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/andrei-shtanakov/atp-platform"
+Documentation = "https://github.com/andrei-shtanakov/atp-platform/tree/main/packages/atp-sdk"
+Repository = "https://github.com/andrei-shtanakov/atp-platform"
 
 [project.optional-dependencies]
 dev = [
@@ -21,6 +36,3 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["atp_sdk"]
-
-[tool.uv.sources]
-atp-core = { workspace = true }
