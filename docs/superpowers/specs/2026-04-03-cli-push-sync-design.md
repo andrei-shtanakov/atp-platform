@@ -60,7 +60,7 @@ atp sync ./tests/ --dry-run --server https://atp.pr0sto.space
 - Scans directory recursively for `.yaml`/`.yml` files
 - Compares SHA256 hashes with local manifest `.atp-sync.json`
 - **New files** (not in manifest) → push to server via upload endpoint
-- **Changed files** (hash differs from manifest) → delete old suite on server (`DELETE /api/suite-definitions/{id}`), then re-upload. This is the default behavior for sync — treating local as source of truth.
+- **Changed files** (hash differs from manifest) → delete old suite on server (`DELETE /api/suite-definitions/{id}`), then re-upload. This is the default behavior for sync — treating local as source of truth. **If upload fails after successful delete:** print explicit error with restore instructions (`atp push <file> --force`), do NOT update manifest for this file (next sync will retry).
 - **Unchanged files** → skip
 - **Deleted files** (in manifest but not on disk) → warning in terminal, does NOT delete from server. Entry is **removed** from manifest to avoid repeated warnings on next sync.
 - Creates/updates `.atp-sync.json` after successful sync
@@ -188,6 +188,9 @@ Dry run — no changes will be made.
 - `.atp-sync.json` should be committed to git (tracks sync state for the team)
 - No watch mode / continuous sync (future feature)
 - No two-way merge / conflict resolution — local is source of truth for sync
+- Concurrent pushes from multiple developers may cause merge conflicts in `.atp-sync.json`. Resolve by accepting the newer file.
+- Pull without manifest: `--force` overwrites without warning (no baseline to compare). Without `--force`, skips existing files as usual.
+- `--dry-run` not supported for `pull` — pull is read-only and non-destructive without `--force`
 
 ## Known Limitations
 
