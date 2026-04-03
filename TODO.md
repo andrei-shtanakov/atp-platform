@@ -1,45 +1,32 @@
 # TODO
 
-## Publish sub-packages to PyPI
+## ~~Publish sub-packages to PyPI~~ DONE
 
-The ATP platform consists of three packages. Only the main package is published so far.
+All packages published.
 
 | Package | PyPI | Status |
 |---|---|---|
 | `atp-platform` | [atp-platform](https://pypi.org/project/atp-platform/) | Published v1.0.0 |
-| `game-environments` | — | Not published |
-| `atp-games` | — | Not published |
+| `atp-platform-sdk` | [atp-platform-sdk](https://pypi.org/project/atp-platform-sdk/) | Published v1.0.0 |
+| `game-environments` | [game-environments](https://pypi.org/project/game-environments/) | Published v1.0.0 |
+| `atp-games` | [atp-games](https://pypi.org/project/atp-games/) | Published v1.0.0 |
 
 ### Package dependency graph
 
 ```
 atp-platform              # core platform (standalone)
+atp-platform-sdk          # SDK for benchmark participants
 game-environments         # game theory environments (standalone, no atp dependency)
 atp-games                 # plugin bridging game-environments ↔ atp-platform
   └── pydantic
   └── (runtime) atp-platform, game-environments
 ```
 
-### Steps to publish
+### Publishing
 
-1. **`game-environments`** — publish first (no dependencies on atp)
-   - Bump version in `game-environments/pyproject.toml`
-   - Add PyPI Trusted Publisher for `game-environments` repo/workflow
-   - Create workflow or publish manually: `cd game-environments && uv build && uv publish`
-   - Tag: `game-environments-v1.0.0`
-
-2. **`atp-games`** — publish after game-environments is on PyPI
-   - Add explicit dependencies in `atp-games/pyproject.toml`:
-     ```toml
-     dependencies = [
-         "pydantic>=2.0",
-         "atp-platform>=1.0.0",
-         "game-environments>=1.0.0",
-     ]
-     ```
-   - Bump version in `atp-games/pyproject.toml`
-   - Publish: `cd atp-games && uv build && uv publish`
-   - Tag: `atp-games-v1.0.0`
+CI workflows with Trusted Publisher are configured. To publish a new version:
+- Bump version in `pyproject.toml`
+- Push a tag: `game-environments-v<version>` or `atp-games-v<version>`
 
 ### Full installation for end users
 
@@ -50,11 +37,6 @@ uv add atp-platform
 # With game-theoretic evaluation
 uv add atp-platform atp-games game-environments
 ```
-
-### CI workflows
-
-- `game-environments`: needs a new `.github/workflows/game-environments-publish.yml`
-- `atp-games`: existing `.github/workflows/atp-games-ci.yml` already has a publish job triggered by `atp-games-v*` tags — just needs Trusted Publisher configured on PyPI
 
 ## Platform API & SDK (atp-sdk)
 
