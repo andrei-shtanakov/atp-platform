@@ -7,6 +7,7 @@ All UI routes are under /ui/ prefix.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
 from fastapi import APIRouter, Request, UploadFile
 from fastapi.responses import HTMLResponse
@@ -184,13 +185,57 @@ async def ui_games(request: Request) -> HTMLResponse:
 
 
 @router.get("/runs", response_class=HTMLResponse)
-async def ui_runs(request: Request) -> HTMLResponse:
-    """Runs placeholder."""
+async def ui_runs(
+    request: Request,
+    session: DBSession,
+    page: int = 1,
+) -> HTMLResponse:
+    """Render runs list page."""
+    per_page = 50
+    offset = (page - 1) * per_page
+
+    result = await session.execute(select(func.count(Run.id)))
+    total = result.scalar() or 0
+
+    stmt = (
+        select(Run, Benchmark.name.label("benchmark_name"), Benchmark.tasks_count)
+        .outerjoin(Benchmark, Run.benchmark_id == Benchmark.id)
+        .order_by(Run.started_at.desc())
+        .limit(per_page)
+        .offset(offset)
+    )
+    result = await session.execute(stmt)
+    rows = result.all()
+
+    total_pages = (total + per_page - 1) // per_page
+
     return _templates(request).TemplateResponse(
         request=request,
-        name="ui/placeholder.html",
-        context={"active_page": "runs", "page_title": "Runs"},
+        name="ui/runs.html",
+        context={
+            "active_page": "runs",
+            "runs": rows,
+            "page": page,
+            "total_pages": total_pages,
+            "total": total,
+        },
     )
+
+
+@router.post("/runs/{run_id}/cancel", response_class=HTMLResponse)
+async def ui_cancel_run(
+    request: Request,
+    run_id: int,
+    session: DBSession,
+) -> HTMLResponse:
+    """Cancel an in-progress run."""
+    run = await session.get(Run, run_id)
+    if run is None:
+        return HTMLResponse("<p style='color:red'>Run not found</p>")
+    run.status = RunStatus.CANCELLED
+    run.finished_at = datetime.now()
+    await session.commit()
+    return HTMLResponse(f"<p style='color:green'>Run #{run_id} cancelled</p>")
 
 
 @router.get("/leaderboard", response_class=HTMLResponse)

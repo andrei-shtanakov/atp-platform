@@ -49,11 +49,12 @@ class TestUIRoutes:
         assert "Coming soon" in resp.text
 
     @pytest.mark.anyio
-    async def test_placeholder_runs(self, client) -> None:
-        """GET /ui/runs returns placeholder page."""
+    async def test_runs_page_returns_html(self, client) -> None:
+        """GET /ui/runs returns 200 with Runs heading."""
         resp = await client.get("/ui/runs")
         assert resp.status_code == 200
-        assert "Coming soon" in resp.text
+        assert "text/html" in resp.headers["content-type"]
+        assert "Runs" in resp.text
 
     @pytest.mark.anyio
     async def test_placeholder_leaderboard(self, client) -> None:
