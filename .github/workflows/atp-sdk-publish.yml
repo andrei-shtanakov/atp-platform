@@ -25,7 +25,7 @@ jobs:
           version: "latest"
 
       - name: Build atp-sdk
-        run: cd packages/atp-sdk && uv build
+        run: cd packages/atp-sdk && uv build --out-dir dist
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
