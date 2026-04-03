@@ -1,0 +1,107 @@
+{% extends "ui/base_ui.html" %}
+
+{% block title %}{{ benchmark.name }} - ATP Platform{% endblock %}
+
+{% block content %}
+<h2>{{ benchmark.name }}</h2>
+{% if benchmark.description %}
+<p>{{ benchmark.description }}</p>
+{% endif %}
+
+<div class="stat-cards">
+    <div class="stat-card">
+        <div class="value">{{ benchmark.tasks_count }}</div>
+        <div class="label">Tasks</div>
+    </div>
+    <div class="stat-card">
+        <div class="value">{{ benchmark.version or "—" }}</div>
+        <div class="label">Version</div>
+    </div>
+    {% if benchmark.family_tag %}
+    <div class="stat-card">
+        <div class="value">{{ benchmark.family_tag }}</div>
+        <div class="label">Family</div>
+    </div>
+    {% endif %}
+</div>
+
+<h3>Tests</h3>
+{% if tests %}
+<table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Description</th>
+            <th>Assertions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for test in tests %}
+        <tr>
+            <td>{{ test.id }}</td>
+            <td>{{ test.name }}</td>
+            <td>{{ test.task.description[:80] }}{% if test.task.description|length > 80 %}...{% endif %}</td>
+            <td>{{ test.assertions|length }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>No tests defined.</p>
+{% endif %}
+
+<h3>Recent Runs</h3>
+{% if runs %}
+<table>
+    <thead>
+        <tr>
+            <th>Run</th>
+            <th>Agent</th>
+            <th>Status</th>
+            <th>Score</th>
+            <th>Date</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for run in runs %}
+        <tr>
+            <td>#{{ run.id }}</td>
+            <td>{{ run.agent_name or "—" }}</td>
+            <td>{{ run.status.value }}</td>
+            <td>{% if run.total_score is not none %}{{ "%.1f"|format(run.total_score) }}{% else %}—{% endif %}</td>
+            <td>{% if run.started_at %}{{ run.started_at.strftime("%Y-%m-%d %H:%M") }}{% else %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>No runs yet.</p>
+{% endif %}
+
+<h3>Leaderboard (Top 5)</h3>
+{% if leaderboard %}
+<table>
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>Agent</th>
+            <th>Best Score</th>
+            <th>Runs</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for entry in leaderboard %}
+        <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ entry.agent_name }}</td>
+            <td>{{ "%.1f"|format(entry.best_score or 0) }}</td>
+            <td>{{ entry.run_count }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>No completed runs yet.</p>
+{% endif %}
+{% endblock %}
