@@ -37,6 +37,7 @@ class OIDCProvider(StrEnum):
     AUTH0 = "auth0"
     AZURE_AD = "azure_ad"
     GOOGLE = "google"
+    GITHUB = "github"
     GENERIC = "generic"
 
 
@@ -284,6 +285,37 @@ class ProviderPresets:
             # Add hosted domain restriction
             config["hd"] = hd
         return config
+
+    @staticmethod
+    def github(
+        client_id: str,
+        client_secret: str,
+        redirect_uri: str,
+    ) -> dict[str, Any]:
+        """Get GitHub preset configuration.
+
+        Args:
+            client_id: GitHub OAuth App client ID.
+            client_secret: GitHub OAuth App client secret.
+            redirect_uri: OAuth2 callback URL.
+
+        Returns:
+            Configuration dict for SSOConfig.
+        """
+        return {
+            "provider": OIDCProvider.GITHUB,
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "issuer_url": "https://github.com",
+            "redirect_uri": redirect_uri,
+            "scopes": ["read:user", "user:email"],
+            "authorization_endpoint": "https://github.com/login/oauth/authorize",
+            "token_endpoint": "https://github.com/login/oauth/access_token",
+            "userinfo_endpoint": "https://api.github.com/user",
+            "email_claim": "email",
+            "name_claim": "name",
+            "username_claim": "login",
+        }
 
 
 class OIDCDiscoveryDocument(BaseModel):
