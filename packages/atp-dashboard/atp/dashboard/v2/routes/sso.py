@@ -541,6 +541,14 @@ async def list_providers() -> list[ProviderPresetResponse]:
             documentation_url="https://developers.google.com/identity/openid-connect/openid-connect",
         ),
         ProviderPresetResponse(
+            provider=OIDCProvider.GITHUB,
+            name="GitHub",
+            description="GitHub OAuth for developer authentication",
+            required_fields=["client_id", "client_secret", "redirect_uri"],
+            optional_fields=[],
+            documentation_url="https://docs.github.com/en/apps/oauth-apps/building-oauth-apps",
+        ),
+        ProviderPresetResponse(
             provider=OIDCProvider.GENERIC,
             name="Generic OIDC",
             description="Any OIDC-compliant identity provider",
@@ -618,6 +626,12 @@ async def get_provider_preset(
         )
     elif provider == OIDCProvider.GOOGLE:
         return ProviderPresets.google(
+            client_id="<your-client-id>",
+            client_secret="<your-client-secret>",
+            redirect_uri="<your-redirect-uri>",
+        )
+    elif provider == OIDCProvider.GITHUB:
+        return ProviderPresets.github(
             client_id="<your-client-id>",
             client_secret="<your-client-secret>",
             redirect_uri="<your-redirect-uri>",
