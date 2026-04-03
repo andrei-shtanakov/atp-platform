@@ -128,10 +128,17 @@ class BenchmarkRun:
         except RuntimeError as exc:
             if "async context" in str(exc):
                 raise
-            # No running loop — proceed with asyncio.run
+            # No running loop — use client's background loop if available
 
         async def _collect_all() -> list[dict[str, Any]]:
             return [task async for task in self]
+
+        # Use the sync wrapper's background loop if available
+        # (set by ATPClient.start_run via _sync_loop attribute)
+        sync_loop = getattr(self, "_sync_loop", None)
+        if sync_loop is not None and sync_loop.is_running():
+            future = asyncio.run_coroutine_threadsafe(_collect_all(), sync_loop)
+            return iter(future.result())
 
         return iter(asyncio.run(_collect_all()))
 

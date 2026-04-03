@@ -137,7 +137,7 @@ class ATPClient:
         Returns:
             A BenchmarkRun for pulling and submitting tasks.
         """
-        return self._run(
+        run = self._run(
             self._async_client.start_run(
                 benchmark_id,
                 agent_name=agent_name,
@@ -145,6 +145,9 @@ class ATPClient:
                 batch_size=batch_size,
             )
         )
+        # Attach background loop so sync __iter__ can use it
+        run._sync_loop = self._loop
+        return run
 
     def get_leaderboard(self, benchmark_id: str | int) -> list[dict[str, Any]]:
         """Get the leaderboard for a benchmark.
