@@ -9,6 +9,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy import func, select
 
 from atp.dashboard.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
@@ -16,6 +17,7 @@ from atp.dashboard.auth import (
     create_access_token,
     create_user,
 )
+from atp.dashboard.models import User
 from atp.dashboard.schemas import Token, UserCreate, UserResponse
 from atp.dashboard.v2.dependencies import DBSession, RequiredUser
 
@@ -73,11 +75,17 @@ async def register(session: DBSession, user_data: UserCreate) -> UserResponse:
         HTTPException: If registration fails (e.g., username already exists).
     """
     try:
+        # First user becomes admin automatically
+        result = await session.execute(select(func.count(User.id)))
+        user_count = result.scalar_one()
+        is_first_user = user_count == 0
+
         user = await create_user(
             session,
             username=user_data.username,
             email=user_data.email,
             password=user_data.password,
+            is_admin=is_first_user,
         )
         await session.commit()
         return UserResponse.model_validate(user)
