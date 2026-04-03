@@ -119,6 +119,8 @@ HTMX requests include `hx-get="/ui/benchmarks?partial=1"` with `hx-target="#benc
 
 **Token expiry:** When JWT expires during a session, the next request returns a redirect to `/ui/login?next={path}&expired=1`. Login page shows "Session expired, please log in again" if `expired` param is set. No silent re-auth in Phase 1.
 
+**Open redirect prevention:** The `next` parameter is validated to be a relative path starting with `/ui/`. Any other value is replaced with `/ui/`.
+
 ## Home Page
 
 Three stat cards:
