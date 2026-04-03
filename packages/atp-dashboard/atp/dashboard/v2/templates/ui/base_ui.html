@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}ATP Platform{% endblock %}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <link rel="stylesheet" href="/static/v2/css/ui.css">
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+</head>
+<body hx-headers='{"X-CSRF": "1"}'>
+    <div class="app-layout">
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <a href="/ui/" class="sidebar-logo">ATP Platform</a>
+            </div>
+            <ul class="sidebar-nav">
+                <li><a href="/ui/" class="{% if active_page == 'home' %}active{% endif %}">Home</a></li>
+                <li><a href="/ui/benchmarks" class="{% if active_page == 'benchmarks' %}active{% endif %}">Benchmarks</a></li>
+                <li><a href="/ui/games" class="{% if active_page == 'games' %}active{% endif %}">Games</a></li>
+                <li><a href="/ui/runs" class="{% if active_page == 'runs' %}active{% endif %}">Runs</a></li>
+                <li><a href="/ui/leaderboard" class="{% if active_page == 'leaderboard' %}active{% endif %}">Leaderboard</a></li>
+                <li><a href="/ui/suites" class="{% if active_page == 'suites' %}active{% endif %}">Suites</a></li>
+                <li><a href="/ui/analytics" class="{% if active_page == 'analytics' %}active{% endif %}">Analytics</a></li>
+            </ul>
+            <div class="sidebar-footer">
+                {% if user %}
+                <span class="sidebar-user">{{ user.username }}</span>
+                {% endif %}
+            </div>
+        </nav>
+        <main class="content">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+</body>
+</html>

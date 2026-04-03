@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - ATP Platform</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <style>
+        .login-container {
+            max-width: 400px;
+            margin: 10vh auto;
+            padding: 2rem;
+        }
+        .login-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .device-code {
+            font-size: 2rem;
+            font-weight: bold;
+            letter-spacing: 0.2em;
+            text-align: center;
+            padding: 1rem;
+            background: #f0f0f0;
+            border-radius: 0.5rem;
+            margin: 1rem 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-header">
+            <h1>ATP Platform</h1>
+            <p>Agent Test Platform</p>
+        </div>
+
+        {% if expired %}
+        <article aria-label="Session expired">
+            Session expired. Please log in again.
+        </article>
+        {% endif %}
+
+        <article>
+            <h3>Login with GitHub</h3>
+            <p>Click below to start the login process. You'll be redirected to GitHub to authorize.</p>
+            <button id="start-login" onclick="startDeviceFlow()">
+                Login with GitHub
+            </button>
+            <div id="device-flow" style="display:none">
+                <p>Enter this code at GitHub:</p>
+                <div class="device-code" id="user-code"></div>
+                <p><a id="verify-link" href="#" target="_blank">Open GitHub &rarr;</a></p>
+                <p id="poll-status" aria-busy="true">Waiting for authorization...</p>
+            </div>
+            <div id="error-msg" style="display:none; color: red;"></div>
+        </article>
+
+        <article>
+            <h3>Login with credentials</h3>
+            <form id="login-form">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" required>
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required>
+                <button type="submit">Sign in</button>
+            </form>
+        </article>
+    </div>
+
+    <script>
+        async function startDeviceFlow() {
+            const btn = document.getElementById('start-login');
+            btn.disabled = true;
+            btn.setAttribute('aria-busy', 'true');
+            try {
+                const resp = await fetch('/api/auth/device', {method: 'POST'});
+                if (resp.status === 501) {
+                    showError('GitHub OAuth not configured on this server.');
+                    return;
+                }
+                const data = await resp.json();
+                document.getElementById('user-code').textContent =
+                    data.user_code.slice(0,4) + '-' + data.user_code.slice(4);
+                document.getElementById('verify-link').href = data.verification_uri;
+                document.getElementById('device-flow').style.display = 'block';
+                pollDeviceFlow(data.device_code, data.interval);
+            } catch(e) {
+                showError('Failed to start login: ' + e.message);
+            }
+        }
+
+        function showError(msg) {
+            const el = document.getElementById('error-msg');
+            el.textContent = msg;
+            el.style.display = 'block';
+            const btn = document.getElementById('start-login');
+            btn.disabled = false;
+            btn.removeAttribute('aria-busy');
+        }
+    </script>
+</body>
+</html>

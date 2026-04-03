@@ -1,0 +1,9 @@
+{% extends "ui/base_ui.html" %}
+
+{% block title %}{{ error_title|default("Error") }} - ATP Platform{% endblock %}
+
+{% block content %}
+<h2>{{ error_title|default("Error") }}</h2>
+<p>{{ error_message|default("Something went wrong.") }}</p>
+<p><a href="/ui/">Back to Home</a></p>
+{% endblock %}

@@ -111,6 +111,11 @@ def create_app(
     # Mount API routes
     app.include_router(api_router, prefix="/api")
 
+    # Mount UI routes (HTMX + Pico CSS frontend)
+    from atp.dashboard.v2.routes.ui import router as ui_router
+
+    app.include_router(ui_router)
+
     # Configure Jinja2 templates
     if TEMPLATES_DIR.exists():
         templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
