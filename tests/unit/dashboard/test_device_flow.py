@@ -1,7 +1,8 @@
 """Tests for GitHub Device Flow logic."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from atp.dashboard.auth.device_flow import (
@@ -11,6 +12,32 @@ from atp.dashboard.auth.device_flow import (
     DeviceFlowManager,
     DeviceFlowStore,
 )
+
+# Mock GitHub device/code response
+MOCK_GITHUB_DEVICE_RESPONSE = {
+    "device_code": "github-device-code-123",
+    "user_code": "ABCD-1234",
+    "verification_uri": "https://github.com/login/device",
+    "expires_in": 900,
+    "interval": 5,
+}
+
+
+def _mock_github_initiate():
+    """Create a patch that mocks the GitHub device/code HTTP call."""
+    mock_response = MagicMock(spec=httpx.Response)
+    mock_response.json.return_value = MOCK_GITHUB_DEVICE_RESPONSE
+    mock_response.raise_for_status = MagicMock()
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    return patch(
+        "atp.dashboard.auth.device_flow.httpx.AsyncClient",
+        return_value=mock_client,
+    )
 
 
 class TestDeviceFlowStore:
@@ -76,7 +103,8 @@ class TestDeviceFlowManager:
         manager = DeviceFlowManager(
             client_id="test-client", client_secret="test-secret"
         )
-        result = manager.initiate()
+        with _mock_github_initiate():
+            result = await manager.initiate()
         assert "device_code" in result
         assert "user_code" in result
         assert result["verification_uri"] == "https://github.com/login/device"
@@ -88,7 +116,8 @@ class TestDeviceFlowManager:
         manager = DeviceFlowManager(
             client_id="test-client", client_secret="test-secret"
         )
-        result = manager.initiate()
+        with _mock_github_initiate():
+            result = await manager.initiate()
         with patch.object(
             manager,
             "_exchange_device_code",
@@ -120,7 +149,8 @@ class TestDeviceFlowManager:
         manager = DeviceFlowManager(
             client_id="test-client", client_secret="test-secret"
         )
-        result = manager.initiate()
+        with _mock_github_initiate():
+            result = await manager.initiate()
         manager._store.mark_authorized(
             result["device_code"],  # type: ignore[arg-type]
             github_access_token="gho_test123",

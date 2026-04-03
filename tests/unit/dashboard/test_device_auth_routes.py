@@ -1,11 +1,38 @@
 """Tests for device auth route endpoints."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from atp.dashboard.v2.factory import create_test_app
+
+# Mock GitHub device/code response
+MOCK_GITHUB_DEVICE_RESPONSE = {
+    "device_code": "github-device-code-test",
+    "user_code": "TEST1234",
+    "verification_uri": "https://github.com/login/device",
+    "expires_in": 900,
+    "interval": 5,
+}
+
+
+def _mock_github_http():
+    """Patch httpx.AsyncClient to mock GitHub device/code call."""
+    mock_response = MagicMock(spec=httpx.Response)
+    mock_response.json.return_value = MOCK_GITHUB_DEVICE_RESPONSE
+    mock_response.raise_for_status = MagicMock()
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    return patch(
+        "atp.dashboard.auth.device_flow.httpx.AsyncClient",
+        return_value=mock_client,
+    )
 
 
 @pytest.fixture
@@ -38,7 +65,8 @@ class TestDeviceAuthInitiate:
 
             mod._manager = None
 
-            resp = await client.post("/api/auth/device")
+            with _mock_github_http():
+                resp = await client.post("/api/auth/device")
             assert resp.status_code == 200
             data = resp.json()
             assert "device_code" in data

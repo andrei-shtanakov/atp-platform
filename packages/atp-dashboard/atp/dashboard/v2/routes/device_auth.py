@@ -75,7 +75,7 @@ class DevicePollRequest(BaseModel):
 async def initiate_device_flow() -> DeviceInitResponse:
     """Initiate GitHub Device Flow for CLI login."""
     manager = _get_manager()
-    result = manager.initiate()
+    result = await manager.initiate()
     return DeviceInitResponse(
         device_code=str(result["device_code"]),
         user_code=str(result["user_code"]),

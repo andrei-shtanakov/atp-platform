@@ -146,16 +146,50 @@ class DeviceFlowManager:
         self._client_secret = client_secret
         self._store = DeviceFlowStore()
 
-    def initiate(self) -> dict[str, str | int]:
-        """Start a new device flow and return the device code response payload."""
+    async def initiate(self) -> dict[str, str | int]:
+        """Start a new device flow by requesting codes from GitHub.
+
+        Calls GitHub's device/code endpoint to get a real device_code
+        and user_code, then stores them locally for poll tracking.
+        """
         self._store.cleanup_expired()
-        entry = self._store.create(client_id=self._client_id)
+
+        # Request device code from GitHub
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                GITHUB_DEVICE_AUTH_URL,
+                data={
+                    "client_id": self._client_id,
+                    "scope": "read:user user:email",
+                },
+                headers={"Accept": "application/json"},
+            )
+            resp.raise_for_status()
+            github_data = resp.json()
+
+        device_code = github_data["device_code"]
+        user_code = github_data["user_code"]
+        verification_uri = github_data.get("verification_uri", GITHUB_DEVICE_VERIFY_URI)
+        expires_in = github_data.get("expires_in", DEFAULT_EXPIRES_IN)
+        interval = github_data.get("interval", DEFAULT_INTERVAL)
+
+        # Store for poll tracking
+        entry = DeviceCodeEntry(
+            device_code=device_code,
+            user_code=user_code,
+            client_id=self._client_id,
+            expires_at=time.monotonic() + expires_in,
+            interval=interval,
+        )
+        self._store._entries[device_code] = entry
+        self._store._by_user_code[user_code] = device_code
+
         return {
-            "device_code": entry.device_code,
-            "user_code": entry.user_code,
-            "verification_uri": GITHUB_DEVICE_VERIFY_URI,
-            "expires_in": DEFAULT_EXPIRES_IN,
-            "interval": entry.interval,
+            "device_code": device_code,
+            "user_code": user_code,
+            "verification_uri": verification_uri,
+            "expires_in": expires_in,
+            "interval": interval,
         }
 
     async def poll(self, device_code: str) -> dict[str, str | int | None]:
