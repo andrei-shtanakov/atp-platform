@@ -139,6 +139,7 @@ class CLIAdapter(AgentAdapter):
         """
         if self._config.input_file:
             input_path = Path(self._config.input_file)
+            self._owns_input_file = False
         else:
             # Create secure temporary file with restricted permissions
             fd, temp_path = tempfile.mkstemp(
@@ -147,6 +148,7 @@ class CLIAdapter(AgentAdapter):
             )
             input_path = Path(temp_path)
             os.close(fd)
+            self._owns_input_file = True
 
         # Write with restrictive permissions (owner read/write only)
         input_path.write_text(request.model_dump_json())
@@ -180,21 +182,6 @@ class CLIAdapter(AgentAdapter):
                 adapter_type=self.adapter_type,
             )
         return output_path.read_text()
-
-    def _create_temp_output_file(self) -> Path:
-        """Create a secure temporary output file."""
-        fd, temp_path = tempfile.mkstemp(
-            prefix="atp_response_",
-            suffix=".json",
-        )
-        os.close(fd)
-        output_path = Path(temp_path)
-        try:
-            os.chmod(output_path, 0o600)
-        except OSError:
-            pass
-        self._temp_output_file = output_path
-        return output_path
 
     async def execute(self, request: ATPRequest) -> ATPResponse:
         """
@@ -485,17 +472,20 @@ class CLIAdapter(AgentAdapter):
         return shutil.which(cmd_name) is not None
 
     async def cleanup(self) -> None:
-        """Clean up temporary files securely."""
-        # Clean up temporary input file
+        """Clean up temporary files created by this adapter.
+
+        Only deletes files the adapter itself created. User-provided
+        input_file/output_file paths are never deleted.
+        """
         if hasattr(self, "_temp_input_file") and self._temp_input_file:
-            try:
-                if self._temp_input_file.exists():
-                    self._temp_input_file.unlink(missing_ok=True)
-            except OSError:
-                pass
+            if getattr(self, "_owns_input_file", True):
+                try:
+                    if self._temp_input_file.exists():
+                        self._temp_input_file.unlink(missing_ok=True)
+                except OSError:
+                    pass
             self._temp_input_file = None
 
-        # Clean up temporary output file
         if hasattr(self, "_temp_output_file") and self._temp_output_file:
             try:
                 if self._temp_output_file.exists():
@@ -503,20 +493,3 @@ class CLIAdapter(AgentAdapter):
             except OSError:
                 pass
             self._temp_output_file = None
-
-        # Clean up explicit input/output files only if we created them
-        if self._config.input_format == "file" and self._config.input_file:
-            path = Path(self._config.input_file)
-            if path.exists():
-                try:
-                    path.unlink(missing_ok=True)
-                except OSError:
-                    pass
-
-        if self._config.output_format == "file" and self._config.output_file:
-            path = Path(self._config.output_file)
-            if path.exists():
-                try:
-                    path.unlink(missing_ok=True)
-                except OSError:
-                    pass
