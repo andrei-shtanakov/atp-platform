@@ -128,6 +128,9 @@ class Run(Base):
     timeout_seconds: Mapped[int] = mapped_column(Integer, default=3600)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    events: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSON, nullable=True, default=list
+    )
 
     # Relationships
     benchmark: Mapped["Benchmark"] = relationship(

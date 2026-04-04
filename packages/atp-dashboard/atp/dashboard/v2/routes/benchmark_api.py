@@ -40,6 +40,8 @@ from atp.dashboard.webhook import (
 
 router = APIRouter(prefix="/v1", tags=["benchmarks"])
 
+MAX_RUN_EVENTS = 1000
+
 
 # ------------------------------------------------------------------
 # Helpers
@@ -424,6 +426,62 @@ async def cancel_run(
     run.finished_at = datetime.now()
     await session.flush()
     return {"status": "cancelled"}
+
+
+# ------------------------------------------------------------------
+# Events
+# ------------------------------------------------------------------
+
+
+@router.post("/runs/{run_id}/events")
+@limiter.limit("120/minute")
+async def emit_events(
+    request: Request,
+    run_id: int,
+    data: dict[str, Any],
+    session: DBSession,
+) -> dict[str, Any]:
+    """Append events to a running benchmark run.
+
+    Events are stored in Run.events JSON column.
+    Maximum 1000 events per run.
+    """
+    run = await session.get(Run, run_id)
+    if run is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Run {run_id} not found",
+        )
+    if run.status != RunStatus.IN_PROGRESS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(f"Run {run_id} is not in progress (status: {run.status})"),
+        )
+
+    new_events = data.get("events", [])
+    if not isinstance(new_events, list):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="events must be a list",
+        )
+
+    current_events = run.events or []
+    if len(current_events) + len(new_events) > MAX_RUN_EVENTS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Event limit exceeded: run has {len(current_events)}"
+                f" events, trying to add {len(new_events)},"
+                f" max is {MAX_RUN_EVENTS}"
+            ),
+        )
+
+    # Append events (must reassign for SQLAlchemy to detect change)
+    updated = current_events + new_events
+    run.events = updated
+    await session.flush()
+
+    return {"accepted": len(new_events), "total": len(updated)}
 
 
 # ------------------------------------------------------------------
