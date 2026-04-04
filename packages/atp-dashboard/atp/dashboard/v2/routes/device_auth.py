@@ -5,7 +5,7 @@ Provides endpoints for CLI login via GitHub Device Flow:
 - POST /auth/device/poll — poll for authorization result
 """
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from atp.dashboard.auth.device_flow import (
@@ -19,6 +19,7 @@ from atp.dashboard.auth.post_auth import PostAuthError, complete_auth
 from atp.dashboard.schemas import Token
 from atp.dashboard.v2.config import get_config
 from atp.dashboard.v2.dependencies import DBSession
+from atp.dashboard.v2.rate_limit import limiter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -59,7 +60,8 @@ class DevicePollRequest(BaseModel):
 
 
 @router.post("/device", response_model=DeviceInitResponse)
-async def initiate_device_flow() -> DeviceInitResponse:
+@limiter.limit("5/minute")
+async def initiate_device_flow(request: Request) -> DeviceInitResponse:
     """Initiate GitHub Device Flow for CLI login."""
     manager = _get_manager()
     result = await manager.initiate()
@@ -73,7 +75,10 @@ async def initiate_device_flow() -> DeviceInitResponse:
 
 
 @router.post("/device/poll")
-async def poll_device_flow(body: DevicePollRequest, session: DBSession) -> Token:
+@limiter.limit("5/minute")
+async def poll_device_flow(
+    request: Request, body: DevicePollRequest, session: DBSession
+) -> Token:
     """Poll for device flow authorization result."""
     manager = _get_manager()
     try:

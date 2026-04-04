@@ -16,6 +16,7 @@ from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
+    Request,
     UploadFile,
     status,
 )
@@ -27,6 +28,7 @@ from atp.dashboard.rbac import Permission, require_permission
 from atp.dashboard.schemas import SuiteDefinitionResponse
 from atp.dashboard.v2.config import get_config
 from atp.dashboard.v2.dependencies import DBSession
+from atp.dashboard.v2.rate_limit import limiter
 from atp.dashboard.v2.routes.definitions import (
     _build_suite_definition_response,
 )
@@ -186,7 +188,9 @@ def _validate_yaml(
     response_model=UploadResponse,
     status_code=status.HTTP_201_CREATED,
 )
+@limiter.limit("10/minute")
 async def upload_yaml_suite(
+    request: Request,
     file: UploadFile,
     session: DBSession,
     _: Annotated[None, Depends(require_permission(Permission.SUITES_WRITE))],

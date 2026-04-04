@@ -8,7 +8,7 @@ This module provides SSO endpoints for OIDC-based authentication:
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
@@ -30,6 +30,7 @@ from atp.dashboard.models import DEFAULT_TENANT_ID
 from atp.dashboard.schemas import Token
 from atp.dashboard.tenancy.models import Tenant, TenantSettings
 from atp.dashboard.v2.dependencies import AdminUser, DBSession
+from atp.dashboard.v2.rate_limit import limiter
 
 router = APIRouter(prefix="/sso", tags=["sso"])
 
@@ -127,9 +128,11 @@ async def _get_tenant_sso_config(
 
 
 @router.post("/init", response_model=SSOInitResponse)
+@limiter.limit("10/minute")
 async def initiate_sso(
+    request: Request,
     session: DBSession,
-    request: SSOInitRequest,
+    body: SSOInitRequest,
 ) -> SSOInitResponse:
     """Initiate SSO login flow.
 
@@ -137,8 +140,9 @@ async def initiate_sso(
     The user should be redirected to this URL to authenticate.
 
     Args:
+        request: FastAPI request
         session: Database session
-        request: SSO initiation request
+        body: SSO initiation request
 
     Returns:
         Authorization URL and state parameter
@@ -146,18 +150,18 @@ async def initiate_sso(
     Raises:
         HTTPException: If SSO is not configured for the tenant
     """
-    tenant, sso_config = await _get_tenant_sso_config(session, request.tenant_id)
+    tenant, sso_config = await _get_tenant_sso_config(session, body.tenant_id)
 
     if tenant is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Tenant '{request.tenant_id}' not found",
+            detail=f"Tenant '{body.tenant_id}' not found",
         )
 
     if sso_config is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"SSO not configured for tenant '{request.tenant_id}'",
+            detail=f"SSO not configured for tenant '{body.tenant_id}'",
         )
 
     # Create SSO manager
@@ -172,7 +176,7 @@ async def initiate_sso(
         store = get_auth_state_store()
         await store.put(
             f"sso:{state}",
-            {"tenant_id": request.tenant_id, "nonce": nonce},
+            {"tenant_id": body.tenant_id, "nonce": nonce},
             ttl_seconds=600,
         )
 
@@ -197,7 +201,9 @@ async def initiate_sso(
 
 
 @router.get("/callback")
+@limiter.limit("10/minute")
 async def sso_callback(
+    request: Request,
     session: DBSession,
     code: str = Query(..., description="Authorization code"),
     state: str = Query(..., description="State parameter"),

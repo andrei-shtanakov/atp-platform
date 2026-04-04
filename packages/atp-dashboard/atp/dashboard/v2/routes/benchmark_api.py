@@ -11,7 +11,7 @@ from typing import Any
 
 from atp.loader.models import TestSuite
 from atp.protocol import ATPRequest, ATPResponse, Task
-from fastapi import APIRouter, HTTPException, Query, Response, status
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 
@@ -31,6 +31,7 @@ from atp.dashboard.benchmark.schemas import (
     TaskResultResponse,
 )
 from atp.dashboard.v2.dependencies import DBSession
+from atp.dashboard.v2.rate_limit import limiter
 
 router = APIRouter(prefix="/v1", tags=["benchmarks"])
 
@@ -73,7 +74,9 @@ def _run_to_response(run: Run) -> RunResponse:
 
 
 @router.get("/benchmarks", response_model=list[BenchmarkResponse])
+@limiter.limit("120/minute")
 async def list_benchmarks(
+    request: Request,
     session: DBSession,
 ) -> list[BenchmarkResponse]:
     """List all benchmarks."""
@@ -86,7 +89,9 @@ async def list_benchmarks(
     "/benchmarks/{benchmark_id}",
     response_model=BenchmarkResponse,
 )
+@limiter.limit("120/minute")
 async def get_benchmark(
+    request: Request,
     benchmark_id: int,
     session: DBSession,
 ) -> BenchmarkResponse:
@@ -105,7 +110,9 @@ async def get_benchmark(
     response_model=BenchmarkResponse,
     status_code=status.HTTP_201_CREATED,
 )
+@limiter.limit("120/minute")
 async def create_benchmark(
+    request: Request,
     data: BenchmarkCreate,
     session: DBSession,
 ) -> BenchmarkResponse:
@@ -138,7 +145,9 @@ async def create_benchmark(
     "/benchmarks/{benchmark_id}/start",
     response_model=RunResponse,
 )
+@limiter.limit("120/minute")
 async def start_run(
+    request: Request,
     benchmark_id: int,
     session: DBSession,
     timeout: int = Query(default=3600),
@@ -168,7 +177,9 @@ async def start_run(
 
 
 @router.get("/runs/{run_id}/next-task")
+@limiter.limit("120/minute")
 async def next_task(
+    request: Request,
     run_id: int,
     session: DBSession,
     batch: int = Query(default=1, ge=1),
@@ -235,7 +246,7 @@ async def next_task(
         if test_def.constraints.budget_usd is not None:
             constraints["budget_usd"] = test_def.constraints.budget_usd
 
-        request = ATPRequest(
+        atp_request = ATPRequest(
             task_id=str(uuid.uuid4()),
             task=Task(
                 description=test_def.task.description,
@@ -250,7 +261,7 @@ async def next_task(
                 "run_id": run_id,
             },
         )
-        tasks.append(request.model_dump())
+        tasks.append(atp_request.model_dump())
 
     await session.flush()
 
@@ -264,7 +275,9 @@ async def next_task(
 
 
 @router.post("/runs/{run_id}/submit")
+@limiter.limit("120/minute")
 async def submit_result(
+    request: Request,
     run_id: int,
     data: SubmitRequest,
     session: DBSession,
@@ -326,7 +339,9 @@ async def submit_result(
     "/runs/{run_id}/status",
     response_model=RunStatusResponse,
 )
+@limiter.limit("120/minute")
 async def get_run_status(
+    request: Request,
     run_id: int,
     session: DBSession,
 ) -> RunStatusResponse:
@@ -366,7 +381,9 @@ async def get_run_status(
 
 
 @router.post("/runs/{run_id}/cancel")
+@limiter.limit("120/minute")
 async def cancel_run(
+    request: Request,
     run_id: int,
     session: DBSession,
 ) -> dict[str, str]:
@@ -393,7 +410,9 @@ async def cancel_run(
     "/benchmarks/{benchmark_id}/leaderboard",
     response_model=list[LeaderboardEntry],
 )
+@limiter.limit("120/minute")
 async def get_leaderboard(
+    request: Request,
     benchmark_id: int,
     session: DBSession,
 ) -> list[LeaderboardEntry]:

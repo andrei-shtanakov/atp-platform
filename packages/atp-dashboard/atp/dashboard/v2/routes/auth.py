@@ -7,7 +7,7 @@ and user information retrieval.
 from datetime import timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import func, select
 
@@ -21,12 +21,15 @@ from atp.dashboard.models import User
 from atp.dashboard.rbac.models import Role, UserRole
 from atp.dashboard.schemas import Token, UserCreate, UserResponse
 from atp.dashboard.v2.dependencies import DBSession, RequiredUser
+from atp.dashboard.v2.rate_limit import limiter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/token", response_model=Token)
+@limiter.limit("5/minute")
 async def login(
+    request: Request,
     session: DBSession,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
 ) -> Token:
@@ -62,7 +65,10 @@ async def login(
     response_model=UserResponse,
     status_code=status.HTTP_201_CREATED,
 )
-async def register(session: DBSession, user_data: UserCreate) -> UserResponse:
+@limiter.limit("5/minute")
+async def register(
+    request: Request, session: DBSession, user_data: UserCreate
+) -> UserResponse:
     """Register a new user.
 
     Args:

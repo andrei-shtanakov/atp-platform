@@ -20,9 +20,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("atp.dashboard.rate_limit")
 
-# Module-level limiter — populated by create_limiter(), imported by route files
-limiter: Limiter | None = None
-
 
 def get_rate_limit_key(request: Request) -> str:
     """Extract rate limit key from request.
@@ -42,15 +39,28 @@ def get_rate_limit_key(request: Request) -> str:
     return f"ip:{ip}"
 
 
+# Module-level limiter — reconfigured by create_limiter() at app startup.
+# Starts disabled so decorators can be applied at import time.
+limiter: Limiter = Limiter(
+    key_func=get_rate_limit_key,
+    enabled=False,
+)
+
+
 def create_limiter(config: DashboardConfig) -> Limiter:
-    """Create a slowapi Limiter instance from config."""
-    global limiter  # noqa: PLW0603
-    limiter = Limiter(
-        key_func=get_rate_limit_key,
-        default_limits=[config.rate_limit_default],
-        storage_uri=config.rate_limit_storage,
-        enabled=config.rate_limit_enabled,
-    )
+    """Configure the module-level limiter from dashboard config.
+
+    Mutates the existing ``limiter`` instance in-place so that
+    decorators already bound at import time pick up the new settings.
+    """
+    from limits.storage import storage_from_string
+
+    limiter.enabled = config.rate_limit_enabled  # type: ignore[attr-defined]
+    limiter._default_limits = [config.rate_limit_default]  # type: ignore[attr-defined]
+    if config.rate_limit_storage:
+        limiter._storage = storage_from_string(  # type: ignore[attr-defined]
+            config.rate_limit_storage
+        )
     return limiter
 
 

@@ -16,6 +16,7 @@ from sqlalchemy import func, select
 from atp.dashboard.benchmark.models import Benchmark, Run, RunStatus, TaskResult
 from atp.dashboard.models import SuiteDefinition
 from atp.dashboard.v2.dependencies import DBSession
+from atp.dashboard.v2.rate_limit import limiter
 
 logger = logging.getLogger("atp.dashboard")
 
@@ -28,6 +29,7 @@ def _templates(request: Request):
 
 
 @router.get("/login", response_class=HTMLResponse)
+@limiter.limit("120/minute")
 async def ui_login(request: Request) -> HTMLResponse:
     """Render login page."""
     expired = request.query_params.get("expired")
@@ -39,6 +41,7 @@ async def ui_login(request: Request) -> HTMLResponse:
 
 
 @router.get("/register", response_class=HTMLResponse)
+@limiter.limit("120/minute")
 async def ui_register(request: Request) -> HTMLResponse:
     """Render registration page."""
     return _templates(request).TemplateResponse(
@@ -48,6 +51,7 @@ async def ui_register(request: Request) -> HTMLResponse:
 
 
 @router.get("/", response_class=HTMLResponse)
+@limiter.limit("120/minute")
 async def ui_home(request: Request, session: DBSession) -> HTMLResponse:
     """Render home page with summary stats."""
     result = await session.execute(select(func.count(Benchmark.id)))
@@ -80,6 +84,7 @@ async def ui_home(request: Request, session: DBSession) -> HTMLResponse:
 
 
 @router.get("/benchmarks", response_class=HTMLResponse)
+@limiter.limit("120/minute")
 async def ui_benchmarks(
     request: Request,
     session: DBSession,
@@ -118,6 +123,7 @@ async def ui_benchmarks(
 
 
 @router.get("/benchmarks/{benchmark_id}", response_class=HTMLResponse)
+@limiter.limit("120/minute")
 async def ui_benchmark_detail(
     request: Request,
     benchmark_id: int,
@@ -184,6 +190,7 @@ async def ui_benchmark_detail(
 
 
 @router.get("/games", response_class=HTMLResponse)
+@limiter.limit("120/minute")
 async def ui_games(request: Request, session: DBSession) -> HTMLResponse:
     """Render games page with game registry and tournaments."""
     games: list[dict] = []
@@ -233,6 +240,7 @@ async def ui_games(request: Request, session: DBSession) -> HTMLResponse:
 
 
 @router.get("/runs", response_class=HTMLResponse)
+@limiter.limit("120/minute")
 async def ui_runs(
     request: Request,
     session: DBSession,
@@ -271,6 +279,7 @@ async def ui_runs(
 
 
 @router.get("/runs/{run_id}", response_class=HTMLResponse)
+@limiter.limit("120/minute")
 async def ui_run_detail(
     request: Request,
     run_id: int,
@@ -339,6 +348,7 @@ async def ui_run_detail(
 
 
 @router.post("/runs/{run_id}/cancel", response_class=HTMLResponse)
+@limiter.limit("120/minute")
 async def ui_cancel_run(
     request: Request,
     run_id: int,
@@ -379,6 +389,7 @@ async def ui_cancel_run(
 
 
 @router.get("/leaderboard", response_class=HTMLResponse)
+@limiter.limit("120/minute")
 async def ui_leaderboard(
     request: Request,
     session: DBSession,
@@ -426,6 +437,7 @@ async def ui_leaderboard(
 
 
 @router.get("/suites", response_class=HTMLResponse)
+@limiter.limit("120/minute")
 async def ui_suites(
     request: Request,
     session: DBSession,
@@ -462,6 +474,7 @@ async def ui_suites(
 
 
 @router.post("/suites/upload", response_class=HTMLResponse)
+@limiter.limit("120/minute")
 async def ui_suites_upload(
     request: Request,
     file: UploadFile,
@@ -533,6 +546,7 @@ async def ui_suites_upload(
 
 
 @router.post("/suites/{suite_id}/create-benchmark", response_class=HTMLResponse)
+@limiter.limit("120/minute")
 async def ui_create_benchmark(
     request: Request,
     suite_id: int,
@@ -581,6 +595,7 @@ async def ui_create_benchmark(
 
 
 @router.get("/analytics", response_class=HTMLResponse)
+@limiter.limit("120/minute")
 async def ui_analytics(request: Request, session: DBSession) -> HTMLResponse:
     """Render analytics page with platform stats and agent rankings."""
     result = await session.execute(select(func.count(Benchmark.id)))

@@ -32,6 +32,7 @@ from atp.dashboard.models import DEFAULT_TENANT_ID
 from atp.dashboard.schemas import Token
 from atp.dashboard.tenancy.models import Tenant, TenantSettings
 from atp.dashboard.v2.dependencies import AdminUser, DBSession
+from atp.dashboard.v2.rate_limit import limiter
 
 router = APIRouter(prefix="/saml", tags=["saml"])
 
@@ -173,6 +174,7 @@ async def _get_tenant_saml_config(
 
 
 @router.post("/init", response_model=SAMLInitResponse)
+@limiter.limit("10/minute")
 async def initiate_saml(
     request: Request,
     session: DBSession,
@@ -242,6 +244,7 @@ async def initiate_saml(
 
 
 @router.post("/acs")
+@limiter.limit("10/minute")
 async def assertion_consumer_service(
     request: Request,
     session: DBSession,
