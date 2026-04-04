@@ -57,10 +57,11 @@ class TestQualityScore:
     """Tests for quality score calculation."""
 
     def test_empty_results(self) -> None:
-        """Test quality with no evaluation results."""
+        """Test quality with no evaluation results defaults to 0."""
         aggregator = ScoreAggregator()
         score = aggregator.calculate_quality_score([])
-        assert score.normalized_value == 1.0
+        assert score.normalized_value == 0.0
+        assert score.weighted_value == 0.0
         assert score.weight == 0.4
 
     def test_perfect_quality(self) -> None:
@@ -147,14 +148,14 @@ class TestQualityScore:
         assert score.details["mean_artifact_score"] == pytest.approx(0.8)
 
     def test_results_with_empty_checks(self) -> None:
-        """Test quality with results that have empty checks lists."""
+        """Test quality with results that have empty checks lists defaults to 0."""
         aggregator = ScoreAggregator()
         results = [
             EvalResult(evaluator="artifact", checks=[]),
             EvalResult(evaluator="behavior", checks=[]),
         ]
         score = aggregator.calculate_quality_score(results)
-        assert score.normalized_value == 1.0
+        assert score.normalized_value == 0.0
 
 
 class TestCompletenessScore:
@@ -659,11 +660,13 @@ class TestScoreTestResult:
         assert scored.breakdown.cost.raw_value == 1000
 
     def test_empty_results(self) -> None:
-        """Test scoring with no evaluation results."""
+        """Test scoring with no evaluation results: quality=0, others default to 1."""
         aggregator = ScoreAggregator()
         scored = aggregator.score_test_result("test-005", [])
 
-        assert scored.score == 100.0
+        # quality=0.0 (no evals), completeness=1.0, efficiency=1.0, cost=1.0
+        # score = 0*0.4 + 1*0.3 + 1*0.2 + 1*0.1 = 60.0
+        assert scored.score == 60.0
         assert scored.passed is True
 
 

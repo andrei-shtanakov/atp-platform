@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from fastapi import HTTPException
 
-from atp.dashboard.v2.config import DashboardConfig
+from atp.dashboard.v2.config import DashboardConfig, get_config
 from atp.dashboard.v2.dependencies import (
     PaginationParams,
     get_dashboard_config,
@@ -77,14 +77,18 @@ class TestGetDashboardConfig:
 
     def test_returns_dashboard_config(self) -> None:
         """Test that get_dashboard_config returns DashboardConfig."""
+        get_config.cache_clear()
         config = get_dashboard_config()
         assert isinstance(config, DashboardConfig)
+        get_config.cache_clear()
 
     def test_returns_cached_config(self) -> None:
         """Test that get_dashboard_config returns same cached config."""
+        get_config.cache_clear()
         config1 = get_dashboard_config()
         config2 = get_dashboard_config()
         assert config1 is config2
+        get_config.cache_clear()
 
 
 class TestGetDb:
@@ -142,7 +146,7 @@ class TestRequireFeature:
     def test_raises_404_when_feature_disabled(self) -> None:
         """Test that require_feature raises 404 when feature is disabled."""
         check_feature = require_feature("disabled_feature")
-        config = DashboardConfig(debug=False)
+        config = DashboardConfig(debug=False, secret_key="prod-test-secret")
 
         with pytest.raises(HTTPException) as exc_info:
             check_feature(config)

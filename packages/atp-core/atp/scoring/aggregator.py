@@ -78,10 +78,10 @@ class ScoreAggregator:
             return ComponentScore(
                 name="quality",
                 raw_value=None,
-                normalized_value=1.0,
+                normalized_value=0.0,
                 weight=self.weights.quality_weight,
-                weighted_value=self.weights.quality_weight,
-                details={"note": "No evaluations, assuming perfect quality"},
+                weighted_value=0.0,
+                details={"note": "No evaluations — score defaults to 0"},
             )
 
         scores: list[float] = []
@@ -97,7 +97,7 @@ class ScoreAggregator:
                     llm_scores.append(check.score)
 
         if not scores:
-            normalized = 1.0
+            normalized = 0.0
         else:
             normalized = sum(scores) / len(scores)
 

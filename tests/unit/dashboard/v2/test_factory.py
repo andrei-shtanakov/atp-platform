@@ -8,23 +8,26 @@ from fastapi import FastAPI
 from atp.dashboard.v2.config import DashboardConfig
 from atp.dashboard.v2.factory import app, create_app, create_test_app, lifespan
 
+# Safe config for tests that don't need specific settings.
+_SAFE_CONFIG = DashboardConfig(secret_key="test-secret", debug=True)
+
 
 class TestCreateApp:
     """Tests for create_app factory function."""
 
     def test_returns_fastapi_instance(self) -> None:
         """Test that create_app returns a FastAPI instance."""
-        test_app = create_app()
+        test_app = create_app(config=_SAFE_CONFIG)
         assert isinstance(test_app, FastAPI)
 
     def test_app_has_correct_title(self) -> None:
         """Test that app has correct title from config."""
-        test_app = create_app()
+        test_app = create_app(config=_SAFE_CONFIG)
         assert test_app.title == "ATP Dashboard"
 
     def test_app_has_correct_version(self) -> None:
         """Test that app has correct version from config."""
-        test_app = create_app()
+        test_app = create_app(config=_SAFE_CONFIG)
         assert test_app.version == "0.2.0"
 
     def test_app_with_custom_config(self) -> None:
@@ -41,7 +44,7 @@ class TestCreateApp:
 
     def test_app_with_kwargs(self) -> None:
         """Test create_app with additional kwargs."""
-        test_app = create_app(docs_url="/swagger")
+        test_app = create_app(config=_SAFE_CONFIG, docs_url="/swagger")
         assert test_app.docs_url == "/swagger"
 
     def test_app_stores_config_in_state(self) -> None:
@@ -52,20 +55,29 @@ class TestCreateApp:
 
     def test_app_has_cors_middleware(self) -> None:
         """Test that app has CORS middleware configured."""
-        test_app = create_app()
+        test_app = create_app(config=_SAFE_CONFIG)
         middleware_classes = [m.cls.__name__ for m in test_app.user_middleware]
         assert "CORSMiddleware" in middleware_classes
 
     def test_app_has_api_routes(self) -> None:
         """Test that app has API routes mounted."""
-        test_app = create_app()
+        test_app = create_app(config=_SAFE_CONFIG)
         route_paths = [str(r.path) for r in test_app.routes if hasattr(r, "path")]
         assert any("/api" in p for p in route_paths)
 
     def test_app_has_lifespan(self) -> None:
         """Test that app has lifespan handler."""
-        test_app = create_app()
+        test_app = create_app(config=_SAFE_CONFIG)
         assert test_app.router.lifespan_context is not None
+
+    def test_production_mode_raises_without_secret_key(self) -> None:
+        """Test that production mode (debug=False) raises without custom secret key."""
+        import os
+        from unittest.mock import patch
+
+        with patch.dict(os.environ, {}, clear=True):
+            with pytest.raises(ValueError, match="ATP_SECRET_KEY"):
+                DashboardConfig(debug=False, _env_file=None)
 
 
 class TestCreateTestApp:
@@ -120,6 +132,7 @@ class TestLifespan:
         config = DashboardConfig(
             database_url="postgresql+asyncpg://localhost/test",
             database_echo=True,
+            secret_key="test-secret",
         )
         test_app = create_app(config=config)
 
@@ -150,7 +163,7 @@ class TestCORSConfiguration:
 
     def test_cors_with_wildcard_origin(self) -> None:
         """Test CORS configuration with wildcard origin."""
-        config = DashboardConfig(cors_origins="*")
+        config = DashboardConfig(cors_origins="*", debug=True)
         test_app = create_app(config=config)
         middleware_classes = [m.cls.__name__ for m in test_app.user_middleware]
         assert "CORSMiddleware" in middleware_classes
@@ -158,12 +171,19 @@ class TestCORSConfiguration:
     def test_cors_with_multiple_origins(self) -> None:
         """Test CORS configuration with multiple origins."""
         config = DashboardConfig(
-            cors_origins="http://localhost:3000,http://localhost:8080"
+            cors_origins="http://localhost:3000,http://localhost:8080",
+            debug=True,
         )
         test_app = create_app(config=config)
         # CORS middleware should be present
         middleware_classes = [m.cls.__name__ for m in test_app.user_middleware]
         assert "CORSMiddleware" in middleware_classes
+
+    def test_cors_empty_default_no_origins(self) -> None:
+        """Test that empty CORS default results in no allowed origins."""
+        config = DashboardConfig(secret_key="test-key")
+        assert config.cors_origins == ""
+        assert config.cors_origins_list == []
 
 
 class TestAppRoutes:
@@ -171,7 +191,7 @@ class TestAppRoutes:
 
     def test_api_router_mounted(self) -> None:
         """Test that API router is mounted at /api."""
-        test_app = create_app()
+        test_app = create_app(config=_SAFE_CONFIG)
         route_paths = [str(r.path) for r in test_app.routes if hasattr(r, "path")]
         # Check that there are routes under /api
         api_routes = [p for p in route_paths if p.startswith("/api")]
@@ -179,18 +199,18 @@ class TestAppRoutes:
 
     def test_dashboard_routes_exist(self) -> None:
         """Test that dashboard API routes exist."""
-        test_app = create_app()
+        test_app = create_app(config=_SAFE_CONFIG)
         route_paths = [str(r.path) for r in test_app.routes if hasattr(r, "path")]
         assert any("/api/dashboard" in p for p in route_paths)
 
     def test_agents_routes_exist(self) -> None:
         """Test that agents API routes exist."""
-        test_app = create_app()
+        test_app = create_app(config=_SAFE_CONFIG)
         route_paths = [str(r.path) for r in test_app.routes if hasattr(r, "path")]
         assert any("/api/agents" in p for p in route_paths)
 
     def test_suites_routes_exist(self) -> None:
         """Test that suites API routes exist."""
-        test_app = create_app()
+        test_app = create_app(config=_SAFE_CONFIG)
         route_paths = [str(r.path) for r in test_app.routes if hasattr(r, "path")]
         assert any("/api/suites" in p for p in route_paths)

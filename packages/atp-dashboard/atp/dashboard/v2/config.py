@@ -4,11 +4,17 @@ This module provides centralized configuration management for the dashboard,
 supporting environment variables and sensible defaults.
 """
 
+import logging
+import warnings
 from functools import lru_cache
 from typing import Any
 
 from pydantic import Field
 from pydantic_settings import BaseSettings
+
+logger = logging.getLogger("atp.dashboard")
+
+_DEFAULT_SECRET_KEY = "atp-dashboard-dev-secret-key-change-in-prod"
 
 
 class DashboardConfig(BaseSettings):
@@ -29,7 +35,7 @@ class DashboardConfig(BaseSettings):
 
     # Authentication settings
     secret_key: str = Field(
-        default="atp-dashboard-dev-secret-key-change-in-prod",
+        default=_DEFAULT_SECRET_KEY,
         description="Secret key for JWT token signing",
     )
     token_expire_minutes: int = Field(
@@ -40,8 +46,8 @@ class DashboardConfig(BaseSettings):
 
     # CORS settings
     cors_origins: str = Field(
-        default="*",
-        description="Comma-separated list of allowed CORS origins",
+        default="",
+        description="Comma-separated list of allowed CORS origins. Empty = no CORS.",
     )
 
     # Server settings
@@ -105,6 +111,26 @@ class DashboardConfig(BaseSettings):
         default="0.2.0",
         description="Application version",
     )
+
+    def model_post_init(self, __context: Any) -> None:
+        """Validate security-sensitive defaults."""
+        if self.secret_key == _DEFAULT_SECRET_KEY:
+            if not self.debug:
+                raise ValueError(
+                    "ATP_SECRET_KEY must be set in production. "
+                    "Set ATP_SECRET_KEY environment variable."
+                )
+            warnings.warn(
+                "ATP_SECRET_KEY is not set. Using a hardcoded dev secret. "
+                "Tokens will be shared across restarts but are insecure. "
+                "Set ATP_SECRET_KEY for production use.",
+                UserWarning,
+                stacklevel=2,
+            )
+            logger.warning(
+                "ATP_SECRET_KEY is using the insecure default. "
+                "Set ATP_SECRET_KEY before deploying to production."
+            )
 
     model_config = {
         "env_prefix": "ATP_",

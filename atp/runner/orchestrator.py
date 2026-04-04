@@ -323,7 +323,7 @@ class TestOrchestrator:
             if self.sandbox_config.enabled:
                 if self._sandbox_manager is None:
                     self._sandbox_manager = SandboxManager(self.sandbox_config)
-                sandbox_id = self._sandbox_manager.create(test.id)
+                sandbox_id = await self._sandbox_manager.create(test.id)
                 workspace_path = str(self._sandbox_manager.get_workspace(sandbox_id))
                 set_span_attribute("atp.sandbox.id", sandbox_id)
                 set_span_attribute("atp.sandbox.path", workspace_path)
@@ -377,7 +377,7 @@ class TestOrchestrator:
                 # Cleanup sandbox
                 if sandbox_id and self._sandbox_manager:
                     try:
-                        self._sandbox_manager.cleanup(sandbox_id)
+                        await self._sandbox_manager.cleanup(sandbox_id)
                     except Exception as e:
                         logger.warning(
                             "Failed to cleanup sandbox %s: %s", sandbox_id, e
@@ -867,7 +867,7 @@ class TestOrchestrator:
     async def cleanup(self) -> None:
         """Clean up any resources."""
         if self._sandbox_manager:
-            self._sandbox_manager.cleanup_all()
+            await self._sandbox_manager.cleanup_all()
             self._sandbox_manager = None
 
         await self.adapter.cleanup()

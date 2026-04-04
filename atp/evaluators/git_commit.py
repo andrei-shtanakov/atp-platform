@@ -4,8 +4,8 @@ Evaluates agent ability to reconstruct real git commits by comparing
 the agent's output diff against the ground truth diff from a commit.
 """
 
+import asyncio
 import logging
-import subprocess
 from pathlib import Path
 
 from atp.evaluators.base import EvalCheck, EvalResult, Evaluator
@@ -15,7 +15,7 @@ from atp.protocol import ATPEvent, ATPResponse
 logger = logging.getLogger(__name__)
 
 
-def _get_commit_diff(repo_path: str, commit_sha: str) -> str | None:
+async def _get_commit_diff(repo_path: str, commit_sha: str) -> str | None:
     """Get the diff for a specific commit.
 
     Args:
@@ -26,16 +26,19 @@ def _get_commit_diff(repo_path: str, commit_sha: str) -> str | None:
         Diff string or None if failed.
     """
     try:
-        result = subprocess.run(
-            ["git", "diff", f"{commit_sha}~1", commit_sha],
+        process = await asyncio.create_subprocess_exec(
+            "git",
+            "diff",
+            f"{commit_sha}~1",
+            commit_sha,
             cwd=repo_path,
-            capture_output=True,
-            text=True,
-            timeout=30,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
-        if result.returncode == 0:
-            return result.stdout
-    except (subprocess.SubprocessError, OSError) as e:
+        stdout, _stderr = await asyncio.wait_for(process.communicate(), timeout=30)
+        if process.returncode == 0:
+            return stdout.decode() if stdout else ""
+    except (TimeoutError, OSError) as e:
         logger.warning("Failed to get commit diff: %s", e)
     return None
 
@@ -96,7 +99,7 @@ class GitCommitEvaluator(Evaluator):
         checks: list[EvalCheck] = []
 
         # Get ground truth diff
-        ground_truth_diff = self._get_ground_truth(task, assertion)
+        ground_truth_diff = await self._get_ground_truth(task, assertion)
         if ground_truth_diff is None:
             checks.append(
                 self._create_check(
@@ -183,7 +186,7 @@ class GitCommitEvaluator(Evaluator):
 
         return self._create_result(checks)
 
-    def _get_ground_truth(
+    async def _get_ground_truth(
         self,
         task: TestDefinition,
         assertion: Assertion,
@@ -201,7 +204,7 @@ class GitCommitEvaluator(Evaluator):
         repo_path = config.get("repo_path")
 
         if commit_sha and repo_path:
-            return _get_commit_diff(repo_path, commit_sha)
+            return await _get_commit_diff(repo_path, commit_sha)
 
         return None
 

@@ -14,15 +14,15 @@ class TestDashboardConfig:
     def test_default_values(self) -> None:
         """Test default configuration values."""
         with patch.dict(os.environ, {}, clear=True):
-            config = DashboardConfig(_env_file=None)
+            config = DashboardConfig(_env_file=None, debug=True)
         assert config.database_url is None
         assert config.database_echo is False
         assert config.secret_key == "atp-dashboard-dev-secret-key-change-in-prod"
         assert config.token_expire_minutes == 60
-        assert config.cors_origins == "*"
+        assert config.cors_origins == ""
         assert config.host == "127.0.0.1"
         assert config.port == 8080
-        assert config.debug is False
+        assert config.debug is True
         assert config.title == "ATP Dashboard"
         assert config.version == "0.2.0"
 
@@ -48,13 +48,14 @@ class TestDashboardConfig:
 
     def test_cors_origins_list_single(self) -> None:
         """Test cors_origins_list with single origin."""
-        config = DashboardConfig(cors_origins="http://localhost:3000")
+        config = DashboardConfig(cors_origins="http://localhost:3000", debug=True)
         assert config.cors_origins_list == ["http://localhost:3000"]
 
     def test_cors_origins_list_multiple(self) -> None:
         """Test cors_origins_list with multiple origins."""
         config = DashboardConfig(
-            cors_origins="http://localhost:3000, http://localhost:8080"
+            cors_origins="http://localhost:3000, http://localhost:8080",
+            debug=True,
         )
         assert config.cors_origins_list == [
             "http://localhost:3000",
@@ -63,24 +64,31 @@ class TestDashboardConfig:
 
     def test_cors_origins_list_wildcard(self) -> None:
         """Test cors_origins_list with wildcard."""
-        config = DashboardConfig(cors_origins="*")
+        config = DashboardConfig(cors_origins="*", debug=True)
         assert config.cors_origins_list == ["*"]
 
     def test_cors_origins_list_empty_entries(self) -> None:
         """Test cors_origins_list filters empty entries."""
         config = DashboardConfig(
-            cors_origins="http://localhost:3000,  , http://localhost:8080"
+            cors_origins="http://localhost:3000,  , http://localhost:8080",
+            debug=True,
         )
         assert config.cors_origins_list == [
             "http://localhost:3000",
             "http://localhost:8080",
         ]
 
+    def test_cors_origins_list_empty_default(self) -> None:
+        """Test cors_origins_list returns empty list for empty default."""
+        config = DashboardConfig(secret_key="test-key")
+        assert config.cors_origins_list == []
+
     def test_to_dict(self) -> None:
         """Test to_dict method masks sensitive values."""
         config = DashboardConfig(
             database_url="postgresql://user:password@localhost/db",
             secret_key="super-secret-key",
+            debug=False,
         )
         result = config.to_dict()
         assert result["database_url"] == "***"
@@ -91,7 +99,7 @@ class TestDashboardConfig:
     def test_to_dict_no_database_url(self) -> None:
         """Test to_dict when database_url is None."""
         with patch.dict(os.environ, {}, clear=True):
-            config = DashboardConfig(_env_file=None)
+            config = DashboardConfig(_env_file=None, debug=True)
         result = config.to_dict()
         assert result["database_url"] is None
 
@@ -116,10 +124,10 @@ class TestGetConfig:
 
     def test_returns_dashboard_config(self) -> None:
         """Test that get_config returns DashboardConfig instance."""
-        # Clear the cache first
         get_config.cache_clear()
         config = get_config()
         assert isinstance(config, DashboardConfig)
+        get_config.cache_clear()
 
     def test_cached_config(self) -> None:
         """Test that get_config returns cached instance."""
@@ -127,3 +135,4 @@ class TestGetConfig:
         config1 = get_config()
         config2 = get_config()
         assert config1 is config2
+        get_config.cache_clear()

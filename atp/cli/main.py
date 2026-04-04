@@ -868,7 +868,11 @@ async def _run_suite(
         eval_results=all_eval_results,
         scored_results=all_scored_results,
     )
-    reporter.report(report)
+    try:
+        reporter.report(report)
+    except Exception as e:
+        logger.error("Reporter failed: %s", e)
+        click.echo(f"Warning: report generation failed: {e}", err=True)
 
     # Save results to structured directory for comparison
     if save_results_dir is not None:
@@ -917,7 +921,11 @@ def _save_results_to_dir(
     json_reporter = create_reporter(
         "json", {"output_file": out_path, "include_details": True}
     )
-    json_reporter.report(report)
+    try:
+        json_reporter.report(report)
+    except Exception as e:
+        logger.error("Reporter failed: %s", e)
+        click.echo(f"Warning: report generation failed: {e}", err=True)
     click.echo(f"Results saved to {out_path}")
 
 

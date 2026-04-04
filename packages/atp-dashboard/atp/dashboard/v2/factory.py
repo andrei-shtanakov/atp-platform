@@ -38,7 +38,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         None during application lifetime.
     """
     # Get config from app state or use default
-    config: DashboardConfig = getattr(app.state, "config", get_config())
+    config: DashboardConfig = getattr(app.state, "config", None) or get_config()
 
     # Initialize database on startup
     await init_database(url=config.database_url, echo=config.database_echo)
@@ -189,4 +189,16 @@ def create_test_app(
 
 # Default application instance
 # This allows `from atp.dashboard.v2.factory import app`
-app = create_app()
+# Uses test-safe defaults when no environment is configured.
+try:
+    app = create_app()
+except ValueError:
+    # Fallback for environments without ATP_SECRET_KEY configured.
+    # Production deployments must set ATP_SECRET_KEY.
+    import logging as _logging
+
+    _logging.getLogger("atp.dashboard").warning(
+        "Failed to create default app instance: ATP_SECRET_KEY not set. "
+        "Using debug fallback. Set ATP_SECRET_KEY for production."
+    )
+    app = create_app(config=DashboardConfig(debug=True))

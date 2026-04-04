@@ -1,5 +1,6 @@
 """Sandbox management for isolated test execution."""
 
+import asyncio
 import atexit
 import json
 import logging
@@ -48,6 +49,7 @@ class SandboxManager:
         self.config = config or SandboxConfig()
         self._base_dir = base_dir
         self._active_sandboxes: dict[str, Path] = {}
+        self._lock = asyncio.Lock()
         atexit.register(self._atexit_cleanup)
 
     @property
@@ -59,7 +61,7 @@ class SandboxManager:
             self._base_dir = Path(tempfile.gettempdir()) / "atp-sandboxes"
         return self._base_dir
 
-    def create(self, test_id: str | None = None) -> str:
+    async def create(self, test_id: str | None = None) -> str:
         """
         Create a new sandbox environment.
 
@@ -100,7 +102,8 @@ class SandboxManager:
             except OSError as e:
                 logger.debug("chmod failed (may be unsupported): %s", e)
 
-            self._active_sandboxes[sandbox_id] = sandbox_path
+            async with self._lock:
+                self._active_sandboxes[sandbox_id] = sandbox_path
             self._record_process(sandbox_id, test_id)
 
             logger.debug(
@@ -222,7 +225,7 @@ class SandboxManager:
             )
         return self._active_sandboxes[sandbox_id] / "artifacts"
 
-    def cleanup(self, sandbox_id: str) -> None:
+    async def cleanup(self, sandbox_id: str) -> None:
         """
         Clean up a sandbox environment.
 
@@ -232,11 +235,11 @@ class SandboxManager:
         Raises:
             SandboxError: If cleanup fails.
         """
-        if sandbox_id not in self._active_sandboxes:
-            logger.warning("Attempted to cleanup unknown sandbox: %s", sandbox_id)
-            return
-
-        sandbox_path = self._active_sandboxes.pop(sandbox_id)
+        async with self._lock:
+            if sandbox_id not in self._active_sandboxes:
+                logger.warning("Attempted to cleanup unknown sandbox: %s", sandbox_id)
+                return
+            sandbox_path = self._active_sandboxes.pop(sandbox_id)
         self._unrecord_process(sandbox_id)
 
         try:
@@ -251,20 +254,31 @@ class SandboxManager:
             ) from e
 
     def _atexit_cleanup(self) -> None:
-        """Clean up sandboxes on process exit."""
+        """Clean up sandboxes on process exit (sync, no lock available)."""
         if self._active_sandboxes:
             logger.debug(
                 "Cleaning up %d orphan sandbox(es) on exit",
                 len(self._active_sandboxes),
             )
-            self.cleanup_all()
+            sandbox_ids = list(self._active_sandboxes.keys())
+            for sandbox_id in sandbox_ids:
+                sandbox_path = self._active_sandboxes.pop(sandbox_id, None)
+                if sandbox_path and sandbox_path.exists():
+                    try:
+                        import shutil as _shutil
 
-    def cleanup_all(self) -> None:
+                        _shutil.rmtree(sandbox_path)
+                    except OSError as e:
+                        logger.warning(
+                            "Failed to cleanup sandbox %s: %s", sandbox_id, e
+                        )
+
+    async def cleanup_all(self) -> None:
         """Clean up all active sandboxes."""
         sandbox_ids = list(self._active_sandboxes.keys())
         for sandbox_id in sandbox_ids:
             try:
-                self.cleanup(sandbox_id)
+                await self.cleanup(sandbox_id)
             except SandboxError as e:
                 logger.warning("Failed to cleanup sandbox %s: %s", sandbox_id, e)
 
@@ -541,7 +555,7 @@ class SandboxManager:
         exc_tb: object,
     ) -> None:
         """Async context manager exit - cleanup all sandboxes."""
-        self.cleanup_all()
+        await self.cleanup_all()
 
 
 def _is_process_alive(pid: int) -> bool:

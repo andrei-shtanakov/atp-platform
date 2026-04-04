@@ -5,8 +5,7 @@ from fastapi.testclient import TestClient
 
 from atp.dashboard.auth import get_current_active_user
 from atp.dashboard.models import User
-from atp.dashboard.v2.config import get_config
-from atp.dashboard.v2.factory import create_app, create_test_app  # noqa: F401
+from atp.dashboard.v2.factory import create_test_app
 from atp.dashboard.v2.routes import router
 
 
@@ -36,11 +35,9 @@ def client(disable_dashboard_auth: None) -> TestClient:
 @pytest.fixture
 def unauth_client() -> TestClient:
     """Create a test client without auth (for testing 401)."""
-    get_config.cache_clear()
-    app = create_app()
+    app = create_test_app()
     client = TestClient(app, raise_server_exceptions=False)
     yield client  # type: ignore
-    get_config.cache_clear()
 
 
 class TestAuthEndpoints:
