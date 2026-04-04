@@ -98,6 +98,32 @@ class DashboardConfig(BaseSettings):
         description="Maximum YAML upload file size in MB",
     )
 
+    # Rate limiting settings
+    rate_limit_enabled: bool = Field(
+        default=True,
+        description="Enable HTTP rate limiting",
+    )
+    rate_limit_default: str = Field(
+        default="60/minute",
+        description="Default rate limit for undecorated endpoints",
+    )
+    rate_limit_auth: str = Field(
+        default="5/minute",
+        description="Rate limit for auth endpoints (brute-force protection)",
+    )
+    rate_limit_api: str = Field(
+        default="120/minute",
+        description="Rate limit for benchmark API endpoints",
+    )
+    rate_limit_upload: str = Field(
+        default="10/minute",
+        description="Rate limit for file upload endpoints",
+    )
+    rate_limit_storage: str = Field(
+        default="memory://",
+        description=("Rate limit storage URI (memory:// or redis://host:port)"),
+    )
+
     # App metadata
     title: str = Field(
         default="ATP Dashboard",

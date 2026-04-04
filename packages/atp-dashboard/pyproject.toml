@@ -15,6 +15,7 @@ dependencies = [
     "bcrypt>=5.0.0",
     "greenlet>=3.3.1",
     "opentelemetry-instrumentation-fastapi>=0.60b1",
+    "slowapi>=0.1.9",
 ]
 
 [project.optional-dependencies]
