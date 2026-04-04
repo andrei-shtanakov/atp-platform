@@ -58,6 +58,9 @@ class Benchmark(Base):
         ForeignKey("benchmarks.id"),
         nullable=True,
     )
+    webhook_url: Mapped[str | None] = mapped_column(
+        String(2048), nullable=True, default=None
+    )
     is_immutable: Mapped[bool] = mapped_column(Boolean, default=True)
     created_by: Mapped[int | None] = mapped_column(
         Integer,
