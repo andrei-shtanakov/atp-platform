@@ -1,0 +1,81 @@
+<div id="run-tasks"
+     {% if run.status in ("IN_PROGRESS", "PENDING") %}
+     hx-get="/ui/runs/{{ run.id }}"
+     hx-target="#run-tasks"
+     hx-swap="outerHTML"
+     hx-trigger="every 5s"
+     {% endif %}>
+
+<script>
+function toggleDetail(row) {
+    var detail = row.nextElementSibling;
+    if (detail && detail.classList.contains('detail-row')) {
+        detail.style.display = detail.style.display === 'table-row' ? 'none' : 'table-row';
+    }
+}
+</script>
+
+<table>
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>Task</th>
+            <th>Score</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for tr in task_results %}
+        {% set req = tr.request or {} %}
+        {% set task_desc = req.get("task", {}).get("description", "Task #" ~ tr.task_index) %}
+        <tr class="task-row" onclick="toggleDetail(this)">
+            <td>{{ tr.task_index }}</td>
+            <td>{{ task_desc[:80] }}{% if task_desc|length > 80 %}…{% endif %}</td>
+            <td>{% if tr.score is not none %}{{ "%.2f"|format(tr.score) }}{% else %}—{% endif %}</td>
+            <td>
+                {% if tr.score is not none %}
+                <mark class="status-badge" style="background:#2d9e5f;">Scored</mark>
+                {% elif tr.submitted_at is not none %}
+                <mark class="status-badge" style="background:#1b6bb0;">Submitted</mark>
+                {% else %}
+                <mark class="status-badge" style="background:#aaa;">Pending</mark>
+                {% endif %}
+            </td>
+        </tr>
+        <tr class="detail-row">
+            <td colspan="4">
+                <div class="eval-summary">
+                    {% set messages = [] %}
+                    {% for er in (tr.eval_results or []) %}
+                        {% for check in er.get("checks", []) %}
+                            {% if check.get("message") %}
+                                {% set _ = messages.append(check.get("name", "?") ~ ": " ~ check.get("message")) %}
+                            {% endif %}
+                        {% endfor %}
+                    {% endfor %}
+                    <strong>Evaluation:</strong> {{ messages|join("; ") or "No evaluation" }}
+                </div>
+                <details>
+                    <summary>Request JSON</summary>
+                    <pre><code>{{ tr.request|tojson(indent=2) }}</code></pre>
+                </details>
+                <details>
+                    <summary>Response JSON</summary>
+                    <pre><code>{{ tr.response|tojson(indent=2) }}</code></pre>
+                </details>
+                {% if tr.eval_results %}
+                <details>
+                    <summary>Eval Results JSON</summary>
+                    <pre><code>{{ tr.eval_results|tojson(indent=2) }}</code></pre>
+                </details>
+                {% endif %}
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="4" style="text-align:center;color:#888;">No task results yet.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>

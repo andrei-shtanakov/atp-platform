@@ -225,3 +225,125 @@ class TestBenchmarkDetail:
         resp = await client.get("/ui/benchmarks/999")
         assert resp.status_code == 404
         assert "Not Found" in resp.text
+
+
+class TestRunDetailPage:
+    """Tests for run detail page /ui/runs/{run_id}."""
+
+    @pytest.mark.anyio
+    async def test_run_detail_returns_html(self, client) -> None:
+        """GET /ui/runs/{id} returns HTML for existing run."""
+        import uuid
+
+        from atp.dashboard.benchmark.models import Benchmark, Run, RunStatus, TaskResult
+        from atp.dashboard.database import get_database
+
+        bm_name = f"test-bm-{uuid.uuid4().hex[:8]}"
+        db = get_database()
+        async with db.session() as session:
+            bm = Benchmark(name=bm_name, tasks_count=2, suite={}, tags=[])
+            session.add(bm)
+            await session.flush()
+
+            run = Run(
+                benchmark_id=bm.id,
+                agent_name="test-agent",
+                status=RunStatus.COMPLETED,
+                current_task_index=2,
+                total_score=0.85,
+            )
+            session.add(run)
+            await session.flush()
+
+            tr = TaskResult(
+                run_id=run.id,
+                task_index=0,
+                request={"task": {"description": "Solve 1+1"}},
+                response={"answer": "2"},
+                score=1.0,
+            )
+            session.add(tr)
+            await session.commit()
+
+            run_id = run.id
+
+        resp = await client.get(f"/ui/runs/{run_id}")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        assert f"Run #{run_id}" in resp.text
+        assert bm_name in resp.text
+        assert "test-agent" in resp.text
+        assert "Solve 1+1" in resp.text
+
+    @pytest.mark.anyio
+    async def test_run_detail_404(self, client) -> None:
+        """GET /ui/runs/99999 returns 404."""
+        resp = await client.get("/ui/runs/99999")
+        assert resp.status_code == 404
+        assert "Not Found" in resp.text
+
+    @pytest.mark.anyio
+    async def test_run_detail_htmx_header_partial(self, client) -> None:
+        """HTMX request with HX-Target: run-header returns partial."""
+        import uuid
+
+        from atp.dashboard.benchmark.models import Benchmark, Run, RunStatus
+        from atp.dashboard.database import get_database
+
+        bm_name = f"htmx-bm-{uuid.uuid4().hex[:8]}"
+        db = get_database()
+        async with db.session() as session:
+            bm = Benchmark(name=bm_name, tasks_count=1, suite={}, tags=[])
+            session.add(bm)
+            await session.flush()
+
+            run = Run(
+                benchmark_id=bm.id,
+                agent_name="htmx-agent",
+                status=RunStatus.IN_PROGRESS,
+                current_task_index=0,
+            )
+            session.add(run)
+            await session.commit()
+            run_id = run.id
+
+        resp = await client.get(
+            f"/ui/runs/{run_id}",
+            headers={"HX-Request": "true", "HX-Target": "run-header"},
+        )
+        assert resp.status_code == 200
+        assert "run-header" in resp.text
+        assert "hx-trigger" in resp.text  # Should have polling for in-progress
+
+    @pytest.mark.anyio
+    async def test_run_detail_htmx_tasks_partial(self, client) -> None:
+        """HTMX request with HX-Target: run-tasks returns partial."""
+        import uuid
+
+        from atp.dashboard.benchmark.models import Benchmark, Run, RunStatus
+        from atp.dashboard.database import get_database
+
+        bm_name = f"tasks-bm-{uuid.uuid4().hex[:8]}"
+        db = get_database()
+        async with db.session() as session:
+            bm = Benchmark(name=bm_name, tasks_count=1, suite={}, tags=[])
+            session.add(bm)
+            await session.flush()
+
+            run = Run(
+                benchmark_id=bm.id,
+                agent_name="tasks-agent",
+                status=RunStatus.COMPLETED,
+                current_task_index=1,
+            )
+            session.add(run)
+            await session.commit()
+            run_id = run.id
+
+        resp = await client.get(
+            f"/ui/runs/{run_id}",
+            headers={"HX-Request": "true", "HX-Target": "run-tasks"},
+        )
+        assert resp.status_code == 200
+        assert "run-tasks" in resp.text
+        assert "hx-trigger" not in resp.text  # No polling for completed run

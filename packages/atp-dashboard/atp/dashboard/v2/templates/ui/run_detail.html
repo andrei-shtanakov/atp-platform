@@ -1,0 +1,12 @@
+{% extends "ui/base_ui.html" %}
+
+{% block title %}Run #{{ run.id }} - ATP Platform{% endblock %}
+
+{% block content %}
+<h2>Run #{{ run.id }}</h2>
+
+{% include "ui/partials/run_header.html" %}
+
+<h3>Task Results</h3>
+{% include "ui/partials/run_tasks.html" %}
+{% endblock %}

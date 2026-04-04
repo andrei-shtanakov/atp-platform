@@ -1,0 +1,84 @@
+<div id="run-header"
+     {% if run.status in ("IN_PROGRESS", "PENDING") %}
+     hx-get="/ui/runs/{{ run.id }}"
+     hx-target="#run-header"
+     hx-swap="outerHTML"
+     hx-trigger="every 5s"
+     {% endif %}>
+    <div class="stat-cards">
+        <div class="stat-card">
+            <div class="label">Status</div>
+            <div class="value">
+                {% set s = run.status %}
+                {% if s == "COMPLETED" %}
+                <mark class="status-badge" style="background:var(--pico-color-green-550,#2d9e5f);">{{ s }}</mark>
+                {% elif s == "IN_PROGRESS" %}
+                <mark class="status-badge" style="background:var(--pico-color-azure-550,#1b6bb0);">{{ s }}</mark>
+                {% elif s == "FAILED" %}
+                <mark class="status-badge" style="background:var(--pico-color-red-550,#c0392b);">{{ s }}</mark>
+                {% elif s == "PARTIAL" %}
+                <mark class="status-badge" style="background:#e6a817;">{{ s }}</mark>
+                {% else %}
+                <mark class="status-badge" style="background:#aaa;">{{ s }}</mark>
+                {% endif %}
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="label">Score</div>
+            <div class="value">
+                {% if run.total_score is not none %}
+                {{ "%.2f"|format(run.total_score) }}
+                {% else %}
+                —
+                {% endif %}
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="label">Progress</div>
+            <div class="value">{{ run.current_task_index }} / {{ tasks_count }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">Duration</div>
+            <div class="value">
+                {% if run.started_at is none %}
+                    Not started
+                {% elif run.finished_at is not none %}
+                    {% set duration = (run.finished_at - run.started_at).total_seconds() %}
+                    {% if duration >= 3600 %}
+                        {{ "%.0f"|format(duration / 3600) }}h {{ "%.0f"|format((duration % 3600) / 60) }}m
+                    {% elif duration >= 60 %}
+                        {{ "%.0f"|format(duration / 60) }}m {{ "%.0f"|format(duration % 60) }}s
+                    {% else %}
+                        {{ "%.0f"|format(duration) }}s
+                    {% endif %}
+                {% else %}
+                    {% set duration = (now - run.started_at).total_seconds() %}
+                    {% if duration >= 3600 %}
+                        {{ "%.0f"|format(duration / 3600) }}h {{ "%.0f"|format((duration % 3600) / 60) }}m (running)
+                    {% elif duration >= 60 %}
+                        {{ "%.0f"|format(duration / 60) }}m {{ "%.0f"|format(duration % 60) }}s (running)
+                    {% else %}
+                        {{ "%.0f"|format(duration) }}s (running)
+                    {% endif %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="run-meta">
+        Benchmark: <a href="/ui/benchmarks/{{ run.benchmark_id }}">{{ benchmark_name }}</a>
+        &middot; Agent: <strong>{{ run.agent_name or "—" }}</strong>
+        &middot; Run #{{ run.id }}
+        {% if run.status in ("IN_PROGRESS", "PENDING") %}
+        &middot;
+        <button
+            hx-post="/ui/runs/{{ run.id }}/cancel"
+            hx-target="#run-header"
+            hx-swap="outerHTML"
+            style="padding:2px 10px;font-size:0.85em;display:inline;"
+            onclick="return confirm('Cancel run #{{ run.id }}?')">
+            Cancel
+        </button>
+        {% endif %}
+    </div>
+</div>

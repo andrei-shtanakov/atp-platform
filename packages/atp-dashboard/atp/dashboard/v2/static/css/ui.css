@@ -152,3 +152,66 @@ body {
     display: block !important;
     padding: 0 !important;
 }
+
+/* Run detail page */
+.run-meta {
+    font-size: 0.9rem;
+    color: #666;
+    margin-bottom: 1.5rem;
+}
+
+.run-meta a {
+    color: #7c3aed;
+}
+
+.task-row {
+    cursor: pointer;
+}
+
+.task-row:hover {
+    background: #f0f0f0;
+}
+
+.detail-row {
+    display: none;
+    background: #f8f9fa;
+}
+
+.detail-row td {
+    padding: 1rem 1.5rem;
+}
+
+.detail-row pre {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 0.375rem;
+    padding: 0.75rem;
+    max-height: 300px;
+    overflow: auto;
+    font-size: 0.8rem;
+    margin: 0.5rem 0;
+}
+
+.detail-row details {
+    margin-bottom: 0.5rem;
+}
+
+.detail-row summary {
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.85rem;
+    padding: 0.25rem 0;
+}
+
+.eval-summary {
+    font-size: 0.85rem;
+    color: #444;
+    margin-bottom: 0.75rem;
+}
+
+.status-badge {
+    color: #fff;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.85em;
+}

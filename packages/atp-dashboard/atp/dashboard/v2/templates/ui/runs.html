@@ -24,11 +24,7 @@
         {% for run, benchmark_name, tasks_count in runs %}
         <tr>
             <td>
-                {% if run.benchmark_id %}
-                <a href="/ui/benchmarks/{{ run.benchmark_id }}">#{{ run.id }}</a>
-                {% else %}
-                #{{ run.id }}
-                {% endif %}
+                <a href="/ui/runs/{{ run.id }}">#{{ run.id }}</a>
             </td>
             <td>
                 {% if run.benchmark_id %}

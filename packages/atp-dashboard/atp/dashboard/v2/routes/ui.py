@@ -13,7 +13,7 @@ from fastapi import APIRouter, Request, UploadFile
 from fastapi.responses import HTMLResponse
 from sqlalchemy import func, select
 
-from atp.dashboard.benchmark.models import Benchmark, Run, RunStatus
+from atp.dashboard.benchmark.models import Benchmark, Run, RunStatus, TaskResult
 from atp.dashboard.models import SuiteDefinition
 from atp.dashboard.v2.dependencies import DBSession
 
@@ -261,6 +261,74 @@ async def ui_runs(
     )
 
 
+@router.get("/runs/{run_id}", response_class=HTMLResponse)
+async def ui_run_detail(
+    request: Request,
+    run_id: int,
+    session: DBSession,
+) -> HTMLResponse:
+    """Render run detail page or HTMX partial."""
+    stmt = (
+        select(Run, Benchmark.name.label("benchmark_name"), Benchmark.tasks_count)
+        .outerjoin(Benchmark, Run.benchmark_id == Benchmark.id)
+        .where(Run.id == run_id)
+    )
+    result = await session.execute(stmt)
+    row = result.one_or_none()
+
+    if row is None:
+        return _templates(request).TemplateResponse(
+            request=request,
+            name="ui/error.html",
+            context={
+                "error_title": "Not Found",
+                "error_message": f"Run #{run_id} not found.",
+            },
+            status_code=404,
+        )
+
+    run, benchmark_name, tasks_count = row
+
+    task_result = await session.execute(
+        select(TaskResult)
+        .where(TaskResult.run_id == run_id)
+        .order_by(TaskResult.task_index)
+    )
+    task_results = task_result.scalars().all()
+
+    context = {
+        "active_page": "runs",
+        "run": run,
+        "benchmark_name": benchmark_name or "Unknown",
+        "tasks_count": tasks_count or 0,
+        "task_results": task_results,
+        "now": datetime.now(),
+    }
+
+    # HTMX partial responses
+    is_htmx = request.headers.get("HX-Request") == "true"
+    if is_htmx:
+        target = request.headers.get("HX-Target", "")
+        if target == "run-header":
+            return _templates(request).TemplateResponse(
+                request=request,
+                name="ui/partials/run_header.html",
+                context=context,
+            )
+        if target == "run-tasks":
+            return _templates(request).TemplateResponse(
+                request=request,
+                name="ui/partials/run_tasks.html",
+                context=context,
+            )
+
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/run_detail.html",
+        context=context,
+    )
+
+
 @router.post("/runs/{run_id}/cancel", response_class=HTMLResponse)
 async def ui_cancel_run(
     request: Request,
@@ -274,6 +342,30 @@ async def ui_cancel_run(
     run.status = RunStatus.CANCELLED
     run.finished_at = datetime.now()
     await session.commit()
+
+    # If called from run detail page (hx-target is run-header),
+    # return the updated header partial
+    target = request.headers.get("HX-Target", "")
+    if target == "run-header":
+        stmt = select(Benchmark.name, Benchmark.tasks_count).where(
+            Benchmark.id == run.benchmark_id
+        )
+        result = await session.execute(stmt)
+        bm_row = result.one_or_none()
+        benchmark_name = bm_row[0] if bm_row else "Unknown"
+        tasks_count = bm_row[1] if bm_row else 0
+
+        return _templates(request).TemplateResponse(
+            request=request,
+            name="ui/partials/run_header.html",
+            context={
+                "run": run,
+                "benchmark_name": benchmark_name,
+                "tasks_count": tasks_count,
+                "now": datetime.now(),
+            },
+        )
+
     return HTMLResponse(f"<p style='color:green'>Run #{run_id} cancelled</p>")
 
 
