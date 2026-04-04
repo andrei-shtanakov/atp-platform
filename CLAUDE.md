@@ -82,16 +82,23 @@ uv run atp sync                    # Sync local YAML suites with remote server
 1. **Protocol** (`atp/protocol/`) - ATP Request/Response/Event models defining the contract
 2. **Adapters** (`atp/adapters/`) - Translate between ATP Protocol and agent types (HTTP, Container, CLI, LangGraph, CrewAI, AutoGen, MCP, Bedrock, Vertex, Azure OpenAI, SDK)
 3. **Runner** (`atp/runner/`) - Orchestrates test execution, manages sandboxes
-4. **Evaluators** (`atp/evaluators/`) - Assess agent results (artifact, behavior, LLM-judge, code-exec, security, factuality, filesystem, style, performance, composite, git-commit, guardrails)
+4. **Evaluators** (`atp/evaluators/`) - Assess agent results (artifact, behavior, LLM-judge, code-exec, security, factuality, filesystem, style, performance, composite, git-commit, guardrails, container)
 5. **Reporters** (`atp/reporters/`) - Format output (console, JSON, JUnit, HTML, game)
 6. **Benchmark API** (`atp/dashboard/benchmark/`) - REST API for pull-model benchmarks with leaderboard (`/api/v1/benchmarks`, `/api/v1/runs`)
 7. **Tournament API** (`atp/dashboard/tournament/`) - REST API for game-theoretic tournaments (`/api/v1/tournaments`)
-8. **SDK** (`packages/atp-sdk/`) - Python SDK v2.0.0 for benchmark participants (`AsyncATPClient` + sync `ATPClient` wrapper, `BenchmarkRun` async/sync iteration, `next_batch(n)`, sync methods `submit_sync()`/`status_sync()`/`cancel_sync()`/`leaderboard_sync()`/`next_batch_sync()`, exponential-backoff retry). PyPI package name: `atp-platform-sdk`
+8. **SDK** (`packages/atp-sdk/`) - Python SDK v2.0.0 for benchmark participants (`AsyncATPClient` + sync `ATPClient` wrapper, `BenchmarkRun` async/sync iteration, `next_batch(n)`, sync methods `submit_sync()`/`status_sync()`/`cancel_sync()`/`leaderboard_sync()`/`next_batch_sync()`/`emit_sync()`, `emit()` for event streaming, exponential-backoff retry). PyPI package name: `atp-platform-sdk`
 9. **Auth** (`atp/dashboard/auth/`) - Authentication system with GitHub OAuth (OIDC), Device Flow for CLI login, JWT tokens
 10. **RBAC** (`atp/dashboard/rbac/`) - Role-based access control with auto-admin for first user
 11. **Dashboard UI** (`atp/dashboard/v2/routes/ui.py`) - HTMX + Pico CSS frontend served at `/ui/` (login, benchmarks, games, runs + run detail `/ui/runs/{id}`, leaderboard, suites, analytics)
 12. **YAML Upload** (`POST /api/suite-definitions/upload`) - Upload YAML test suites to the server; used by `atp push`
 13. **Trend Analysis** (`atp/analytics/trend.py`) - Cross-run trend analysis detecting gradual success_rate drift via OLS slope
+14. **Rate Limiting** (`atp/dashboard/v2/rate_limit.py`) - Per-endpoint HTTP rate limiting via slowapi, keyed by JWT user_id or client IP, configurable via `ATP_RATE_LIMIT_*` env vars
+15. **Webhooks** (`atp/dashboard/webhook.py`) - Webhook delivery for benchmark run notifications with SSRF protection, retry with backoff; `webhook_url` field on Benchmark model
+16. **Event Streaming** (`POST /api/v1/runs/{id}/events`) - Append events to running benchmark runs; SDK `emit()`/`emit_sync()` methods; max 1000 events per run
+17. **Container Isolation** (`atp/evaluators/container.py`) - Docker/Podman container runtime for isolated code execution with resource limits (memory, CPU)
+18. **Auth State Store** (`atp/dashboard/auth/state_store.py`) - Unified transient auth state store (InMemory, protocol-based) replacing per-module session dicts; used by SSO, SAML, DeviceFlow
+19. **Post-Auth Pipeline** (`atp/dashboard/auth/post_auth.py`) - Shared `complete_auth()` pipeline for user provisioning, role assignment, and token issuance
+20. **Shared Result Models** (`atp/core/results.py`) - EvalCheck, EvalResult, TestResult etc. shared across evaluators, runner, reporters, and dashboard storage
 
 ### Data Flow
 
@@ -162,6 +169,12 @@ Key environment variables for the dashboard and SDK:
 - `ATP_GITHUB_CLIENT_SECRET` - GitHub OAuth App client secret (required for GitHub login)
 - `ATP_SECRET_KEY` - JWT signing secret for auth tokens
 - `ATP_DATABASE_URL` - Database connection string (default: SQLite)
+- `ATP_RATE_LIMIT_ENABLED` - Enable HTTP rate limiting (default: true)
+- `ATP_RATE_LIMIT_DEFAULT` - Default rate limit (default: "60/minute")
+- `ATP_RATE_LIMIT_AUTH` - Auth endpoint rate limit (default: "5/minute")
+- `ATP_RATE_LIMIT_API` - Benchmark API rate limit (default: "120/minute")
+- `ATP_RATE_LIMIT_UPLOAD` - Upload endpoint rate limit (default: "10/minute")
+- `ATP_RATE_LIMIT_STORAGE` - Rate limit storage URI (default: "memory://", supports "redis://host:port")
 
 ## Code Style
 

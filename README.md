@@ -106,6 +106,7 @@ tests:
 - **CompositeEvaluator** - Boolean logic (AND/OR/NOT) over nested assertions
 - **GitCommitEvaluator** - Git commit message and diff analysis
 - **GuardrailsEvaluator** - Custom guardrails enforcement
+- **ContainerEvaluator** - Isolated code execution via Docker/Podman with resource limits
 
 ✅ **Reporters** - Multiple output formats
 - **Console** - Colored terminal output with progress
@@ -146,9 +147,12 @@ tests:
 - **Tournament API** (`/api/v1/tournaments`) - Game-theoretic tournament management
 - **Auth** - GitHub OAuth (OIDC) + Device Flow for CLI login + JWT tokens
 - **RBAC** - Role-based access control with auto-admin for first user
-- **Python SDK v2.0.0** (`atp-platform-sdk` on PyPI) - `AsyncATPClient` + sync `ATPClient` wrapper, `BenchmarkRun` async/sync iteration with `submit_sync()`/`status_sync()`/`cancel_sync()`, `next_batch(n)` batch API, exponential-backoff retry, Device Flow auth
+- **Python SDK v2.0.0** (`atp-platform-sdk` on PyPI) - `AsyncATPClient` + sync `ATPClient` wrapper, `BenchmarkRun` async/sync iteration with `submit_sync()`/`status_sync()`/`cancel_sync()`/`emit_sync()`, `next_batch(n)` batch API, `emit()` event streaming, exponential-backoff retry, Device Flow auth
 - **Dashboard UI** - HTMX + Pico CSS frontend at `/ui/` (benchmarks, games, runs, leaderboard, suites, analytics)
 - **YAML Upload** (`POST /api/suite-definitions/upload`) - upload and validate test suites server-side
+- **Rate Limiting** - Per-endpoint HTTP rate limiting via slowapi (configurable via `ATP_RATE_LIMIT_*` env vars)
+- **Webhooks** - HTTP POST notifications on run completion/failure with SSRF protection and retry
+- **Event Streaming** (`POST /api/v1/runs/{id}/events`) - Append events to running benchmark runs (max 1000/run)
 
 ## Project Structure
 
@@ -161,7 +165,7 @@ atp-platform/
 │   ├── loader/               # YAML/JSON test parsing
 │   ├── runner/               # Test orchestration, sandbox
 │   ├── adapters/             # Agent adapters (HTTP, Docker, CLI, LangGraph, CrewAI, AutoGen, MCP, Bedrock, Vertex, Azure OpenAI, SDK/pull-model)
-│   ├── evaluators/           # Result evaluation (artifact, behavior, LLM, code, security, factuality, style, performance, git-commit, guardrails)
+│   ├── evaluators/           # Result evaluation (artifact, behavior, LLM, code, security, factuality, style, performance, git-commit, guardrails, container)
 │   ├── scoring/              # Score aggregation
 │   ├── statistics/           # Statistical analysis
 │   ├── baseline/             # Baseline management, regression detection

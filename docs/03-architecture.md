@@ -137,6 +137,15 @@ atp/
 - `atp experiment` — run experiments
 - `atp plugins` — manage plugins
 - `atp game` — game-theoretic evaluation
+- `atp catalog` — browse and run tests from the catalog
+- `atp compare` — multi-model comparison
+- `atp estimate` — cost estimation
+- `atp traces` — trace management
+- `atp replay` — replay agent traces
+- `atp trend` — cross-run trend analysis
+- `atp push` — upload YAML suites to remote server
+- `atp pull` — download suites from remote server
+- `atp sync` — sync local suites with remote server
 - `atp version` — version
 
 **Interface**:
@@ -911,6 +920,10 @@ atp-platform/
 │   │   ├── filesystem.py        # FilesystemEvaluator
 │   │   ├── performance.py       # PerformanceEvaluator
 │   │   ├── style.py             # StyleEvaluator
+│   │   ├── composite.py         # CompositeEvaluator (AND/OR/NOT logic)
+│   │   ├── git_commit.py        # GitCommitEvaluator
+│   │   ├── guardrails.py        # GuardrailsEvaluator
+│   │   ├── container.py         # Container runtime for isolated code execution (Docker/Podman)
 │   │   └── security/            # Security evaluator package
 │   │       ├── __init__.py
 │   │       ├── evaluator.py
@@ -980,13 +993,17 @@ atp-platform/
 │   │   ├── query_cache.py       # Query result caching
 │   │   ├── optimized_queries.py # Optimized SQL queries
 │   │   ├── auth/                # Authentication & SSO (JWT, OIDC, SAML)
+│   │   │   ├── state_store.py   # Unified transient auth state store (InMemory/protocol)
+│   │   │   └── post_auth.py     # Shared complete_auth() pipeline
 │   │   ├── rbac/                # Role-based access control
 │   │   ├── tenancy/             # Multi-tenant support (schema isolation, quotas)
+│   │   ├── webhook.py           # Webhook delivery with SSRF protection and retry
 │   │   └── v2/                  # Modular dashboard (FastAPI)
 │   │       ├── factory.py       # App factory with lifespan
-│   │       ├── config.py        # DashboardConfig
+│   │       ├── config.py        # DashboardConfig (incl. rate limit settings)
+│   │       ├── rate_limit.py    # HTTP rate limiting via slowapi
 │   │       ├── dependencies.py  # FastAPI dependency injection
-│   │       ├── routes/          # 28 route modules (agents, suites, analytics, etc.)
+│   │       ├── routes/          # Route modules (agents, suites, analytics, benchmark_api, etc.)
 │   │       ├── services/        # Business logic (agent, test, comparison, export)
 │   │       ├── websocket/       # Real-time updates (pub/sub, connection manager)
 │   │       ├── templates/       # Jinja2 HTML templates
@@ -1101,6 +1118,6 @@ The platform is decomposed into 4 packages within a monorepo using Python implic
 | **atp-core** | `packages/atp-core/` | protocol, core, loader, chaos, cost, scoring, statistics, streaming | pydantic, structlog, opentelemetry |
 | **atp-adapters** | `packages/atp-adapters/` | All agent adapters (HTTP, CLI, Container, cloud, MCP) | atp-core, httpx |
 | **atp-platform** | root `pyproject.toml` | runner, evaluators, reporters, cli, sdk, mock_tools, ... | atp-core, atp-adapters |
-| **atp-dashboard** | `packages/atp-dashboard/` | Web dashboard, analytics | atp-core, atp-platform, FastAPI, SQLAlchemy |
+| **atp-dashboard** | `packages/atp-dashboard/` | Web dashboard, analytics, rate limiting, webhooks | atp-core, FastAPI, SQLAlchemy, slowapi |
 
 All existing `from atp.X import Y` imports continue working unchanged via shared namespace and symlinks.
