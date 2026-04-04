@@ -14,9 +14,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from atp.dashboard.database import init_database
 from atp.dashboard.v2.config import DashboardConfig, get_config
+from atp.dashboard.v2.rate_limit import create_limiter, rate_limit_exceeded_handler
 from atp.dashboard.v2.routes import router as api_router
 
 # Template and static file directories
@@ -98,6 +101,12 @@ def create_app(
 
     # Store config in app state for access in lifespan and deps
     app.state.config = config
+
+    # Set up rate limiting
+    limiter = create_limiter(config)
+    app.state.limiter = limiter
+    app.add_middleware(SlowAPIMiddleware)
+    app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
     # Add CORS middleware
     app.add_middleware(

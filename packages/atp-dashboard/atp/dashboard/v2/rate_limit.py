@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
-from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 if TYPE_CHECKING:
@@ -55,17 +54,16 @@ def create_limiter(config: DashboardConfig) -> Limiter:
     return limiter
 
 
-async def rate_limit_exceeded_handler(
-    request: Request, exc: RateLimitExceeded
-) -> JSONResponse:
+async def rate_limit_exceeded_handler(request: Request, exc: Exception) -> JSONResponse:
     """Custom 429 response with JSON body and Retry-After header."""
     retry_after = getattr(exc, "retry_after", 60)
+    detail = getattr(exc, "detail", str(exc))
 
     response = JSONResponse(
         status_code=429,
         content={
             "error": "rate_limit_exceeded",
-            "detail": f"Rate limit exceeded: {exc.detail}",
+            "detail": f"Rate limit exceeded: {detail}",
             "retry_after": retry_after,
         },
     )
