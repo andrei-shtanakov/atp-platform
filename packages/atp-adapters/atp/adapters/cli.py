@@ -44,13 +44,6 @@ class CLIAdapterConfig(AdapterConfig):
     environment: dict[str, str] = Field(
         default_factory=dict, description="Environment variables"
     )
-    allow_shell: bool = Field(
-        default=False,
-        description=(
-            "Allow shell execution. WARNING: enables shell injection if command "
-            "comes from untrusted input."
-        ),
-    )
     # Security settings
     inherit_environment: bool = Field(
         default=False,
@@ -81,11 +74,6 @@ class CLIAdapter(AgentAdapter):
         """
         super().__init__(config)
         self._config: CLIAdapterConfig = config
-        if self._config.allow_shell:
-            logger.warning(
-                "CLIAdapter: allow_shell=True — commands run through shell. "
-                "Ensure command source is trusted."
-            )
 
     @property
     def adapter_type(self) -> str:
@@ -93,15 +81,11 @@ class CLIAdapter(AgentAdapter):
         return "cli"
 
     def _build_command(self, request: ATPRequest) -> list[str]:
-        """Build the command to execute."""
-        if self._config.allow_shell:
-            # For shell execution, join command and args
-            cmd_str = self._config.command
-            if self._config.args:
-                cmd_str += " " + " ".join(shlex.quote(arg) for arg in self._config.args)
-            return [cmd_str]
+        """Build the command to execute.
 
-        # Split command if it contains spaces and not using shell
+        Always uses exec mode (no shell). If you need shell features like
+        pipes or redirects, set command="sh" args=["-c", "your | pipeline"].
+        """
         cmd_parts = shlex.split(self._config.command)
         return cmd_parts + list(self._config.args)
 
@@ -149,24 +133,13 @@ class CLIAdapter(AgentAdapter):
         stdin_data: bytes = request_json.encode()
 
         try:
-            process = (
-                await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdin=asyncio.subprocess.PIPE,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    cwd=self._config.working_dir,
-                    env=self._get_env(),
-                )
-                if not self._config.allow_shell
-                else await asyncio.create_subprocess_shell(
-                    cmd[0],
-                    stdin=asyncio.subprocess.PIPE,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    cwd=self._config.working_dir,
-                    env=self._get_env(),
-                )
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=self._config.working_dir,
+                env=self._get_env(),
             )
         except FileNotFoundError as e:
             raise AdapterConnectionError(
@@ -253,24 +226,13 @@ class CLIAdapter(AgentAdapter):
         stdin_data: bytes = request_json.encode()
 
         try:
-            process = (
-                await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdin=asyncio.subprocess.PIPE,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    cwd=self._config.working_dir,
-                    env=self._get_env(),
-                )
-                if not self._config.allow_shell
-                else await asyncio.create_subprocess_shell(
-                    cmd[0],
-                    stdin=asyncio.subprocess.PIPE,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    cwd=self._config.working_dir,
-                    env=self._get_env(),
-                )
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=self._config.working_dir,
+                env=self._get_env(),
             )
         except FileNotFoundError as e:
             raise AdapterConnectionError(

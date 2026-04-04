@@ -42,16 +42,19 @@ class TestSSOInitRequest:
         """Test default values."""
         request = SSOInitRequest()
         assert request.tenant_id == "default"
-        assert request.return_url is None
 
     def test_custom_values(self) -> None:
         """Test custom values."""
-        request = SSOInitRequest(
-            tenant_id="custom-tenant",
-            return_url="https://example.com/dashboard",
-        )
+        request = SSOInitRequest(tenant_id="custom-tenant")
         assert request.tenant_id == "custom-tenant"
-        assert request.return_url == "https://example.com/dashboard"
+
+    def test_extra_fields_forbidden(self) -> None:
+        """Test that extra fields are rejected (extra='forbid')."""
+        with pytest.raises(Exception):
+            SSOInitRequest(
+                tenant_id="custom-tenant",
+                return_url="https://example.com/dashboard",
+            )
 
 
 class TestSSOInitResponse:

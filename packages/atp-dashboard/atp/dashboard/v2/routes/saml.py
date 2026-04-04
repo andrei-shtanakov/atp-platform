@@ -8,17 +8,11 @@ This module provides SAML SP endpoints for authentication:
 - SAML configuration management
 """
 
-from datetime import timedelta
-from typing import Any
-
 from fastapi import APIRouter, Form, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
-from atp.dashboard.auth import (
-    ACCESS_TOKEN_EXPIRE_MINUTES,
-    create_access_token,
-)
+from atp.dashboard.auth.post_auth import PostAuthError, complete_auth
 from atp.dashboard.auth.sso.saml import (
     SAMLAttributeMapping,
     SAMLConfig,
@@ -29,23 +23,17 @@ from atp.dashboard.auth.sso.saml import (
     SAMLNameIDFormat,
     SAMLProvider,
     SAMLProviderPresets,
-    SAMLUserProvisioningError,
     SAMLValidationError,
-    assign_saml_roles,
     parse_idp_metadata,
     parse_idp_metadata_url,
-    provision_saml_user,
 )
+from atp.dashboard.auth.state_store import get_auth_state_store
 from atp.dashboard.models import DEFAULT_TENANT_ID
 from atp.dashboard.schemas import Token
 from atp.dashboard.tenancy.models import Tenant, TenantSettings
 from atp.dashboard.v2.dependencies import AdminUser, DBSession
 
 router = APIRouter(prefix="/saml", tags=["saml"])
-
-# In-memory session store for SAML relay state
-# In production, use Redis or database-backed sessions
-_saml_sessions: dict[str, dict[str, Any]] = {}
 
 
 class SAMLInitRequest(BaseModel):
@@ -54,9 +42,6 @@ class SAMLInitRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     tenant_id: str = Field(default=DEFAULT_TENANT_ID, description="Tenant ID for SAML")
-    return_url: str | None = Field(
-        default=None, description="URL to redirect after successful login"
-    )
     force_authn: bool = Field(
         default=False, description="Force re-authentication at IdP"
     )
@@ -228,10 +213,12 @@ async def initiate_saml(
         relay_state = saml_manager.generate_relay_state()
 
         # Store session data for callback
-        _saml_sessions[relay_state] = {
-            "tenant_id": body.tenant_id,
-            "return_url": body.return_url,
-        }
+        store = get_auth_state_store()
+        await store.put(
+            f"saml:{relay_state}",
+            {"tenant_id": body.tenant_id},
+            ttl_seconds=600,
+        )
 
         # Get current request URL for building AuthnRequest
         request_url = str(request.url)
@@ -279,7 +266,8 @@ async def assertion_consumer_service(
         HTTPException: If assertion validation or user provisioning fails
     """
     # Validate relay state
-    session_data = _saml_sessions.pop(relay_state, None) if relay_state else None
+    store = get_auth_state_store()
+    session_data = await store.pop(f"saml:{relay_state}") if relay_state else None
 
     if session_data is None:
         raise HTTPException(
@@ -309,42 +297,21 @@ async def assertion_consumer_service(
             relay_state=relay_state,
         )
 
-        # Provision user (JIT)
-        user = await provision_saml_user(
+        # Provision user, assign roles, issue token
+        return await complete_auth(
             session=session,
-            user_info=user_info,
+            username=user_info.effective_username,
+            email=user_info.email,
+            role_names=roles,
             tenant_id=tenant_id,
         )
-
-        # Assign roles based on group mappings
-        await assign_saml_roles(
-            session=session,
-            user=user,
-            role_names=roles,
-        )
-
-        await session.commit()
-
-        # Create ATP access token
-        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        access_token = create_access_token(
-            data={"sub": user.username, "user_id": user.id},
-            expires_delta=access_token_expires,
-        )
-
-        return Token(access_token=access_token)
 
     except SAMLValidationError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"SAML assertion validation failed: {e}",
         )
-    except SAMLUserProvisioningError as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"User provisioning failed: {e}",
-        )
-    except SAMLError as e:
+    except (PostAuthError, SAMLError) as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"SAML error: {e}",

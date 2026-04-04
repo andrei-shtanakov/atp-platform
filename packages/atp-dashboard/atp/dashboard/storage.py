@@ -3,11 +3,17 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from atp.evaluators.base import EvalResult
+from atp.core.results import (
+    EvalResult,
+    SuiteReport,
+    SuiteResult,
+    TestReport,
+    TestResult,
+)
+from atp.core.results import (
+    RunResult as ATPRunResult,
+)
 from atp.protocol import ATPEvent, ATPResponse
-from atp.reporters.base import SuiteReport, TestReport
-from atp.runner.models import RunResult as ATPRunResult
-from atp.runner.models import SuiteResult, TestResult
 from atp.scoring.models import ScoredTestResult
 from atp.statistics.models import TestRunStatistics
 from sqlalchemy import select

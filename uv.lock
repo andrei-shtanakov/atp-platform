@@ -234,7 +234,7 @@ version = "1.0.0"
 source = { editable = "packages/atp-dashboard" }
 dependencies = [
     { name = "aiosqlite" },
-    { name = "atp-platform" },
+    { name = "atp-core" },
     { name = "bcrypt" },
     { name = "fastapi" },
     { name = "greenlet" },
@@ -267,7 +267,7 @@ postgres = [
 requires-dist = [
     { name = "aiosqlite", specifier = ">=0.22.1" },
     { name = "asyncpg", marker = "extra == 'postgres'", specifier = ">=0.31.0" },
-    { name = "atp-platform", editable = "." },
+    { name = "atp-core", editable = "packages/atp-core" },
     { name = "authlib", marker = "extra == 'enterprise'", specifier = ">=1.6.7" },
     { name = "bcrypt", specifier = ">=5.0.0" },
     { name = "fastapi", specifier = ">=0.128.0" },

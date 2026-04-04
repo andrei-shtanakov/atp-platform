@@ -73,3 +73,29 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
 - [ ] Rate limiting на уровне приложения
 - [ ] Выделить atp-protocol как отдельный лёгкий пакет (если вес atp-core станет проблемой для SDK)
 - [ ] Детализировать Tournament API (cancel, серверные таймауты раундов, пропуск дедлайнов)
+
+## Architecture Cleanup (P0 → P2)
+
+### P0 — Critical
+
+- [x] **AuthFlowStateStore**: единый `InMemoryAuthStateStore` для SSO/SAML (auth/state_store.py). `_sso_sessions` и `_saml_sessions` убраны
+- [x] **Починить SSO тесты**: синхронизированы с текущим SSOInitRequest API (extra="forbid")
+- [x] **allow_shell в CLIAdapter**: полностью удалён. Shell features доступны через `command="sh" args=["-c", "..."]`
+
+### P1 — Important
+
+- [x] **Общий post-auth service**: `complete_auth()` в auth/post_auth.py — provision user + assign roles + issue token. SSO, SAML, DeviceFlow routes используют его
+- [x] **Удалить `return_url` из SAML**: убрано из SAMLInitRequest и session storage
+- [x] **DeviceFlowStore API**: `lookup()` + `lookup_by_user_code()` + `DeviceFlowStatus` constants вместо строк
+
+### P2 — Improvement
+
+- [x] **Развязать atp-dashboard от atp-platform**: shared result models вынесены в `atp.core.results`, dashboard зависит от atp-core
+- [ ] **Объединить route-модели SSO/SAML**: убрать дублирование request/response моделей
+- [ ] **Почистить примеры и конфиги** от shell-режима и старых assumptions
+
+## Dashboard UI
+
+- [ ] **Chart.js в Analytics**: pie chart статусов, histogram scores, line chart по агентам (templates/ui/analytics.html)
+- [ ] **Fix UI routes test isolation**: `.value` баг в analytics/home templates, UNIQUE constraint collision
+- [ ] **Benchmark API scoring**: подключить evaluators вместо наивной оценки (100 if completed else 0)

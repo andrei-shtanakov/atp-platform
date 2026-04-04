@@ -73,6 +73,14 @@ def _generate_user_code() -> str:
     return "".join(secrets.choice(_USER_CODE_CHARS) for _ in range(8))
 
 
+class DeviceFlowStatus:
+    """Status constants for device flow entries."""
+
+    FOUND = "found"
+    EXPIRED = "expired"
+    MISSING = "missing"
+
+
 class DeviceFlowStore:
     """In-memory store for pending device flow authorizations."""
 
@@ -88,15 +96,7 @@ class DeviceFlowStore:
         device_code: str | None = None,
         user_code: str | None = None,
     ) -> DeviceCodeEntry:
-        """Create and store a new device code entry.
-
-        Args:
-            client_id: OAuth client ID.
-            expires_in: Seconds until expiry.
-            interval: Poll interval in seconds.
-            device_code: Use this code (e.g. from GitHub). Generated if None.
-            user_code: Use this code (e.g. from GitHub). Generated if None.
-        """
+        """Create and store a new device code entry."""
         device_code = device_code or secrets.token_urlsafe(32)
         user_code = user_code or _generate_user_code()
         entry = DeviceCodeEntry(
@@ -110,19 +110,26 @@ class DeviceFlowStore:
         self._by_user_code[user_code] = device_code
         return entry
 
-    def get_by_device_code(self, device_code: str) -> DeviceCodeEntry | None:
-        """Return the entry for a device code, or None if not found or expired."""
-        entry = self._entries.get(device_code)
-        if entry is None or entry.is_expired:
-            return None
-        return entry
+    def lookup(self, device_code: str) -> tuple[DeviceCodeEntry | None, str]:
+        """Look up entry by device code.
 
-    def get_by_user_code(self, user_code: str) -> DeviceCodeEntry | None:
-        """Return the entry for a user code, or None if not found or expired."""
+        Returns:
+            Tuple of (entry, status) where status is one of
+            DeviceFlowStatus.FOUND / EXPIRED / MISSING.
+        """
+        entry = self._entries.get(device_code)
+        if entry is None:
+            return None, DeviceFlowStatus.MISSING
+        if entry.is_expired:
+            return entry, DeviceFlowStatus.EXPIRED
+        return entry, DeviceFlowStatus.FOUND
+
+    def lookup_by_user_code(self, user_code: str) -> tuple[DeviceCodeEntry | None, str]:
+        """Look up entry by user code."""
         device_code = self._by_user_code.get(user_code)
         if device_code is None:
-            return None
-        return self.get_by_device_code(device_code)
+            return None, DeviceFlowStatus.MISSING
+        return self.lookup(device_code)
 
     def mark_authorized(self, device_code: str, github_access_token: str) -> None:
         """Store the GitHub access token for an authorized device code."""
@@ -141,15 +148,6 @@ class DeviceFlowStore:
         expired = [dc for dc, e in self._entries.items() if e.is_expired]
         for dc in expired:
             self.remove(dc)
-
-    def get_with_status(self, device_code: str) -> tuple[DeviceCodeEntry | None, str]:
-        """Return entry and status: 'found', 'expired', or 'missing'."""
-        entry = self._entries.get(device_code)
-        if entry is None:
-            return None, "missing"
-        if entry.is_expired:
-            return entry, "expired"
-        return entry, "found"
 
 
 class DeviceFlowManager:
@@ -215,11 +213,11 @@ class DeviceFlowManager:
         Raises DeviceCodeNotFoundError, DeviceCodeExpiredError, or
         DeviceCodePendingError depending on state.
         """
-        entry, status = self._store.get_with_status(device_code)
-        if status == "expired":
+        entry, flow_status = self._store.lookup(device_code)
+        if flow_status == DeviceFlowStatus.EXPIRED:
             self._store.remove(device_code)
             raise DeviceCodeExpiredError("Device code expired")
-        if status == "missing":
+        if flow_status == DeviceFlowStatus.MISSING:
             raise DeviceCodeNotFoundError("Device code not found")
 
         assert entry is not None  # status == "found" guarantees non-None

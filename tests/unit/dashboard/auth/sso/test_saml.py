@@ -1,7 +1,7 @@
 """Tests for SAML SSO module."""
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -19,9 +19,7 @@ from atp.dashboard.auth.sso.saml import (
     SAMLUserProvisioningError,
     SAMLValidationError,
     _prepare_request_from_url,
-    assign_saml_roles,
     parse_idp_metadata,
-    provision_saml_user,
 )
 
 
@@ -490,178 +488,5 @@ class TestExceptions:
         assert isinstance(error, SAMLError)
 
 
-class TestUserProvisioning:
-    """Tests for user provisioning functions."""
-
-    @pytest.mark.anyio
-    async def test_provision_saml_user_new(self) -> None:
-        """Test provisioning a new SAML user."""
-        mock_session = AsyncMock()
-
-        # Mock no existing user
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
-        mock_session.execute.return_value = mock_result
-        mock_session.add = MagicMock()
-        mock_session.flush = AsyncMock()
-
-        user_info = SAMLUserInfo(
-            name_id="user@example.com",
-            email="user@example.com",
-            username="testuser",
-        )
-
-        user = await provision_saml_user(
-            session=mock_session,
-            user_info=user_info,
-            tenant_id="default",
-        )
-
-        assert user.email == "user@example.com"
-        assert user.username == "testuser"
-        assert user.tenant_id == "default"
-        assert user.hashed_password == "SAML_USER_NO_LOCAL_PASSWORD"
-        mock_session.add.assert_called_once()
-        mock_session.flush.assert_called_once()
-
-    @pytest.mark.anyio
-    async def test_provision_saml_user_existing(self) -> None:
-        """Test provisioning an existing SAML user."""
-        mock_user = MagicMock()
-        mock_user.username = "olduser"
-        mock_user.email = "user@example.com"
-
-        mock_session = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = mock_user
-        mock_session.execute.return_value = mock_result
-        mock_session.flush = AsyncMock()
-
-        user_info = SAMLUserInfo(
-            name_id="user@example.com",
-            email="user@example.com",
-            username="newuser",
-        )
-
-        user = await provision_saml_user(
-            session=mock_session,
-            user_info=user_info,
-            tenant_id="default",
-        )
-
-        assert user == mock_user
-        # Username should be updated
-        assert mock_user.username == "newuser"
-
-    @pytest.mark.anyio
-    async def test_provision_saml_user_error(self) -> None:
-        """Test error handling in user provisioning."""
-        mock_session = AsyncMock()
-        mock_session.execute.side_effect = Exception("Database error")
-
-        user_info = SAMLUserInfo(
-            name_id="user@example.com",
-            email="user@example.com",
-        )
-
-        with pytest.raises(SAMLUserProvisioningError):
-            await provision_saml_user(
-                session=mock_session,
-                user_info=user_info,
-                tenant_id="default",
-            )
-
-
-class TestRoleAssignment:
-    """Tests for role assignment functions."""
-
-    @pytest.mark.anyio
-    async def test_assign_saml_roles(self) -> None:
-        """Test assigning roles to SAML user."""
-        mock_user = MagicMock()
-        mock_user.id = 1
-        mock_user.tenant_id = "default"
-
-        mock_role = MagicMock()
-        mock_role.id = 1
-
-        mock_session = AsyncMock()
-
-        # First query returns role, second returns no existing assignment
-        mock_role_result = MagicMock()
-        mock_role_result.scalar_one_or_none.return_value = mock_role
-
-        mock_check_result = MagicMock()
-        mock_check_result.scalar_one_or_none.return_value = None
-
-        mock_session.execute.side_effect = [mock_role_result, mock_check_result]
-        mock_session.add = MagicMock()
-        mock_session.flush = AsyncMock()
-
-        await assign_saml_roles(
-            session=mock_session,
-            user=mock_user,
-            role_names=["admin"],
-        )
-
-        mock_session.add.assert_called_once()
-        mock_session.flush.assert_called_once()
-
-    @pytest.mark.anyio
-    async def test_assign_saml_roles_already_assigned(self) -> None:
-        """Test skipping already assigned roles."""
-        mock_user = MagicMock()
-        mock_user.id = 1
-        mock_user.tenant_id = "default"
-
-        mock_role = MagicMock()
-        mock_role.id = 1
-
-        mock_existing = MagicMock()  # Existing assignment
-
-        mock_session = AsyncMock()
-
-        mock_role_result = MagicMock()
-        mock_role_result.scalar_one_or_none.return_value = mock_role
-
-        mock_check_result = MagicMock()
-        mock_check_result.scalar_one_or_none.return_value = mock_existing
-
-        mock_session.execute.side_effect = [mock_role_result, mock_check_result]
-        mock_session.add = MagicMock()
-        mock_session.flush = AsyncMock()
-
-        await assign_saml_roles(
-            session=mock_session,
-            user=mock_user,
-            role_names=["admin"],
-        )
-
-        # Should not add since already assigned
-        mock_session.add.assert_not_called()
-
-    @pytest.mark.anyio
-    async def test_assign_saml_roles_unknown_role(self) -> None:
-        """Test handling unknown roles."""
-        mock_user = MagicMock()
-        mock_user.id = 1
-        mock_user.tenant_id = "default"
-
-        mock_session = AsyncMock()
-
-        # Role not found
-        mock_role_result = MagicMock()
-        mock_role_result.scalar_one_or_none.return_value = None
-
-        mock_session.execute.return_value = mock_role_result
-        mock_session.add = MagicMock()
-        mock_session.flush = AsyncMock()
-
-        await assign_saml_roles(
-            session=mock_session,
-            user=mock_user,
-            role_names=["unknown_role"],
-        )
-
-        # Should not add since role not found
-        mock_session.add.assert_not_called()
+# NOTE: User provisioning and role assignment tests are in
+# tests/unit/dashboard/auth/test_post_auth.py (covers complete_auth pipeline)

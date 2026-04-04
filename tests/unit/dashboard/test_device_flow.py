@@ -10,6 +10,7 @@ from atp.dashboard.auth.device_flow import (
     DeviceCodeNotFoundError,
     DeviceCodePendingError,
     DeviceFlowManager,
+    DeviceFlowStatus,
     DeviceFlowStore,
 )
 
@@ -52,38 +53,47 @@ class TestDeviceFlowStore:
         assert entry.client_id == "test-client"
         assert entry.interval == 5
 
-    def test_get_by_device_code(self) -> None:
+    def test_lookup_by_device_code(self) -> None:
         store = DeviceFlowStore()
         entry = store.create(client_id="test", expires_in=900, interval=5)
-        found = store.get_by_device_code(entry.device_code)
+        found, s = store.lookup(entry.device_code)
+        assert s == DeviceFlowStatus.FOUND
         assert found is not None
         assert found.device_code == entry.device_code
 
-    def test_get_by_user_code(self) -> None:
+    def test_lookup_by_user_code(self) -> None:
         store = DeviceFlowStore()
         entry = store.create(client_id="test", expires_in=900, interval=5)
-        found = store.get_by_user_code(entry.user_code)
+        found, s = store.lookup_by_user_code(entry.user_code)
+        assert s == DeviceFlowStatus.FOUND
         assert found is not None
         assert found.user_code == entry.user_code
 
-    def test_get_expired_entry(self) -> None:
+    def test_lookup_expired_entry(self) -> None:
         store = DeviceFlowStore()
         entry = store.create(client_id="test", expires_in=0, interval=5)
-        found = store.get_by_device_code(entry.device_code)
+        found, s = store.lookup(entry.device_code)
+        assert s == DeviceFlowStatus.EXPIRED
+
+    def test_lookup_missing_entry(self) -> None:
+        store = DeviceFlowStore()
+        found, s = store.lookup("nonexistent")
+        assert s == DeviceFlowStatus.MISSING
         assert found is None
 
     def test_remove(self) -> None:
         store = DeviceFlowStore()
         entry = store.create(client_id="test", expires_in=900, interval=5)
         store.remove(entry.device_code)
-        found = store.get_by_device_code(entry.device_code)
-        assert found is None
+        found, s = store.lookup(entry.device_code)
+        assert s == DeviceFlowStatus.MISSING
 
     def test_mark_authorized(self) -> None:
         store = DeviceFlowStore()
         entry = store.create(client_id="test", expires_in=900, interval=5)
         store.mark_authorized(entry.device_code, github_access_token="gho_abc123")
-        found = store.get_by_device_code(entry.device_code)
+        found, s = store.lookup(entry.device_code)
+        assert s == DeviceFlowStatus.FOUND
         assert found is not None
         assert found.github_access_token == "gho_abc123"
 

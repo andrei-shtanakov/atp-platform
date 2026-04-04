@@ -62,7 +62,6 @@ class TestCLIAdapterConfig:
         assert config.command == "my-agent"
         assert config.timeout_seconds == 300.0
         assert config.args == []
-        assert config.allow_shell is False
 
     def test_full_config(self) -> None:
         """Test creating config with all fields."""
@@ -72,14 +71,12 @@ class TestCLIAdapterConfig:
             timeout_seconds=60.0,
             working_dir="/app",
             environment={"DEBUG": "true"},
-            allow_shell=True,
         )
         assert config.command == "python"
         assert config.args == ["agent.py", "--verbose"]
         assert config.timeout_seconds == 60.0
         assert config.working_dir == "/app"
         assert config.environment == {"DEBUG": "true"}
-        assert config.allow_shell is True
 
 
 class TestCLIAdapter:
@@ -110,21 +107,17 @@ class TestCLIAdapter:
 
         assert cmd == ["agent", "--config", "config.yaml"]
 
-    def test_build_command_shell_mode(self) -> None:
-        """Test building command in shell mode."""
+    def test_build_command_shell_via_sh(self) -> None:
+        """Test shell features via explicit sh -c wrapper."""
         config = CLIAdapterConfig(
-            command="echo hello",
-            args=["world"],
-            allow_shell=True,
+            command="sh",
+            args=["-c", "echo hello | agent"],
         )
         adapter = CLIAdapter(config)
         sample_request = ATPRequest(task_id="test", task=Task(description="Test"))
         cmd = adapter._build_command(sample_request)
 
-        # In shell mode, command and args are joined
-        assert len(cmd) == 1
-        assert "echo hello" in cmd[0]
-        assert "world" in cmd[0]
+        assert cmd == ["sh", "-c", "echo hello | agent"]
 
     @pytest.mark.anyio
     async def test_execute_success(
@@ -285,15 +278,15 @@ class TestCLIAdapter:
         assert captured_env.get("MY_VAR") == "my_value"
 
     @pytest.mark.anyio
-    async def test_execute_shell_mode(
+    async def test_execute_shell_via_sh(
         self,
         sample_request: ATPRequest,
         sample_response_data: dict,
     ) -> None:
-        """Test execute in shell mode."""
+        """Test shell features via explicit sh -c (uses exec, not shell)."""
         config = CLIAdapterConfig(
-            command="echo hello | agent",
-            allow_shell=True,
+            command="sh",
+            args=["-c", "echo hello | agent"],
         )
         adapter = CLIAdapter(config)
 
@@ -304,12 +297,12 @@ class TestCLIAdapter:
         )
 
         with patch(
-            "asyncio.create_subprocess_shell",
+            "asyncio.create_subprocess_exec",
             return_value=mock_process,
-        ) as mock_shell:
+        ) as mock_exec:
             await adapter.execute(sample_request)
 
-        mock_shell.assert_called_once()
+        mock_exec.assert_called_once()
 
     @pytest.mark.anyio
     async def test_health_check_command_exists(

@@ -5,15 +5,9 @@ Provides endpoints for CLI login via GitHub Device Flow:
 - POST /auth/device/poll — poll for authorization result
 """
 
-from datetime import timedelta
-
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
-from atp.dashboard.auth import (
-    ACCESS_TOKEN_EXPIRE_MINUTES,
-    create_access_token,
-)
 from atp.dashboard.auth.device_flow import (
     DeviceCodeExpiredError,
     DeviceCodeNotFoundError,
@@ -21,10 +15,7 @@ from atp.dashboard.auth.device_flow import (
     DeviceFlowError,
     DeviceFlowManager,
 )
-from atp.dashboard.auth.sso.oidc import (
-    SSOUserInfo,
-    provision_sso_user,
-)
+from atp.dashboard.auth.post_auth import PostAuthError, complete_auth
 from atp.dashboard.schemas import Token
 from atp.dashboard.v2.config import get_config
 from atp.dashboard.v2.dependencies import DBSession
@@ -39,13 +30,10 @@ def _get_manager() -> DeviceFlowManager:
     """Get or create the DeviceFlowManager singleton."""
     global _manager
     config = get_config()
-    if not config.github_client_id or not config.github_client_secret:
+    if not config.github_client_id:
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail=(
-                "GitHub OAuth is not configured. "
-                "Set ATP_GITHUB_CLIENT_ID and ATP_GITHUB_CLIENT_SECRET."
-            ),
+            detail=("GitHub OAuth is not configured. Set ATP_GITHUB_CLIENT_ID."),
         )
     if _manager is None:
         _manager = DeviceFlowManager(
@@ -113,7 +101,6 @@ async def poll_device_flow(body: DevicePollRequest, session: DBSession) -> Token
 
     email = github_user.get("email") or ""
     login = github_user.get("login") or ""
-    name = str(github_user.get("name") or login)
 
     if not email:
         raise HTTPException(
@@ -121,19 +108,14 @@ async def poll_device_flow(body: DevicePollRequest, session: DBSession) -> Token
             detail="GitHub account has no verified email",
         )
 
-    user_info = SSOUserInfo(
-        sub=f"github:{github_user.get('id', '')}",
-        email=str(email),
-        email_verified=True,
-        name=name,
-        preferred_username=str(login),
-    )
-
-    user = await provision_sso_user(session=session, user_info=user_info)
-    await session.commit()
-
-    access_token = create_access_token(
-        data={"sub": user.username, "user_id": user.id},
-        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
-    )
-    return Token(access_token=access_token)
+    try:
+        return await complete_auth(
+            session=session,
+            username=str(login),
+            email=str(email),
+        )
+    except PostAuthError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Authentication failed: {e}",
+        )

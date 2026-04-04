@@ -6,17 +6,13 @@ This module provides SSO endpoints for OIDC-based authentication:
 - SSO configuration management
 """
 
-from datetime import timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
-from atp.dashboard.auth import (
-    ACCESS_TOKEN_EXPIRE_MINUTES,
-    create_access_token,
-)
+from atp.dashboard.auth.post_auth import PostAuthError, complete_auth
 from atp.dashboard.auth.sso import (
     GroupRoleMapping,
     OIDCProvider,
@@ -28,20 +24,14 @@ from atp.dashboard.auth.sso.oidc import (
     ConfigurationError,
     SSOError,
     TokenValidationError,
-    UserProvisioningError,
-    assign_sso_roles,
-    provision_sso_user,
 )
+from atp.dashboard.auth.state_store import get_auth_state_store
 from atp.dashboard.models import DEFAULT_TENANT_ID
 from atp.dashboard.schemas import Token
 from atp.dashboard.tenancy.models import Tenant, TenantSettings
 from atp.dashboard.v2.dependencies import AdminUser, DBSession
 
 router = APIRouter(prefix="/sso", tags=["sso"])
-
-# In-memory session store for SSO state/nonce
-# In production, use Redis or database-backed sessions
-_sso_sessions: dict[str, dict[str, Any]] = {}
 
 
 class SSOInitRequest(BaseModel):
@@ -179,10 +169,12 @@ async def initiate_sso(
         nonce = sso_manager.generate_nonce()
 
         # Store in session for callback validation
-        _sso_sessions[state] = {
-            "tenant_id": request.tenant_id,
-            "nonce": nonce,
-        }
+        store = get_auth_state_store()
+        await store.put(
+            f"sso:{state}",
+            {"tenant_id": request.tenant_id, "nonce": nonce},
+            ttl_seconds=600,
+        )
 
         # Generate authorization URL
         auth_url = await sso_manager.get_authorization_url(
@@ -240,7 +232,8 @@ async def sso_callback(
         )
 
     # Validate state
-    session_data = _sso_sessions.pop(state, None)
+    store = get_auth_state_store()
+    session_data = await store.pop(f"sso:{state}")
     if session_data is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -263,7 +256,7 @@ async def sso_callback(
     sso_manager = SSOManager(sso_config)
 
     try:
-        # Complete authentication
+        # Complete authentication with IdP
         user_info, roles = await sso_manager.authenticate(
             code=code,
             state=state,
@@ -271,42 +264,21 @@ async def sso_callback(
             nonce=nonce,
         )
 
-        # Provision user (JIT)
-        user = await provision_sso_user(
+        # Provision user, assign roles, issue token
+        return await complete_auth(
             session=session,
-            user_info=user_info,
+            username=user_info.username,
+            email=user_info.email,
+            role_names=roles,
             tenant_id=tenant_id,
         )
-
-        # Assign roles based on group mappings
-        await assign_sso_roles(
-            session=session,
-            user=user,
-            role_names=roles,
-        )
-
-        await session.commit()
-
-        # Create ATP access token
-        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        access_token = create_access_token(
-            data={"sub": user.username, "user_id": user.id},
-            expires_delta=access_token_expires,
-        )
-
-        return Token(access_token=access_token)
 
     except TokenValidationError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Token validation failed: {e}",
         )
-    except UserProvisioningError as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"User provisioning failed: {e}",
-        )
-    except SSOError as e:
+    except (PostAuthError, SSOError) as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"SSO error: {e}",

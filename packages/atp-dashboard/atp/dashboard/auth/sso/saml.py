@@ -12,7 +12,6 @@ The implementation uses python3-saml library which is based on OneLogin's toolki
 """
 
 import secrets
-from datetime import datetime
 from enum import StrEnum
 from typing import Any
 from urllib.parse import urlparse
@@ -21,10 +20,6 @@ from onelogin.saml2.auth import OneLogin_Saml2_Auth
 from onelogin.saml2.idp_metadata_parser import OneLogin_Saml2_IdPMetadataParser
 from onelogin.saml2.settings import OneLogin_Saml2_Settings
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from atp.dashboard.models import User
 
 
 class SAMLProvider(StrEnum):
@@ -841,117 +836,6 @@ def parse_idp_metadata_url(metadata_url: str) -> dict[str, Any]:
         ) from e
 
 
-async def provision_saml_user(
-    session: AsyncSession,
-    user_info: SAMLUserInfo,
-    tenant_id: str = "default",
-) -> User:
-    """Provision or update a user from SAML.
-
-    Implements Just-In-Time (JIT) user provisioning:
-    - Creates new users if they don't exist
-    - Updates existing users with latest info from IdP
-
-    Args:
-        session: Database session
-        user_info: User information from SAML
-        tenant_id: Tenant ID for the user
-
-    Returns:
-        Created or updated User
-
-    Raises:
-        SAMLUserProvisioningError: If user provisioning fails
-    """
-    try:
-        # Check if user exists by email
-        stmt = select(User).where(
-            User.tenant_id == tenant_id,
-            User.email == user_info.email,
-        )
-        result = await session.execute(stmt)
-        user = result.scalar_one_or_none()
-
-        if user is None:
-            # Create new user
-            user = User(
-                tenant_id=tenant_id,
-                username=user_info.effective_username,
-                email=user_info.email,
-                # SAML users don't have a local password
-                hashed_password="SAML_USER_NO_LOCAL_PASSWORD",
-                is_active=True,
-                is_admin=False,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
-            )
-            session.add(user)
-            await session.flush()
-        else:
-            # Update existing user
-            user.updated_at = datetime.now()
-            # Optionally update username if changed
-            if user.username != user_info.effective_username:
-                user.username = user_info.effective_username
-
-        return user
-
-    except Exception as e:
-        raise SAMLUserProvisioningError(f"Failed to provision user: {e}") from e
-
-
-async def assign_saml_roles(
-    session: AsyncSession,
-    user: User,
-    role_names: list[str],
-    assigned_by_id: int | None = None,
-) -> None:
-    """Assign roles to a SAML user based on group mappings.
-
-    Args:
-        session: Database session
-        user: User to assign roles to
-        role_names: List of role names to assign
-        assigned_by_id: ID of user making the assignment (None for system)
-
-    Raises:
-        SAMLUserProvisioningError: If role assignment fails
-    """
-    from atp.dashboard.rbac.models import Role, UserRole
-
-    try:
-        for role_name in role_names:
-            # Find role by name
-            stmt = select(Role).where(
-                Role.tenant_id == user.tenant_id,
-                Role.name == role_name,
-                Role.is_active.is_(True),
-            )
-            result = await session.execute(stmt)
-            role = result.scalar_one_or_none()
-
-            if role is None:
-                continue  # Skip unknown roles
-
-            # Check if user already has this role
-            check_stmt = select(UserRole).where(
-                UserRole.user_id == user.id,
-                UserRole.role_id == role.id,
-            )
-            check_result = await session.execute(check_stmt)
-            existing = check_result.scalar_one_or_none()
-
-            if existing is None:
-                # Assign role
-                user_role = UserRole(
-                    user_id=user.id,
-                    role_id=role.id,
-                    assigned_at=datetime.now(),
-                    assigned_by_id=assigned_by_id,
-                )
-                session.add(user_role)
-
-        await session.flush()
-
-    except Exception as e:
-        raise SAMLUserProvisioningError(f"Failed to assign roles: {e}") from e
+# NOTE: User provisioning and role assignment are handled by
+# atp.dashboard.auth.post_auth.complete_auth() — the single pipeline
+# for all auth flows (SSO, SAML, Device Flow).
