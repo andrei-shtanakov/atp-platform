@@ -26,11 +26,12 @@ class TestPopulateWorkspace:
         (fixture / "data" / "config.json").write_text('{"version": "1.0"}')
         return fixture
 
-    def test_populate_workspace(
+    @pytest.mark.anyio
+    async def test_populate_workspace(
         self, manager: SandboxManager, fixture_dir: Path
     ) -> None:
         """Fixture files are copied into workspace."""
-        sandbox_id = manager.create()
+        sandbox_id = await manager.create()
         manager.populate_workspace(sandbox_id, fixture_dir)
 
         workspace = manager.get_workspace(sandbox_id)
@@ -39,7 +40,8 @@ class TestPopulateWorkspace:
         assert (workspace / "data" / "config.json").exists()
         assert "1.0" in (workspace / "data" / "config.json").read_text()
 
-    def test_populate_preserves_directory_structure(
+    @pytest.mark.anyio
+    async def test_populate_preserves_directory_structure(
         self, manager: SandboxManager, tmp_path: Path
     ) -> None:
         """Nested directory structure is preserved."""
@@ -49,25 +51,27 @@ class TestPopulateWorkspace:
         (fixture / "a" / "b").mkdir()
         (fixture / "a" / "b" / "deep.txt").write_text("deep")
 
-        sandbox_id = manager.create()
+        sandbox_id = await manager.create()
         manager.populate_workspace(sandbox_id, fixture)
 
         workspace = manager.get_workspace(sandbox_id)
         assert (workspace / "a" / "b" / "deep.txt").read_text() == "deep"
 
-    def test_populate_nonexistent_fixture(self, manager: SandboxManager) -> None:
+    @pytest.mark.anyio
+    async def test_populate_nonexistent_fixture(self, manager: SandboxManager) -> None:
         """Raises SandboxError for nonexistent fixture path."""
-        sandbox_id = manager.create()
+        sandbox_id = await manager.create()
         with pytest.raises(SandboxError, match="Fixture path not found"):
             manager.populate_workspace(sandbox_id, "/nonexistent/path")
 
-    def test_populate_file_not_dir(
+    @pytest.mark.anyio
+    async def test_populate_file_not_dir(
         self, manager: SandboxManager, tmp_path: Path
     ) -> None:
         """Raises SandboxError when fixture path is a file."""
         f = tmp_path / "not_a_dir.txt"
         f.write_text("hello")
-        sandbox_id = manager.create()
+        sandbox_id = await manager.create()
         with pytest.raises(SandboxError, match="not a directory"):
             manager.populate_workspace(sandbox_id, f)
 
@@ -78,11 +82,12 @@ class TestPopulateWorkspace:
         with pytest.raises(SandboxError, match="Sandbox not found"):
             manager.populate_workspace("unknown-id", fixture_dir)
 
-    def test_populate_does_not_destroy_existing_files(
+    @pytest.mark.anyio
+    async def test_populate_does_not_destroy_existing_files(
         self, manager: SandboxManager, fixture_dir: Path
     ) -> None:
         """Existing workspace files are preserved."""
-        sandbox_id = manager.create()
+        sandbox_id = await manager.create()
         workspace = manager.get_workspace(sandbox_id)
 
         # Pre-existing file
