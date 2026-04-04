@@ -1,5 +1,7 @@
 """Code execution evaluator for running tests and linters."""
 
+from __future__ import annotations
+
 import asyncio
 import platform
 import re
@@ -7,7 +9,10 @@ import resource
 import shlex
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from atp.evaluators.container import ContainerRuntime
 
 from atp.loader.models import Assertion, TestDefinition
 from atp.protocol import ATPEvent, ATPResponse
@@ -98,14 +103,23 @@ class CodeExecEvaluator(Evaluator):
     - working_dir: Working directory for command execution
     """
 
-    def __init__(self, sandbox_manager: Any | None = None) -> None:
+    def __init__(
+        self,
+        sandbox_manager: Any | None = None,
+        container_runtime: ContainerRuntime | None = None,
+        container_default_image: str = "python:3.12-slim",
+    ) -> None:
         """
         Initialize the evaluator.
 
         Args:
             sandbox_manager: Optional SandboxManager for isolated execution.
+            container_runtime: Optional container runtime for isolated execution.
+            container_default_image: Default container image to use.
         """
         self._sandbox_manager = sandbox_manager
+        self._container_runtime = container_runtime
+        self._container_default_image = container_default_image
 
     @property
     def name(self) -> str:
@@ -158,11 +172,14 @@ class CodeExecEvaluator(Evaluator):
         timeout: int = 300,
         env: dict[str, str] | None = None,
         sandboxed: bool = False,
+        container: bool = False,
+        image: str | None = None,
     ) -> CommandResult:
         """Execute a command asynchronously.
 
         Uses create_subprocess_exec (not shell) to prevent injection.
         When sandboxed=True, applies rlimits and minimal env.
+        When container=True and a runtime is configured, runs in a container.
 
         Args:
             command: Command to execute (string or list of args).
@@ -170,11 +187,23 @@ class CodeExecEvaluator(Evaluator):
             timeout: Timeout in seconds.
             env: Environment variables.
             sandboxed: If True, apply rlimits and minimal env.
+            container: If True, run inside a container (if runtime available).
+            image: Container image to use (defaults to container_default_image).
         """
         if isinstance(command, str):
             cmd_args = shlex.split(command)
         else:
-            cmd_args = command
+            cmd_args = list(command)
+
+        # Container execution path
+        if container and self._container_runtime is not None:
+            return await self._container_runtime.run(
+                image=image or self._container_default_image,
+                command=cmd_args,
+                workspace=Path(working_dir) if working_dir else None,
+                timeout=timeout,
+                env=env or {},
+            )
 
         cwd = Path(working_dir) if working_dir else None
         preexec_fn = _set_subprocess_limits if sandboxed else None
@@ -590,6 +619,9 @@ class CodeExecEvaluator(Evaluator):
         working_dir = config.get("working_dir")
         extra_args = config.get("args", "")
 
+        container = config.get("container", False)
+        image = config.get("image")
+
         # Build command as list to prevent shell injection
         cmd_args = ["pytest", path, "-v"]
         if extra_args:
@@ -600,6 +632,8 @@ class CodeExecEvaluator(Evaluator):
             working_dir=working_dir,
             timeout=timeout,
             sandboxed=True,
+            container=container,
+            image=image,
         )
 
         if result.timed_out:
@@ -651,6 +685,8 @@ class CodeExecEvaluator(Evaluator):
         threshold = config.get("threshold", 1.0)
         timeout = config.get("timeout", 300)
         working_dir = config.get("working_dir")
+        container = config.get("container", False)
+        image = config.get("image")
 
         # Build command as list to prevent shell injection
         cmd_args = shlex.split(command)
@@ -660,6 +696,8 @@ class CodeExecEvaluator(Evaluator):
             working_dir=working_dir,
             timeout=timeout,
             sandboxed=True,
+            container=container,
+            image=image,
         )
 
         if result.timed_out:
@@ -723,6 +761,8 @@ class CodeExecEvaluator(Evaluator):
         timeout = config.get("timeout", 300)
         working_dir = config.get("working_dir")
         expect_zero = config.get("expect_zero", True)
+        container = config.get("container", False)
+        image = config.get("image")
 
         # Split command to prevent shell injection
         cmd_args = shlex.split(command)
@@ -732,6 +772,8 @@ class CodeExecEvaluator(Evaluator):
             working_dir=working_dir,
             timeout=timeout,
             sandboxed=True,
+            container=container,
+            image=image,
         )
 
         if result.timed_out:
@@ -838,6 +880,8 @@ class CodeExecEvaluator(Evaluator):
         timeout = config.get("timeout", 300)
         working_dir = config.get("working_dir")
         extra_args = config.get("args", "")
+        container = config.get("container", False)
+        image = config.get("image")
 
         # Build command as list to prevent shell injection
         if linter == "ruff":
@@ -852,6 +896,8 @@ class CodeExecEvaluator(Evaluator):
             working_dir=working_dir,
             timeout=timeout,
             sandboxed=True,
+            container=container,
+            image=image,
         )
 
         if result.timed_out:
