@@ -85,10 +85,20 @@ class DeviceFlowStore:
         client_id: str,
         expires_in: int = DEFAULT_EXPIRES_IN,
         interval: int = DEFAULT_INTERVAL,
+        device_code: str | None = None,
+        user_code: str | None = None,
     ) -> DeviceCodeEntry:
-        """Create and store a new device code entry."""
-        device_code = secrets.token_urlsafe(32)
-        user_code = _generate_user_code()
+        """Create and store a new device code entry.
+
+        Args:
+            client_id: OAuth client ID.
+            expires_in: Seconds until expiry.
+            interval: Poll interval in seconds.
+            device_code: Use this code (e.g. from GitHub). Generated if None.
+            user_code: Use this code (e.g. from GitHub). Generated if None.
+        """
+        device_code = device_code or secrets.token_urlsafe(32)
+        user_code = user_code or _generate_user_code()
         entry = DeviceCodeEntry(
             device_code=device_code,
             user_code=user_code,
@@ -173,16 +183,14 @@ class DeviceFlowManager:
         expires_in = github_data.get("expires_in", DEFAULT_EXPIRES_IN)
         interval = github_data.get("interval", DEFAULT_INTERVAL)
 
-        # Store for poll tracking
-        entry = DeviceCodeEntry(
+        # Store for poll tracking (use public API, not private attrs)
+        self._store.create(
+            client_id=self._client_id,
+            expires_in=expires_in,
+            interval=interval,
             device_code=device_code,
             user_code=user_code,
-            client_id=self._client_id,
-            expires_at=time.monotonic() + expires_in,
-            interval=interval,
         )
-        self._store._entries[device_code] = entry
-        self._store._by_user_code[user_code] = device_code
 
         return {
             "device_code": device_code,
@@ -199,12 +207,14 @@ class DeviceFlowManager:
         Raises DeviceCodeNotFoundError, DeviceCodeExpiredError, or
         DeviceCodePendingError depending on state.
         """
-        entry = self._store._entries.get(device_code)
+        entry = self._store.get_by_device_code(device_code)
         if entry is None:
+            # Distinguish expired from not-found
+            raw = self._store._entries.get(device_code)
+            if raw is not None and raw.is_expired:
+                self._store.remove(device_code)
+                raise DeviceCodeExpiredError("Device code expired")
             raise DeviceCodeNotFoundError("Device code not found")
-        if entry.is_expired:
-            self._store.remove(device_code)
-            raise DeviceCodeExpiredError("Device code expired")
 
         if entry.is_authorized:
             user_info = await self._fetch_github_user(
