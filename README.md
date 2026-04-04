@@ -138,7 +138,7 @@ tests:
 ✅ **Web Dashboard**
 - FastAPI backend with HTMX + Pico CSS frontend at `/ui/`
 - Results storage (SQLite/PostgreSQL)
-- Working UI pages: Benchmarks (upload + create), Runs (status badges + cancel), Leaderboard (benchmark filter), Games (registry + tournaments), Suites (upload YAML), Analytics (stats + agent rankings)
+- Working UI pages: Benchmarks (upload + create), Runs (list + detail page with HTMX auto-refresh), Leaderboard (benchmark filter), Games (registry + tournaments), Suites (upload YAML), Analytics (stats + agent rankings)
 - GitHub OAuth login, Device Flow for CLI auth, JWT tokens, RBAC
 
 ✅ **Platform API & SDK**
@@ -146,7 +146,7 @@ tests:
 - **Tournament API** (`/api/v1/tournaments`) - Game-theoretic tournament management
 - **Auth** - GitHub OAuth (OIDC) + Device Flow for CLI login + JWT tokens
 - **RBAC** - Role-based access control with auto-admin for first user
-- **Python SDK v2.0.0** (`atp-platform-sdk` on PyPI) - `AsyncATPClient` + sync wrapper, `BenchmarkRun` async iterator, `next_batch(n)` batch API, exponential-backoff retry, Device Flow auth
+- **Python SDK v2.0.0** (`atp-platform-sdk` on PyPI) - `AsyncATPClient` + sync `ATPClient` wrapper, `BenchmarkRun` async/sync iteration with `submit_sync()`/`status_sync()`/`cancel_sync()`, `next_batch(n)` batch API, exponential-backoff retry, Device Flow auth
 - **Dashboard UI** - HTMX + Pico CSS frontend at `/ui/` (benchmarks, games, runs, leaderboard, suites, analytics)
 - **YAML Upload** (`POST /api/suite-definitions/upload`) - upload and validate test suites server-side
 
@@ -278,6 +278,7 @@ uv run atp compare              # Multi-model comparison
 uv run atp estimate             # Cost estimation
 uv run atp traces               # Trace management
 uv run atp replay               # Replay agent traces
+uv run atp trend                # Cross-run trend analysis (regression detection)
 
 # Suite sync (push/pull/sync YAML test suites to/from remote server)
 uv run atp push suite.yaml --server=https://atp.example.com  # Upload YAML to server

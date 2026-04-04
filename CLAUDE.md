@@ -66,6 +66,7 @@ uv run atp compare                 # Multi-model comparison
 uv run atp estimate                # Cost estimation
 uv run atp traces                  # Trace management
 uv run atp replay                  # Replay agent traces
+uv run atp trend                   # Cross-run trend analysis
 uv run atp version                 # Show version info
 
 # Suite sync commands (push/pull/sync YAML suites to/from remote server)
@@ -85,11 +86,12 @@ uv run atp sync                    # Sync local YAML suites with remote server
 5. **Reporters** (`atp/reporters/`) - Format output (console, JSON, JUnit, HTML, game)
 6. **Benchmark API** (`atp/dashboard/benchmark/`) - REST API for pull-model benchmarks with leaderboard (`/api/v1/benchmarks`, `/api/v1/runs`)
 7. **Tournament API** (`atp/dashboard/tournament/`) - REST API for game-theoretic tournaments (`/api/v1/tournaments`)
-8. **SDK** (`packages/atp-sdk/`) - Python SDK v2.0.0 for benchmark participants (`AsyncATPClient` + sync `ATPClient` wrapper, `BenchmarkRun` async iterator, `next_batch(n)`, exponential-backoff retry). PyPI package name: `atp-platform-sdk`
+8. **SDK** (`packages/atp-sdk/`) - Python SDK v2.0.0 for benchmark participants (`AsyncATPClient` + sync `ATPClient` wrapper, `BenchmarkRun` async/sync iteration, `next_batch(n)`, sync methods `submit_sync()`/`status_sync()`/`cancel_sync()`/`leaderboard_sync()`/`next_batch_sync()`, exponential-backoff retry). PyPI package name: `atp-platform-sdk`
 9. **Auth** (`atp/dashboard/auth/`) - Authentication system with GitHub OAuth (OIDC), Device Flow for CLI login, JWT tokens
 10. **RBAC** (`atp/dashboard/rbac/`) - Role-based access control with auto-admin for first user
-11. **Dashboard UI** (`atp/dashboard/v2/routes/ui.py`) - HTMX + Pico CSS frontend served at `/ui/` (login, benchmarks, games, runs, leaderboard, suites, analytics)
+11. **Dashboard UI** (`atp/dashboard/v2/routes/ui.py`) - HTMX + Pico CSS frontend served at `/ui/` (login, benchmarks, games, runs + run detail `/ui/runs/{id}`, leaderboard, suites, analytics)
 12. **YAML Upload** (`POST /api/suite-definitions/upload`) - Upload YAML test suites to the server; used by `atp push`
+13. **Trend Analysis** (`atp/analytics/trend.py`) - Cross-run trend analysis detecting gradual success_rate drift via OLS slope
 
 ### Data Flow
 
