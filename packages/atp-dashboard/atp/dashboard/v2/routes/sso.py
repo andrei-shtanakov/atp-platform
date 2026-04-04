@@ -50,9 +50,6 @@ class SSOInitRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     tenant_id: str = Field(default=DEFAULT_TENANT_ID, description="Tenant ID for SSO")
-    return_url: str | None = Field(
-        default=None, description="URL to redirect after successful login"
-    )
 
 
 class SSOInitResponse(BaseModel):
@@ -60,17 +57,6 @@ class SSOInitResponse(BaseModel):
 
     authorization_url: str = Field(..., description="URL to redirect to for SSO login")
     state: str = Field(..., description="State parameter for CSRF protection")
-
-
-class SSOCallbackParams(BaseModel):
-    """Parameters received in SSO callback."""
-
-    code: str = Field(..., description="Authorization code")
-    state: str = Field(..., description="State parameter")
-    error: str | None = Field(
-        default=None, description="Error code if authorization failed"
-    )
-    error_description: str | None = Field(default=None, description="Error description")
 
 
 class SSOConfigCreate(BaseModel):
@@ -196,7 +182,6 @@ async def initiate_sso(
         _sso_sessions[state] = {
             "tenant_id": request.tenant_id,
             "nonce": nonce,
-            "return_url": request.return_url,
         }
 
         # Generate authorization URL

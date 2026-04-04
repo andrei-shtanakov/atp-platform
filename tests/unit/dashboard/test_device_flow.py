@@ -100,9 +100,7 @@ class TestDeviceFlowManager:
 
     @pytest.mark.anyio
     async def test_initiate_creates_entry(self) -> None:
-        manager = DeviceFlowManager(
-            client_id="test-client", client_secret="test-secret"
-        )
+        manager = DeviceFlowManager(client_id="test-client")
         with _mock_github_initiate():
             result = await manager.initiate()
         assert "device_code" in result
@@ -113,9 +111,7 @@ class TestDeviceFlowManager:
 
     @pytest.mark.anyio
     async def test_poll_pending(self) -> None:
-        manager = DeviceFlowManager(
-            client_id="test-client", client_secret="test-secret"
-        )
+        manager = DeviceFlowManager(client_id="test-client")
         with _mock_github_initiate():
             result = await manager.initiate()
         with patch.object(
@@ -129,26 +125,20 @@ class TestDeviceFlowManager:
 
     @pytest.mark.anyio
     async def test_poll_expired(self) -> None:
-        manager = DeviceFlowManager(
-            client_id="test-client", client_secret="test-secret"
-        )
+        manager = DeviceFlowManager(client_id="test-client")
         entry = manager._store.create(client_id="test-client", expires_in=0, interval=5)
         with pytest.raises(DeviceCodeExpiredError):
             await manager.poll(entry.device_code)
 
     @pytest.mark.anyio
     async def test_poll_not_found(self) -> None:
-        manager = DeviceFlowManager(
-            client_id="test-client", client_secret="test-secret"
-        )
+        manager = DeviceFlowManager(client_id="test-client")
         with pytest.raises(DeviceCodeNotFoundError):
             await manager.poll("nonexistent-code")
 
     @pytest.mark.anyio
     async def test_poll_authorized(self) -> None:
-        manager = DeviceFlowManager(
-            client_id="test-client", client_secret="test-secret"
-        )
+        manager = DeviceFlowManager(client_id="test-client")
         with _mock_github_initiate():
             result = await manager.initiate()
         manager._store.mark_authorized(

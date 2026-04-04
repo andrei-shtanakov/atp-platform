@@ -50,7 +50,6 @@ def _get_manager() -> DeviceFlowManager:
     if _manager is None:
         _manager = DeviceFlowManager(
             client_id=config.github_client_id,
-            client_secret=config.github_client_secret,
         )
     return _manager
 

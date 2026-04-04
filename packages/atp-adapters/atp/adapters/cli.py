@@ -2,12 +2,11 @@
 
 import asyncio
 import json
+import logging
 import os
 import shlex
-import tempfile
 from collections.abc import AsyncIterator
 from datetime import datetime
-from pathlib import Path
 
 from atp.core.security import (
     filter_environment_variables,
@@ -29,6 +28,8 @@ from .exceptions import (
     AdapterTimeoutError,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class CLIAdapterConfig(AdapterConfig):
     """Configuration for CLI adapter."""
@@ -43,16 +44,12 @@ class CLIAdapterConfig(AdapterConfig):
     environment: dict[str, str] = Field(
         default_factory=dict, description="Environment variables"
     )
-    shell: bool = Field(default=False, description="Execute command through shell")
-    input_format: str = Field(
-        default="json", description="Input format: json, file, arg"
-    )
-    output_format: str = Field(default="json", description="Output format: json, file")
-    input_file: str | None = Field(
-        None, description="File path for input when input_format=file"
-    )
-    output_file: str | None = Field(
-        None, description="File path for output when output_format=file"
+    allow_shell: bool = Field(
+        default=False,
+        description=(
+            "Allow shell execution. WARNING: enables shell injection if command "
+            "comes from untrusted input."
+        ),
     )
     # Security settings
     inherit_environment: bool = Field(
@@ -70,13 +67,10 @@ class CLIAdapter(AgentAdapter):
     Adapter for command-line agent utilities.
 
     Runs agents as subprocesses with:
-    - ATP Request sent via stdin (JSON) or file
-    - ATP Response received via stdout (JSON) or file
+    - ATP Request sent via stdin (JSON)
+    - ATP Response received via stdout (JSON)
     - ATP Events received via stderr (JSONL)
     """
-
-    _temp_input_file: Path | None
-    _temp_output_file: Path | None
 
     def __init__(self, config: CLIAdapterConfig) -> None:
         """
@@ -87,8 +81,11 @@ class CLIAdapter(AgentAdapter):
         """
         super().__init__(config)
         self._config: CLIAdapterConfig = config
-        self._temp_input_file = None
-        self._temp_output_file = None
+        if self._config.allow_shell:
+            logger.warning(
+                "CLIAdapter: allow_shell=True — commands run through shell. "
+                "Ensure command source is trusted."
+            )
 
     @property
     def adapter_type(self) -> str:
@@ -97,7 +94,7 @@ class CLIAdapter(AgentAdapter):
 
     def _build_command(self, request: ATPRequest) -> list[str]:
         """Build the command to execute."""
-        if self._config.shell:
+        if self._config.allow_shell:
             # For shell execution, join command and args
             cmd_str = self._config.command
             if self._config.args:
@@ -132,57 +129,6 @@ class CLIAdapter(AgentAdapter):
         env.update(self._config.environment)
         return env
 
-    async def _write_input_file(self, request: ATPRequest) -> Path:
-        """Write request to input file securely.
-
-        Security: Uses secure temp file creation with restricted permissions.
-        """
-        if self._config.input_file:
-            input_path = Path(self._config.input_file)
-            self._owns_input_file = False
-        else:
-            # Create secure temporary file with restricted permissions
-            fd, temp_path = tempfile.mkstemp(
-                prefix="atp_request_",
-                suffix=".json",
-            )
-            input_path = Path(temp_path)
-            os.close(fd)
-            self._owns_input_file = True
-
-        # Write with restrictive permissions (owner read/write only)
-        input_path.write_text(request.model_dump_json())
-        try:
-            os.chmod(input_path, 0o600)
-        except OSError:
-            pass  # May fail on some systems, not critical
-
-        # Track for cleanup
-        self._temp_input_file = input_path
-        return input_path
-
-    async def _read_output_file(self) -> str:
-        """Read response from output file securely.
-
-        Security: Uses secure temp file if no explicit output file configured.
-        """
-        if self._config.output_file:
-            output_path = Path(self._config.output_file)
-        elif hasattr(self, "_temp_output_file") and self._temp_output_file:
-            output_path = self._temp_output_file
-        else:
-            raise AdapterResponseError(
-                "Output file not configured",
-                adapter_type=self.adapter_type,
-            )
-
-        if not output_path.exists():
-            raise AdapterResponseError(
-                "Output file not found",
-                adapter_type=self.adapter_type,
-            )
-        return output_path.read_text()
-
     async def execute(self, request: ATPRequest) -> ATPResponse:
         """
         Execute a task via CLI subprocess.
@@ -200,28 +146,22 @@ class CLIAdapter(AgentAdapter):
         """
         cmd = self._build_command(request)
         request_json = request.model_dump_json()
-
-        # Prepare input
-        stdin_data: bytes | None = None
-        if self._config.input_format == "json":
-            stdin_data = request_json.encode()
-        elif self._config.input_format == "file":
-            await self._write_input_file(request)
+        stdin_data: bytes = request_json.encode()
 
         try:
             process = (
                 await asyncio.create_subprocess_exec(
                     *cmd,
-                    stdin=asyncio.subprocess.PIPE if stdin_data else None,
+                    stdin=asyncio.subprocess.PIPE,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                     cwd=self._config.working_dir,
                     env=self._get_env(),
                 )
-                if not self._config.shell
+                if not self._config.allow_shell
                 else await asyncio.create_subprocess_shell(
                     cmd[0],
-                    stdin=asyncio.subprocess.PIPE if stdin_data else None,
+                    stdin=asyncio.subprocess.PIPE,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                     cwd=self._config.working_dir,
@@ -264,16 +204,12 @@ class CLIAdapter(AgentAdapter):
                 adapter_type=self.adapter_type,
             )
 
-        # Read response
-        if self._config.output_format == "file":
-            response_text = await self._read_output_file()
-        else:
-            if not stdout:
-                raise AdapterResponseError(
-                    "Command produced no output",
-                    adapter_type=self.adapter_type,
-                )
-            response_text = stdout.decode()
+        if not stdout:
+            raise AdapterResponseError(
+                "Command produced no output",
+                adapter_type=self.adapter_type,
+            )
+        response_text = stdout.decode()
 
         try:
             response_data = json.loads(response_text)
@@ -298,14 +234,14 @@ class CLIAdapter(AgentAdapter):
         Execute a task with event streaming from stderr.
 
         Events are read from stderr as JSONL (one JSON object per line).
-        Final response is read from stdout or file.
+        Final response is read from stdout.
 
         Args:
             request: ATP Request with task specification.
 
         Yields:
             ATPEvent objects from stderr.
-            Final ATPResponse from stdout/file.
+            Final ATPResponse from stdout.
 
         Raises:
             AdapterConnectionError: If command is not found.
@@ -314,28 +250,22 @@ class CLIAdapter(AgentAdapter):
         """
         cmd = self._build_command(request)
         request_json = request.model_dump_json()
-
-        # Prepare input
-        stdin_data: bytes | None = None
-        if self._config.input_format == "json":
-            stdin_data = request_json.encode()
-        elif self._config.input_format == "file":
-            await self._write_input_file(request)
+        stdin_data: bytes = request_json.encode()
 
         try:
             process = (
                 await asyncio.create_subprocess_exec(
                     *cmd,
-                    stdin=asyncio.subprocess.PIPE if stdin_data else None,
+                    stdin=asyncio.subprocess.PIPE,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                     cwd=self._config.working_dir,
                     env=self._get_env(),
                 )
-                if not self._config.shell
+                if not self._config.allow_shell
                 else await asyncio.create_subprocess_shell(
                     cmd[0],
-                    stdin=asyncio.subprocess.PIPE if stdin_data else None,
+                    stdin=asyncio.subprocess.PIPE,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                     cwd=self._config.working_dir,
@@ -355,8 +285,8 @@ class CLIAdapter(AgentAdapter):
                 cause=e,
             ) from e
 
-        # Write stdin if needed
-        if stdin_data and process.stdin:
+        # Write stdin
+        if process.stdin:
             process.stdin.write(stdin_data)
             await process.stdin.drain()
             process.stdin.close()
@@ -422,25 +352,21 @@ class CLIAdapter(AgentAdapter):
                 await process.wait()
                 raise
 
-        # Read final response
-        if self._config.output_format == "file":
-            await process.wait()
-            response_text = await self._read_output_file()
-        else:
-            if process.stdout:
-                stdout = await process.stdout.read()
-                if stdout:
-                    response_text = stdout.decode()
-                else:
-                    raise AdapterResponseError(
-                        "Command produced no output",
-                        adapter_type=self.adapter_type,
-                    )
+        # Read final response from stdout
+        if process.stdout:
+            stdout = await process.stdout.read()
+            if stdout:
+                response_text = stdout.decode()
             else:
                 raise AdapterResponseError(
-                    "No stdout available",
+                    "Command produced no output",
                     adapter_type=self.adapter_type,
                 )
+        else:
+            raise AdapterResponseError(
+                "No stdout available",
+                adapter_type=self.adapter_type,
+            )
 
         await process.wait()
         if process.returncode != 0:
@@ -472,24 +398,5 @@ class CLIAdapter(AgentAdapter):
         return shutil.which(cmd_name) is not None
 
     async def cleanup(self) -> None:
-        """Clean up temporary files created by this adapter.
-
-        Only deletes files the adapter itself created. User-provided
-        input_file/output_file paths are never deleted.
-        """
-        if hasattr(self, "_temp_input_file") and self._temp_input_file:
-            if getattr(self, "_owns_input_file", True):
-                try:
-                    if self._temp_input_file.exists():
-                        self._temp_input_file.unlink(missing_ok=True)
-                except OSError:
-                    pass
-            self._temp_input_file = None
-
-        if hasattr(self, "_temp_output_file") and self._temp_output_file:
-            try:
-                if self._temp_output_file.exists():
-                    self._temp_output_file.unlink(missing_ok=True)
-            except OSError:
-                pass
-            self._temp_output_file = None
+        """No-op: stdin/stdout adapter has no temp files to clean up."""
+        pass

@@ -142,6 +142,15 @@ class DeviceFlowStore:
         for dc in expired:
             self.remove(dc)
 
+    def get_with_status(self, device_code: str) -> tuple[DeviceCodeEntry | None, str]:
+        """Return entry and status: 'found', 'expired', or 'missing'."""
+        entry = self._entries.get(device_code)
+        if entry is None:
+            return None, "missing"
+        if entry.is_expired:
+            return entry, "expired"
+        return entry, "found"
+
 
 class DeviceFlowManager:
     """Manages GitHub Device Flow authorization.
@@ -151,9 +160,8 @@ class DeviceFlowManager:
     2. poll(device_code) — checks authorization status and returns user info
     """
 
-    def __init__(self, client_id: str, client_secret: str) -> None:
+    def __init__(self, client_id: str) -> None:
         self._client_id = client_id
-        self._client_secret = client_secret
         self._store = DeviceFlowStore()
 
     async def initiate(self) -> dict[str, str | int]:
@@ -207,15 +215,14 @@ class DeviceFlowManager:
         Raises DeviceCodeNotFoundError, DeviceCodeExpiredError, or
         DeviceCodePendingError depending on state.
         """
-        entry = self._store.get_by_device_code(device_code)
-        if entry is None:
-            # Distinguish expired from not-found
-            raw = self._store._entries.get(device_code)
-            if raw is not None and raw.is_expired:
-                self._store.remove(device_code)
-                raise DeviceCodeExpiredError("Device code expired")
+        entry, status = self._store.get_with_status(device_code)
+        if status == "expired":
+            self._store.remove(device_code)
+            raise DeviceCodeExpiredError("Device code expired")
+        if status == "missing":
             raise DeviceCodeNotFoundError("Device code not found")
 
+        assert entry is not None  # status == "found" guarantees non-None
         if entry.is_authorized:
             user_info = await self._fetch_github_user(
                 entry.github_access_token  # type: ignore[arg-type]

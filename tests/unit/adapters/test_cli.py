@@ -1,7 +1,6 @@
 """Unit tests for CLIAdapter."""
 
 import json
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -63,9 +62,7 @@ class TestCLIAdapterConfig:
         assert config.command == "my-agent"
         assert config.timeout_seconds == 300.0
         assert config.args == []
-        assert config.shell is False
-        assert config.input_format == "json"
-        assert config.output_format == "json"
+        assert config.allow_shell is False
 
     def test_full_config(self) -> None:
         """Test creating config with all fields."""
@@ -75,22 +72,14 @@ class TestCLIAdapterConfig:
             timeout_seconds=60.0,
             working_dir="/app",
             environment={"DEBUG": "true"},
-            shell=True,
-            input_format="file",
-            output_format="file",
-            input_file="/tmp/input.json",
-            output_file="/tmp/output.json",
+            allow_shell=True,
         )
         assert config.command == "python"
         assert config.args == ["agent.py", "--verbose"]
         assert config.timeout_seconds == 60.0
         assert config.working_dir == "/app"
         assert config.environment == {"DEBUG": "true"}
-        assert config.shell is True
-        assert config.input_format == "file"
-        assert config.output_format == "file"
-        assert config.input_file == "/tmp/input.json"
-        assert config.output_file == "/tmp/output.json"
+        assert config.allow_shell is True
 
 
 class TestCLIAdapter:
@@ -126,7 +115,7 @@ class TestCLIAdapter:
         config = CLIAdapterConfig(
             command="echo hello",
             args=["world"],
-            shell=True,
+            allow_shell=True,
         )
         adapter = CLIAdapter(config)
         sample_request = ATPRequest(task_id="test", task=Task(description="Test"))
@@ -261,61 +250,6 @@ class TestCLIAdapter:
         mock_process.kill.assert_called_once()
 
     @pytest.mark.anyio
-    async def test_execute_with_file_input(
-        self,
-        sample_request: ATPRequest,
-        sample_response_data: dict,
-        tmp_path: Path,
-    ) -> None:
-        """Test execute with file-based input."""
-        input_file = tmp_path / "input.json"
-        config = CLIAdapterConfig(
-            command="agent",
-            input_format="file",
-            input_file=str(input_file),
-        )
-        adapter = CLIAdapter(config)
-
-        mock_process = MagicMock()
-        mock_process.returncode = 0
-        mock_process.communicate = AsyncMock(
-            return_value=(json.dumps(sample_response_data).encode(), b"")
-        )
-
-        with patch("asyncio.create_subprocess_exec", return_value=mock_process):
-            response = await adapter.execute(sample_request)
-
-        assert input_file.exists()
-        assert response.status == ResponseStatus.COMPLETED
-
-    @pytest.mark.anyio
-    async def test_execute_with_file_output(
-        self,
-        sample_request: ATPRequest,
-        sample_response_data: dict,
-        tmp_path: Path,
-    ) -> None:
-        """Test execute with file-based output."""
-        output_file = tmp_path / "output.json"
-        output_file.write_text(json.dumps(sample_response_data))
-
-        config = CLIAdapterConfig(
-            command="agent",
-            output_format="file",
-            output_file=str(output_file),
-        )
-        adapter = CLIAdapter(config)
-
-        mock_process = MagicMock()
-        mock_process.returncode = 0
-        mock_process.communicate = AsyncMock(return_value=(b"", b""))
-
-        with patch("asyncio.create_subprocess_exec", return_value=mock_process):
-            response = await adapter.execute(sample_request)
-
-        assert response.status == ResponseStatus.COMPLETED
-
-    @pytest.mark.anyio
     async def test_execute_with_environment(
         self,
         sample_request: ATPRequest,
@@ -359,7 +293,7 @@ class TestCLIAdapter:
         """Test execute in shell mode."""
         config = CLIAdapterConfig(
             command="echo hello | agent",
-            shell=True,
+            allow_shell=True,
         )
         adapter = CLIAdapter(config)
 
@@ -404,29 +338,13 @@ class TestCLIAdapter:
         assert result is False
 
     @pytest.mark.anyio
-    async def test_cleanup_removes_temp_files(
-        self,
-        tmp_path: Path,
-    ) -> None:
-        """Test cleanup removes temporary files."""
-        input_file = tmp_path / "input.json"
-        output_file = tmp_path / "output.json"
-        input_file.touch()
-        output_file.touch()
-
-        config = CLIAdapterConfig(
-            command="agent",
-            input_format="file",
-            output_format="file",
-            input_file=str(input_file),
-            output_file=str(output_file),
-        )
+    async def test_cleanup_is_noop(self) -> None:
+        """Test cleanup is a no-op (stdin/stdout mode has no temp files)."""
+        config = CLIAdapterConfig(command="agent")
         adapter = CLIAdapter(config)
-
+        # Should not raise
         await adapter.cleanup()
-
-        assert not input_file.exists()
-        assert not output_file.exists()
+        await adapter.cleanup()
 
     @pytest.mark.anyio
     async def test_context_manager(
