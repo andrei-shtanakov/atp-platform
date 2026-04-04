@@ -126,7 +126,6 @@ select = ["E", "F", "I", "UP"]
 [tool.ruff.lint.per-file-ignores]
 # HTML/JS template strings have longer lines for readability
 "atp/reporters/html_reporter.py" = ["E501"]
-"atp/dashboard/app.py" = ["E501"]
 # Alembic auto-generated migrations have long index creation lines
 "migrations/*/versions/*.py" = ["E501"]
 
