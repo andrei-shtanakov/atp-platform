@@ -28,6 +28,7 @@ from atp.cli.commands.push import push_command
 from atp.cli.commands.quickstart import quickstart_command
 from atp.cli.commands.sync_cmd import sync_command
 from atp.cli.commands.traces import replay_command, traces_command
+from atp.cli.commands.trend import trend_command
 from atp.loader import TestLoader
 
 logger = logging.getLogger(__name__)
@@ -1939,6 +1940,7 @@ cli.add_command(replay_command)
 cli.add_command(push_command)
 cli.add_command(pull_command)
 cli.add_command(sync_command)
+cli.add_command(trend_command)
 
 
 def _is_game_suite(suite_file: Path) -> bool:
