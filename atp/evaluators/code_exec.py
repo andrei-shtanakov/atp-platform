@@ -599,6 +599,7 @@ class CodeExecEvaluator(Evaluator):
             cmd_args,
             working_dir=working_dir,
             timeout=timeout,
+            sandboxed=True,
         )
 
         if result.timed_out:
@@ -658,6 +659,7 @@ class CodeExecEvaluator(Evaluator):
             cmd_args,
             working_dir=working_dir,
             timeout=timeout,
+            sandboxed=True,
         )
 
         if result.timed_out:
@@ -729,6 +731,7 @@ class CodeExecEvaluator(Evaluator):
             cmd_args,
             working_dir=working_dir,
             timeout=timeout,
+            sandboxed=True,
         )
 
         if result.timed_out:
@@ -848,6 +851,7 @@ class CodeExecEvaluator(Evaluator):
             cmd_args,
             working_dir=working_dir,
             timeout=timeout,
+            sandboxed=True,
         )
 
         if result.timed_out:
