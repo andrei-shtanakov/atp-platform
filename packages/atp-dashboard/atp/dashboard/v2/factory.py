@@ -11,7 +11,7 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -129,14 +129,11 @@ def create_app(
                 name="static_v2",
             )
 
-        # Add HTML routes for template rendering
-        @app.get("/", response_class=HTMLResponse)
-        async def home(request: Request) -> HTMLResponse:
-            """Render the home page template."""
-            return templates.TemplateResponse(
-                request=request,
-                name="home.html",
-            )
+        # Redirect root to the new UI
+        @app.get("/")
+        async def home() -> RedirectResponse:
+            """Redirect root to /ui/ dashboard."""
+            return RedirectResponse(url="/ui/", status_code=302)
 
         @app.get("/test-results", response_class=HTMLResponse)
         @app.get(
