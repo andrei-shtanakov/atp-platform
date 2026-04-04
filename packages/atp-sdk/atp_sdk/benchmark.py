@@ -226,6 +226,27 @@ class BenchmarkRun:
         resp.raise_for_status()
         return resp.json()
 
+    async def emit(self, events: list[dict[str, Any]]) -> dict[str, Any]:
+        """Send events to the server during run execution.
+
+        Events are appended to the run's event log. Maximum 1000
+        events per run.
+
+        Args:
+            events: List of event dicts with event_type, data,
+                timestamp.
+
+        Returns:
+            Dict with accepted count and total events.
+        """
+        resp = await self._client._request(
+            "POST",
+            f"/api/v1/runs/{self.run_id}/events",
+            json={"events": events},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     # ------------------------------------------------------------------
     # Sync wrappers (require _sync_loop from ATPClient.start_run)
     # ------------------------------------------------------------------
@@ -250,6 +271,10 @@ class BenchmarkRun:
     def leaderboard_sync(self) -> list[dict[str, Any]]:
         """Sync version of :meth:`leaderboard`."""
         return self._run_sync(self.leaderboard())
+
+    def emit_sync(self, events: list[dict[str, Any]]) -> dict[str, Any]:
+        """Sync version of :meth:`emit`."""
+        return self._run_sync(self.emit(events))
 
     def next_batch_sync(self, n: int) -> list[dict[str, Any]]:
         """Sync version of :meth:`next_batch`."""
