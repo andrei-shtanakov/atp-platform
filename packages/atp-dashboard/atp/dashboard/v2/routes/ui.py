@@ -626,7 +626,7 @@ async def ui_analytics(request: Request, session: DBSession) -> HTMLResponse:
         .order_by(func.count(Run.id).desc())
     )
     runs_by_status = [
-        {"status": row.status.value, "count": row.count} for row in result.all()
+        {"status": str(row.status), "count": row.count} for row in result.all()
     ]
 
     result = await session.execute(

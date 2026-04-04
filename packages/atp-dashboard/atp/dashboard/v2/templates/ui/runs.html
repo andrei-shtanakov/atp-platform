@@ -35,7 +35,7 @@
             </td>
             <td>{{ run.agent_name or "—" }}</td>
             <td>
-                {% set s = run.status.value %}
+                {% set s = run.status %}
                 {% if s == "COMPLETED" %}
                 <mark style="background:var(--pico-color-green-550,#2d9e5f);color:#fff;padding:2px 8px;border-radius:4px;">{{ s }}</mark>
                 {% elif s == "IN_PROGRESS" %}
@@ -73,14 +73,14 @@
                     {% else %}
                         {{ "%.0f"|format(duration) }}s
                     {% endif %}
-                {% elif run.status.value == "IN_PROGRESS" %}
+                {% elif run.status == "IN_PROGRESS" %}
                     running...
                 {% else %}
                     —
                 {% endif %}
             </td>
             <td>
-                {% if run.status.value == "IN_PROGRESS" %}
+                {% if run.status == "IN_PROGRESS" %}
                 <button
                     hx-post="/ui/runs/{{ run.id }}/cancel"
                     hx-target="closest tr"

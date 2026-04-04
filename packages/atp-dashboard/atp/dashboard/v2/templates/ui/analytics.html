@@ -35,31 +35,41 @@
 </div>
 
 <h3>Runs by Status</h3>
-{% if runs_by_status %}
-<table>
-    <thead>
-        <tr>
-            <th>Status</th>
-            <th>Count</th>
-            <th>Percentage</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for row in runs_by_status %}
-        <tr>
-            <td>{{ row.status }}</td>
-            <td>{{ row.count }}</td>
-            <td>{% if total_runs > 0 %}{{ "%.0f"|format(row.count / total_runs * 100) }}%{% else %}—{% endif %}</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-{% else %}
-<p>No runs yet.</p>
-{% endif %}
+<div class="grid" style="grid-template-columns: 1fr 1fr; gap: 1rem;">
+    <div>
+        {% if runs_by_status %}
+        <canvas id="statusChart" style="max-height:280px;"></canvas>
+        {% else %}
+        <p>No runs yet.</p>
+        {% endif %}
+    </div>
+    <div>
+        {% if runs_by_status %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Status</th>
+                    <th>Count</th>
+                    <th>%</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in runs_by_status %}
+                <tr>
+                    <td>{{ row.status }}</td>
+                    <td>{{ row.count }}</td>
+                    <td>{% if total_runs > 0 %}{{ "%.0f"|format(row.count / total_runs * 100) }}%{% else %}—{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </div>
+</div>
 
 <h3>Top Agents</h3>
 {% if top_agents %}
+<canvas id="agentsChart" style="max-height:300px;margin-bottom:1rem;"></canvas>
 <table>
     <thead>
         <tr>
@@ -90,7 +100,7 @@
     <div class="activity-item">
         <span>
             Run #{{ run.id }}
-            {% if run.status.value == "COMPLETED" %}completed{% elif run.status.value == "IN_PROGRESS" %}started{% else %}{{ run.status.value }}{% endif %}
+            {% if run.status == "COMPLETED" %}completed{% elif run.status == "IN_PROGRESS" %}started{% else %}{{ run.status }}{% endif %}
             — {{ run.agent_name or "unnamed" }}
         </span>
         <span class="time">
@@ -101,4 +111,77 @@
 {% else %}
 <p>No activity yet.</p>
 {% endif %}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+{% if runs_by_status %}
+(function() {
+    const statusColors = {
+        'COMPLETED': '#2d9e5f',
+        'IN_PROGRESS': '#1b6bb0',
+        'FAILED': '#c0392b',
+        'CANCELLED': '#6c757d',
+        'PENDING': '#f39c12',
+        'PARTIAL': '#8e44ad'
+    };
+    const labels = {{ runs_by_status | map(attribute='status') | list | tojson }};
+    const data = {{ runs_by_status | map(attribute='count') | list | tojson }};
+    const colors = labels.map(s => statusColors[s] || '#aaa');
+
+    new Chart(document.getElementById('statusChart'), {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: colors,
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'bottom' }
+            }
+        }
+    });
+})();
+{% endif %}
+
+{% if top_agents %}
+(function() {
+    const agents = {{ top_agents | map(attribute='agent_name') | list | tojson }};
+    const avgScores = {{ top_agents | map(attribute='avg_score') | list | tojson }};
+    const bestScores = {{ top_agents | map(attribute='best_score') | list | tojson }};
+
+    new Chart(document.getElementById('agentsChart'), {
+        type: 'bar',
+        data: {
+            labels: agents.map(a => a || 'unnamed'),
+            datasets: [
+                {
+                    label: 'Avg Score',
+                    data: avgScores,
+                    backgroundColor: 'rgba(27,107,176,0.7)'
+                },
+                {
+                    label: 'Best Score',
+                    data: bestScores,
+                    backgroundColor: 'rgba(45,158,95,0.7)'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: { beginAtZero: true, max: 100 }
+            },
+            plugins: {
+                legend: { position: 'bottom' }
+            }
+        }
+    });
+})();
+{% endif %}
+</script>
 {% endblock %}

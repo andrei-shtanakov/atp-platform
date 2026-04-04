@@ -5,6 +5,7 @@ from collections.abc import AsyncGenerator
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from atp.dashboard.database import init_database
 from atp.dashboard.v2.factory import create_test_app
 
 
@@ -16,7 +17,9 @@ def app():
 
 @pytest.fixture
 async def client(app) -> AsyncGenerator[AsyncClient, None]:
-    """Create async test client."""
+    """Create async test client with initialized database."""
+    # Manually init DB since ASGITransport doesn't trigger lifespan
+    await init_database(url="sqlite+aiosqlite:///:memory:")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c

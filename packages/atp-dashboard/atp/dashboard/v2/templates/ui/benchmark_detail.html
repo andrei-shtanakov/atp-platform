@@ -68,7 +68,7 @@
         <tr>
             <td>#{{ run.id }}</td>
             <td>{{ run.agent_name or "—" }}</td>
-            <td>{{ run.status.value }}</td>
+            <td>{{ run.status }}</td>
             <td>{% if run.total_score is not none %}{{ "%.1f"|format(run.total_score) }}{% else %}—{% endif %}</td>
             <td>{% if run.started_at %}{{ run.started_at.strftime("%Y-%m-%d %H:%M") }}{% else %}—{% endif %}</td>
         </tr>
