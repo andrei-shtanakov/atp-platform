@@ -138,3 +138,30 @@ class TestRateLimitIntegration:
         assert "Retry-After" in resp.headers
         body = resp.json()
         assert body["error"] == "rate_limit_exceeded"
+
+
+class TestRateLimitWithApp:
+    """Test rate limiting with the real app factory."""
+
+    def test_app_has_limiter_in_state(self) -> None:
+        """App factory sets up limiter in app.state."""
+        from atp.dashboard.v2.factory import create_test_app
+
+        app = create_test_app()
+        assert hasattr(app.state, "limiter")
+        assert app.state.limiter is not None
+
+    def test_rate_limit_disabled(self) -> None:
+        """Rate limiting can be disabled via config."""
+        from atp.dashboard.v2.factory import create_app
+
+        config = DashboardConfig(
+            debug=True,
+            rate_limit_enabled=False,
+        )
+        app = create_app(config=config)
+        client = TestClient(app)
+        # Should never get 429 even with many requests
+        for _ in range(20):
+            resp = client.get("/ui/login")
+            assert resp.status_code != 429
