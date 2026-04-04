@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -322,3 +323,124 @@ def test_sync_iter_without_loop_collects_all() -> None:
 
     result = list(run)
     assert result == tasks
+
+
+# ---------------------------------------------------------------------------
+# Sync wrapper methods (_sync_loop required)
+# ---------------------------------------------------------------------------
+
+
+def _make_run_with_sync_loop(
+    client: MagicMock,
+    run_id: int = 1,
+    benchmark_id: int = 10,
+    batch_size: int = 1,
+) -> tuple[BenchmarkRun, asyncio.AbstractEventLoop, threading.Thread]:
+    """Create a BenchmarkRun with a background loop (simulating ATPClient)."""
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    thread.start()
+
+    run = BenchmarkRun(
+        client=client,
+        run_id=run_id,
+        benchmark_id=benchmark_id,
+        batch_size=batch_size,
+    )
+    run._sync_loop = loop  # type: ignore[attr-defined]
+    return run, loop, thread
+
+
+def _stop_loop(loop: asyncio.AbstractEventLoop, thread: threading.Thread) -> None:
+    loop.call_soon_threadsafe(loop.stop)
+    thread.join(timeout=2.0)
+
+
+def test_submit_sync() -> None:
+    """submit_sync dispatches to background loop and returns score."""
+    score_data: dict[str, Any] = {"score": 0.95, "task_id": 1}
+    client = MagicMock()
+    client._request = AsyncMock(return_value=_task_response(score_data))
+
+    run, loop, thread = _make_run_with_sync_loop(client)
+    try:
+        result = run.submit_sync({"answer": "x=1"}, task_index=0)
+        assert result == score_data
+    finally:
+        _stop_loop(loop, thread)
+
+
+def test_status_sync() -> None:
+    """status_sync returns run status dict."""
+    status_data = {"status": "in_progress", "current_task_index": 3}
+    client = MagicMock()
+    client._request = AsyncMock(return_value=_task_response(status_data))
+
+    run, loop, thread = _make_run_with_sync_loop(client)
+    try:
+        result = run.status_sync()
+        assert result == status_data
+    finally:
+        _stop_loop(loop, thread)
+
+
+def test_cancel_sync() -> None:
+    """cancel_sync posts to cancel endpoint."""
+    client = MagicMock()
+    client._request = AsyncMock(return_value=_no_content())
+
+    run, loop, thread = _make_run_with_sync_loop(client)
+    try:
+        run.cancel_sync()
+        client._request.assert_called_once()
+    finally:
+        _stop_loop(loop, thread)
+
+
+def test_leaderboard_sync() -> None:
+    """leaderboard_sync returns leaderboard list."""
+    lb_data = [{"user_id": 1, "best_score": 0.99}]
+    client = MagicMock()
+    client._request = AsyncMock(return_value=_tasks_response(lb_data))
+
+    run, loop, thread = _make_run_with_sync_loop(client, benchmark_id=10)
+    try:
+        result = run.leaderboard_sync()
+        assert result == lb_data
+    finally:
+        _stop_loop(loop, thread)
+
+
+def test_next_batch_sync() -> None:
+    """next_batch_sync returns list of tasks."""
+    tasks = [{"id": 1}, {"id": 2}]
+    client = MagicMock()
+    client._request = AsyncMock(return_value=_tasks_response(tasks))
+
+    run, loop, thread = _make_run_with_sync_loop(client, batch_size=2)
+    try:
+        result = run.next_batch_sync(2)
+        assert result == tasks
+    finally:
+        _stop_loop(loop, thread)
+
+
+def test_sync_methods_raise_without_sync_loop() -> None:
+    """Sync methods raise RuntimeError when no _sync_loop is set."""
+    client = MagicMock()
+    run = _make_run(client)
+
+    with pytest.raises(RuntimeError, match="Sync methods require"):
+        run.submit_sync({"answer": "42"}, task_index=0)
+
+    with pytest.raises(RuntimeError, match="Sync methods require"):
+        run.status_sync()
+
+    with pytest.raises(RuntimeError, match="Sync methods require"):
+        run.cancel_sync()
+
+    with pytest.raises(RuntimeError, match="Sync methods require"):
+        run.leaderboard_sync()
+
+    with pytest.raises(RuntimeError, match="Sync methods require"):
+        run.next_batch_sync(1)

@@ -25,6 +25,7 @@ def evaluator() -> LLMJudgeEvaluator:
 def evaluator_with_config() -> LLMJudgeEvaluator:
     """Create LLMJudgeEvaluator instance with custom config."""
     config = LLMJudgeConfig(
+        provider="anthropic",
         api_key="test-api-key",
         model="claude-sonnet-4-20250514",
         temperature=0.0,
@@ -105,7 +106,7 @@ class TestLLMJudgeConfig:
         """Test default configuration values."""
         config = LLMJudgeConfig()
         assert config.api_key is None
-        assert config.model == "claude-sonnet-4-20250514"
+        assert config.model is None
         assert config.temperature == 0.0
         assert config.max_tokens == 1024
         assert config.num_runs == 1
@@ -646,7 +647,7 @@ class TestEvaluateWithAveraging:
         response_with_file_artifact: ATPResponse,
     ) -> None:
         """Test averaging across multiple runs."""
-        config = LLMJudgeConfig(api_key="test", num_runs=3)
+        config = LLMJudgeConfig(provider="anthropic", api_key="test", num_runs=3)
         evaluator = LLMJudgeEvaluator(config)
 
         scores = [0.7, 0.8, 0.9]
@@ -687,7 +688,7 @@ class TestEvaluateWithAveraging:
         response_with_file_artifact: ATPResponse,
     ) -> None:
         """Test averaging handles some failed runs."""
-        config = LLMJudgeConfig(api_key="test", num_runs=3)
+        config = LLMJudgeConfig(provider="anthropic", api_key="test", num_runs=3)
         evaluator = LLMJudgeEvaluator(config)
 
         call_count = [0]  # Use list to allow mutation in async closure
@@ -751,7 +752,7 @@ class TestErrorHandling:
         response_with_file_artifact: ATPResponse,
     ) -> None:
         """Test retry behavior on rate limit errors."""
-        config = LLMJudgeConfig(api_key="test", timeout=1.0)
+        config = LLMJudgeConfig(provider="anthropic", api_key="test", timeout=1.0)
         evaluator = LLMJudgeEvaluator(config)
 
         call_count = 0
@@ -783,7 +784,8 @@ class TestErrorHandling:
 
     def test_missing_anthropic_package(self) -> None:
         """Test error when anthropic package is missing."""
-        evaluator = LLMJudgeEvaluator()
+        config = LLMJudgeConfig(provider="anthropic")
+        evaluator = LLMJudgeEvaluator(config)
         evaluator._client = None  # Reset client
 
         with patch.dict("sys.modules", {"anthropic": None}):

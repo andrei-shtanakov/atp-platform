@@ -142,6 +142,33 @@ class BenchmarkRun:
 
         return iter(asyncio.run(_collect_all()))
 
+    # ------------------------------------------------------------------
+    # Internal helper for sync dispatch
+    # ------------------------------------------------------------------
+
+    def _run_sync(self, coro: Any) -> Any:
+        """Dispatch *coro* to the background loop set by ATPClient.
+
+        Raises:
+            RuntimeError: If no ``_sync_loop`` is attached (i.e. the run
+                was created via ``AsyncATPClient``, not ``ATPClient``).
+        """
+        sync_loop = getattr(self, "_sync_loop", None)
+        if sync_loop is None or not sync_loop.is_running():
+            # Close the coroutine to avoid "was never awaited" warning
+            coro.close()
+            raise RuntimeError(
+                "Sync methods require a BenchmarkRun obtained from "
+                "ATPClient.start_run(). Use the async methods with "
+                "AsyncATPClient instead."
+            )
+        future = asyncio.run_coroutine_threadsafe(coro, sync_loop)
+        return future.result()
+
+    # ------------------------------------------------------------------
+    # Async API
+    # ------------------------------------------------------------------
+
     async def submit(
         self,
         response: dict[str, Any],
@@ -198,3 +225,32 @@ class BenchmarkRun:
         )
         resp.raise_for_status()
         return resp.json()
+
+    # ------------------------------------------------------------------
+    # Sync wrappers (require _sync_loop from ATPClient.start_run)
+    # ------------------------------------------------------------------
+
+    def submit_sync(
+        self,
+        response: dict[str, Any],
+        task_index: int,
+        events: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Sync version of :meth:`submit`."""
+        return self._run_sync(self.submit(response, task_index, events))
+
+    def status_sync(self) -> dict[str, Any]:
+        """Sync version of :meth:`status`."""
+        return self._run_sync(self.status())
+
+    def cancel_sync(self) -> None:
+        """Sync version of :meth:`cancel`."""
+        self._run_sync(self.cancel())
+
+    def leaderboard_sync(self) -> list[dict[str, Any]]:
+        """Sync version of :meth:`leaderboard`."""
+        return self._run_sync(self.leaderboard())
+
+    def next_batch_sync(self, n: int) -> list[dict[str, Any]]:
+        """Sync version of :meth:`next_batch`."""
+        return self._run_sync(self.next_batch(n))
