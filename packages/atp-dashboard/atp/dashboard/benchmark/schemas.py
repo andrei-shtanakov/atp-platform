@@ -15,6 +15,7 @@ class BenchmarkCreate(BaseModel):
     version: str = Field(default="1.0")
     family_tag: str | None = Field(default=None)
     parent_id: int | None = Field(default=None)
+    webhook_url: str | None = Field(default=None)
 
 
 class BenchmarkResponse(BaseModel):

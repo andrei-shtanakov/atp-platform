@@ -32,6 +32,11 @@ from atp.dashboard.benchmark.schemas import (
 )
 from atp.dashboard.v2.dependencies import DBSession
 from atp.dashboard.v2.rate_limit import limiter
+from atp.dashboard.webhook import (
+    build_webhook_payload,
+    schedule_webhook,
+    validate_webhook_url,
+)
 
 router = APIRouter(prefix="/v1", tags=["benchmarks"])
 
@@ -120,6 +125,15 @@ async def create_benchmark(
     suite = TestSuite.model_validate(data.suite)
     tasks_count = len(suite.tests)
 
+    if data.webhook_url:
+        try:
+            validate_webhook_url(data.webhook_url)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid webhook URL: {e}",
+            )
+
     bm = Benchmark(
         name=data.name,
         description=data.description,
@@ -129,6 +143,7 @@ async def create_benchmark(
         version=data.version,
         family_tag=data.family_tag,
         parent_id=data.parent_id,
+        webhook_url=data.webhook_url,
     )
     session.add(bm)
     await session.flush()
@@ -328,6 +343,16 @@ async def submit_result(
         run.status = RunStatus.COMPLETED
         run.finished_at = datetime.now()
         await session.flush()
+
+        # Trigger webhook if configured
+        if bm.webhook_url:
+            payload = build_webhook_payload(
+                "run.completed",
+                bm,
+                run,
+                tasks_total=bm.tasks_count,
+            )
+            schedule_webhook(bm.webhook_url, payload)
 
     return {
         "task_index": tr.task_index,
