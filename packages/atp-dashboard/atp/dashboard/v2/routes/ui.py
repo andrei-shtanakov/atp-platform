@@ -38,6 +38,15 @@ async def ui_login(request: Request) -> HTMLResponse:
     )
 
 
+@router.get("/register", response_class=HTMLResponse)
+async def ui_register(request: Request) -> HTMLResponse:
+    """Render registration page."""
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/register.html",
+    )
+
+
 @router.get("/", response_class=HTMLResponse)
 async def ui_home(request: Request, session: DBSession) -> HTMLResponse:
     """Render home page with summary stats."""

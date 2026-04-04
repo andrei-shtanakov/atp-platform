@@ -9,9 +9,9 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -135,105 +135,22 @@ def create_app(
             """Redirect root to /ui/ dashboard."""
             return RedirectResponse(url="/ui/", status_code=302)
 
-        @app.get("/test-results", response_class=HTMLResponse)
-        @app.get(
-            "/test-results/{execution_id}",
-            response_class=HTMLResponse,
-        )
-        async def test_results(
-            request: Request,
-            execution_id: str | None = None,
-        ) -> HTMLResponse:
-            """Render the test results page template."""
-            return templates.TemplateResponse(
-                request=request,
-                name="test_results.html",
-                context={"execution_id": execution_id},
-            )
+        # Legacy v1 routes — redirect to new /ui/ equivalents
+        @app.get("/login")
+        async def legacy_login() -> RedirectResponse:
+            return RedirectResponse(url="/ui/login", status_code=302)
 
-        @app.get("/games", response_class=HTMLResponse)
-        async def games(request: Request) -> HTMLResponse:
-            """Render the game results page template."""
-            return templates.TemplateResponse(
-                request=request,
-                name="games.html",
-            )
+        @app.get("/register")
+        async def legacy_register() -> RedirectResponse:
+            return RedirectResponse(url="/ui/register", status_code=302)
 
-        @app.get("/comparison", response_class=HTMLResponse)
-        async def comparison(
-            request: Request,
-        ) -> HTMLResponse:
-            """Render the comparison page template."""
-            return templates.TemplateResponse(
-                request=request,
-                name="comparison.html",
-            )
+        @app.get("/games")
+        async def legacy_games() -> RedirectResponse:
+            return RedirectResponse(url="/ui/games", status_code=302)
 
-        @app.get("/costs", response_class=HTMLResponse)
-        async def costs(
-            request: Request,
-        ) -> HTMLResponse:
-            """Render the cost analytics page template."""
-            return templates.TemplateResponse(
-                request=request,
-                name="costs.html",
-            )
-
-        @app.get("/analytics", response_class=HTMLResponse)
-        async def analytics(
-            request: Request,
-        ) -> HTMLResponse:
-            """Render the advanced analytics page."""
-            return templates.TemplateResponse(
-                request=request,
-                name="analytics.html",
-            )
-
-        @app.get("/login", response_class=HTMLResponse)
-        async def login(request: Request) -> HTMLResponse:
-            """Render the login page."""
-            return templates.TemplateResponse(
-                request=request,
-                name="login.html",
-            )
-
-        @app.get("/register", response_class=HTMLResponse)
-        async def register(request: Request) -> HTMLResponse:
-            """Render the registration page."""
-            return templates.TemplateResponse(
-                request=request,
-                name="register.html",
-            )
-
-        @app.get("/catalog", response_class=HTMLResponse)
-        @app.get("/catalog/", response_class=HTMLResponse)
-        async def catalog(
-            request: Request,
-        ) -> HTMLResponse:
-            """Render the catalog browser page."""
-            return templates.TemplateResponse(
-                request=request,
-                name="catalog.html",
-            )
-
-        @app.get(
-            "/catalog/{category_slug}/{suite_slug}",
-            response_class=HTMLResponse,
-        )
-        async def catalog_suite(
-            request: Request,
-            category_slug: str,
-            suite_slug: str,
-        ) -> HTMLResponse:
-            """Render the catalog suite detail page."""
-            return templates.TemplateResponse(
-                request=request,
-                name="catalog_suite.html",
-                context={
-                    "category_slug": category_slug,
-                    "suite_slug": suite_slug,
-                },
-            )
+        @app.get("/analytics")
+        async def legacy_analytics() -> RedirectResponse:
+            return RedirectResponse(url="/ui/analytics", status_code=302)
 
     return app
 
