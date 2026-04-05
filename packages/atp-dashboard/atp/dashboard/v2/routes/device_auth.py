@@ -37,9 +37,7 @@ def _get_manager() -> DeviceFlowManager:
             detail=("GitHub OAuth is not configured. Set ATP_GITHUB_CLIENT_ID."),
         )
     if _manager is None:
-        _manager = DeviceFlowManager(
-            client_id=config.github_client_id,
-        )
+        _manager = DeviceFlowManager(client_id=config.github_client_id)
     return _manager
 
 

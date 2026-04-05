@@ -6,13 +6,11 @@ import httpx
 import pytest
 
 from atp.dashboard.auth.device_flow import (
-    DeviceCodeExpiredError,
     DeviceCodeNotFoundError,
     DeviceCodePendingError,
     DeviceFlowManager,
-    DeviceFlowStatus,
-    DeviceFlowStore,
 )
+from atp.dashboard.auth.state_store import InMemoryAuthStateStore
 
 # Mock GitHub device/code response
 MOCK_GITHUB_DEVICE_RESPONSE = {
@@ -41,76 +39,21 @@ def _mock_github_initiate():
     )
 
 
-class TestDeviceFlowStore:
-    """Tests for in-memory device flow store."""
-
-    def test_create_device_code(self) -> None:
-        store = DeviceFlowStore()
-        entry = store.create(client_id="test-client", expires_in=900, interval=5)
-        assert entry.device_code is not None
-        assert entry.user_code is not None
-        assert len(entry.user_code) == 8
-        assert entry.client_id == "test-client"
-        assert entry.interval == 5
-
-    def test_lookup_by_device_code(self) -> None:
-        store = DeviceFlowStore()
-        entry = store.create(client_id="test", expires_in=900, interval=5)
-        found, s = store.lookup(entry.device_code)
-        assert s == DeviceFlowStatus.FOUND
-        assert found is not None
-        assert found.device_code == entry.device_code
-
-    def test_lookup_by_user_code(self) -> None:
-        store = DeviceFlowStore()
-        entry = store.create(client_id="test", expires_in=900, interval=5)
-        found, s = store.lookup_by_user_code(entry.user_code)
-        assert s == DeviceFlowStatus.FOUND
-        assert found is not None
-        assert found.user_code == entry.user_code
-
-    def test_lookup_expired_entry(self) -> None:
-        store = DeviceFlowStore()
-        entry = store.create(client_id="test", expires_in=0, interval=5)
-        found, s = store.lookup(entry.device_code)
-        assert s == DeviceFlowStatus.EXPIRED
-
-    def test_lookup_missing_entry(self) -> None:
-        store = DeviceFlowStore()
-        found, s = store.lookup("nonexistent")
-        assert s == DeviceFlowStatus.MISSING
-        assert found is None
-
-    def test_remove(self) -> None:
-        store = DeviceFlowStore()
-        entry = store.create(client_id="test", expires_in=900, interval=5)
-        store.remove(entry.device_code)
-        found, s = store.lookup(entry.device_code)
-        assert s == DeviceFlowStatus.MISSING
-
-    def test_mark_authorized(self) -> None:
-        store = DeviceFlowStore()
-        entry = store.create(client_id="test", expires_in=900, interval=5)
-        store.mark_authorized(entry.device_code, github_access_token="gho_abc123")
-        found, s = store.lookup(entry.device_code)
-        assert s == DeviceFlowStatus.FOUND
-        assert found is not None
-        assert found.github_access_token == "gho_abc123"
-
-    def test_cleanup_expired(self) -> None:
-        store = DeviceFlowStore()
-        store.create(client_id="test", expires_in=0, interval=5)
-        store.create(client_id="test2", expires_in=900, interval=5)
-        store.cleanup_expired()
-        assert len(store._entries) == 1
-
-
 class TestDeviceFlowManager:
-    """Tests for Device Flow manager."""
+    """Tests for Device Flow manager using AuthStateStore."""
+
+    @pytest.fixture
+    def store(self) -> InMemoryAuthStateStore:
+        return InMemoryAuthStateStore()
+
+    @pytest.fixture
+    def manager(self, store: InMemoryAuthStateStore) -> DeviceFlowManager:
+        return DeviceFlowManager(client_id="test-client", store=store)
 
     @pytest.mark.anyio
-    async def test_initiate_creates_entry(self) -> None:
-        manager = DeviceFlowManager(client_id="test-client")
+    async def test_initiate_creates_entry(
+        self, manager: DeviceFlowManager, store: InMemoryAuthStateStore
+    ) -> None:
         with _mock_github_initiate():
             result = await manager.initiate()
         assert "device_code" in result
@@ -119,9 +62,13 @@ class TestDeviceFlowManager:
         assert result["expires_in"] == 900
         assert result["interval"] == 5
 
+        # Verify entry stored in AuthStateStore
+        entry = await store.get(f"device:{result['device_code']}")
+        assert entry is not None
+        assert entry["user_code"] == "ABCD-1234"
+
     @pytest.mark.anyio
-    async def test_poll_pending(self) -> None:
-        manager = DeviceFlowManager(client_id="test-client")
+    async def test_poll_pending(self, manager: DeviceFlowManager) -> None:
         with _mock_github_initiate():
             result = await manager.initiate()
         with patch.object(
@@ -131,30 +78,38 @@ class TestDeviceFlowManager:
             return_value=None,
         ):
             with pytest.raises(DeviceCodePendingError):
-                await manager.poll(result["device_code"])  # type: ignore[arg-type]
+                await manager.poll(
+                    result["device_code"]  # type: ignore[arg-type]
+                )
 
     @pytest.mark.anyio
-    async def test_poll_expired(self) -> None:
-        manager = DeviceFlowManager(client_id="test-client")
-        entry = manager._store.create(client_id="test-client", expires_in=0, interval=5)
-        with pytest.raises(DeviceCodeExpiredError):
-            await manager.poll(entry.device_code)
+    async def test_poll_expired(
+        self, manager: DeviceFlowManager, store: InMemoryAuthStateStore
+    ) -> None:
+        # Store entry with 0 TTL (immediately expired)
+        await store.put("device:expired-code", {"client_id": "test"}, ttl_seconds=0)
+        with pytest.raises(DeviceCodeNotFoundError):
+            await manager.poll("expired-code")
 
     @pytest.mark.anyio
-    async def test_poll_not_found(self) -> None:
-        manager = DeviceFlowManager(client_id="test-client")
+    async def test_poll_not_found(self, manager: DeviceFlowManager) -> None:
         with pytest.raises(DeviceCodeNotFoundError):
             await manager.poll("nonexistent-code")
 
     @pytest.mark.anyio
-    async def test_poll_authorized(self) -> None:
-        manager = DeviceFlowManager(client_id="test-client")
+    async def test_poll_authorized(
+        self, manager: DeviceFlowManager, store: InMemoryAuthStateStore
+    ) -> None:
         with _mock_github_initiate():
             result = await manager.initiate()
-        manager._store.mark_authorized(
-            result["device_code"],  # type: ignore[arg-type]
-            github_access_token="gho_test123",
-        )
+
+        # Simulate authorization by storing token in the entry
+        key = f"device:{result['device_code']}"
+        entry = await store.get(key)
+        assert entry is not None
+        entry["github_access_token"] = "gho_test123"
+        await store.put(key, entry, ttl_seconds=900)
+
         mock_user_info = {
             "login": "testuser",
             "email": "test@example.com",
@@ -168,6 +123,40 @@ class TestDeviceFlowManager:
             new_callable=AsyncMock,
             return_value=mock_user_info,
         ):
-            user_info = await manager.poll(result["device_code"])  # type: ignore[arg-type]
+            user_info = await manager.poll(
+                result["device_code"]  # type: ignore[arg-type]
+            )
             assert user_info["login"] == "testuser"
             assert user_info["email"] == "test@example.com"
+
+    @pytest.mark.anyio
+    async def test_poll_exchange_success(self, manager: DeviceFlowManager) -> None:
+        """Test poll when exchange succeeds on first try."""
+        with _mock_github_initiate():
+            result = await manager.initiate()
+
+        mock_user_info = {
+            "login": "testuser",
+            "email": "test@example.com",
+            "name": "Test User",
+            "id": 12345,
+            "avatar_url": None,
+        }
+        with (
+            patch.object(
+                manager,
+                "_exchange_device_code",
+                new_callable=AsyncMock,
+                return_value="gho_fresh_token",
+            ),
+            patch.object(
+                manager,
+                "_fetch_github_user",
+                new_callable=AsyncMock,
+                return_value=mock_user_info,
+            ),
+        ):
+            user_info = await manager.poll(
+                result["device_code"]  # type: ignore[arg-type]
+            )
+            assert user_info["login"] == "testuser"
