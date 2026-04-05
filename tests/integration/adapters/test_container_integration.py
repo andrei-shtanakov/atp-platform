@@ -110,6 +110,27 @@ ENTRYPOINT ["python3", "/agent.py"]
     if result.returncode != 0:
         pytest.skip(f"Failed to build test image: {result.stderr.decode()}")
 
+    # Smoke test: verify runtime can start this image
+    try:
+        verify = subprocess.run(
+            [
+                CONTAINER_RUNTIME,
+                "run",
+                "--rm",
+                "--entrypoint",
+                "python3",
+                image_name,
+                "-c",
+                "print('ok')",
+            ],
+            capture_output=True,
+            timeout=30,
+        )
+        if verify.returncode != 0:
+            pytest.skip(f"Image built but cannot run: {verify.stderr.decode()[:200]}")
+    except subprocess.TimeoutExpired:
+        pytest.skip("Image smoke test timed out")
+
     yield image_name
 
     # Cleanup: remove the image
@@ -309,6 +330,27 @@ ENTRYPOINT ["python3", "/agent.py"]
     if result.returncode != 0:
         pytest.skip(f"Failed to build test image: {result.stderr.decode()}")
 
+    # Smoke test: verify runtime can start this image
+    try:
+        verify = subprocess.run(
+            [
+                CONTAINER_RUNTIME,
+                "run",
+                "--rm",
+                "--entrypoint",
+                "python3",
+                image_name,
+                "-c",
+                "print('ok')",
+            ],
+            capture_output=True,
+            timeout=30,
+        )
+        if verify.returncode == 125:
+            pytest.skip(f"Image built but cannot run: {verify.stderr.decode()[:200]}")
+    except subprocess.TimeoutExpired:
+        pytest.skip("Image smoke test timed out")
+
     yield image_name
 
     subprocess.run(
@@ -376,6 +418,27 @@ ENTRYPOINT ["python3", "/agent.py"]
 
     if result.returncode != 0:
         pytest.skip(f"Failed to build test image: {result.stderr.decode()}")
+
+    # Smoke test: verify runtime can start this image (quick echo, not the agent)
+    try:
+        verify = subprocess.run(
+            [
+                CONTAINER_RUNTIME,
+                "run",
+                "--rm",
+                "--entrypoint",
+                "python3",
+                image_name,
+                "-c",
+                "print('ok')",
+            ],
+            capture_output=True,
+            timeout=30,
+        )
+        if verify.returncode != 0:
+            pytest.skip(f"Image built but cannot run: {verify.stderr.decode()[:200]}")
+    except subprocess.TimeoutExpired:
+        pytest.skip("Image smoke test timed out")
 
     yield image_name
 
