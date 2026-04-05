@@ -506,10 +506,15 @@ class ATPTUI(App):
         """Handle suite creation from the new suite screen."""
         # Switch to main screen and set the new suite
         self.switch_screen("main")
-        screen = self.screen
-        if isinstance(screen, MainScreen):
-            screen.set_suite(event.suite)
-            screen.mark_modified()
+        suite = event.suite
+
+        def _apply_suite() -> None:
+            screen = self.screen
+            if isinstance(screen, MainScreen):
+                screen.set_suite(suite)
+                screen.mark_modified()
+
+        self.call_after_refresh(_apply_suite)
 
     def on_add_test_screen_test_created(
         self,

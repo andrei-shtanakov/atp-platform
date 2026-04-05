@@ -19,23 +19,28 @@ from atp.protocol import (
 )
 
 
-def docker_available() -> bool:
-    """Check if Docker is available."""
-    try:
-        result = subprocess.run(
-            ["docker", "info"],
-            capture_output=True,
-            timeout=5,
-        )
-        return result.returncode == 0
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return False
+def _detect_runtime() -> str | None:
+    """Detect available container runtime (podman preferred, then docker)."""
+    for cmd in ("podman", "docker"):
+        try:
+            result = subprocess.run(
+                [cmd, "info"],
+                capture_output=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                return cmd
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            continue
+    return None
 
 
-# Skip all tests in this module if Docker is not available
+CONTAINER_RUNTIME = _detect_runtime()
+
+# Skip all tests in this module if no container runtime is available
 pytestmark = pytest.mark.skipif(
-    not docker_available(),
-    reason="Docker is not available",
+    CONTAINER_RUNTIME is None,
+    reason="No container runtime (Docker/Podman) is available",
 )
 
 
@@ -93,10 +98,11 @@ ENTRYPOINT ["python3", "/agent.py"]
     (build_dir / "agent.py").write_text(agent_script)
     (build_dir / "Dockerfile").write_text(dockerfile)
 
-    # Build the image
+    # Build the image using detected runtime
+    assert CONTAINER_RUNTIME is not None
     image_name = "atp-test-agent:latest"
     result = subprocess.run(
-        ["docker", "build", "-t", image_name, str(build_dir)],
+        [CONTAINER_RUNTIME, "build", "-t", image_name, str(build_dir)],
         capture_output=True,
         timeout=120,
     )
@@ -108,7 +114,7 @@ ENTRYPOINT ["python3", "/agent.py"]
 
     # Cleanup: remove the image
     subprocess.run(
-        ["docker", "rmi", "-f", image_name],
+        [CONTAINER_RUNTIME, "rmi", "-f", image_name],
         capture_output=True,
     )
 
@@ -295,7 +301,7 @@ ENTRYPOINT ["python3", "/agent.py"]
 
     image_name = "atp-test-agent-fail:latest"
     result = subprocess.run(
-        ["docker", "build", "-t", image_name, str(build_dir)],
+        [CONTAINER_RUNTIME, "build", "-t", image_name, str(build_dir)],
         capture_output=True,
         timeout=120,
     )
@@ -306,7 +312,7 @@ ENTRYPOINT ["python3", "/agent.py"]
     yield image_name
 
     subprocess.run(
-        ["docker", "rmi", "-f", image_name],
+        [CONTAINER_RUNTIME, "rmi", "-f", image_name],
         capture_output=True,
     )
 
@@ -363,7 +369,7 @@ ENTRYPOINT ["python3", "/agent.py"]
 
     image_name = "atp-test-agent-slow:latest"
     result = subprocess.run(
-        ["docker", "build", "-t", image_name, str(build_dir)],
+        [CONTAINER_RUNTIME, "build", "-t", image_name, str(build_dir)],
         capture_output=True,
         timeout=120,
     )
@@ -374,7 +380,7 @@ ENTRYPOINT ["python3", "/agent.py"]
     yield image_name
 
     subprocess.run(
-        ["docker", "rmi", "-f", image_name],
+        [CONTAINER_RUNTIME, "rmi", "-f", image_name],
         capture_output=True,
     )
 

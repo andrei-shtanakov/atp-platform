@@ -285,11 +285,14 @@ class TestAddTestScreenIntegration:
         app = ATPTUI()
         async with app.run_test(size=(140, 80)) as pilot:
             await pilot.press("m")
+            await pilot.pause()
             main_screen = pilot.app.screen
             assert isinstance(main_screen, MainScreen)
             main_screen.set_suite(suite)
+            await pilot.pause()
 
             await pilot.press("a")
+            await pilot.pause()
             screen = pilot.app.screen
             assert isinstance(screen, AddTestScreen)
 
@@ -327,11 +330,14 @@ class TestAddTestScreenIntegration:
         app = ATPTUI()
         async with app.run_test(size=(140, 80)) as pilot:
             await pilot.press("m")
+            await pilot.pause()
             main_screen = pilot.app.screen
             assert isinstance(main_screen, MainScreen)
             main_screen.set_suite(suite)
+            await pilot.pause()
 
             await pilot.press("a")
+            await pilot.pause()
             screen = pilot.app.screen
             assert isinstance(screen, AddTestScreen)
 
@@ -363,11 +369,14 @@ class TestAddTestScreenIntegration:
         app = ATPTUI()
         async with app.run_test(size=(140, 80)) as pilot:
             await pilot.press("m")
+            await pilot.pause()
             main_screen = pilot.app.screen
             assert isinstance(main_screen, MainScreen)
             main_screen.set_suite(suite)
+            await pilot.pause()
 
             await pilot.press("a")
+            await pilot.pause()
             screen = pilot.app.screen
             assert isinstance(screen, AddTestScreen)
 
@@ -387,11 +396,14 @@ class TestAddTestScreenIntegration:
         app = ATPTUI()
         async with app.run_test(size=(140, 80)) as pilot:
             await pilot.press("m")
+            await pilot.pause()
             main_screen = pilot.app.screen
             assert isinstance(main_screen, MainScreen)
             main_screen.set_suite(suite)
+            await pilot.pause()
 
             await pilot.press("a")
+            await pilot.pause()
             screen = pilot.app.screen
             assert isinstance(screen, AddTestScreen)
 
