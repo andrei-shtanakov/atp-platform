@@ -121,7 +121,7 @@ jobs:
 
           # Verify atp-games plugin structure
           from atp_games.plugin import register
-          from atp_games.models import GameEvalConfig
+          from atp_games.models import GameRunConfig
           print('atp-games imports OK')
 
           # Verify plugin registration works
