@@ -2,7 +2,7 @@
 
 import asyncio
 from collections.abc import AsyncIterator
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -525,9 +525,9 @@ class TestSandboxIntegration:
         sandbox_config = SandboxConfig(enabled=True)
 
         with patch("atp.runner.orchestrator.SandboxManager") as MockSandboxManager:
-            mock_manager = MagicMock()
+            mock_manager = AsyncMock()
             mock_manager.create.return_value = "sandbox-123"
-            mock_manager.get_workspace.return_value = tmp_path / "workspace"
+            mock_manager.get_workspace = MagicMock(return_value=tmp_path / "workspace")
             MockSandboxManager.return_value = mock_manager
 
             async with TestOrchestrator(

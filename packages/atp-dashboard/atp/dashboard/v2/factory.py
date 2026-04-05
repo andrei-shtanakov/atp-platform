@@ -186,12 +186,27 @@ def create_test_app(
         def test_app():
             return create_test_app()
     """
+    import os
+
+    # Set env vars so get_config() (called by require_permission etc.) works
+    _env_overrides = {
+        "ATP_SECRET_KEY": "test-secret-key",
+        "ATP_DEBUG": "true",
+        "ATP_RATE_LIMIT_ENABLED": "false",
+    }
+    _saved = {k: os.environ.get(k) for k in _env_overrides}
+    for k, v in _env_overrides.items():
+        if k not in os.environ:
+            os.environ[k] = v
+    get_config.cache_clear()
+
     config = DashboardConfig(
         database_url=(database_url or "sqlite+aiosqlite:///:memory:"),
         database_echo=False,
         debug=True,
         secret_key="test-secret-key",
         disable_auth=True,
+        rate_limit_enabled=False,
     )
     return create_app(config=config, **kwargs)
 
