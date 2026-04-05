@@ -355,7 +355,7 @@ uv run pytest tests/ -v -m "not slow"                        # Fast tests
 uv run ruff format .               # Format code
 uv run ruff check .                # Lint check
 uv run ruff check . --fix          # Auto-fix lint issues
-pyrefly check                      # Type checking
+uv run pyrefly check               # Type checking
 
 # Task management
 python task.py list                # List all tasks

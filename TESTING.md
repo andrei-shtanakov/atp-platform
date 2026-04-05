@@ -40,7 +40,27 @@ tests/
 │   ├── test_suites/     # YAML test suite examples
 │   └── traces/          # Event trace samples
 ├── unit/                 # Unit tests (70% of tests)
-│   └── loader/          # Loader module tests
+│   ├── adapters/        # Adapter tests (HTTP, CLI, Container, MCP, cloud, etc.)
+│   ├── analytics/       # Analytics module tests
+│   ├── baseline/        # Baseline and regression tests
+│   ├── catalog/         # Test catalog tests
+│   ├── cli/             # CLI command tests
+│   ├── core/            # Core config, security, telemetry tests
+│   ├── dashboard/       # Dashboard routes, auth, models tests
+│   ├── evaluators/      # Evaluator tests (all types)
+│   ├── generator/       # Test generation tests
+│   ├── loader/          # Loader module tests
+│   ├── performance/     # Performance utilities tests
+│   ├── plugins/         # Plugin system tests
+│   ├── protocol/        # Protocol model tests
+│   ├── reporters/       # Reporter tests
+│   ├── runner/          # Orchestrator and sandbox tests
+│   ├── scoring/         # Score aggregation tests
+│   ├── sdk/             # SDK and compare tests
+│   ├── streaming/       # Streaming support tests
+│   ├── tournament/      # Tournament tests
+│   ├── tracing/         # Trace recording and storage tests
+│   └── tui/             # Terminal UI tests
 ├── integration/          # Integration tests (20% of tests)
 ├── contract/             # Protocol contract tests
 └── e2e/                  # End-to-end tests (10% of tests)

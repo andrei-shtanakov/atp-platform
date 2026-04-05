@@ -165,16 +165,24 @@ examples/          # Sample test suites, CI templates, example agents
 
 Key environment variables for the dashboard and SDK:
 
+- `ATP_SECRET_KEY` - JWT signing secret for auth tokens (required in production)
+- `ATP_DATABASE_URL` - Database connection string (default: SQLite)
+- `ATP_DEBUG` - Enable debug mode (default: false)
+- `ATP_HOST` - Server host address (default: "127.0.0.1")
+- `ATP_PORT` - Server port (default: 8080)
+- `ATP_DISABLE_AUTH` - Disable authentication (default: false, dev only!)
 - `ATP_GITHUB_CLIENT_ID` - GitHub OAuth App client ID (required for GitHub login)
 - `ATP_GITHUB_CLIENT_SECRET` - GitHub OAuth App client secret (required for GitHub login)
-- `ATP_SECRET_KEY` - JWT signing secret for auth tokens
-- `ATP_DATABASE_URL` - Database connection string (default: SQLite)
+- `ATP_TOKEN_EXPIRE_MINUTES` - JWT token expiration in minutes (default: 60)
+- `ATP_CORS_ORIGINS` - Comma-separated CORS origins (default: empty)
 - `ATP_RATE_LIMIT_ENABLED` - Enable HTTP rate limiting (default: true)
 - `ATP_RATE_LIMIT_DEFAULT` - Default rate limit (default: "60/minute")
 - `ATP_RATE_LIMIT_AUTH` - Auth endpoint rate limit (default: "5/minute")
 - `ATP_RATE_LIMIT_API` - Benchmark API rate limit (default: "120/minute")
 - `ATP_RATE_LIMIT_UPLOAD` - Upload endpoint rate limit (default: "10/minute")
 - `ATP_RATE_LIMIT_STORAGE` - Rate limit storage URI (default: "memory://", supports "redis://host:port")
+- `ATP_BATCH_MAX_SIZE` - Max batch size for next-task endpoint (default: 10)
+- `ATP_UPLOAD_MAX_SIZE_MB` - Max YAML upload file size in MB (default: 1)
 
 ## Code Style
 

@@ -30,22 +30,22 @@ uv run pyrefly check       # type checking (run after every change)
 
 Adapters connect ATP to a new agent type (HTTP endpoint, framework, cloud service, etc.).
 
-1. Create `atp/adapters/your_adapter.py` — implement the `BaseAdapter` interface
-2. Register it in `atp/adapters/__init__.py`
+1. Create `packages/atp-adapters/atp/adapters/your_adapter.py` — implement the `AgentAdapter` interface
+2. Register it in `packages/atp-adapters/atp/adapters/__init__.py`
 3. Add adapter config docs to `docs/reference/adapters.md`
 4. Write unit tests in `tests/unit/adapters/test_your_adapter.py`
 
-Existing adapters in `atp/adapters/` are good reference: `cli.py`, `http.py`, `langgraph.py`.
+Existing adapters in `packages/atp-adapters/atp/adapters/` are good reference: `cli.py`, `http.py`, `langgraph.py`.
 
 ### Add an Evaluator
 
 Evaluators assess agent results against assertions in a test suite.
 
-1. Create `atp/evaluators/your_evaluator.py` — implement `BaseEvaluator`
-2. Register it in `atp/evaluators/__init__.py`
+1. Create `atp/evaluators/your_evaluator.py` — implement the `Evaluator` base class
+2. Register it in `atp/evaluators/registry.py`
 3. Write unit tests in `tests/unit/evaluators/test_your_evaluator.py`
 
-Existing evaluators: `artifact.py`, `behavior.py`, `llm_judge.py`, `security.py`.
+Existing evaluators: `artifact.py`, `behavior.py`, `llm_judge.py`, `security/`, `factuality.py`, `style.py`, `performance.py`.
 
 ### Add a Game
 
