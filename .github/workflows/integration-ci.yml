@@ -71,7 +71,7 @@ jobs:
       - name: Verify game-environments standalone build
         working-directory: game-environments
         run: |
-          uv build
+          uv build --out-dir dist
           python -c "
           import zipfile, glob
           whl = glob.glob('dist/*.whl')[0]
@@ -85,7 +85,7 @@ jobs:
       - name: Verify atp-games standalone build
         working-directory: atp-games
         run: |
-          uv build
+          uv build --out-dir dist
           python -c "
           import zipfile, glob
           whl = glob.glob('dist/*.whl')[0]
