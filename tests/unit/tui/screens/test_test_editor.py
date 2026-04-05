@@ -310,6 +310,7 @@ class TestAddTestScreenIntegration:
             add_btn = screen.query_one("#add-btn", Button)
             add_btn.press()
             await pilot.pause()
+            await pilot.pause()
 
             # Should be back on main screen with test added
             assert isinstance(pilot.app.screen, MainScreen)
@@ -354,6 +355,7 @@ class TestAddTestScreenIntegration:
             # Use button.press() as pilot.click() doesn't work for buttons
             add_btn = screen.query_one("#add-btn", Button)
             add_btn.press()
+            await pilot.pause()
             await pilot.pause()
 
             assert isinstance(pilot.app.screen, MainScreen)
@@ -430,6 +432,7 @@ class TestAddTestScreenIntegration:
             # Use button.press() as pilot.click() doesn't work for buttons
             add_btn = screen.query_one("#add-btn", Button)
             add_btn.press()
+            await pilot.pause()
             await pilot.pause()
 
             assert isinstance(pilot.app.screen, MainScreen)

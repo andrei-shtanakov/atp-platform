@@ -521,19 +521,23 @@ class ATPTUI(App):
         event: AddTestScreen.TestCreated,
     ) -> None:
         """Handle test creation from the add test screen."""
-        # Get the main screen (should be below the modal)
-        main_screen = None
-        for screen in self.screen_stack:
-            if isinstance(screen, MainScreen):
-                main_screen = screen
-                break
+        test = event.test
 
-        if main_screen is not None and main_screen.suite is not None:
-            # Add the test to the suite
-            main_screen.suite.tests.append(event.test)
-            # Update the UI
-            main_screen.set_suite(main_screen.suite, main_screen.suite_path)
-            main_screen.mark_modified()
+        def _apply_test() -> None:
+            # After dismiss, MainScreen is the current screen
+            main_screen = self.screen
+            if not isinstance(main_screen, MainScreen):
+                # Also check stack
+                for s in self.screen_stack:
+                    if isinstance(s, MainScreen):
+                        main_screen = s
+                        break
+            if isinstance(main_screen, MainScreen) and main_screen.suite is not None:
+                main_screen.suite.tests.append(test)
+                main_screen.set_suite(main_screen.suite, main_screen.suite_path)
+                main_screen.mark_modified()
+
+        self.call_after_refresh(_apply_test)
 
 
 def run_tui() -> None:

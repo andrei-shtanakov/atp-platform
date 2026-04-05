@@ -171,6 +171,7 @@ class TestNewSuiteScreenIntegration:
             # Click create
             await pilot.click("#create-btn")
             await pilot.pause()
+            await pilot.pause()
 
             # Should be on main screen with suite loaded
             assert isinstance(pilot.app.screen, MainScreen)
