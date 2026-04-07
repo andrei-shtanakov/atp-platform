@@ -84,6 +84,7 @@ class TestNewSuiteScreenIntegration:
         async with app.run_test() as pilot:
             await pilot.press("m")
             await pilot.press("n")
+            await pilot.pause()
 
             screen = pilot.app.screen
             assert isinstance(screen, NewSuiteScreen)
@@ -113,6 +114,7 @@ class TestNewSuiteScreenIntegration:
         async with app.run_test() as pilot:
             await pilot.press("m")
             await pilot.press("n")
+            await pilot.pause()
 
             screen = pilot.app.screen
             assert isinstance(screen, NewSuiteScreen)

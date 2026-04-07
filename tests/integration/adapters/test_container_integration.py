@@ -45,15 +45,13 @@ pytestmark = pytest.mark.skipif(
 
 
 def _local_image_name(name: str) -> str:
-    """Prefix image name with localhost/ for Podman short-name resolution.
+    """Prefix image name with localhost/ to force local-only resolution.
 
-    Podman may try to pull unqualified names from remote registries.
-    The localhost/ prefix forces local-only resolution.
-    Docker ignores the prefix for local images.
+    Podman tries to pull unqualified short names from remote registries.
+    The localhost/ prefix forces local-only resolution for both Docker
+    and Podman (Docker matches by exact tag, Podman skips registry lookup).
     """
-    if CONTAINER_RUNTIME == "podman":
-        return f"localhost/{name}"
-    return name
+    return f"localhost/{name}"
 
 
 @pytest.fixture(scope="module")
