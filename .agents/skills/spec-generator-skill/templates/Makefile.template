@@ -1,0 +1,145 @@
+# ATP Platform — Makefile
+# Commands for development and task management
+
+.PHONY: help install dev test lint format docs clean
+.PHONY: task-list task-stats task-next task-graph
+
+# === Setup ===
+
+help:  ## Show help
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
+		awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+
+install:  ## Install dependencies
+	pip install -e ".[dev]"
+
+dev:  ## Set up dev environment
+	pip install -e ".[dev]"
+	pre-commit install
+	@echo "✅ Dev environment ready"
+
+# === Testing ===
+
+test:  ## Run all tests
+	pytest tests/ -v --cov=atp --cov-report=term-missing
+
+test-unit:  ## Unit tests only
+	pytest tests/unit -v
+
+test-integration:  ## Integration tests only
+	pytest tests/integration -v
+
+test-e2e:  ## E2E tests only
+	pytest tests/e2e -v
+
+test-fast:  ## Fast tests (excluding slow)
+	pytest tests/ -v -m "not slow"
+
+coverage:  ## Coverage report
+	pytest tests/ --cov=atp --cov-report=html
+	@echo "📊 Coverage report: htmlcov/index.html"
+
+# === Code Quality ===
+
+lint:  ## Check code (ruff + mypy)
+	ruff check atp/
+	mypy atp/
+
+format:  ## Format code
+	ruff format atp/ tests/
+	ruff check --fix atp/ tests/
+
+check: lint test  ## Full check (lint + test)
+
+# === Task Management ===
+
+task-list:  ## List all tasks
+	@python task.py list
+
+task-todo:  ## List TODO tasks
+	@python task.py list --status=todo
+
+task-progress:  ## Tasks in progress
+	@python task.py list --status=in_progress
+
+task-stats:  ## Task statistics
+	@python task.py stats
+
+task-next:  ## Next tasks to work on
+	@python task.py next
+
+task-graph:  ## Dependency graph
+	@python task.py graph
+
+task-p0:  ## P0 tasks only
+	@python task.py list --priority=p0
+
+task-mvp:  ## MVP tasks
+	@python task.py list --milestone=mvp
+
+# === Task Workflow ===
+
+# Usage: make task-start ID=TASK-001
+task-start:  ## Start a task (make task-start ID=TASK-001)
+	@python task.py start $(ID)
+
+task-done:  ## Complete a task (make task-done ID=TASK-001)
+	@python task.py done $(ID)
+
+task-show:  ## Show task details (make task-show ID=TASK-001)
+	@python task.py show $(ID)
+
+# === Documentation ===
+
+docs:  ## Generate documentation
+	@echo "📚 Building docs..."
+	# mkdocs build or sphinx
+
+docs-serve:  ## Start docs server
+	# mkdocs serve
+
+# === Build & Release ===
+
+build:  ## Build package
+	python -m build
+
+clean:  ## Clean artifacts
+	rm -rf build/ dist/ *.egg-info/
+	rm -rf .pytest_cache/ .coverage htmlcov/
+	rm -rf .mypy_cache/ .ruff_cache/
+	find . -type d -name __pycache__ -exec rm -rf {} +
+
+# === Auto Execution (Claude CLI) ===
+
+exec:  ## Execute next task via Claude
+	@python executor.py run
+
+exec-task:  ## Execute specific task (make exec-task ID=TASK-001)
+	@python executor.py run --task=$(ID)
+
+exec-all:  ## Execute all ready tasks
+	@python executor.py run --all
+
+exec-mvp:  ## Execute MVP tasks
+	@python executor.py run --all --milestone=mvp
+
+exec-status:  ## Execution status
+	@python executor.py status
+
+exec-retry:  ## Retry a task (make exec-retry ID=TASK-001)
+	@python executor.py retry $(ID)
+
+exec-logs:  ## Task logs (make exec-logs ID=TASK-001)
+	@python executor.py logs $(ID)
+
+exec-reset:  ## Reset executor state
+	@python executor.py reset
+
+# === CI/CD ===
+
+ci: lint test  ## CI pipeline (for GitHub Actions)
+	@echo "✅ CI passed"
+
+# === Default ===
+
+.DEFAULT_GOAL := help

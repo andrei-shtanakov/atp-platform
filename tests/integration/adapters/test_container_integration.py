@@ -44,6 +44,18 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def _local_image_name(name: str) -> str:
+    """Prefix image name with localhost/ for Podman short-name resolution.
+
+    Podman may try to pull unqualified names from remote registries.
+    The localhost/ prefix forces local-only resolution.
+    Docker ignores the prefix for local images.
+    """
+    if CONTAINER_RUNTIME == "podman":
+        return f"localhost/{name}"
+    return name
+
+
 @pytest.fixture(scope="module")
 def test_agent_image(tmp_path_factory) -> str:
     """Build a test Docker image for testing."""
@@ -100,7 +112,7 @@ ENTRYPOINT ["python3", "/agent.py"]
 
     # Build the image using detected runtime
     assert CONTAINER_RUNTIME is not None
-    image_name = "atp-test-agent:latest"
+    image_name = _local_image_name("atp-test-agent:latest")
     result = subprocess.run(
         [CONTAINER_RUNTIME, "build", "-t", image_name, str(build_dir)],
         capture_output=True,
@@ -320,7 +332,7 @@ ENTRYPOINT ["python3", "/agent.py"]
     (build_dir / "agent.py").write_text(agent_script)
     (build_dir / "Dockerfile").write_text(dockerfile)
 
-    image_name = "atp-test-agent-fail:latest"
+    image_name = _local_image_name("atp-test-agent-fail:latest")
     result = subprocess.run(
         [CONTAINER_RUNTIME, "build", "-t", image_name, str(build_dir)],
         capture_output=True,
@@ -409,7 +421,7 @@ ENTRYPOINT ["python3", "/agent.py"]
     (build_dir / "agent.py").write_text(agent_script)
     (build_dir / "Dockerfile").write_text(dockerfile)
 
-    image_name = "atp-test-agent-slow:latest"
+    image_name = _local_image_name("atp-test-agent-slow:latest")
     result = subprocess.run(
         [CONTAINER_RUNTIME, "build", "-t", image_name, str(build_dir)],
         capture_output=True,
