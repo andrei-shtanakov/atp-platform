@@ -17,8 +17,16 @@ from atp.dashboard.models import Agent, SuiteExecution
 from atp.dashboard.rbac import Permission, require_permission
 from atp.dashboard.schemas import DashboardSummary, SuiteExecutionSummary
 from atp.dashboard.v2.dependencies import DBSession
+from atp.dashboard.v2.rate_limit import limiter
 
 router = APIRouter(tags=["dashboard"])
+
+
+@router.get("/health", include_in_schema=False)
+@limiter.exempt
+async def health() -> dict[str, str]:
+    """Health check endpoint for Docker/load balancer probes."""
+    return {"status": "ok"}
 
 
 @router.get("/dashboard/summary", response_model=DashboardSummary)

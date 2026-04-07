@@ -3,6 +3,7 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -151,7 +152,8 @@ def set_database(db: Database) -> None:
 async def init_database(url: str | None = None, echo: bool = False) -> Database:
     """Initialize and return the database.
 
-    Creates tables if they don't exist. Seeds default RBAC roles.
+    Creates tables if they don't exist, adds missing columns to existing
+    tables, and seeds default RBAC roles.
 
     Args:
         url: Database URL.
@@ -163,8 +165,55 @@ async def init_database(url: str | None = None, echo: bool = False) -> Database:
     global _database
     _database = Database(url=url, echo=echo)
     await _database.create_tables()
+    await _add_missing_columns(_database)
     await _seed_default_roles(_database)
     return _database
+
+
+async def _add_missing_columns(db: Database) -> None:
+    """Add columns that exist in models but not in the DB.
+
+    SQLAlchemy create_all() only creates new tables — it does not ALTER
+    existing ones.  This helper inspects every mapped table and issues
+    ALTER TABLE ADD COLUMN for anything the DB is missing.  Runs once at
+    startup and is idempotent.
+    """
+    import logging
+
+    from sqlalchemy import inspect as sa_inspect
+    from sqlalchemy import text
+
+    logger = logging.getLogger("atp.dashboard")
+
+    def _get_existing_columns(sync_conn: Any, table_name: str) -> set[str]:
+        inspector = sa_inspect(sync_conn)
+        assert inspector is not None
+        return {c["name"] for c in inspector.get_columns(table_name)}
+
+    async with db.engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            try:
+                existing = await conn.run_sync(_get_existing_columns, table.name)
+            except Exception:
+                # Table doesn't exist yet — create_tables() handles it
+                continue
+
+            for column in table.columns:
+                if column.name in existing:
+                    continue
+
+                col_type = column.type.compile(db.engine.dialect)
+                nullable = "NULL" if column.nullable else "NOT NULL"
+                default = ""
+                if column.server_default is not None:
+                    default = f" DEFAULT {column.server_default.arg}"  # type: ignore[union-attr]
+
+                stmt = (
+                    f"ALTER TABLE {table.name} "
+                    f"ADD COLUMN {column.name} {col_type} {nullable}{default}"
+                )
+                logger.info("Auto-adding column: %s.%s", table.name, column.name)
+                await conn.execute(text(stmt))
 
 
 async def _seed_default_roles(db: Database) -> None:
