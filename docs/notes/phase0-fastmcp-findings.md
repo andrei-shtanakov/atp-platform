@@ -231,3 +231,176 @@ cleanly. Recommend adding Task 1.X: "Fix SSETransport endpoint discovery
 and response/notification demuxing" as a dependency of Phase 7.
 
 Proceed to Task 0.2 (FastMCP + JWTUserStateMiddleware).
+
+## Task 0.2: FastMCP + JWTUserStateMiddleware integration
+
+**Result:** PASS.
+
+### What was verified
+
+1. When a FastMCP SSE sub-app is mounted under a FastAPI app via
+   `app.mount("/mcp", mcp.http_app(transport="sse"))`, the outer FastAPI
+   app's `JWTUserStateMiddleware` runs BEFORE the request reaches the
+   mounted sub-app's routes and correctly populates
+   `request.state.user_id` from a valid Bearer JWT.
+2. The middleware's "silently ignore missing/invalid auth" behaviour is
+   preserved across the mount boundary — anonymous requests reach the
+   mounted handshake with `request.state.user_id` unset, no 401.
+3. The exact ctx → Starlette `Request` attribute path that a FastMCP
+   tool handler must use to read `request.state.user_id` has been
+   identified (see "Accessing request.state from a tool handler" below).
+
+### Accessing request.state from a tool handler
+
+FastMCP 3.2.x exposes two equivalent paths from inside a `@mcp.tool` body
+to the underlying Starlette `Request` produced by the mounted SSE / HTTP
+transport:
+
+```python
+from fastmcp import Context, FastMCP
+from fastmcp.server.dependencies import get_http_request
+
+@mcp.tool
+async def whoami(ctx: Context) -> dict:
+    # Option A — preferred. Handles all cases: normal tool calls,
+    # on_initialize middleware, and background (Docket) tasks with
+    # snapshotted headers.
+    request = get_http_request()
+
+    # Option B — direct ctx attribute. Works inside a normal tool call
+    # (i.e. request_context is populated); raises or returns None in
+    # on_initialize / background-task mode.
+    # request = ctx.request_context.request
+
+    user_id = getattr(request.state, "user_id", None)
+    return {"user_id": user_id}
+```
+
+Under the hood, `get_http_request()` (defined in
+`fastmcp/server/dependencies.py`) pulls from the MCP Python SDK's
+`request_ctx.get().request` contextvar first, then falls back to
+FastMCP's own `_current_http_request` contextvar, then finally to a
+snapshotted synthetic `Request` rehydrated from per-task headers. The
+ctx-attribute path reaches the same object via
+`ctx.request_context.request` (see `fastmcp/server/context.py`, method
+`Context.request_context` which returns
+`RequestContext[ServerSession, Any, Request]`).
+
+**Recommendation for Phase 7 (`mcp/notifications.py` and `mcp/tools.py`):
+use `get_http_request()`**, not `ctx.request_context.request`. It is the
+public, documented API; it already handles the corner cases we would
+otherwise have to rediscover; and it does not couple us to FastMCP's
+internal `RequestContext` shape.
+
+### Mount pattern (verified working)
+
+```python
+from fastapi import FastAPI
+from fastmcp import FastMCP
+from atp.dashboard.v2.rate_limit import JWTUserStateMiddleware
+
+mcp = FastMCP("atp-tournament")
+
+# ... register tools on `mcp` ...
+
+app = FastAPI()
+app.add_middleware(JWTUserStateMiddleware)
+# (+ any tournament-specific MCPAuthMiddleware that actually enforces)
+
+# NB: FastMCP 3.x does NOT have a top-level `sse_app()` method — use
+# `http_app(transport="sse")`. This is a change from older tutorials.
+app.mount("/mcp", mcp.http_app(transport="sse"))
+```
+
+Default FastMCP paths (from `fastmcp.settings`):
+
+- `sse_path = "/sse"`            → full URL `/mcp/sse`
+- `message_path = "/messages/"`  → full URL `/mcp/messages/`
+- `streamable_http_path = "/mcp"` (unused here; relevant only for the
+  `streamable-http` transport)
+
+### Middleware ordering
+
+Starlette's `Starlette.add_middleware(...)` inserts at index 0 of
+`user_middleware`. The resulting call order is **last-added → outermost**.
+For this integration that is a non-issue: there is only one relevant
+middleware (`JWTUserStateMiddleware`) on the outer app, and Starlette
+transparently wraps the mounted FastMCP sub-app with the entire outer
+middleware stack. Verified empirically via a `CaptureMiddleware` that
+records `request.state.user_id` for every `/mcp/sse` request: records
+show `user_id=42` when a valid JWT is attached and `user_id=None`
+otherwise, confirming that:
+
+1. `JWTUserStateMiddleware` runs before the mount's own routing.
+2. State written by the outer middleware is visible inside the mounted
+   sub-app's request-scoped contextvars (and therefore, by extension,
+   inside any FastMCP tool handler invoked on the SSE channel).
+
+### Caveats / gotchas
+
+1. **`TestClient.stream()` cannot be used to verify SSE handshakes.**
+   TestClient's underlying `httpx.ASGITransport` drives the ASGI app to
+   completion before yielding a response object. FastMCP's SSE handler
+   is `async with sse.connect_sse(...): await mcp_server.run(...)`, which
+   never returns until the client disconnects. The test consequently
+   hangs inside TestClient until `pytest-timeout` SIGKILLs it.
+
+   Workaround used in the scratch test: build an
+   `httpx.AsyncClient(transport=ASGITransport(app=app))` and wrap the
+   `client.stream("GET", "/mcp/sse", ...)` call in
+   `anyio.move_on_after(2.0)` so the request task is cancelled cleanly
+   after the middleware has had a chance to run. Verification then
+   happens by inspecting a side-channel `CaptureMiddleware.records`
+   rather than by reading `response.status_code` (which is `None`
+   because the headers never flushed before cancellation). This matters
+   for Phase 1 when we write the real integration test for the
+   tournament server — **do not use `TestClient.stream()` against SSE
+   endpoints; use a direct `httpx.AsyncClient` + `ASGITransport` +
+   `anyio.move_on_after` pattern, or drive the server with a real
+   `uvicorn` subprocess.**
+
+2. **FastMCP has NO `sse_app()` helper in 3.x.** The old
+   `FastMCP.sse_app()` referenced in the plan does not exist; use
+   `http_app(transport="sse")` (which itself delegates to
+   `fastmcp.server.http.create_sse_app`).
+
+3. **Mounted-app lifespan propagation is a known Starlette gotcha.**
+   `mcp.http_app(transport="sse")` returns a Starlette app with its own
+   `lifespan` that wraps `server._lifespan_manager()`. Starlette's
+   `Router` only runs its own `lifespan_context`; mounted sub-apps'
+   lifespans are **NOT** automatically driven by the parent app's
+   startup/shutdown events. Verified empirically in the scratch test
+   (outer `FastAPI` exposes `<_DefaultLifespan>`, child's
+   `create_sse_app.<locals>.lifespan` is defined but not chained).
+   The scratch test sidesteps this because the SSE handshake path we
+   exercise does not need the lifespan to have run; but Phase 1's real
+   `factory.py` will. Two working patterns for Phase 1:
+
+   - **Preferred:** build the FastAPI app with
+     `FastAPI(lifespan=mcp_app.router.lifespan_context)` so the parent
+     drives the mounted sub-app's lifespan directly. If the platform
+     already has its own lifespan, compose them with a tiny async
+     context manager that enters both.
+   - **Alternative:** call `FastAPI(lifespan=...)` with a
+     `@asynccontextmanager` that manually does
+     `async with mcp_app.router.lifespan_context(mcp_app): yield`.
+
+   Document this in the Phase 1 factory task so we don't debug
+   mysterious "not inside request context" errors from FastMCP tools
+   later.
+
+4. **`get_http_request()` in background tasks.** If Phase 7 ever wants
+   to send notifications from a detached background task (which the
+   Task 0.1 workaround for SSETransport bug #2 needs), that task must
+   either snapshot headers via FastMCP's Docket integration OR capture
+   the Starlette `Request` synchronously at tool-invocation time and
+   close over it in the task closure. The latter is simpler and is
+   recommended for the tournament slice.
+
+### Gate status
+
+Task 0.2 gate: **PASS**. The mount + middleware integration is verified,
+the tool handler access path (`get_http_request()`) is identified, and
+the two caveats (TestClient-SSE incompatibility + mounted-lifespan
+propagation) are captured as explicit TODOs for Phase 1. Proceed to
+Task 0.3 / Phase 1.
