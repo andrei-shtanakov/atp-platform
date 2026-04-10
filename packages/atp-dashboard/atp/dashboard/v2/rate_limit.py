@@ -8,12 +8,17 @@ falls back to client IP for anonymous requests.
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
+import jwt
 from fastapi import Request
 from fastapi.responses import JSONResponse
+from jwt.exceptions import InvalidTokenError
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 
 if TYPE_CHECKING:
     from atp.dashboard.v2.config import DashboardConfig
@@ -82,6 +87,48 @@ def create_limiter(config: DashboardConfig) -> Limiter:
             config.rate_limit_storage
         )
     return limiter
+
+
+class JWTUserStateMiddleware(BaseHTTPMiddleware):
+    """Best-effort: populate ``request.state.user_id`` from a Bearer JWT.
+
+    Runs BEFORE ``SlowAPIMiddleware`` so the rate-limit key function can
+    see the authenticated identity and key per-user instead of per-IP
+    (which collapses buckets when multiple benchmark participants share
+    a NAT).
+
+    Auth is NOT enforced here — invalid / expired / missing tokens are
+    silently ignored. Real authentication is still performed by
+    ``get_current_user`` on protected routes; this middleware only
+    enriches the request with an advisory user_id when trivially
+    available.
+    """
+
+    async def dispatch(
+        self,
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        header = request.headers.get("authorization", "")
+        scheme, _, token = header.partition(" ")
+        if scheme.lower() == "bearer" and token.strip():
+            # Late import so test monkeypatching of SECRET_KEY takes effect
+            # and to avoid a circular import at module load.
+            from atp.dashboard import auth as auth_module
+
+            try:
+                payload = jwt.decode(
+                    token.strip(),
+                    auth_module.SECRET_KEY,
+                    algorithms=[auth_module.ALGORITHM],
+                )
+            except InvalidTokenError:
+                pass
+            else:
+                user_id = payload.get("user_id")
+                if user_id is not None:
+                    request.state.user_id = user_id
+        return await call_next(request)
 
 
 async def rate_limit_exceeded_handler(request: Request, exc: Exception) -> JSONResponse:
