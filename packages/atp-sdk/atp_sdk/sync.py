@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+from collections.abc import Awaitable, Callable
 from types import TracebackType
 from typing import Any
 
@@ -43,6 +44,7 @@ class ATPClient:
         max_retry_delay: float = 30.0,
         retry_on_timeout: bool = True,
         timeout: float = 30.0,
+        on_token_expired: Callable[[], Awaitable[str]] | None = None,
     ) -> None:
         self._loop = asyncio.new_event_loop()
         self._thread = threading.Thread(
@@ -61,6 +63,7 @@ class ATPClient:
             max_retry_delay=max_retry_delay,
             retry_on_timeout=retry_on_timeout,
             timeout=timeout,
+            on_token_expired=on_token_expired,
         )
         self._closed = False
 

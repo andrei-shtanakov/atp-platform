@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from types import TracebackType
 from typing import Any
 
@@ -36,6 +36,7 @@ class AsyncATPClient:
         max_retry_delay: float = 30.0,
         retry_on_timeout: bool = True,
         timeout: float = 30.0,
+        on_token_expired: Callable[[], Awaitable[str]] | None = None,
     ) -> None:
         self.platform_url = platform_url.rstrip("/")
         self.token = (
@@ -49,6 +50,7 @@ class AsyncATPClient:
             max_retry_delay=max_retry_delay,
             retry_on_timeout=retry_on_timeout,
         )
+        self._on_token_expired = on_token_expired
         headers: dict[str, str] = {}
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
@@ -60,6 +62,11 @@ class AsyncATPClient:
 
     async def _request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
         """Execute an HTTP request with retry logic.
+
+        On a 401 response, if ``on_token_expired`` is configured, the
+        callback is invoked once to obtain a fresh token and the request
+        is replayed exactly once. A second 401 is returned as-is to
+        avoid loops.
 
         Args:
             method: HTTP method (GET, POST, etc.).
@@ -74,6 +81,11 @@ class AsyncATPClient:
             return self._http.request(method, url, **kwargs)
 
         response = await retry_request(sender, self._retry_config)
+        if response.status_code == 401 and self._on_token_expired is not None:
+            new_token = await self._on_token_expired()
+            self.token = new_token
+            self._http.headers["Authorization"] = f"Bearer {new_token}"
+            response = await retry_request(sender, self._retry_config)
         return response
 
     async def list_benchmarks(self) -> list[BenchmarkInfo]:

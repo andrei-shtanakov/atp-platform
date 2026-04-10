@@ -444,3 +444,45 @@ def test_sync_methods_raise_without_sync_loop() -> None:
 
     with pytest.raises(RuntimeError, match="Sync methods require"):
         run.next_batch_sync(1)
+
+
+# ---------------------------------------------------------------------------
+# drain() — preserve in-flight buffer across re-login / reconnect
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_drain_returns_and_clears_buffer() -> None:
+    """drain() returns the buffered tasks and empties the buffer."""
+    client = MagicMock()
+    run = _make_run(client)
+    run._buffer.extend([{"id": 1}, {"id": 2}, {"id": 3}])
+
+    pending = await run.drain()
+
+    assert pending == [{"id": 1}, {"id": 2}, {"id": 3}]
+    assert len(run._buffer) == 0
+
+
+@pytest.mark.anyio
+async def test_drain_empty_buffer_returns_empty_list() -> None:
+    """drain() on an empty buffer returns []."""
+    client = MagicMock()
+    run = _make_run(client)
+
+    pending = await run.drain()
+
+    assert pending == []
+
+
+@pytest.mark.anyio
+async def test_drain_does_not_issue_http_requests() -> None:
+    """drain() is purely local — no calls to the underlying client."""
+    client = MagicMock()
+    client._request = AsyncMock()
+    run = _make_run(client)
+    run._buffer.extend([{"id": 7}])
+
+    await run.drain()
+
+    client._request.assert_not_called()

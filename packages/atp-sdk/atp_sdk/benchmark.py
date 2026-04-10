@@ -79,6 +79,18 @@ class BenchmarkRun:
         logger.debug("run %d fetched %d tasks", self.run_id, len(data))
         return data
 
+    async def drain(self) -> list[dict[str, Any]]:
+        """Return and clear the local in-flight buffer.
+
+        Call this before re-login, reconnect, or any operation that may
+        invalidate local state. The returned tasks MUST still be
+        submitted — the server has already dispensed them via
+        ``current_task_index`` and will not re-issue them.
+        """
+        pending = list(self._buffer)
+        self._buffer.clear()
+        return pending
+
     async def next_batch(self, n: int) -> list[dict[str, Any]]:
         """Pull up to *n* tasks from the server.
 
@@ -279,3 +291,7 @@ class BenchmarkRun:
     def next_batch_sync(self, n: int) -> list[dict[str, Any]]:
         """Sync version of :meth:`next_batch`."""
         return self._run_sync(self.next_batch(n))
+
+    def drain_sync(self) -> list[dict[str, Any]]:
+        """Sync version of :meth:`drain`."""
+        return self._run_sync(self.drain())
