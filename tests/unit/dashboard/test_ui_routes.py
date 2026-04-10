@@ -5,8 +5,13 @@ from collections.abc import AsyncGenerator
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from atp.dashboard.database import init_database
+from atp.dashboard.database import get_database, init_database
+from atp.dashboard.models import User
 from atp.dashboard.v2.factory import create_test_app
+
+# Seeded by the ``client`` fixture for every test that creates a Run —
+# Run.user_id is NOT NULL since the 2026-04-10 IDOR fix.
+TEST_OWNER_ID = 1
 
 
 @pytest.fixture
@@ -17,9 +22,25 @@ def app():
 
 @pytest.fixture
 async def client(app) -> AsyncGenerator[AsyncClient, None]:
-    """Create async test client with initialized database."""
+    """Create async test client with initialized database + seeded owner."""
     # Manually init DB since ASGITransport doesn't trigger lifespan
     await init_database(url="sqlite+aiosqlite:///:memory:")
+
+    # Seed an owner user referenced by test Run() constructions.
+    db = get_database()
+    async with db.session() as session:
+        session.add(
+            User(
+                id=TEST_OWNER_ID,
+                username="ui-test-owner",
+                email="owner@example.com",
+                hashed_password="x",
+                is_active=True,
+                is_admin=True,
+            )
+        )
+        await session.commit()
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
@@ -249,6 +270,7 @@ class TestRunDetailPage:
             await session.flush()
 
             run = Run(
+                user_id=TEST_OWNER_ID,
                 benchmark_id=bm.id,
                 agent_name="test-agent",
                 status=RunStatus.COMPLETED,
@@ -301,6 +323,7 @@ class TestRunDetailPage:
             await session.flush()
 
             run = Run(
+                user_id=TEST_OWNER_ID,
                 benchmark_id=bm.id,
                 agent_name="htmx-agent",
                 status=RunStatus.IN_PROGRESS,
@@ -334,6 +357,7 @@ class TestRunDetailPage:
             await session.flush()
 
             run = Run(
+                user_id=TEST_OWNER_ID,
                 benchmark_id=bm.id,
                 agent_name="tasks-agent",
                 status=RunStatus.COMPLETED,

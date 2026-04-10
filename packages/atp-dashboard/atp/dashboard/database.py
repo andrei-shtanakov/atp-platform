@@ -166,8 +166,68 @@ async def init_database(url: str | None = None, echo: bool = False) -> Database:
     _database = Database(url=url, echo=echo)
     await _database.create_tables()
     await _add_missing_columns(_database)
+    await _backfill_run_user_id(_database)
     await _seed_default_roles(_database)
     return _database
+
+
+async def _backfill_run_user_id(db: Database) -> None:
+    """Assign ownership to legacy benchmark_runs with NULL user_id.
+
+    The ``Run.user_id`` column started life as nullable and production
+    accumulated rows without an owner.  The IDOR fix (2026-04-10) requires
+    every run to have an owner so ``_load_run_for_user`` can enforce
+    ownership.  This helper backfills any NULL user_id to the lowest-id
+    admin user.  If no admin exists but NULL rows are present, we log a
+    warning and skip — app still boots, but those rows are effectively
+    dead weight until an admin is created.
+
+    Mirrors the Alembic migration ``c8d5f2a91234`` but runs at every
+    startup (idempotent) because ``init_database`` does not invoke
+    Alembic automatically.
+    """
+    import logging
+
+    from sqlalchemy import text
+
+    logger = logging.getLogger("atp.dashboard")
+
+    async with db.engine.begin() as conn:
+        try:
+            null_count_row = await conn.execute(
+                text("SELECT COUNT(*) FROM benchmark_runs WHERE user_id IS NULL")
+            )
+        except Exception:
+            # benchmark_runs table doesn't exist yet (fresh DB before
+            # create_tables) — nothing to backfill.
+            return
+
+        null_count = null_count_row.scalar_one()
+        if not null_count:
+            return
+
+        admin_row = await conn.execute(
+            text("SELECT id FROM users WHERE is_admin = 1 ORDER BY id LIMIT 1")
+        )
+        admin_id = admin_row.scalar_one_or_none()
+        if admin_id is None:
+            logger.warning(
+                "benchmark_runs: %d rows have NULL user_id but no admin "
+                "user exists — skipping backfill. Ownership-protected "
+                "endpoints will return 404 for these runs.",
+                null_count,
+            )
+            return
+
+        await conn.execute(
+            text("UPDATE benchmark_runs SET user_id = :uid WHERE user_id IS NULL"),
+            {"uid": admin_id},
+        )
+        logger.info(
+            "Backfilled benchmark_runs.user_id for %d legacy rows -> admin id=%d",
+            null_count,
+            admin_id,
+        )
 
 
 async def _add_missing_columns(db: Database) -> None:

@@ -12,7 +12,7 @@ from atp.dashboard.benchmark.models import (
     RunStatus,
     TaskResult,
 )
-from atp.dashboard.models import Base
+from atp.dashboard.models import Base, User
 
 
 @pytest.fixture()
@@ -25,9 +25,28 @@ def engine():
 
 @pytest.fixture()
 def session(engine):
-    """Create a new database session for testing."""
+    """Create a new database session with a seeded owner user.
+
+    Run.user_id is NOT NULL (enforced after the 2026-04-10 IDOR fix),
+    so tests need a user to attribute their runs to.  We seed a single
+    user with id=1; tests reference it via ``OWNER_USER_ID``.
+    """
     with Session(engine) as sess:
+        sess.add(
+            User(
+                id=1,
+                username="test-owner",
+                email="owner@example.com",
+                hashed_password="x",
+                is_active=True,
+                is_admin=False,
+            )
+        )
+        sess.commit()
         yield sess
+
+
+OWNER_USER_ID = 1
 
 
 class TestRunStatus:
@@ -138,6 +157,7 @@ class TestRun:
         session.refresh(bm)
 
         run = Run(
+            user_id=OWNER_USER_ID,
             benchmark_id=bm.id,
             agent_name="gpt-4o",
             adapter_type="http",
@@ -164,6 +184,7 @@ class TestRun:
         now = datetime.now()
         run = Run(
             tenant_id="corp",
+            user_id=OWNER_USER_ID,
             benchmark_id=bm.id,
             agent_name="claude-3",
             adapter_type="cli",
@@ -196,6 +217,7 @@ class TestTaskResult:
         session.refresh(bm)
 
         run = Run(
+            user_id=OWNER_USER_ID,
             benchmark_id=bm.id,
             agent_name="test-agent",
             adapter_type="http",
@@ -232,6 +254,7 @@ class TestTaskResult:
         session.refresh(bm)
 
         run = Run(
+            user_id=OWNER_USER_ID,
             benchmark_id=bm.id,
             agent_name="ev-agent",
             adapter_type="cli",
@@ -268,6 +291,7 @@ class TestTaskResult:
         session.refresh(bm)
 
         run = Run(
+            user_id=OWNER_USER_ID,
             benchmark_id=bm.id,
             agent_name="uc-agent",
             adapter_type="http",

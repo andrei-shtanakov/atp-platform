@@ -14,6 +14,7 @@ from atp.protocol import ATPRequest, ATPResponse, Task
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from atp.dashboard.benchmark.models import (
     Benchmark,
@@ -30,7 +31,8 @@ from atp.dashboard.benchmark.schemas import (
     SubmitRequest,
     TaskResultResponse,
 )
-from atp.dashboard.v2.dependencies import DBSession
+from atp.dashboard.models import User
+from atp.dashboard.v2.dependencies import AdminUser, DBSession, RequiredUser
 from atp.dashboard.v2.rate_limit import limiter
 from atp.dashboard.webhook import (
     build_webhook_payload,
@@ -73,6 +75,27 @@ def _run_to_response(run: Run) -> RunResponse:
         started_at=(run.started_at.isoformat() if run.started_at else ""),
         finished_at=(run.finished_at.isoformat() if run.finished_at else None),
     )
+
+
+async def _load_run_for_user(
+    session: AsyncSession,
+    run_id: int,
+    user: User,
+) -> Run:
+    """Load a run and verify the current user owns it.
+
+    Raises 404 if the run does not exist OR belongs to another user.
+    We deliberately return 404 rather than 403 to avoid leaking the
+    existence of run_ids that the caller does not own (run_id is a
+    trivially-enumerable autoincrement integer).
+    """
+    run = await session.get(Run, run_id)
+    if run is None or run.user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Run {run_id} not found",
+        )
+    return run
 
 
 # ------------------------------------------------------------------
@@ -122,8 +145,13 @@ async def create_benchmark(
     request: Request,
     data: BenchmarkCreate,
     session: DBSession,
+    current_user: AdminUser,
 ) -> BenchmarkResponse:
-    """Create a new benchmark from a test suite definition."""
+    """Create a new benchmark from a test suite definition.
+
+    Admin-only: benchmark definitions shape the public leaderboard and
+    must not be created by arbitrary authenticated users.
+    """
     suite = TestSuite.model_validate(data.suite)
     tasks_count = len(suite.tests)
 
@@ -167,10 +195,11 @@ async def start_run(
     request: Request,
     benchmark_id: int,
     session: DBSession,
+    current_user: RequiredUser,
     timeout: int = Query(default=3600),
     agent_name: str = Query(default=""),
 ) -> RunResponse:
-    """Start a new benchmark run."""
+    """Start a new benchmark run owned by the current user."""
     bm = await session.get(Benchmark, benchmark_id)
     if bm is None:
         raise HTTPException(
@@ -179,6 +208,8 @@ async def start_run(
         )
 
     run = Run(
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
         benchmark_id=benchmark_id,
         agent_name=agent_name,
         adapter_type="sdk",
@@ -199,6 +230,7 @@ async def next_task(
     request: Request,
     run_id: int,
     session: DBSession,
+    current_user: RequiredUser,
     batch: int = Query(default=1, ge=1),
 ) -> Any:
     """Get the next task(s) for a run as ATPRequest dict(s).
@@ -207,29 +239,35 @@ async def next_task(
     (default) a single dict is returned for backward compatibility.  When
     ``batch>1`` a list is returned.  Returns 204 No Content when all tasks
     have been consumed.
+
+    Requires the caller to own the run.  Non-owners receive 404.
     """
     from atp.dashboard.v2.config import get_config
 
     config = get_config()
     batch = min(batch, config.batch_max_size)
 
-    # Atomic increment by batch: avoids read-then-write race condition
+    # Ownership pre-check — raises 404 if missing or owned by another user.
+    await _load_run_for_user(session, run_id, current_user)
+
+    # Atomic increment by batch: avoids read-then-write race condition.
+    # The user_id filter guards against a race between the pre-check and
+    # the update (e.g. admin cancellation in between).
     stmt = (
         update(Run)
-        .where(Run.id == run_id, Run.status == RunStatus.IN_PROGRESS)
+        .where(
+            Run.id == run_id,
+            Run.user_id == current_user.id,
+            Run.status == RunStatus.IN_PROGRESS,
+        )
         .values(current_task_index=Run.current_task_index + batch)
         .returning(Run.current_task_index, Run.benchmark_id)
     )
     result = await session.execute(stmt)
     row = result.one_or_none()
     if row is None:
-        # Either run doesn't exist or is not in progress
-        run = await session.get(Run, run_id)
-        if run is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Run {run_id} not found",
-            )
+        # Run exists and is owned by us (pre-check passed) but is not
+        # IN_PROGRESS — either already COMPLETED or CANCELLED.
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     new_index, benchmark_id = row
@@ -298,14 +336,10 @@ async def submit_result(
     run_id: int,
     data: SubmitRequest,
     session: DBSession,
+    current_user: RequiredUser,
 ) -> dict[str, Any]:
-    """Submit a task result for a run."""
-    run = await session.get(Run, run_id)
-    if run is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Run {run_id} not found",
-        )
+    """Submit a task result for a run owned by the current user."""
+    run = await _load_run_for_user(session, run_id, current_user)
 
     task_index = data.task_index
 
@@ -371,14 +405,10 @@ async def get_run_status(
     request: Request,
     run_id: int,
     session: DBSession,
+    current_user: RequiredUser,
 ) -> RunStatusResponse:
-    """Get run status with completed tasks."""
-    run = await session.get(Run, run_id)
-    if run is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Run {run_id} not found",
-        )
+    """Get run status with completed tasks (owner-only)."""
+    run = await _load_run_for_user(session, run_id, current_user)
 
     bm = await session.get(Benchmark, run.benchmark_id)
     tasks_count = bm.tasks_count if bm else 0
@@ -413,14 +443,10 @@ async def cancel_run(
     request: Request,
     run_id: int,
     session: DBSession,
+    current_user: RequiredUser,
 ) -> dict[str, str]:
-    """Cancel a benchmark run."""
-    run = await session.get(Run, run_id)
-    if run is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Run {run_id} not found",
-        )
+    """Cancel a benchmark run (owner-only)."""
+    run = await _load_run_for_user(session, run_id, current_user)
 
     run.status = RunStatus.CANCELLED
     run.finished_at = datetime.now()
@@ -440,18 +466,14 @@ async def emit_events(
     run_id: int,
     data: dict[str, Any],
     session: DBSession,
+    current_user: RequiredUser,
 ) -> dict[str, Any]:
-    """Append events to a running benchmark run.
+    """Append events to a running benchmark run (owner-only).
 
     Events are stored in Run.events JSON column.
     Maximum 1000 events per run.
     """
-    run = await session.get(Run, run_id)
-    if run is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Run {run_id} not found",
-        )
+    run = await _load_run_for_user(session, run_id, current_user)
     if run.status != RunStatus.IN_PROGRESS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

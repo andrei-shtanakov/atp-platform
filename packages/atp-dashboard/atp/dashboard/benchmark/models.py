@@ -106,10 +106,10 @@ class Run(Base):
         default=DEFAULT_TENANT_ID,
         index=True,
     )
-    user_id: Mapped[int | None] = mapped_column(
+    user_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("users.id"),
-        nullable=True,
+        nullable=False,
     )
     benchmark_id: Mapped[int] = mapped_column(
         Integer,
