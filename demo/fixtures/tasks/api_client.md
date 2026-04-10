@@ -1,6 +1,6 @@
-# Задание: REST API Client
+# Task: REST API Client
 
-Напиши класс `APIClient`:
+Write an `APIClient` class:
 
 ```python
 class APIClient:
@@ -8,18 +8,18 @@ class APIClient:
         ...
 
     def get(self, path: str, params: dict | None = None) -> dict:
-        """GET-запрос, возвращает JSON-ответ как dict."""
+        """GET request, returns the JSON response as a dict."""
         ...
 
     def post(self, path: str, data: dict | None = None) -> dict:
-        """POST-запрос с JSON body, возвращает JSON-ответ."""
+        """POST request with a JSON body, returns the JSON response."""
         ...
 ```
 
-Требования:
-- Используй библиотеку httpx
-- При HTTP ошибках (4xx, 5xx) поднимай httpx.HTTPStatusError
-- При таймауте поднимай httpx.TimeoutException
-- При ошибке соединения поднимай httpx.ConnectError
-- Метод get добавляет params как query string
-- Метод post отправляет data как JSON body
+Requirements:
+- Use the httpx library
+- On HTTP errors (4xx, 5xx) raise httpx.HTTPStatusError
+- On timeout raise httpx.TimeoutException
+- On connection error raise httpx.ConnectError
+- The get method adds params as a query string
+- The post method sends data as a JSON body

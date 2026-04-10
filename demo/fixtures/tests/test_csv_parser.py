@@ -1,4 +1,4 @@
-"""Тесты для проверки сгенерированного CSV-парсера."""
+"""Tests validating the generated CSV parser."""
 
 import os
 import tempfile
@@ -11,7 +11,7 @@ SAMPLE_CSV = "name,age,city\nAlice,30,Moscow\nBob,25,Berlin\nCharlie,30,Moscow\n
 
 @pytest.fixture
 def csv_file(tmp_path: object) -> str:
-    """Создаёт временный CSV-файл с тестовыми данными."""
+    """Create a temporary CSV file with sample data."""
     path = os.path.join(tempfile.mkdtemp(), "test.csv")
     with open(path, "w") as f:
         f.write(SAMPLE_CSV)
@@ -19,7 +19,7 @@ def csv_file(tmp_path: object) -> str:
 
 
 class TestReadCsv:
-    """Тесты read_csv."""
+    """Tests for read_csv."""
 
     def test_reads_file(self, csv_file: str) -> None:
         data = read_csv(csv_file)
@@ -45,7 +45,7 @@ class TestReadCsv:
 
 
 class TestFilterRows:
-    """Тесты filter_rows."""
+    """Tests for filter_rows."""
 
     def test_filter_by_city(self, csv_file: str) -> None:
         data = read_csv(csv_file)
@@ -65,7 +65,7 @@ class TestFilterRows:
 
 
 class TestWriteCsv:
-    """Тесты write_csv."""
+    """Tests for write_csv."""
 
     def test_write_and_read_back(self) -> None:
         data = [

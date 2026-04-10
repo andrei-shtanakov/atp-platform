@@ -1,11 +1,11 @@
-# Функциональные тесты для Code Writer Agents
-# Запуск (из корня atp-platform):
+# Functional tests for Code Writer Agents
+# Run (from the atp-platform root):
 #   uv run atp test demo/test_suites/functional.yaml --adapter=http \
 #     --adapter-config='endpoint=http://localhost:8001' --runs=3
 
 test_suite: "code_writer_functional"
 version: "1.0"
-description: "Проверка корректности: сгенерированный код проходит unit-тесты"
+description: "Correctness checks: generated code passes unit tests"
 
 defaults:
   runs_per_test: 3
@@ -22,20 +22,20 @@ defaults:
     cost_weight: 0.1
 
 tests:
-  # FN-001: Fibonacci — простое задание
+  # FN-001: Fibonacci — simple task
   - id: "FN-001"
-    name: "Fibonacci — код проходит unit-тесты"
+    name: "Fibonacci — code passes unit tests"
     tags: ["functional", "high", "simple"]
     task:
-      description: "Напиши Python-модуль с функцией fibonacci(n)"
+      description: "Write a Python module with a fibonacci(n) function"
       input_data:
         requirements: |
-          Напиши функцию fibonacci(n: int) -> int:
-          - Принимает целое число n >= 0
-          - Возвращает n-е число Фибоначчи
+          Write a function fibonacci(n: int) -> int:
+          - Accepts a non-negative integer n
+          - Returns the n-th Fibonacci number
           - fibonacci(0) = 0, fibonacci(1) = 1
-          - Для отрицательных n — поднимает ValueError
-          - Должна работать для больших n (до 1000) без переполнения
+          - Raises ValueError for negative n
+          - Must work for large n (up to 1000) without overflow
         language: "python"
         filename: "fibonacci.py"
       expected_artifacts: ["fibonacci.py"]
@@ -51,33 +51,33 @@ tests:
         config:
           criteria: "completeness"
           threshold: 0.8
-          prompt: "Оцени, реализует ли код все требования: fibonacci(n), ValueError для n<0, работа с большими n"
+          prompt: "Evaluate whether the code implements every requirement: fibonacci(n), ValueError for n<0, support for large n"
 
-  # FN-002: CSV-парсер — среднее задание
+  # FN-002: CSV parser — medium task
   - id: "FN-002"
-    name: "CSV-парсер — код проходит unit-тесты"
+    name: "CSV parser — code passes unit tests"
     tags: ["functional", "high", "medium"]
     task:
-      description: "Напиши Python-модуль для работы с CSV-файлами"
+      description: "Write a Python module for working with CSV files"
       input_data:
         requirements: |
-          Напиши модуль с тремя функциями:
+          Write a module with three functions:
 
           1. read_csv(path: str) -> list[dict[str, str]]
-             - Читает CSV-файл, возвращает список словарей
-             - Первая строка — заголовки
-             - Поднимает FileNotFoundError если файл не найден
+             - Reads a CSV file and returns a list of dicts
+             - The first row is the header
+             - Raises FileNotFoundError if the file does not exist
 
           2. filter_rows(data: list[dict], column: str, value: str) -> list[dict]
-             - Фильтрует строки где column == value
-             - Поднимает KeyError если column не существует
+             - Filters rows where column == value
+             - Raises KeyError if the column does not exist
 
           3. write_csv(data: list[dict], path: str) -> None
-             - Записывает список словарей в CSV-файл
-             - Заголовки берёт из ключей первого словаря
-             - Если data пуст — создаёт пустой файл
+             - Writes a list of dicts to a CSV file
+             - Headers are derived from the keys of the first dict
+             - If data is empty, creates an empty file
 
-          Используй только стандартную библиотеку (модуль csv).
+          Use only the standard library (the csv module).
         language: "python"
         filename: "csv_parser.py"
       expected_artifacts: ["csv_parser.py"]
@@ -93,37 +93,37 @@ tests:
         config:
           criteria: "completeness"
           threshold: 0.8
-          prompt: "Оцени, реализует ли код все 3 функции: read_csv, filter_rows, write_csv с обработкой ошибок"
+          prompt: "Evaluate whether the code implements all three functions: read_csv, filter_rows, write_csv with error handling"
 
-  # FN-003: REST API клиент — сложное задание
+  # FN-003: REST API client — complex task
   - id: "FN-003"
-    name: "REST API клиент — код проходит unit-тесты"
+    name: "REST API client — code passes unit tests"
     tags: ["functional", "high", "complex"]
     task:
-      description: "Напиши Python-модуль — HTTP API клиент"
+      description: "Write a Python module — an HTTP API client"
       input_data:
         requirements: |
-          Напиши класс APIClient:
+          Write an APIClient class:
 
           class APIClient:
               def __init__(self, base_url: str, timeout: int = 30):
                   ...
 
               def get(self, path: str, params: dict | None = None) -> dict:
-                  """GET-запрос, возвращает JSON-ответ как dict."""
+                  """GET request, returns the JSON response as a dict."""
                   ...
 
               def post(self, path: str, data: dict | None = None) -> dict:
-                  """POST-запрос с JSON body, возвращает JSON-ответ."""
+                  """POST request with a JSON body, returns the JSON response."""
                   ...
 
-          Требования:
-          - Используй библиотеку httpx
-          - При HTTP ошибках (4xx, 5xx) поднимай httpx.HTTPStatusError
-          - При таймауте поднимай httpx.TimeoutException
-          - При ошибке соединения поднимай httpx.ConnectError
-          - Метод get добавляет params как query string
-          - Метод post отправляет data как JSON body
+          Requirements:
+          - Use the httpx library
+          - On HTTP errors (4xx, 5xx) raise httpx.HTTPStatusError
+          - On timeout raise httpx.TimeoutException
+          - On connection error raise httpx.ConnectError
+          - The get method adds params as a query string
+          - The post method sends data as a JSON body
         language: "python"
         filename: "api_client.py"
       expected_artifacts: ["api_client.py"]
@@ -139,4 +139,4 @@ tests:
         config:
           criteria: "completeness"
           threshold: 0.7
-          prompt: "Оцени, реализует ли код класс APIClient с методами get/post, обработкой ошибок и таймаутом"
+          prompt: "Evaluate whether the code implements the APIClient class with get/post methods, error handling, and timeouts"

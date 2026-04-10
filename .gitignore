@@ -53,7 +53,14 @@ Thumbs.db
 # Generated artifacts
 art/
 SUGGESTIONS.md
+TROUBLESHOOTING.md
 tools_list.json
+
+# Personal specs (phase5 drafts, design notes)
+spec/phase5-design.md
+spec/phase5-requirements.md
+spec/phase5-tasks.md
+docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
 
 # Temp Office files
 ~$*

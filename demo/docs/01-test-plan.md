@@ -1,60 +1,60 @@
-# План тестирования: Code Writer Agents (OpenAI vs Anthropic)
+# Test Plan: Code Writer Agents (OpenAI vs Anthropic)
 
-## 1. Цель
+## 1. Goal
 
-**Что тестируем**: два AI-агента, каждый принимает задание на естественном языке
-и возвращает готовую Python-программу.
+**What we test**: two AI agents, each accepting a natural-language task and
+returning a ready-to-run Python program.
 
-| Агент | Модель | API | Endpoint |
-|-------|--------|-----|----------|
+| Agent | Model | API | Endpoint |
+|-------|-------|-----|----------|
 | Agent A | GPT-4o | OpenAI | http://localhost:8001 |
 | Agent B | Claude Sonnet 4 | Anthropic | http://localhost:8002 |
 
-**Зачем**: сравнить качество генерации кода, скорость, стоимость и надёжность.
+**Why**: compare code-generation quality, speed, cost, and reliability.
 
-## 2. Scope тестирования
+## 2. Test scope
 
-| Категория | Кол-во тестов | Приоритет | Что проверяем |
-|-----------|:---:|:---------:|---------------|
-| Smoke | 3 | Critical | Агент отвечает, код синтаксически валиден |
-| Функциональные | 3 | High | Код решает задачу, проходит unit-тесты |
-| Качество кода | 3 | Medium | Стиль, читаемость, документация |
-| **Итого** | **9** | | |
+| Category | # of tests | Priority | What we verify |
+|----------|:---:|:--------:|----------------|
+| Smoke | 3 | Critical | Agent responds, code is syntactically valid |
+| Functional | 3 | High | Code solves the task, passes unit tests |
+| Code quality | 3 | Medium | Style, readability, documentation |
+| **Total** | **9** | | |
 
-## 3. Задания для агентов
+## 3. Agent tasks
 
-| ID | Задание | Сложность | Проверка |
-|----|---------|-----------|----------|
-| T1 | Функция Fibonacci (n-е число) | Простое | pytest: корректность, edge cases |
-| T2 | CSV-парсер с фильтрацией | Среднее | pytest: чтение, фильтрация, edge cases |
-| T3 | REST API клиент (httpx) | Сложное | pytest: запросы, обработка ошибок |
+| ID | Task | Complexity | Verification |
+|----|------|------------|--------------|
+| T1 | Fibonacci function (n-th number) | Simple | pytest: correctness, edge cases |
+| T2 | CSV parser with filtering | Medium | pytest: read, filter, edge cases |
+| T3 | REST API client (httpx) | Complex | pytest: requests, error handling |
 
-## 4. Критерии приёмки
+## 4. Acceptance criteria
 
-### 4.1. Обязательные (блокирующие)
-- Все smoke-тесты: **PASS**
-- Сгенерированный код — валидный Python (компилируется)
-- Хотя бы 1 функциональный тест: **PASS**
+### 4.1. Mandatory (blocking)
+- All smoke tests: **PASS**
+- Generated code is valid Python (compiles)
+- At least one functional test: **PASS**
 
-### 4.2. Желательные
-- Все функциональные тесты: PASS
+### 4.2. Desirable
+- All functional tests: PASS
 - Quality score >= 0.75
-- Латентность < 30s на задание
-- Стоимость < $0.05 за задание
+- Latency < 30s per task
+- Cost < $0.05 per task
 
-## 5. Метрики сравнения
+## 5. Comparison metrics
 
-| Метрика | Как измеряем | Вес |
-|---------|-------------|-----|
-| Корректность | % пройденных unit-тестов | 0.40 |
-| Полнота | LLM-eval: все ли требования покрыты | 0.25 |
-| Качество кода | LLM-eval: стиль, читаемость, PEP 8 | 0.20 |
-| Эффективность | Токены + латентность + стоимость | 0.15 |
+| Metric | How we measure | Weight |
+|--------|----------------|--------|
+| Correctness | % of passing unit tests | 0.40 |
+| Completeness | LLM-eval: are all requirements covered | 0.25 |
+| Code quality | LLM-eval: style, readability, PEP 8 | 0.20 |
+| Efficiency | Tokens + latency + cost | 0.15 |
 
-## 6. Расписание
+## 6. Schedule
 
-| Триггер | Сьют | Прогонов |
-|---------|------|----------|
-| Ручной запуск | smoke.yaml | 1 |
-| Полное сравнение | functional.yaml + quality.yaml | 3 |
-| Baseline | Все сьюты | 5 |
+| Trigger | Suite | Runs |
+|---------|-------|------|
+| Manual run | smoke.yaml | 1 |
+| Full comparison | functional.yaml + quality.yaml | 3 |
+| Baseline | All suites | 5 |

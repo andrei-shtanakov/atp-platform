@@ -1,13 +1,13 @@
-"""Тесты для проверки сгенерированной функции fibonacci."""
+"""Tests validating the generated fibonacci function."""
 
 import pytest
 
-# Импорт из файла, который сгенерирует агент
+# Import from the file the agent will generate
 from fibonacci import fibonacci
 
 
 class TestFibonacciBasic:
-    """Базовые случаи."""
+    """Basic cases."""
 
     def test_zero(self) -> None:
         assert fibonacci(0) == 0
@@ -26,7 +26,7 @@ class TestFibonacciBasic:
 
 
 class TestFibonacciEdgeCases:
-    """Граничные случаи."""
+    """Edge cases."""
 
     def test_negative_raises_value_error(self) -> None:
         with pytest.raises(ValueError):
@@ -37,7 +37,7 @@ class TestFibonacciEdgeCases:
             fibonacci(-100)
 
     def test_large_number(self) -> None:
-        """fibonacci(50) должен работать без проблем."""
+        """fibonacci(50) should work without issues."""
         result = fibonacci(50)
         assert result == 12586269025
 
@@ -46,7 +46,7 @@ class TestFibonacciEdgeCases:
 
 
 class TestFibonacciSequence:
-    """Проверка последовательности."""
+    """Sequence verification."""
 
     def test_sequence_first_ten(self) -> None:
         expected = [0, 1, 1, 2, 3, 5, 8, 13, 21, 34]

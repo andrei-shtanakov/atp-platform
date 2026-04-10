@@ -1,11 +1,11 @@
-# Prisoner's Dilemma: GPT-4o-mini vs встроенные стратегии
+# Prisoner's Dilemma: GPT-4o-mini vs built-in strategies
 #
-# GPT-4o-mini играет против детерминированных стратегий.
-# Позволяет оценить стратегическое мышление LLM.
+# GPT-4o-mini plays against deterministic strategies.
+# Lets us evaluate the strategic reasoning of the LLM.
 #
-# Запуск:
-#   1. Запустите агента: uv run python -m uvicorn demo-game.agents.openai_game_agent:app --port 8010
-#   2. Запустите тест:   uv run atp game run demo-game/suites/pd_llm_vs_builtin.yaml --episodes=5
+# Run:
+#   1. Start the agent: uv run python -m uvicorn demo-game.agents.openai_game_agent:app --port 8010
+#   2. Run the test:    uv run atp game run demo-game/suites/pd_llm_vs_builtin.yaml --episodes=5
 
 type: game_suite
 name: "PD: GPT-4o-mini vs TitForTat"

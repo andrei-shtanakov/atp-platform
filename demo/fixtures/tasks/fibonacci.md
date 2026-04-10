@@ -1,8 +1,8 @@
-# Задание: Fibonacci
+# Task: Fibonacci
 
-Напиши функцию `fibonacci(n: int) -> int`:
-- Принимает целое число n >= 0
-- Возвращает n-е число Фибоначчи
+Write a function `fibonacci(n: int) -> int`:
+- Accepts a non-negative integer n
+- Returns the n-th Fibonacci number
 - fibonacci(0) = 0, fibonacci(1) = 1
-- Для отрицательных n — поднимает ValueError
-- Должна работать для больших n (до 1000) без переполнения
+- Raises ValueError for negative n
+- Must work for large n (up to 1000) without overflow

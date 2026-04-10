@@ -1,12 +1,12 @@
-# Архитектура генератора тестов ATP
+# ATP Test Generator Architecture
 
-> Руководство по автоматизации создания тестов через CLI, TUI и Web интерфейсы
+> Guide to automating test creation via CLI, TUI, and Web interfaces.
 
-## Обзор архитектуры
+## Architecture overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                        Интерфейсы (UI Layer)                        │
+│                        Interfaces (UI Layer)                        │
 ├─────────────────┬─────────────────┬─────────────────────────────────┤
 │   CLI Wizard    │      TUI        │         Web Dashboard           │
 │  (atp init/gen) │   (textual)     │    (FastAPI + React)            │
@@ -33,26 +33,26 @@
 
 ## 1. Core Engine: TestGenerator
 
-Общее ядро, которое используют все интерфейсы.
+A shared core used by every interface.
 
-### Структура файлов
+### File layout
 
 ```
 atp/
-├── generator/                    # NEW: Генератор тестов
+├── generator/                    # NEW: test generator
 │   ├── __init__.py
-│   ├── core.py                   # TestGenerator класс
-│   ├── templates.py              # Шаблоны тестов
-│   ├── wizard.py                 # Логика пошагового создания
-│   └── writer.py                 # Сериализация в YAML/JSON
+│   ├── core.py                   # TestGenerator class
+│   ├── templates.py              # Test templates
+│   ├── wizard.py                 # Step-by-step creation logic
+│   └── writer.py                 # YAML/JSON serialization
 ├── cli/
 │   ├── main.py
 │   └── commands/
 │       ├── init.py               # NEW: atp init
 │       └── generate.py           # NEW: atp generate
-└── tui/                          # NEW: TUI интерфейс
+└── tui/                          # NEW: TUI interface
     ├── __init__.py
-    ├── app.py                    # Textual приложение
+    ├── app.py                    # Textual application
     ├── screens/
     │   ├── main_menu.py
     │   ├── suite_editor.py
@@ -63,7 +63,7 @@ atp/
         └── yaml_preview.py
 ```
 
-### Код ядра: `atp/generator/core.py`
+### Core code: `atp/generator/core.py`
 
 ```python
 """Core test generator engine."""
@@ -316,23 +316,23 @@ class TestGenerator:
 
 ## 2. CLI Wizard: `atp init` / `atp generate`
 
-### Команды CLI
+### CLI commands
 
 ```bash
-# Инициализация нового проекта с тест-сьютом
+# Initialize a new project with a test suite
 atp init my_suite.yaml
 
-# Интерактивное добавление теста в существующий сьют
+# Interactively add a test to an existing suite
 atp generate test --suite=my_suite.yaml
 
-# Генерация из шаблона
+# Generate from a template
 atp generate test --suite=my_suite.yaml --template=file_creation
 
-# Генерация сразу нескольких тестов
+# Generate several tests at once
 atp generate suite --output=new_suite.yaml --template=smoke
 ```
 
-### Код: `atp/cli/commands/init.py`
+### Code: `atp/cli/commands/init.py`
 
 ```python
 """CLI command: atp init - Initialize test suite."""
@@ -476,9 +476,9 @@ def _add_test_interactive(generator: TestGenerator, suite) -> None:
 
 ## 3. TUI Interface (Textual)
 
-Интерактивный терминальный интерфейс с визуальным редактором.
+An interactive terminal interface with a visual editor.
 
-### Зависимости
+### Dependencies
 
 ```toml
 # pyproject.toml
@@ -486,19 +486,19 @@ def _add_test_interactive(generator: TestGenerator, suite) -> None:
 tui = ["textual>=0.47.0", "rich>=13.0"]
 ```
 
-### Запуск
+### Running it
 
 ```bash
-# Установка TUI зависимостей
+# Install TUI dependencies
 uv add textual rich --optional tui
 
-# Запуск TUI
+# Launch the TUI
 atp tui
-# или
+# or
 atp tui --suite=existing_suite.yaml
 ```
 
-### Код: `atp/tui/app.py`
+### Code: `atp/tui/app.py`
 
 ```python
 """ATP TUI Application using Textual."""
@@ -834,12 +834,12 @@ if __name__ == "__main__":
 
 ## 4. Web Dashboard Extension
 
-Добавление формы создания тестов в существующий Dashboard.
+Adding a test-creation form to the existing Dashboard.
 
 ### API Endpoints
 
 ```python
-# atp/dashboard/api.py - добавить новые endpoints
+# atp/dashboard/api.py - add new endpoints
 
 @router.post("/suites", response_model=SuiteResponse, tags=["suites"])
 async def create_suite(
@@ -897,7 +897,7 @@ async def list_templates() -> list[TemplateResponse]:
 ### React Component
 
 ```jsx
-// В app.py добавить React компонент для создания тестов
+// In app.py, add a React component for creating tests
 
 function TestCreatorForm({ onSuiteCreated }) {
     const [step, setStep] = useState(1);
@@ -1030,74 +1030,74 @@ function TestCreatorForm({ onSuiteCreated }) {
 
 ---
 
-## 5. Пошаговое руководство по внедрению
+## 5. Step-by-step implementation guide
 
-### Этап 1: Core Engine (1-2 дня)
+### Stage 1: Core Engine (1–2 days)
 
 ```bash
-# Создать структуру
+# Create the layout
 mkdir -p atp/generator
 touch atp/generator/__init__.py
 touch atp/generator/core.py
 touch atp/generator/templates.py
 touch atp/generator/writer.py
 
-# Написать тесты
+# Write the tests
 touch tests/unit/generator/test_core.py
 ```
 
-### Этап 2: CLI Commands (1 день)
+### Stage 2: CLI Commands (1 day)
 
 ```bash
-# Добавить команды
+# Add the commands
 touch atp/cli/commands/init.py
 touch atp/cli/commands/generate.py
 
-# Зарегистрировать в main.py
+# Register them in main.py
 # cli.add_command(init_command)
 # cli.add_command(generate_command)
 ```
 
-### Этап 3: TUI (2-3 дня)
+### Stage 3: TUI (2–3 days)
 
 ```bash
-# Добавить зависимости
+# Add the dependencies
 uv add textual rich --optional tui
 
-# Создать TUI модуль
+# Create the TUI module
 mkdir -p atp/tui/screens atp/tui/widgets
 touch atp/tui/app.py
 
-# Добавить команду
+# Add the command
 # atp tui
 ```
 
-### Этап 4: Dashboard Extension (2-3 дня)
+### Stage 4: Dashboard Extension (2–3 days)
 
 ```bash
-# Добавить API endpoints
-# Обновить React компоненты в app.py
+# Add the API endpoints
+# Update the React components in app.py
 ```
 
 ---
 
-## Сравнение подходов
+## Comparison of approaches
 
-| Критерий | CLI Wizard | TUI | Web Dashboard |
-|----------|------------|-----|---------------|
-| Скорость запуска | ⚡ Мгновенно | ⚡ Быстро | 🐢 Требует сервер |
-| Интерактивность | Средняя | Высокая | Высокая |
-| Визуализация | Нет | Да (дерево, preview) | Да (формы, графики) |
-| Автоматизация | Отлично (скрипты) | Сложнее | API доступ |
-| Кривая обучения | Низкая | Средняя | Низкая |
-| Зависимости | Нет | textual, rich | FastAPI, React |
+| Criterion | CLI Wizard | TUI | Web Dashboard |
+|-----------|------------|-----|---------------|
+| Startup speed | ⚡ Instant | ⚡ Fast | 🐢 Needs a server |
+| Interactivity | Medium | High | High |
+| Visualization | None | Yes (tree, preview) | Yes (forms, charts) |
+| Automation | Excellent (scripts) | Harder | API access |
+| Learning curve | Low | Medium | Low |
+| Dependencies | None | textual, rich | FastAPI, React |
 
 ---
 
-## Рекомендация
+## Recommendation
 
-1. **Начать с CLI** — минимум зависимостей, легко интегрировать
-2. **Добавить TUI** — для power users и интерактивной работы
-3. **Расширить Dashboard** — для команд и визуального управления
+1. **Start with the CLI** — minimum dependencies, easy to integrate.
+2. **Add the TUI** — for power users and interactive work.
+3. **Extend the Dashboard** — for teams and visual management.
 
-Все три варианта используют **общее ядро TestGenerator**, что обеспечивает консистентность.
+All three interfaces share the **same TestGenerator core**, which keeps them consistent.

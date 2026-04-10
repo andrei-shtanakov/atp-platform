@@ -1,111 +1,111 @@
-# Пошаговый план: тестирование двух Code Writer агентов
+# Step-by-step plan: testing two Code Writer agents
 
-## Цель
-Сравнить двух AI-агентов для написания Python-кода:
+## Goal
+Compare two AI agents that write Python code:
 - **Agent A**: OpenAI (GPT-4o)
 - **Agent B**: Anthropic (Claude Sonnet 4)
 
-Оба получают одинаковое задание → пишут Python-программу → ATP оценивает результат.
+Both receive the same task → write a Python program → ATP scores the result.
 
 ---
 
-## Шаги
+## Steps
 
-### Шаг 1: Цели тестирования и scope ✅
-- [x] Определить, что тестируем (два code writer агента)
-- [x] Определить категории тестов
-- [x] Определить критерии приёмки
+### Step 1: Test goals and scope ✅
+- [x] Decide what we test (two code writer agents)
+- [x] Define test categories
+- [x] Define acceptance criteria
 
-**Результат**: `docs/01-test-plan.md`
+**Result**: `docs/01-test-plan.md`
 
-### Шаг 2: Контракт (ATP Protocol) ✅
-- [x] Описать формат ATPRequest (input_data: задание на код)
-- [x] Описать формат ATPResponse (artifacts: Python-файл)
-- [x] Описать метрики (tokens, cost, time)
-- [x] JSON Schema для валидации ответа
+### Step 2: Contract (ATP Protocol) ✅
+- [x] Describe the ATPRequest format (input_data: the code task)
+- [x] Describe the ATPResponse format (artifacts: the Python file)
+- [x] Describe the metrics (tokens, cost, time)
+- [x] JSON Schema to validate the response
 
-**Результат**: `docs/02-contract.md`
+**Result**: `docs/02-contract.md`
 
-### Шаг 3: Окружение ✅
-- [x] Создать структуру директорий
-- [x] Создать atp.config.yaml (два агента: порты 8001, 8002)
-- [x] Настроить .env.example (API-ключи)
-- [x] JSON Schema для валидации ответов
+### Step 3: Environment ✅
+- [x] Create the directory layout
+- [x] Create atp.config.yaml (two agents: ports 8001, 8002)
+- [x] Set up .env.example (API keys)
+- [x] JSON Schema to validate responses
 
-**Результат**: `atp.config.yaml`, `.env.example`, `fixtures/response_schema.json`
+**Result**: `atp.config.yaml`, `.env.example`, `fixtures/response_schema.json`
 
-### Шаг 4: Тест-сьют (YAML) ✅
-- [x] Smoke-тесты: SM-001 (файл есть), SM-002 (schema), SM-003 (компилируется)
-- [x] Функциональные: FN-001 (fibonacci), FN-002 (csv_parser), FN-003 (api_client)
-- [x] Качество: QL-001 (docstrings), QL-002 (PEP 8), QL-003 (edge cases)
+### Step 4: Test suite (YAML) ✅
+- [x] Smoke tests: SM-001 (file exists), SM-002 (schema), SM-003 (compiles)
+- [x] Functional: FN-001 (fibonacci), FN-002 (csv_parser), FN-003 (api_client)
+- [x] Quality: QL-001 (docstrings), QL-002 (PEP 8), QL-003 (edge cases)
 
-**Результат**: `test_suites/smoke.yaml`, `test_suites/functional.yaml`, `test_suites/quality.yaml`
+**Result**: `test_suites/smoke.yaml`, `test_suites/functional.yaml`, `test_suites/quality.yaml`
 
-### Шаг 5: Фикстуры ✅
-- [x] Задания на код: fibonacci, csv_parser, api_client
-- [x] Pytest-тесты: test_fibonacci (10 тестов), test_csv_parser (10 тестов), test_api_client (7 тестов)
-- [x] JSON Schema для валидации ответов (шаг 3)
+### Step 5: Fixtures ✅
+- [x] Code tasks: fibonacci, csv_parser, api_client
+- [x] Pytest tests: test_fibonacci (10 tests), test_csv_parser (10 tests), test_api_client (7 tests)
+- [x] JSON Schema to validate responses (step 3)
 
-**Результат**: `fixtures/tasks/*.md`, `fixtures/tests/test_*.py`, `fixtures/response_schema.json`
+**Result**: `fixtures/tasks/*.md`, `fixtures/tests/test_*.py`, `fixtures/response_schema.json`
 
-### Шаг 6: Агенты ✅
-- [x] HTTP-агент с OpenAI API (FastAPI, порт 8001)
-- [x] HTTP-агент с Anthropic API (FastAPI, порт 8002)
-- [x] Общий system prompt для честного сравнения
-- [x] strip_markdown_fences() — очистка от ```python обёрток
-- [x] Подсчёт стоимости по актуальным ценам
+### Step 6: Agents ✅
+- [x] HTTP agent backed by OpenAI API (FastAPI, port 8001)
+- [x] HTTP agent backed by Anthropic API (FastAPI, port 8002)
+- [x] Shared system prompt for a fair comparison
+- [x] strip_markdown_fences() — removes ```python fences
+- [x] Cost accounting based on current prices
 
-**Результат**: `agents/openai_agent.py`, `agents/anthropic_agent.py`
+**Result**: `agents/openai_agent.py`, `agents/anthropic_agent.py`
 
-### Шаг 7: Адаптер и запуск
-- [x] Документация по запуску (docs/03-run-guide.md)
-- [ ] Запустить smoke-тесты для каждого агента
-- [ ] Убедиться, что оба работают
+### Step 7: Adapter and execution
+- [x] Run guide documentation (docs/03-run-guide.md)
+- [ ] Run smoke tests for each agent
+- [ ] Confirm that both agents work
 
-**Результат**: `docs/03-run-guide.md`, рабочие тесты
+**Result**: `docs/03-run-guide.md`, passing tests
 
-### Шаг 8: Сравнение и базовая линия
-- [x] Инструкции по baseline и сравнению (docs/03-run-guide.md §5-6)
-- [ ] Запустить полный сьют для обоих агентов
-- [ ] Сохранить базовые линии
-- [ ] Сравнить результаты
+### Step 8: Comparison and baseline
+- [x] Baseline and comparison instructions (docs/03-run-guide.md §5-6)
+- [ ] Run the full suite for both agents
+- [ ] Save the baselines
+- [ ] Compare the results
 
-**Результат**: `baselines/`, отчёт сравнения
+**Result**: `baselines/`, comparison report
 
 ---
 
-## Структура директорий (целевая)
+## Target directory layout
 
 ```
 atp-platform-artefacts/
-├── steps.md                    # Этот файл
-├── atp.config.yaml             # Конфигурация ATP
-├── .env.example                # Шаблон переменных окружения
+├── steps.md                    # This file
+├── atp.config.yaml             # ATP configuration
+├── .env.example                # Environment variable template
 ├── docs/
-│   ├── 01-test-plan.md         # План тестирования
-│   └── 02-contract.md          # Контракт ATP Protocol
+│   ├── 01-test-plan.md         # Test plan
+│   └── 02-contract.md          # ATP Protocol contract
 ├── agents/
 │   ├── openai_agent.py         # Agent A: OpenAI GPT-4o
 │   └── anthropic_agent.py      # Agent B: Anthropic Claude
 ├── test_suites/
-│   ├── smoke.yaml              # Smoke-тесты
-│   ├── functional.yaml         # Функциональные тесты
-│   └── quality.yaml            # Тесты качества кода
+│   ├── smoke.yaml              # Smoke tests
+│   ├── functional.yaml         # Functional tests
+│   └── quality.yaml            # Code quality tests
 ├── fixtures/
-│   ├── tasks/                  # Задания на код
+│   ├── tasks/                  # Code tasks
 │   │   ├── fibonacci.md
 │   │   ├── csv_parser.md
 │   │   └── rest_api.md
-│   ├── tests/                  # Pytest-тесты для проверки кода
+│   ├── tests/                  # Pytest tests used to verify the code
 │   │   ├── test_fibonacci.py
 │   │   ├── test_csv_parser.py
 │   │   └── test_rest_api.py
-│   └── response_schema.json    # JSON Schema ответа
-├── baselines/                  # Базовые линии
-└── reports/                    # Отчёты
+│   └── response_schema.json    # Response JSON Schema
+├── baselines/                  # Baselines
+└── reports/                    # Reports
 ```
 
 ---
 
-## Текущий статус
-**Активный шаг**: 7 — Адаптер и запуск
+## Current status
+**Active step**: 7 — Adapter and execution

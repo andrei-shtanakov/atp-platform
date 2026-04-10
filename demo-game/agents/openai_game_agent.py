@@ -1,15 +1,15 @@
 """
 Game-Playing Agent — OpenAI GPT-4o-mini.
 
-HTTP-агент для теоретико-игрового тестирования через ATP Platform.
-Получает описание игровой ситуации, вызывает OpenAI API и возвращает
-решение (действие) в формате ATP Protocol.
+HTTP agent for game-theoretic testing via ATP Platform. Receives a
+game-state description, calls the OpenAI API, and returns a decision
+(action) in ATP Protocol format.
 
-Запуск:
+Run:
     export OPENAI_API_KEY=sk-...
     uv run python -m uvicorn demo-game.agents.openai_game_agent:app --port 8010
 
-Зависимости:
+Dependencies:
     uv add fastapi uvicorn openai
 """
 
@@ -28,7 +28,7 @@ client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
 
 MODEL = "gpt-4o-mini"
 
-# Цены GPT-4o-mini (USD за 1M tokens)
+# GPT-4o-mini prices (USD per 1M tokens)
 INPUT_PRICE_PER_M = 0.15
 OUTPUT_PRICE_PER_M = 0.60
 

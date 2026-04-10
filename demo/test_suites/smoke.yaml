@@ -1,11 +1,11 @@
-# Smoke-тесты для Code Writer Agents
-# Запуск (из корня atp-platform):
+# Smoke tests for Code Writer Agents
+# Run (from the atp-platform root):
 #   uv run atp test demo/test_suites/smoke.yaml --adapter=http \
 #     --adapter-config='endpoint=http://localhost:8001'
 
 test_suite: "code_writer_smoke"
 version: "1.0"
-description: "Базовые проверки: агент отвечает, код валиден, формат корректен"
+description: "Baseline checks: the agent responds, code is valid, format is correct"
 
 defaults:
   runs_per_test: 1
@@ -22,14 +22,14 @@ defaults:
     cost_weight: 0.1
 
 tests:
-  # SM-001: Агент отвечает и возвращает Python-файл
+  # SM-001: Agent responds and returns a Python file
   - id: "SM-001"
-    name: "Агент возвращает Python-файл"
+    name: "Agent returns a Python file"
     tags: ["smoke", "critical"]
     task:
-      description: "Напиши Python-функцию fibonacci(n), возвращающую n-е число Фибоначчи"
+      description: "Write a Python function fibonacci(n) that returns the n-th Fibonacci number"
       input_data:
-        requirements: "Функция fibonacci(n) принимает целое число n >= 0. Возвращает n-е число Фибоначчи. fibonacci(0)=0, fibonacci(1)=1."
+        requirements: "Function fibonacci(n) accepts a non-negative integer n. Returns the n-th Fibonacci number. fibonacci(0)=0, fibonacci(1)=1."
         language: "python"
         filename: "fibonacci.py"
       expected_artifacts: ["fibonacci.py"]
@@ -41,14 +41,14 @@ tests:
         config:
           check: "no_errors"
 
-  # SM-002: Ответ соответствует JSON Schema
+  # SM-002: Response matches the JSON Schema
   - id: "SM-002"
-    name: "Ответ валиден по JSON Schema"
+    name: "Response is valid against the JSON Schema"
     tags: ["smoke", "critical"]
     task:
-      description: "Напиши Python-функцию add(a, b), которая складывает два числа"
+      description: "Write a Python function add(a, b) that adds two numbers"
       input_data:
-        requirements: "Функция add(a, b) принимает два числа и возвращает их сумму."
+        requirements: "Function add(a, b) accepts two numbers and returns their sum."
         language: "python"
         filename: "add.py"
       expected_artifacts: ["add.py"]
@@ -60,14 +60,14 @@ tests:
         config:
           check: "no_errors"
 
-  # SM-003: Сгенерированный код компилируется
+  # SM-003: Generated code compiles
   - id: "SM-003"
-    name: "Код синтаксически валиден"
+    name: "Code is syntactically valid"
     tags: ["smoke", "critical"]
     task:
-      description: "Напиши Python-функцию is_palindrome(s), проверяющую является ли строка палиндромом"
+      description: "Write a Python function is_palindrome(s) that checks whether a string is a palindrome"
       input_data:
-        requirements: "Функция is_palindrome(s) принимает строку и возвращает True если строка читается одинаково слева направо и справа налево (без учёта регистра и пробелов)."
+        requirements: "Function is_palindrome(s) accepts a string and returns True if the string reads the same forwards and backwards (case-insensitive, ignoring whitespace)."
         language: "python"
         filename: "palindrome.py"
       expected_artifacts: ["palindrome.py"]

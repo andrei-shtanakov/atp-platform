@@ -1,15 +1,15 @@
 """
 El Farol Bar — LLM Game Agent (OpenAI GPT-4o-mini).
 
-HTTP-агент для El Farol Bar Problem через ATP Platform.
-Получает описание игровой ситуации (attendance history, slots),
-вызывает OpenAI API и возвращает список слотов для посещения.
+HTTP agent for the El Farol Bar Problem served via ATP Platform.
+Receives a game-state description (attendance history, slots), calls the
+OpenAI API, and returns the list of slots to attend.
 
-Запуск локально:
+Run locally:
     export OPENAI_API_KEY=sk-...
     uv run python -m uvicorn demo-game.agents.el_farol_agent:app --port 8011
 
-Запуск в контейнере (Podman/Docker):
+Run in a container (Podman/Docker):
     podman build -f demo-game/Containerfile.el-farol -t el-farol-agent .
     podman run --rm -p 8011:8011 -e OPENAI_API_KEY=sk-... el-farol-agent
 """

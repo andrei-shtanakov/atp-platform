@@ -43,59 +43,59 @@ uv add atp-platform atp-games game-environments
 See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md`
 
 ### MVP
-- [x] Расширить atp-dashboard: catalog API + tournament API route-группы
-- [x] Добавить GitHub как OIDC-провайдер в существующий SSO-модуль
-- [x] Добавить Device Flow для CLI-логина
-- [x] Новые SQLAlchemy-модели (Benchmark, Run, TaskResult, Tournament, Participant, Round, Action)
-- [x] Alembic-миграция для новых таблиц
-- [x] Cancel endpoint + серверный таймаут прогонов (status=partial)
-- [x] Benchmark family_tag + parent_id для версионирования
-- [x] Run.adapter_type для аналитики (sdk/http/cli/...)
-- [x] Login/Register UI + RBAC seed + auto-admin для первого пользователя
-- [x] Создать packages/atp-sdk/ — Python SDK для участников (client, benchmark iterator, auth)
-- [x] Создать SDKAdapter в atp-adapters (asyncio.Event + timeout, pull-модель как AgentAdapter)
-- [x] Sandbox для evaluators на сервере (subprocess + timeout + rlimits)
-- [x] Опубликовать atp-sdk на PyPI (как atp-platform-sdk)
+- [x] Extend atp-dashboard: catalog API + tournament API route groups
+- [x] Add GitHub as an OIDC provider in the existing SSO module
+- [x] Add Device Flow for CLI login
+- [x] New SQLAlchemy models (Benchmark, Run, TaskResult, Tournament, Participant, Round, Action)
+- [x] Alembic migration for the new tables
+- [x] Cancel endpoint + server-side run timeout (status=partial)
+- [x] Benchmark family_tag + parent_id for versioning
+- [x] Run.adapter_type for analytics (sdk/http/cli/...)
+- [x] Login/Register UI + RBAC seed + auto-admin for the first user
+- [x] Create packages/atp-sdk/ — Python SDK for participants (client, benchmark iterator, auth)
+- [x] Create SDKAdapter in atp-adapters (asyncio.Event + timeout, pull model as AgentAdapter)
+- [x] Sandbox for evaluators on the server (subprocess + timeout + rlimits)
+- [x] Publish atp-sdk to PyPI (as atp-platform-sdk)
 
 ### Post-MVP
-- [x] `?batch=N` для параллельного получения задач (SDK v2.0.0)
-- [ ] Redis pub/sub для SDKAdapter (замена asyncio.Event, переживает рестарт)
-- [ ] Автоматический трекинг токенов в SDK (обёртка над LLM-вызовами)
-- [ ] Event streaming в SDK (отправка ATPEvent во время выполнения)
-- [ ] Workspace management в SDK (скачивание/загрузка файлов-артефактов)
-- [x] Async API в SDK — AsyncATPClient + async for task in run (SDK v2.0.0)
-- [x] Retry/reconnect при обрывах в SDK — exponential backoff + full jitter (SDK v2.0.0)
+- [x] `?batch=N` for parallel task fetching (SDK v2.0.0)
+- [ ] Redis pub/sub for SDKAdapter (replaces asyncio.Event, survives restart)
+- [ ] Automatic token tracking in the SDK (wrapper around LLM calls)
+- [ ] Event streaming in the SDK (send ATPEvent during execution)
+- [ ] Workspace management in the SDK (download/upload artifact files)
+- [x] Async API in the SDK — AsyncATPClient + async for task in run (SDK v2.0.0)
+- [x] Retry/reconnect on drops in the SDK — exponential backoff + full jitter (SDK v2.0.0)
 - [ ] TypeScript SDK
-- [ ] WebSocket для real-time турниров (инфраструктура в dashboard уже есть)
-- [ ] Container-изоляция evaluators (Podman/Docker)
-- [ ] Федерация — приватный atp-server
-- [ ] Webhooks для CI/CD-уведомлений по завершении прогона
-- [ ] Rate limiting на уровне приложения
-- [ ] Выделить atp-protocol как отдельный лёгкий пакет (если вес atp-core станет проблемой для SDK)
-- [ ] Детализировать Tournament API (cancel, серверные таймауты раундов, пропуск дедлайнов)
+- [ ] WebSocket for real-time tournaments (dashboard infrastructure is already in place)
+- [ ] Container isolation for evaluators (Podman/Docker)
+- [ ] Federation — a private atp-server
+- [ ] Webhooks for CI/CD notifications on run completion
+- [ ] Application-level rate limiting
+- [ ] Extract atp-protocol as a separate lightweight package (if atp-core becomes too heavy for the SDK)
+- [ ] Flesh out the Tournament API (cancel, server-side round timeouts, skipping deadlines)
 
 ## Architecture Cleanup (P0 → P2)
 
 ### P0 — Critical
 
-- [x] **AuthFlowStateStore**: единый `InMemoryAuthStateStore` для SSO/SAML (auth/state_store.py). `_sso_sessions` и `_saml_sessions` убраны
-- [x] **Починить SSO тесты**: синхронизированы с текущим SSOInitRequest API (extra="forbid")
-- [x] **allow_shell в CLIAdapter**: полностью удалён. Shell features доступны через `command="sh" args=["-c", "..."]`
+- [x] **AuthFlowStateStore**: unified `InMemoryAuthStateStore` for SSO/SAML (auth/state_store.py). `_sso_sessions` and `_saml_sessions` removed.
+- [x] **Fix SSO tests**: synced with the current SSOInitRequest API (extra="forbid").
+- [x] **allow_shell in CLIAdapter**: fully removed. Shell features are available via `command="sh" args=["-c", "..."]`.
 
 ### P1 — Important
 
-- [x] **Общий post-auth service**: `complete_auth()` в auth/post_auth.py — provision user + assign roles + issue token. SSO, SAML, DeviceFlow routes используют его
-- [x] **Удалить `return_url` из SAML**: убрано из SAMLInitRequest и session storage
-- [x] **DeviceFlowStore API**: `lookup()` + `lookup_by_user_code()` + `DeviceFlowStatus` constants вместо строк
+- [x] **Shared post-auth service**: `complete_auth()` in auth/post_auth.py — provision user + assign roles + issue token. SSO, SAML, and DeviceFlow routes all use it.
+- [x] **Remove `return_url` from SAML**: removed from SAMLInitRequest and session storage.
+- [x] **DeviceFlowStore API**: `lookup()` + `lookup_by_user_code()` + `DeviceFlowStatus` constants instead of strings.
 
 ### P2 — Improvement
 
-- [x] **Развязать atp-dashboard от atp-platform**: shared result models вынесены в `atp.core.results`, dashboard зависит от atp-core
-- [ ] **Объединить route-модели SSO/SAML**: убрать дублирование request/response моделей
-- [ ] **Почистить примеры и конфиги** от shell-режима и старых assumptions
+- [x] **Decouple atp-dashboard from atp-platform**: shared result models moved to `atp.core.results`, dashboard depends on atp-core.
+- [ ] **Merge SSO/SAML route models**: remove request/response model duplication.
+- [ ] **Clean up examples and configs** from the shell mode and older assumptions.
 
 ## Dashboard UI
 
-- [ ] **Chart.js в Analytics**: pie chart статусов, histogram scores, line chart по агентам (templates/ui/analytics.html)
-- [ ] **Fix UI routes test isolation**: `.value` баг в analytics/home templates, UNIQUE constraint collision
-- [ ] **Benchmark API scoring**: подключить evaluators вместо наивной оценки (100 if completed else 0)
+- [ ] **Chart.js in Analytics**: status pie chart, score histogram, per-agent line chart (templates/ui/analytics.html).
+- [ ] **Fix UI routes test isolation**: `.value` bug in analytics/home templates, UNIQUE constraint collision.
+- [ ] **Benchmark API scoring**: wire up evaluators instead of the naive score (100 if completed else 0).

@@ -1,30 +1,30 @@
-# Контракт: Code Writer Agent (ATP Protocol)
+# Contract: Code Writer Agent (ATP Protocol)
 
-## 1. Обзор
+## 1. Overview
 
-Агент получает задание на написание Python-кода и возвращает готовый файл.
+The agent receives a Python code-writing task and returns a ready file.
 
 ```
 ATP Platform                          Code Writer Agent
 ┌────────────┐                       ┌─────────────────┐
-│ Test Suite  │──ATPRequest──────────►│ Принимает задание│
-│  (YAML)    │                       │ Вызывает LLM     │
-│            │◄──ATPResponse─────────│ Возвращает код    │
+│ Test Suite │──ATPRequest──────────►│ Accepts the task│
+│  (YAML)    │                       │ Calls the LLM   │
+│            │◄──ATPResponse─────────│ Returns code    │
 └────────────┘                       └─────────────────┘
 ```
 
 ---
 
-## 2. ATPRequest — что получает агент
+## 2. ATPRequest — what the agent receives
 
 ```json
 {
   "version": "1.0",
   "task_id": "task_fibonacci_001",
   "task": {
-    "description": "Напиши Python-функцию для вычисления n-го числа Фибоначчи",
+    "description": "Write a Python function that computes the n-th Fibonacci number",
     "input_data": {
-      "requirements": "Функция fibonacci(n) принимает целое число n >= 0. Возвращает n-е число Фибоначчи. fibonacci(0)=0, fibonacci(1)=1. Для отрицательных n — ValueError.",
+      "requirements": "Function fibonacci(n) accepts a non-negative integer n. Returns the n-th Fibonacci number. fibonacci(0)=0, fibonacci(1)=1. Raises ValueError for negative n.",
       "language": "python",
       "filename": "fibonacci.py"
     },
@@ -47,17 +47,17 @@ ATP Platform                          Code Writer Agent
 }
 ```
 
-### 2.1. Поля input_data
+### 2.1. input_data fields
 
-| Поле | Тип | Обязательное | Описание |
-|------|-----|:---:|----------|
-| `requirements` | string | да | Подробное описание требований к коду |
-| `language` | string | да | Язык программирования (всегда `"python"`) |
-| `filename` | string | да | Имя файла для артефакта (напр. `"fibonacci.py"`) |
+| Field | Type | Required | Description |
+|-------|------|:---:|-------------|
+| `requirements` | string | yes | Detailed description of code requirements |
+| `language` | string | yes | Programming language (always `"python"`) |
+| `filename` | string | yes | Artifact filename (e.g. `"fibonacci.py"`) |
 
 ---
 
-## 3. ATPResponse — что возвращает агент
+## 3. ATPResponse — what the agent returns
 
 ```json
 {
@@ -86,16 +86,16 @@ ATP Platform                          Code Writer Agent
 }
 ```
 
-### 3.1. Правила формирования ответа
+### 3.1. Response rules
 
-1. **`status`**: `"completed"` если код сгенерирован, `"failed"` при ошибке LLM/API
-2. **`artifacts`**: ровно один файл с `path` = значению `input_data.filename`
-3. **`content`**: чистый Python-код без markdown-обёрток (без ` ```python `)
-4. **`metrics`**: обязательно заполнить `total_tokens`, `wall_time_seconds`, `cost_usd`
+1. **`status`**: `"completed"` if the code was generated, `"failed"` on LLM/API error
+2. **`artifacts`**: exactly one file whose `path` equals `input_data.filename`
+3. **`content`**: raw Python code with no markdown fences (no ` ```python `)
+4. **`metrics`**: must populate `total_tokens`, `wall_time_seconds`, `cost_usd`
 
 ---
 
-## 4. ATPEvent — потоковые события (опционально)
+## 4. ATPEvent — streaming events (optional)
 
 ```json
 {
@@ -111,20 +111,20 @@ ATP Platform                          Code Writer Agent
 }
 ```
 
-Агенты могут (но не обязаны) стримить события. ATP использует их для observability.
+Agents may (but are not required to) stream events. ATP uses them for observability.
 
 ---
 
-## 5. Статусы и ошибки
+## 5. Statuses and errors
 
-| Status | Когда | Пример |
-|--------|-------|--------|
-| `completed` | Код сгенерирован | Нормальная работа |
-| `failed` | Ошибка API / невозможно сгенерировать | API key invalid, rate limit |
-| `timeout` | Превышен `timeout_seconds` | Модель не ответила за 60s |
-| `partial` | Код сгенерирован, но не полностью | Обрезка по `max_tokens` |
+| Status | When | Example |
+|--------|------|---------|
+| `completed` | Code generated | Normal operation |
+| `failed` | API error / cannot generate | API key invalid, rate limit |
+| `timeout` | `timeout_seconds` exceeded | Model did not respond within 60s |
+| `partial` | Code generated but incomplete | Truncated by `max_tokens` |
 
-При `failed` поле `error` содержит описание:
+On `failed`, the `error` field contains a description:
 ```json
 {
   "status": "failed",
@@ -135,9 +135,9 @@ ATP Platform                          Code Writer Agent
 
 ---
 
-## 6. Валидация ответа (JSON Schema)
+## 6. Response validation (JSON Schema)
 
-Используется в assertion `schema` для smoke-тестов:
+Used by the `schema` assertion in smoke tests:
 
 ```json
 {
@@ -184,10 +184,10 @@ ATP Platform                          Code Writer Agent
 
 ---
 
-## 7. Примеры заданий (preview)
+## 7. Sample tasks (preview)
 
-| Задание | filename | Ключевые требования |
-|---------|----------|-------------------|
-| Fibonacci | `fibonacci.py` | fibonacci(n), ValueError для n<0, edge cases |
-| CSV-парсер | `csv_parser.py` | read_csv(path), filter_rows(data, column, value), write_csv(data, path) |
-| REST API клиент | `api_client.py` | get/post методы, retry, timeout, обработка HTTP ошибок |
+| Task | filename | Key requirements |
+|------|----------|------------------|
+| Fibonacci | `fibonacci.py` | fibonacci(n), ValueError for n<0, edge cases |
+| CSV parser | `csv_parser.py` | read_csv(path), filter_rows(data, column, value), write_csv(data, path) |
+| REST API client | `api_client.py` | get/post methods, retry, timeout, HTTP error handling |

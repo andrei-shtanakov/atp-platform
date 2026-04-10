@@ -1,11 +1,11 @@
-# Тесты качества кода для Code Writer Agents
-# Запуск (из корня atp-platform):
+# Code quality tests for Code Writer Agents
+# Run (from the atp-platform root):
 #   uv run atp test demo/test_suites/quality.yaml --adapter=http \
 #     --adapter-config='endpoint=http://localhost:8001'
 
 test_suite: "code_writer_quality"
 version: "1.0"
-description: "Проверка качества: стиль, документация, обработка ошибок"
+description: "Quality checks: style, documentation, error handling"
 
 defaults:
   runs_per_test: 1
@@ -22,20 +22,20 @@ defaults:
     cost_weight: 0.2
 
 tests:
-  # QL-001: Код содержит docstrings
+  # QL-001: Code contains docstrings
   - id: "QL-001"
-    name: "Код содержит docstrings"
+    name: "Code contains docstrings"
     tags: ["quality", "medium"]
     task:
-      description: "Напиши Python-модуль с функцией fibonacci(n)"
+      description: "Write a Python module with a fibonacci(n) function"
       input_data:
         requirements: |
-          Функция fibonacci(n: int) -> int:
-          - Принимает целое число n >= 0
-          - Возвращает n-е число Фибоначчи
+          Function fibonacci(n: int) -> int:
+          - Accepts a non-negative integer n
+          - Returns the n-th Fibonacci number
           - fibonacci(0) = 0, fibonacci(1) = 1
-          - Для отрицательных n — ValueError
-          Код должен быть хорошо документирован.
+          - Raises ValueError for negative n
+          The code must be well documented.
         language: "python"
         filename: "fibonacci.py"
       expected_artifacts: ["fibonacci.py"]
@@ -51,22 +51,22 @@ tests:
         config:
           criteria: "quality"
           threshold: 0.8
-          prompt: "Оцени качество docstrings: есть ли описание функции, параметров, возвращаемого значения и исключений?"
+          prompt: "Evaluate docstring quality: does it describe the function, parameters, return value, and exceptions?"
 
-  # QL-002: Код следует PEP 8
+  # QL-002: Code follows PEP 8
   - id: "QL-002"
-    name: "Код соответствует PEP 8"
+    name: "Code follows PEP 8"
     tags: ["quality", "medium"]
     task:
-      description: "Напиши Python-модуль для работы с CSV-файлами"
+      description: "Write a Python module for working with CSV files"
       input_data:
         requirements: |
-          Напиши модуль с функциями:
+          Write a module with the following functions:
           - read_csv(path: str) -> list[dict[str, str]]
           - filter_rows(data: list[dict], column: str, value: str) -> list[dict]
           - write_csv(data: list[dict], path: str) -> None
-          Используй стандартную библиотеку csv.
-          Код должен строго следовать PEP 8.
+          Use the standard library csv module.
+          The code must strictly follow PEP 8.
         language: "python"
         filename: "csv_parser.py"
       expected_artifacts: ["csv_parser.py"]
@@ -83,26 +83,26 @@ tests:
           criteria: "quality"
           threshold: 0.75
           prompt: |
-            Оцени код по критериям PEP 8:
-            - snake_case для функций и переменных
-            - Длина строк <= 88 символов
-            - Type hints для параметров и возвращаемых значений
-            - Правильные отступы и пробелы
-            - Import на отдельных строках
+            Evaluate the code against PEP 8 criteria:
+            - snake_case for functions and variables
+            - Line length <= 88 characters
+            - Type hints for parameters and return values
+            - Proper indentation and whitespace
+            - Imports on separate lines
 
-  # QL-003: Код обрабатывает edge cases
+  # QL-003: Code handles edge cases
   - id: "QL-003"
-    name: "Код обрабатывает граничные случаи"
+    name: "Code handles edge cases"
     tags: ["quality", "medium"]
     task:
-      description: "Напиши Python-класс APIClient для HTTP-запросов"
+      description: "Write a Python APIClient class for HTTP requests"
       input_data:
         requirements: |
-          Класс APIClient:
+          APIClient class:
           - __init__(self, base_url: str, timeout: int = 30)
           - get(self, path: str, params: dict | None = None) -> dict
           - post(self, path: str, data: dict | None = None) -> dict
-          Используй httpx. Обработай все возможные ошибки.
+          Use httpx. Handle all plausible error cases.
         language: "python"
         filename: "api_client.py"
       expected_artifacts: ["api_client.py"]
@@ -115,9 +115,9 @@ tests:
           criteria: "quality"
           threshold: 0.75
           prompt: |
-            Оцени, насколько хорошо код обрабатывает граничные случаи:
-            - HTTP ошибки (4xx, 5xx) — raise или обработка?
-            - Таймаут — есть ли обработка?
-            - Ошибка соединения — есть ли обработка?
-            - Пустой ответ / не-JSON ответ — есть ли защита?
-            - base_url с/без trailing slash — нормализация?
+            Evaluate how well the code handles edge cases:
+            - HTTP errors (4xx, 5xx) — raised or handled?
+            - Timeout — is it handled?
+            - Connection error — is it handled?
+            - Empty or non-JSON response — is there a guard?
+            - base_url with/without a trailing slash — normalized?

@@ -1,4 +1,4 @@
-# atp.config.yaml — конфигурация ATP для Code Writer Agents
+# atp.config.yaml — ATP configuration for Code Writer Agents
 log_level: INFO
 parallel_workers: 2
 default_timeout: 60
@@ -6,14 +6,14 @@ fail_fast: false
 sandbox_enabled: false
 runs_per_test: 1
 
-# LLM (для llm_eval assertions)
+# LLM (for llm_eval assertions)
 openai_api_key: ${OPENAI_API_KEY}
 default_llm_model: gpt-4o-mini
 default_provider: openai
 max_retries: 3
 request_timeout: 60
 
-# Агенты
+# Agents
 agents:
   - name: "openai-coder"
     type: "http"

@@ -1,14 +1,14 @@
 """
 Code Writer Agent — OpenAI GPT-4o.
 
-HTTP-агент для ATP Platform. Принимает задание на написание Python-кода,
-вызывает OpenAI API и возвращает сгенерированный файл.
+HTTP agent for ATP Platform. Accepts a Python code-writing task, calls the
+OpenAI API, and returns the generated file.
 
-Запуск:
+Run:
     export OPENAI_API_KEY=sk-...
     uv run uvicorn agents.openai_agent:app --port 8001
 
-Зависимости:
+Dependencies:
     uv add fastapi uvicorn openai
 """
 
@@ -26,7 +26,7 @@ client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 MODEL = "gpt-4o-mini"
 
-# Цены GPT-4o-mini (USD за 1M tokens)
+# GPT-4o-mini prices (USD per 1M tokens)
 INPUT_PRICE_PER_M = 0.15
 OUTPUT_PRICE_PER_M = 0.60
 
@@ -100,7 +100,7 @@ class ATPResponse(BaseModel):
 
 
 def strip_markdown_fences(text: str) -> str:
-    """Убирает ```python ... ``` обёртки если LLM их добавила."""
+    """Strip ```python ... ``` fences if the LLM added them."""
     text = text.strip()
     pattern = r"^```(?:python)?\s*\n(.*?)```\s*$"
     match = re.match(pattern, text, re.DOTALL)
@@ -110,7 +110,7 @@ def strip_markdown_fences(text: str) -> str:
 
 
 def calculate_cost(input_tokens: int, output_tokens: int) -> float:
-    """Считает стоимость запроса в USD."""
+    """Compute request cost in USD."""
     input_cost = input_tokens * INPUT_PRICE_PER_M / 1_000_000
     output_cost = output_tokens * OUTPUT_PRICE_PER_M / 1_000_000
     return round(input_cost + output_cost, 6)
@@ -121,7 +121,7 @@ def calculate_cost(input_tokens: int, output_tokens: int) -> float:
 
 @app.post("/")
 async def handle_request(request: ATPRequest) -> ATPResponse:
-    """Обработка ATP-запроса: генерация Python-кода через OpenAI."""
+    """Handle an ATP request: generate Python code via OpenAI."""
     start = time.monotonic()
 
     try:

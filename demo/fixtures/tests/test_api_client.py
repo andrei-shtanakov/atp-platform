@@ -1,7 +1,7 @@
-"""Тесты для проверки сгенерированного API-клиента.
+"""Tests validating the generated API client.
 
-Используют httpx mock-транспорт для имитации HTTP-ответов
-без реальных сетевых запросов.
+Uses an httpx mock transport to simulate HTTP responses without making real
+network requests.
 """
 
 import json
@@ -12,7 +12,7 @@ from api_client import APIClient
 
 
 class MockTransport(httpx.BaseTransport):
-    """Mock-транспорт для тестирования без сети."""
+    """Mock transport for network-free testing."""
 
     def __init__(self, handler: object = None) -> None:
         self._handler = handler or self._default_handler
@@ -26,9 +26,9 @@ class MockTransport(httpx.BaseTransport):
 
 
 def make_client(handler: object = None) -> APIClient:
-    """Создаёт APIClient с mock-транспортом."""
+    """Create an APIClient backed by a mock transport."""
     client = APIClient("http://test-api.local", timeout=5)
-    # Подменяем внутренний httpx-клиент на mock
+    # Replace the internal httpx client with a mock one
     mock_transport = MockTransport(handler)
     client._client = httpx.Client(
         base_url="http://test-api.local",
@@ -39,7 +39,7 @@ def make_client(handler: object = None) -> APIClient:
 
 
 class TestGet:
-    """Тесты метода get."""
+    """Tests for the get method."""
 
     def test_get_returns_dict(self) -> None:
         client = make_client()
@@ -66,7 +66,7 @@ class TestGet:
 
 
 class TestPost:
-    """Тесты метода post."""
+    """Tests for the post method."""
 
     def test_post_returns_dict(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
@@ -87,7 +87,7 @@ class TestPost:
 
 
 class TestInit:
-    """Тесты инициализации."""
+    """Initialization tests."""
 
     def test_creates_instance(self) -> None:
         client = APIClient("http://example.com")
