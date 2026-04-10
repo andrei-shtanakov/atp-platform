@@ -88,6 +88,48 @@ Run a public Prisoner's Dilemma tournament at `https://atp.pr0sto.space/mcp/sse`
 
 **Why.** Idempotent submit (return 200 with `already_submitted` marker) is simpler UX but requires a SELECT before INSERT or careful IntegrityError handling. v1 starts with the strict version; we relax it (backlog B) if observed retry behavior in the first tournament causes real confusion.
 
+### AD-9: Hard duration cap on tournaments to avoid mid-game JWT expiry
+
+**Decision.** `create_tournament` enforces `max_duration_s = total_rounds * round_deadline_s` and rejects the creation request if `max_duration_s > (ATP_TOKEN_EXPIRE_MINUTES * 60 - TOURNAMENT_TOKEN_BUFFER_S)`, where `TOURNAMENT_TOKEN_BUFFER_S = 600` is a named module-level constant in `tournament/service.py` (10 minutes of buffer). With defaults (`ATP_TOKEN_EXPIRE_MINUTES=60`, `round_deadline_s=30`), this caps a tournament at `(60 * 60 - 600) / 30 = 100 rounds` worst case — which exactly matches the flagship PD configuration. No JWT refresh logic inside the MCP session.
+
+**Why.** JWTs are validated only on SSE handshake (`JWTUserStateMiddleware` writes `request.state.user_id` once per connection). Nothing re-validates the token after handshake. If the token expires mid-tournament, the session context still has a valid `user_id`, but (a) any future reconnect after drop will fail at handshake with 401, and (b) per AD-7, dropped sessions lose in-flight notifications with no replay. The combination is a latent footgun on any tournament longer than `~ATP_TOKEN_EXPIRE_MINUTES - 10` of wall clock time.
+
+A hard duration cap is the smallest change that makes the problem impossible in v1: the tournament cannot outlive its participants' tokens by construction. The 10-minute buffer absorbs clock skew, late joins (token age when the session opens, not when it was issued), and the time between `create_tournament` and actual gameplay start.
+
+**Rejected alternatives.**
+
+- **Bump `ATP_TOKEN_EXPIRE_MINUTES` globally to 240.** Weakens platform-wide security posture for a single feature's convenience.
+- **Re-validate JWT on every tool call and return `ToolError(401)` near expiry.** Forces participants to reconnect mid-game, losing notifications per AD-7. Pushes complexity onto every client.
+- **Tournament-scoped tokens with dedicated TTL via `POST /auth/tournament-token?tournament_id=X`.** Correct long-term solution but requires a new auth path, token revocation on cancel/leave, and client-side token swapping. Out of v1 scope — tracked as backlog item V with trigger "first request to run a tournament that exceeds the AD-9 hard cap".
+
+**Operational note.** The duration check happens at `create_tournament` time and produces a `ValidationError`. Admin creating a tournament sees an immediate 422 with an explicit message (e.g. `"max duration 100 rounds at 30s deadline; got 200 rounds"`) rather than discovering the problem when a participant's token expires on round 95.
+
+### AD-10: Open-join matchmaking with optional `join_token` and 1-active-tournament-per-user limit
+
+**Decision.** v1 tournaments are **open-join by default**: any authenticated user can call `join_tournament(id)` on any `PENDING` tournament, and the first `num_players` joiners trigger game start. To support research-group tournaments and controlled match-ups, `Tournament` gains an optional `join_token: str | None` column; if non-null, `join_tournament` requires the client to pass a matching token as an extra parameter, and `ConflictError` is raised otherwise. The admin receives the token once on creation and distributes it out-of-band.
+
+To prevent squatting (joining 10 tournaments simultaneously and only playing in one, leaving the others to `timeout_default` every round), `TournamentService.join` enforces a hard limit: a user with an existing `Participant` in a tournament whose status is `ACTIVE` cannot join a second one. The check is one extra `SELECT COUNT` in `join`, returns `ConflictError("user already participating in another active tournament")`, and is governed by the constant `MAX_ACTIVE_TOURNAMENTS_PER_USER = 1` in `tournament/service.py`. Lifting this limit when use cases appear is tracked as backlog item Y.
+
+**Why.** Pure open-join is unsafe for any non-public tournament — squatter clients can grab slots intended for specific participants. A full RBAC/invite model is overkill for MVP; a shared-secret token is a small change that covers 90% of the real use cases ("I want my research group to play this specific tournament"). The 1-active-per-user limit closes the second squatting vector — joining many public tournaments to leave them in `timeout_default` purgatory — without complex per-tournament behavior tracking.
+
+**Schema impact.** One additive column on `Tournament`:
+
+| Column | Type | Notes |
+|---|---|---|
+| `join_token` | `String(64) NULLABLE` | NULL = open-join; non-null = token required |
+
+Token is generated server-side with `secrets.token_urlsafe(32)` on create. Returned **once** in the `create_tournament` response body, never listed in `get_tournament` or REST admin responses (admin who lost it must cancel and recreate).
+
+**Tool signature change.** `join_tournament(id, agent_name, join_token: str | None = None)`.
+
+**Rejected alternatives.**
+
+- **Explicit invite list (admin specifies user_ids at create time).** Richer model, requires a new `TournamentInvite` table, participant lookup by user_id before token exists, and a flow to add/remove invitees. Deferred to backlog item W.
+- **No access control in v1.** Unacceptable for the planned research tournaments where controlled match-ups are the whole point.
+- **Allow >1 active tournament per user.** Realistic concern for power users running multiple bots, but each bot would need its own JWT to avoid the limit anyway, which is the intended pattern. Backlog Y captures the lift trigger.
+
+**Agent name uniqueness.** `agent_name` remains a free-form display string; it is **not** unique within a tournament. Two participants may join with the same `agent_name="tft"` if the underlying user_ids differ. The tournament UI and leaderboard disambiguate by appending a seat index or user suffix.
+
 ## Architecture
 
 ### Module layout
@@ -216,6 +258,8 @@ class TournamentService:
 - Every public method takes a `User` and performs its own ownership/permission check.
 - State-changing methods write to DB and event bus in one logical operation: bus publish happens **after** `session.commit()`, never before.
 - The service never touches FastAPI or MCP concerns. It is unit-testable via direct calls with an in-memory session and a test event bus.
+- **Round resolution has exactly one implementation.** `force_resolve_round` is defined as `fill_missing_actions_with_default(round_id) → await self._resolve_round(round_id)` — it reuses `_resolve_round` verbatim and never duplicates scoring logic. Both the happy path (triggered by the last participant's `submit_action`) and the deadline path (triggered by the background worker) converge on the same private resolver. Any change to payoff computation or round-state transitions happens in exactly one place.
+- **`join` is idempotent for existing participants.** Calling `join_tournament(id)` for a user who is already a `Participant` of that tournament returns the existing `Participant` (does not raise 409) and triggers the same post-join side effects (subscription installation, `session_sync` notification — see MCP server section). This makes reconnect-after-drop a single tool call with the same semantics as the first join.
 
 ### Event bus
 
@@ -304,6 +348,12 @@ async def _forward_events_to_session(ctx, tournament_id, user):
 
 The task is cancelled on `leave_tournament` or session close. Task handles are tracked in a module-level `dict[session_id, dict[tournament_id, Task]]` (acknowledged as mutable global state; acceptable for MVP).
 
+**Automatic state sync on every `join_tournament` call.** Immediately after `join_tournament` succeeds — whether for a brand-new participant or a reconnecting one (per the idempotency invariant in §Service layer) — the tool handler sends a synthetic notification with `data = {"event": "session_sync", "state": <full RoundState from get_state_for>}` **before** returning the tool result. The client therefore receives a guaranteed initial-state snapshot as the first notification on the session and SHOULD treat it as the authoritative starting point — any subsequent `round_started` / `round_ended` events are deltas on top of it.
+
+This closes a narrow but real gap: between `session.commit()` of a state-changing operation (e.g. the deadline worker resolving a round) and the corresponding `bus.publish()` call, a subscriber that just (re)connected may register **after** commit but **before** publish, missing the event entirely. Without `session_sync`, that subscriber would see a `round_started` for round N+2 without ever having seen `round_ended` for round N+1, and might hold stale `your_history` in client-side memory. With `session_sync` on every join, reconnect always produces a consistent baseline from the database.
+
+Clients SHOULD also fall back to `get_current_state` if they observe a gap (`round_number` jumping by >1 between consecutive notifications) or a period of no events longer than `2 * round_deadline_s`.
+
 ## Persistence
 
 ### Existing models
@@ -320,6 +370,7 @@ The task is cancelled on `leave_tournament` or session close. Task handles are t
 | `num_players` | `Integer NOT NULL` | server_default="2" |
 | `total_rounds` | `Integer NOT NULL` | server_default="1" |
 | `round_deadline_s` | `Integer NOT NULL` | server_default="30" |
+| `join_token` | `String(64) NULLABLE` | per AD-10. NULL = open-join, non-null = participants must present matching token. Generated server-side via `secrets.token_urlsafe(32)` on create, returned **once** in the create response, never echoed back |
 
 Status enum is reused: `PENDING` = accepting joins, `ACTIVE` = game running, `COMPLETED` / `CANCELLED` unchanged. No rename.
 
@@ -410,6 +461,24 @@ Four error classes with explicit mapping:
 
 ## Rollout plan (vertical slice first)
 
+### Phase 0 — pre-slice verification (must run before any other work)
+
+Two reality checks that de-risk hidden assumptions in this spec. Total cost: 2-4 hours. They gate the decision to start fase 1 with the assumed architecture intact.
+
+1. **`MCPAdapter` notification capability check.** The in-house MCP client at `packages/atp-adapters/atp/adapters/mcp/` was built as a tool-calling client to test MCP-server agents, not as a long-running subscriber that sits on an SSE connection and processes server-pushed `notifications/message` indefinitely. v1 e2e tests AND the documented "programmatic Python participant" path both depend on this capability — and the spec asserts it without verification.
+
+   **Verification.** Write a throwaway integration test that spins up a FastMCP test server which sends a `notifications/message` once per second over SSE for 10 seconds, then assert that `MCPAdapter` in subscription mode receives and surfaces all 10 notifications via a callback. If the test cannot be written against the current `MCPAdapter` API, expand `MCPAdapter` as an explicit task in the fase 1 service-layer milestone — NOT buried inside the e2e milestone in fase 5.
+
+   **Failure mode if skipped.** Fase 5 discovers mid-sprint that the harness fundamentally cannot observe notifications, forcing either a pivot to the third-party Python `mcp` package (new dep, new code path diverging from the documented participant path) or a significant `MCPAdapter` rewrite not budgeted in any phase. Estimated rework: 1 week.
+
+2. **FastMCP + Starlette mount auth integration.** Before writing `TournamentService`, verify that mounting `mcp.sse_app()` under `/mcp` in the existing FastAPI app correctly triggers `JWTUserStateMiddleware` on the SSE handshake request. FastMCP's SSE transport creates Starlette routes that may or may not respect the outer FastAPI middleware stack. A 15-minute check: stand up a trivial FastMCP with one tool that reads `request.state.user_id`, call it via `curl` with a test JWT, confirm the user_id is populated.
+
+   **Failure mode if skipped.** Auth is built in fase 2, discovered not to work in fase 5 e2e, and debugging is hampered by middleware/mount-order interactions that are hard to reason about after the rest of the architecture is committed.
+
+These two checks are the **first thing the implementation plan does**. They are the cheapest possible insurance against the most expensive class of mid-project pivot.
+
+### Vertical slice (after Phase 0 passes)
+
 The vertical slice is deliberately narrower than the full v1 scope to establish an early end-to-end feedback loop:
 
 1. **Slice scope.** PD only, 2 players, 3 rounds (fixed), no deadlines, in-memory round state, MCP tools: `join_tournament`, `get_current_state`, `make_move`; notifications: `round_started`, `tournament_completed` only.
@@ -439,11 +508,14 @@ Three tiers: **planned next** (known what and when), **deferred with trigger** (
 | F | Chain-of-thought capture per round (persisted `reasoning` on Action) | When analysis needs it, not preemptively |
 | G | Charts: score trajectory, heatmap, cooperation rate | After 5+ tournaments, when metric utility is known |
 | H | Head-to-head matrix + per-seat breakdown | After first N-player game ships (El Farol) and multi-pair tournaments exist |
-| I | Redis-backed event bus + multi-worker uvicorn | p99 `make_move` latency > 500ms OR parallel active tournaments > 50 OR worker RSS > 500MB |
+| I | Redis-backed event bus + multi-worker uvicorn + **PostgreSQL migration** (SQLite cannot support concurrent writers across workers; all three changes are one logical rollout, not separable) | p99 `make_move` latency > 500ms OR parallel active tournaments > 50 OR worker RSS > 500MB |
 | J | stdio transport as local dev/debug mode | Developer friction during local iteration becomes real |
 | K | Per-tool rate limit inside MCP session | Observed botnet-like flood from a single JWT |
 | L | Load testing suite | First public tournament with 5+ participants raises performance concerns |
-| U | `deadline_warning` notification (T-5s before round expires) | Players complain about missing the deadline with no heads-up; requires second timer per round |
+| U | `deadline_warning` notification (T-5s before round expires) | Players complain about missing the deadline with no heads-up. Implementation: one extra `Round.warned_at` column + one extra predicate in the existing deadline tick — not a second timer |
+| V | Tournament-scoped JWT (`POST /auth/tournament-token?tournament_id=X`) with TTL ≥ tournament max duration, replacing the AD-9 hard cap | First request to run a tournament that exceeds the AD-9 hard cap (e.g. 200-round game, or longer `round_deadline_s` than the default JWT lifetime allows) |
+| X | Shared per-event memoization in `_format_notification_for_user`: cache `round_number`, `deadline`, `game_type`, `payoff_matrix` per event and only recompute per-player `your_history` / `opponent_history` in memory, cutting DB queries from `O(subscribers)` to `O(1)` per event | First game with `num_players >= 8` (current flagship is PD with 2; El Farol introduces 5-10 player tournaments per backlog A) |
+| Y | Lift `MAX_ACTIVE_TOURNAMENTS_PER_USER = 1` from AD-10 to a higher value or per-user override | First credible request from a power user / researcher who needs to run multiple bots from one JWT, AND no observed squatting incidents in the prior public tournament |
 
 ### Deferred without trigger (idea parking lot)
 
@@ -457,6 +529,7 @@ Three tiers: **planned next** (known what and when), **deferred with trigger** (
 | R | Team tournaments (players grouped into teams) |
 | S | Cross-game meta-tournaments (composite scoring across game types) |
 | T | Stream/demo-friendly large-display dashboard |
+| W | Explicit invite list / per-tournament RBAC: admin specifies user_ids (or tenant groups) at creation, separate `TournamentInvite` table, invite-accept flow, revocation. Replaces or augments the `join_token` mechanism from AD-10 |
 
 ### Backlog hygiene rules
 
