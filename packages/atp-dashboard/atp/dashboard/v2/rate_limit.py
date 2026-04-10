@@ -54,9 +54,29 @@ def create_limiter(config: DashboardConfig) -> Limiter:
     decorators already bound at import time pick up the new settings.
     """
     from limits.storage import storage_from_string
+    from slowapi.wrappers import LimitGroup
 
     limiter.enabled = config.rate_limit_enabled  # type: ignore[attr-defined]
-    limiter._default_limits = [config.rate_limit_default]  # type: ignore[attr-defined]
+    # _default_limits must be a list of LimitGroup instances — slowapi's
+    # middleware does ``itertools.chain(*self._default_limits)`` which would
+    # otherwise iterate a raw string character-by-character and crash with an
+    # AttributeError deep inside __evaluate_limits, then get re-wrapped by
+    # slowapi's own exception handler (which assumes RateLimitExceeded and
+    # reads ``.detail``), surfacing as a cryptic 500 on any non-decorated
+    # route. Mirror Limiter.__init__'s construction.
+    limiter._default_limits = [  # type: ignore[attr-defined]
+        LimitGroup(
+            config.rate_limit_default,
+            limiter._key_func,  # type: ignore[attr-defined]
+            None,
+            False,
+            None,
+            None,
+            None,
+            1,
+            False,
+        )
+    ]
     if config.rate_limit_storage:
         limiter._storage = storage_from_string(  # type: ignore[attr-defined]
             config.rate_limit_storage

@@ -76,6 +76,75 @@ class TestCreateLimiter:
         result = create_limiter(config)
         assert rl_mod.limiter is result
 
+    def test_default_limits_are_limit_group_instances(self) -> None:
+        """Regression: _default_limits must hold LimitGroup objects, not raw
+        strings. Previously create_limiter() stored the raw rate_limit_default
+        string, which caused itertools.chain(*_default_limits) inside slowapi's
+        middleware to iterate the string character-by-character and crash with
+        an AttributeError on any non-decorated route — masking itself behind
+        slowapi's RateLimitExceeded handler (500 on /, /docs, /openapi.json).
+        """
+        from slowapi.wrappers import LimitGroup
+
+        config = DashboardConfig(debug=True, rate_limit_default="60/minute")
+        result = create_limiter(config)
+        defaults = result._default_limits  # type: ignore[attr-defined]
+        assert defaults, "default limits should not be empty"
+        for group in defaults:
+            assert isinstance(group, LimitGroup), (
+                f"expected LimitGroup, got {type(group).__name__}"
+            )
+        # And iterating yields real Limit instances (what slowapi does
+        # internally via itertools.chain).
+        import itertools
+
+        from slowapi.wrappers import Limit
+
+        flat = list(itertools.chain(*defaults))
+        assert flat, "chained defaults should yield at least one Limit"
+        for limit in flat:
+            assert isinstance(limit, Limit)
+
+
+class TestRateLimitEnabledNonDecoratedRoute:
+    """Regression: non-decorated routes must not 500 when rate limiting is
+    enabled. This reproduces the prod bug where /, /docs, /openapi.json all
+    returned 500 because create_limiter() stored raw strings in _default_limits.
+    """
+
+    def test_non_decorated_route_does_not_500(self) -> None:
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from slowapi.errors import RateLimitExceeded
+        from slowapi.middleware import SlowAPIMiddleware
+
+        from atp.dashboard.v2.rate_limit import (
+            create_limiter,
+            rate_limit_exceeded_handler,
+        )
+
+        config = DashboardConfig(
+            debug=True,
+            rate_limit_enabled=True,
+            rate_limit_default="60/minute",
+        )
+        limiter = create_limiter(config)
+
+        app = FastAPI()
+        app.state.limiter = limiter
+        app.add_middleware(SlowAPIMiddleware)
+        app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
+        @app.get("/plain")
+        async def plain() -> dict[str, bool]:
+            return {"ok": True}
+
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/plain")
+        assert resp.status_code == 200, (
+            f"non-decorated route returned {resp.status_code}: {resp.text}"
+        )
+
 
 class TestRateLimitExceededHandler:
     """Tests for 429 response handler."""
