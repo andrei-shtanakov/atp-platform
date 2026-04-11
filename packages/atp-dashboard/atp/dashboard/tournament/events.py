@@ -18,6 +18,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
 
+from atp.dashboard.tournament.models import TournamentStatus
+from atp.dashboard.tournament.reasons import CancelReason
+
 logger = logging.getLogger("atp.dashboard.tournament.events")
 
 _QUEUE_MAXSIZE = 100
@@ -104,3 +107,57 @@ class TournamentEventBus:
                 subs.discard(queue)
                 if not subs:
                     del self._subscribers[tournament_id]
+
+
+_SYSTEM_CANCEL_REASONS: frozenset[CancelReason] = frozenset(
+    {
+        CancelReason.PENDING_TIMEOUT,
+        CancelReason.ABANDONED,
+    }
+)
+
+
+@dataclass(frozen=True)
+class TournamentCancelEvent:
+    """Payload for `tournament_cancelled` bus event.
+
+    Field invariant (enforced three ways — defense in depth):
+
+    1. DB CHECK constraint `ck_tournament_cancel_consistency` on the
+       tournaments table.
+    2. `__post_init__` validator on this dataclass.
+    3. Construction call site in `TournamentService._cancel_impl` —
+       always builds from consistent inputs by construction.
+
+    Invariant:
+        cancelled_by IS NULL  <->  cancelled_reason in {PENDING_TIMEOUT, ABANDONED}
+        cancelled_by NOT NULL <->  cancelled_reason == ADMIN_ACTION
+    """
+
+    tournament_id: int
+    cancelled_at: datetime
+    cancelled_by: int | None
+    cancelled_reason: CancelReason
+    cancelled_reason_detail: str | None
+    final_rounds_played: int
+    final_status: TournamentStatus
+
+    def __post_init__(self) -> None:
+        is_system = self.cancelled_reason in _SYSTEM_CANCEL_REASONS
+        has_actor = self.cancelled_by is not None
+
+        if is_system and has_actor:
+            raise ValueError(
+                f"system cancel (reason={self.cancelled_reason.value}) "
+                f"must have cancelled_by=None, got {self.cancelled_by}"
+            )
+        if not is_system and not has_actor:
+            raise ValueError(
+                f"user-initiated cancel (reason={self.cancelled_reason.value}) "
+                f"must have cancelled_by set, got None"
+            )
+        if self.final_status != TournamentStatus.CANCELLED:
+            raise ValueError(
+                f"TournamentCancelEvent.final_status must be CANCELLED, "
+                f"got {self.final_status.value}"
+            )
