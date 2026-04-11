@@ -17,6 +17,7 @@ dependencies = [
     "opentelemetry-instrumentation-fastapi>=0.60b1",
     "slowapi>=0.1.9",
     "fastmcp>=3.0",
+    "game-environments>=1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -45,6 +46,7 @@ packages = ["atp/dashboard", "atp/analytics"]
 
 [tool.uv.sources]
 atp-core = { workspace = true }
+game-environments = { workspace = true }
 
 [tool.ruff]
 line-length = 88
