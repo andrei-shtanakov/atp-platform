@@ -90,12 +90,28 @@ def create_app(
     if config is None:
         config = get_config()
 
+    # Set up the FastMCP sub-app first so its lifespan can be composed
+    # into the outer FastAPI lifespan. Phase 0.2 verified that Starlette
+    # does NOT propagate sub-app lifespans under mount(), so we must
+    # drive FastMCP's session-manager lifespan ourselves.
+    from atp.dashboard.mcp import mcp_server
+    from atp.dashboard.mcp import tools as _mcp_tools  # noqa: F401
+    from atp.dashboard.mcp.auth import MCPAuthMiddleware
+
+    mcp_app = mcp_server.http_app(transport="sse")
+
+    @asynccontextmanager
+    async def _combined_lifespan(app_: FastAPI) -> AsyncGenerator[None, None]:
+        async with lifespan(app_):
+            async with mcp_app.router.lifespan_context(app_):
+                yield
+
     # Merge default settings with any provided kwargs
     app_settings: dict[str, Any] = {
         "title": config.title,
         "description": config.description,
         "version": config.version,
-        "lifespan": lifespan,
+        "lifespan": _combined_lifespan,
         "debug": config.debug,
     }
     app_settings.update(kwargs)
@@ -125,6 +141,13 @@ def create_app(
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Mount the MCP tournament server under /mcp.
+    # MCPAuthMiddleware sits between JWTUserStateMiddleware (which
+    # populates request.state.user_id) and FastMCP, rejecting
+    # unauthenticated handshakes with 401.
+    mcp_app.add_middleware(MCPAuthMiddleware)
+    app.mount("/mcp", mcp_app)
 
     # Mount API routes
     app.include_router(api_router, prefix="/api")
