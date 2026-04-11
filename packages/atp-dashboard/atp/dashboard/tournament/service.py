@@ -653,7 +653,7 @@ class TournamentService:
                 f"user {user.id} is not active in tournament {tournament_id}"
             )
 
-        participant.released_at = datetime.now()
+        participant.released_at = datetime.utcnow()
         await self._session.flush()
 
         remaining = await self._session.scalar(
