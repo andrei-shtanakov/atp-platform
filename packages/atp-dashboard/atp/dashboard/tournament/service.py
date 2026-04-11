@@ -26,7 +26,7 @@ from atp.dashboard.tournament.errors import (
     NotFoundError,
     ValidationError,
 )
-from atp.dashboard.tournament.events import TournamentEventBus
+from atp.dashboard.tournament.events import TournamentEvent, TournamentEventBus
 from atp.dashboard.tournament.models import (
     Action,
     Participant,
@@ -147,6 +147,15 @@ class TournamentService:
         )
         self._session.add(round_1)
         await self._session.flush()
+        await self._bus.publish(
+            TournamentEvent(
+                event_type="round_started",
+                tournament_id=tournament.id,
+                round_number=1,
+                data={"total_rounds": tournament.total_rounds},
+                timestamp=datetime.now(),
+            )
+        )
 
     async def get_state_for(
         self,
@@ -421,6 +430,15 @@ class TournamentService:
         )
         self._session.add(next_round)
         await self._session.flush()
+        await self._bus.publish(
+            TournamentEvent(
+                event_type="round_started",
+                tournament_id=tournament.id,
+                round_number=next_round.round_number,
+                data={"total_rounds": tournament.total_rounds},
+                timestamp=datetime.now(),
+            )
+        )
 
         return {
             "status": "round_resolved",
@@ -454,3 +472,14 @@ class TournamentService:
             )
             p.total_score = float(total or 0.0)
         await self._session.flush()
+        await self._bus.publish(
+            TournamentEvent(
+                event_type="tournament_completed",
+                tournament_id=tournament.id,
+                round_number=None,
+                data={
+                    "final_scores": {p.user_id: p.total_score for p in participants},
+                },
+                timestamp=datetime.now(),
+            )
+        )

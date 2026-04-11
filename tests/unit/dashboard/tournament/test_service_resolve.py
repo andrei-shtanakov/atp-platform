@@ -147,3 +147,56 @@ async def test_full_3_round_pd_tournament_completes(
     by_user = {p.user_id: p for p in parts}
     assert by_user[alice.id].total_score == 0.0
     assert by_user[bob.id].total_score == 15.0
+
+
+@pytest.mark.anyio
+async def test_full_3_round_publishes_round_started_and_tournament_completed(
+    session: AsyncSession,
+    admin_user: User,
+    alice: User,
+    bob: User,
+    event_bus: TournamentEventBus,
+) -> None:
+    """Verify the slice's two notification events flow through the bus."""
+    import asyncio
+
+    from atp.dashboard.tournament.events import TournamentEvent
+    from atp.dashboard.tournament.service import TournamentService
+
+    received: list[TournamentEvent] = []
+
+    svc = TournamentService(session, event_bus)
+
+    t = await svc.create_tournament(
+        admin=admin_user,
+        name="t",
+        game_type="prisoners_dilemma",
+        num_players=2,
+        total_rounds=3,
+        round_deadline_s=30,
+    )
+
+    async def collect() -> None:
+        async with event_bus.subscribe(t.id) as queue:
+            for _ in range(4):
+                event = await queue.get()
+                received.append(event)
+
+    collector = asyncio.create_task(collect())
+    await asyncio.sleep(0)
+
+    await svc.join(t.id, alice, "alice")
+    await svc.join(t.id, bob, "bob")
+    for _ in range(3):
+        await svc.submit_action(t.id, alice, action={"choice": "cooperate"})
+        await svc.submit_action(t.id, bob, action={"choice": "defect"})
+
+    await asyncio.wait_for(collector, timeout=2.0)
+
+    assert [e.event_type for e in received] == [
+        "round_started",
+        "round_started",
+        "round_started",
+        "tournament_completed",
+    ]
+    assert [e.round_number for e in received[:3]] == [1, 2, 3]
