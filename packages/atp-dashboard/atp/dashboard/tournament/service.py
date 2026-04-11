@@ -13,9 +13,12 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
+from typing import Any
 
+from game_envs.games.prisoners_dilemma import PrisonersDilemma
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from atp.dashboard.models import User
 from atp.dashboard.tournament.errors import (
@@ -30,10 +33,15 @@ from atp.dashboard.tournament.models import (
     Tournament,
     TournamentStatus,
 )
+from atp.dashboard.tournament.state import RoundState
 
 logger = logging.getLogger("atp.dashboard.tournament.service")
 
 _SUPPORTED_GAMES = frozenset({"prisoners_dilemma"})
+
+_GAME_INSTANCES: dict[str, Any] = {
+    "prisoners_dilemma": PrisonersDilemma(),
+}
 
 
 class TournamentService:
@@ -138,3 +146,94 @@ class TournamentService:
         )
         self._session.add(round_1)
         await self._session.flush()
+
+    async def get_state_for(
+        self,
+        tournament_id: int,
+        user: User,
+    ) -> RoundState:
+        """Build a player-private RoundState for the current round.
+
+        v1 slice raises NotFoundError if the user is not a participant
+        of the tournament (enumeration-guard: indistinguishable from
+        'tournament does not exist').
+        """
+        tournament = await self._session.get(Tournament, tournament_id)
+        if tournament is None:
+            raise NotFoundError(f"tournament {tournament_id} not found")
+
+        participants = (
+            (
+                await self._session.execute(
+                    select(Participant)
+                    .where(Participant.tournament_id == tournament_id)
+                    .order_by(Participant.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        my_idx = next(
+            (i for i, p in enumerate(participants) if p.user_id == user.id),
+            None,
+        )
+        if my_idx is None:
+            raise NotFoundError(f"tournament {tournament_id} not found")
+
+        rounds = (
+            (
+                await self._session.execute(
+                    select(Round)
+                    .where(Round.tournament_id == tournament_id)
+                    .order_by(Round.round_number)
+                    .options(selectinload(Round.actions))
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        action_history: list[list[str]] = []
+        cumulative_scores: list[float] = [0.0] * len(participants)
+        current_round_number = 1
+        found_active = False
+        for r in rounds:
+            if r.status == "completed":
+                row: list[str] = [""] * len(participants)
+                for action in r.actions:
+                    p_idx = next(
+                        i
+                        for i, p in enumerate(participants)
+                        if p.id == action.participant_id
+                    )
+                    row[p_idx] = action.action_data.get("choice", "")
+                    cumulative_scores[p_idx] += action.payoff or 0.0
+                action_history.append(row)
+            else:
+                current_round_number = r.round_number
+                found_active = True
+                break
+        if not found_active and rounds:
+            current_round_number = len(rounds)
+
+        game = _GAME_INSTANCES[tournament.game_type]
+        formatted = game.format_state_for_player(
+            round_number=current_round_number,
+            total_rounds=tournament.total_rounds,
+            participant_idx=my_idx,
+            action_history=action_history,
+            cumulative_scores=cumulative_scores,
+        )
+        return RoundState(
+            tournament_id=tournament_id,
+            round_number=formatted["round_number"],
+            game_type=formatted["game_type"],
+            your_history=formatted["your_history"],
+            opponent_history=formatted["opponent_history"],
+            your_cumulative_score=formatted["your_cumulative_score"],
+            opponent_cumulative_score=formatted["opponent_cumulative_score"],
+            action_schema=formatted["action_schema"],
+            your_turn=formatted["your_turn"],
+            total_rounds=formatted["total_rounds"],
+            extra=formatted.get("extra", {}),
+        )
