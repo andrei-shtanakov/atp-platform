@@ -72,8 +72,9 @@ class TournamentService:
             )
         required_players = _GAME_INSTANCES[game_type].config.num_players
         if num_players != required_players:
+            _p = "player" if required_players == 1 else "players"
             raise ValidationError(
-                f"{game_type} requires exactly {required_players} players, "
+                f"{game_type} requires exactly {required_players} {_p}, "
                 f"got {num_players}"
             )
         if total_rounds < 1:
