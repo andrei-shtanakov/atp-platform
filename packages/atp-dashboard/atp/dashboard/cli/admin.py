@@ -103,8 +103,13 @@ async def _create_bot_user_impl(
             )
             user_id = user.id
 
+    # Both `user_id` and `sub` are required: the MCP middleware
+    # (JWTUserStateMiddleware) reads `user_id`, while REST routes go
+    # through `get_current_user` which requires `sub` (username) and
+    # looks up the user by name. Tokens without `sub` are treated as
+    # unauthenticated by REST handlers.
     return create_access_token(
-        {"user_id": user_id},
+        {"user_id": user_id, "sub": username},
         expires_delta=timedelta(days=token_days),
     )
 
@@ -124,8 +129,9 @@ async def _issue_token_impl(db: Database, username: str, token_days: int) -> str
             f"is_admin={user.is_admin}).",
             file=sys.stderr,
         )
+        # See note in `_create_bot_user_impl`: REST routes need `sub`.
         return create_access_token(
-            {"user_id": user.id},
+            {"user_id": user.id, "sub": user.username},
             expires_delta=timedelta(days=token_days),
         )
 

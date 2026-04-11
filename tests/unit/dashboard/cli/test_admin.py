@@ -36,11 +36,13 @@ async def test_create_bot_user_creates_row_and_returns_token(db):
         db, username="bot_alice", email=None, token_days=30
     )
 
-    # Token is a valid JWT with user_id claim
+    # Token is a valid JWT carrying both user_id (for MCP middleware)
+    # and sub (for REST get_current_user).
     payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     assert "user_id" in payload
     assert isinstance(payload["user_id"], int)
     assert payload["user_id"] >= 1
+    assert payload["sub"] == "bot_alice"
 
     # User row exists with expected defaults
     async with db.session_factory() as s:
@@ -117,6 +119,7 @@ async def test_issue_token_works_for_existing_user(db):
             await s.execute(select(User).where(User.username == "andrei"))
         ).scalar_one()
     assert payload["user_id"] == user.id
+    assert payload["sub"] == "andrei"
 
     # exp claim reflects the --token-days flag (7d from issuance).
     import datetime as dt
