@@ -3,6 +3,7 @@
 from datetime import datetime
 from enum import StrEnum
 
+import sqlalchemy as sa
 from sqlalchemy import (
     JSON,
     DateTime,
@@ -11,10 +12,13 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from atp.dashboard.models import DEFAULT_TENANT_ID, Base
+from atp.dashboard.tournament.reasons import CancelReason
 
 
 class TournamentStatus(StrEnum):
@@ -98,6 +102,27 @@ class Tournament(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
+    # Plan 2a additive columns — AD-9 pending deadline
+    pending_deadline: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+    # Plan 2a additive columns — AD-10 join token
+    join_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    # Plan 2a additive columns — cancel audit
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    cancelled_by: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    cancelled_reason: Mapped[CancelReason | None] = mapped_column(
+        sa.Enum(CancelReason, native_enum=False, length=32),
+        nullable=True,
+    )
+    cancelled_reason_detail: Mapped[str | None] = mapped_column(
+        String(512), nullable=True
+    )
+
     # Relationships
     participants: Mapped[list["Participant"]] = relationship(
         "Participant",
@@ -111,6 +136,11 @@ class Tournament(Base):
     __table_args__ = (
         Index("idx_tournaments_status", "status"),
         Index("idx_tournaments_tenant", "tenant_id"),
+        Index(
+            "idx_tournaments_status_pending_deadline",
+            "status",
+            "pending_deadline",
+        ),
     )
 
     def __repr__(self) -> str:
@@ -131,14 +161,15 @@ class Participant(Base):
         ForeignKey("tournaments.id"),
         nullable=False,
     )
-    user_id: Mapped[int | None] = mapped_column(
-        Integer,
-        ForeignKey("users.id"),
-        nullable=True,
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=False
     )
     agent_name: Mapped[str] = mapped_column(String(200), nullable=False)
     joined_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     total_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # Plan 2a additive column — AD-10 slot release
+    released_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # Relationships
     tournament: Mapped["Tournament"] = relationship(
@@ -153,6 +184,22 @@ class Participant(Base):
     __table_args__ = (
         Index("idx_participant_tournament", "tournament_id"),
         Index("idx_participant_user", "user_id"),
+        UniqueConstraint(
+            "tournament_id",
+            "user_id",
+            name="uq_participant_tournament_user",
+        ),
+        Index(
+            # uq_ prefix: semantically a unique constraint, implemented
+            # as a partial unique index because UniqueConstraint does
+            # not accept WHERE clauses and neither SQLite nor PostgreSQL
+            # support partial UNIQUE in CREATE TABLE syntax.
+            "uq_participant_user_active",
+            "user_id",
+            unique=True,
+            sqlite_where=text("user_id IS NOT NULL AND released_at IS NULL"),
+            postgresql_where=text("user_id IS NOT NULL AND released_at IS NULL"),
+        ),
     )
 
     def __repr__(self) -> str:
@@ -186,7 +233,15 @@ class Round(Base):
         back_populates="round",
     )
 
-    __table_args__ = (Index("idx_round_tournament", "tournament_id"),)
+    __table_args__ = (
+        Index("idx_round_tournament", "tournament_id"),
+        UniqueConstraint(
+            "tournament_id",
+            "round_number",
+            name="uq_round_tournament_number",
+        ),
+        Index("idx_round_status_deadline", "status", "deadline"),
+    )
 
     def __repr__(self) -> str:
         return (
@@ -215,6 +270,14 @@ class Action(Base):
     submitted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     payoff: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # Plan 2a additive column — audit trail for timeout-default vs
+    # player-submitted actions
+    source: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        server_default="submitted",
+    )
+
     # Relationships
     round: Mapped["Round"] = relationship(
         "Round",
@@ -225,7 +288,14 @@ class Action(Base):
         back_populates="actions",
     )
 
-    __table_args__ = (Index("idx_action_round", "round_id"),)
+    __table_args__ = (
+        Index("idx_action_round", "round_id"),
+        UniqueConstraint(
+            "round_id",
+            "participant_id",
+            name="uq_action_round_participant",
+        ),
+    )
 
     def __repr__(self) -> str:
         return (

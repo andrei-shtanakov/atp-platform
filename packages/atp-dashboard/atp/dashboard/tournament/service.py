@@ -83,6 +83,7 @@ class TournamentService:
         if round_deadline_s < 1:
             raise ValidationError("round_deadline_s must be >= 1")
 
+        # TODO(Task 12): replace with computed deadline from pending_timeout_seconds
         tournament = Tournament(
             game_type=game_type,
             status=TournamentStatus.PENDING,
@@ -91,6 +92,7 @@ class TournamentService:
             round_deadline_s=round_deadline_s,
             created_by=admin.id,
             config={"name": name},
+            pending_deadline=datetime.now(),
         )
         self._session.add(tournament)
         await self._session.flush()
