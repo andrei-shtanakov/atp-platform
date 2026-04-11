@@ -1,0 +1,490 @@
+"""TournamentService — protocol-agnostic core for tournament gameplay.
+
+This module knows about SQLAlchemy and game-environments. It does NOT
+know about FastAPI, FastMCP, or HTTP. Unit-tested via direct calls
+with an in-memory session and a test event bus.
+
+This is the v1 vertical slice version: only the methods needed for a
+2-player 3-round PD e2e test. Plan 2 expands the surface (deadline
+worker, leave/get_history/list, AD-9/AD-10 enforcement, etc.).
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timedelta
+from typing import Any
+
+from game_envs.games.prisoners_dilemma import PrisonersDilemma
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from atp.dashboard.models import User
+from atp.dashboard.tournament.errors import (
+    ConflictError,
+    NotFoundError,
+    ValidationError,
+)
+from atp.dashboard.tournament.events import TournamentEvent, TournamentEventBus
+from atp.dashboard.tournament.models import (
+    Action,
+    Participant,
+    Round,
+    Tournament,
+    TournamentStatus,
+)
+from atp.dashboard.tournament.state import RoundState
+
+logger = logging.getLogger("atp.dashboard.tournament.service")
+
+_SUPPORTED_GAMES = frozenset({"prisoners_dilemma"})
+
+_GAME_INSTANCES: dict[str, Any] = {
+    "prisoners_dilemma": PrisonersDilemma(),
+}
+
+
+class TournamentService:
+    def __init__(self, session: AsyncSession, bus: TournamentEventBus) -> None:
+        self._session = session
+        self._bus = bus
+
+    async def create_tournament(
+        self,
+        admin: User,
+        *,
+        name: str,
+        game_type: str,
+        num_players: int,
+        total_rounds: int,
+        round_deadline_s: int,
+    ) -> Tournament:
+        """Create a new tournament in PENDING (accepting-joins) state.
+
+        Caller is responsible for verifying admin authorization at the
+        transport layer; this method trusts that admin.is_admin == True.
+        """
+        if game_type not in _SUPPORTED_GAMES:
+            raise ValidationError(
+                f"unsupported game_type {game_type!r}; "
+                f"v1 slice supports: {sorted(_SUPPORTED_GAMES)}"
+            )
+        required_players = _GAME_INSTANCES[game_type].config.num_players
+        if num_players != required_players:
+            _p = "player" if required_players == 1 else "players"
+            raise ValidationError(
+                f"{game_type} requires exactly {required_players} {_p}, "
+                f"got {num_players}"
+            )
+        if total_rounds < 1:
+            raise ValidationError("total_rounds must be >= 1")
+        if round_deadline_s < 1:
+            raise ValidationError("round_deadline_s must be >= 1")
+
+        tournament = Tournament(
+            game_type=game_type,
+            status=TournamentStatus.PENDING,
+            num_players=num_players,
+            total_rounds=total_rounds,
+            round_deadline_s=round_deadline_s,
+            created_by=admin.id,
+            config={"name": name},
+        )
+        self._session.add(tournament)
+        await self._session.flush()
+        await self._session.refresh(tournament)
+        return tournament
+
+    async def join(
+        self,
+        tournament_id: int,
+        user: User,
+        agent_name: str,
+    ) -> Participant:
+        """Join an open tournament.
+
+        v1 slice: open-join only, no join_token, no
+        MAX_ACTIVE_TOURNAMENTS_PER_USER (those land in Plan 2 per
+        AD-10). When the join brings participant count to num_players,
+        the tournament starts immediately and round 1 is created.
+        """
+        tournament = await self._session.get(Tournament, tournament_id)
+        if tournament is None:
+            raise NotFoundError(f"tournament {tournament_id} not found")
+        if tournament.status != TournamentStatus.PENDING:
+            raise ConflictError(
+                f"tournament {tournament_id} is {tournament.status}, "
+                "not accepting joins"
+            )
+
+        participant = Participant(
+            tournament_id=tournament_id,
+            user_id=user.id,
+            agent_name=agent_name,
+        )
+        self._session.add(participant)
+        await self._session.flush()
+        await self._session.refresh(participant)
+
+        count = await self._session.scalar(
+            select(func.count(Participant.id)).where(
+                Participant.tournament_id == tournament_id
+            )
+        )
+        if count == tournament.num_players:
+            await self._start_tournament(tournament)
+
+        return participant
+
+    async def _start_tournament(self, tournament: Tournament) -> None:
+        """Transition a PENDING tournament to ACTIVE and create round 1."""
+        now = datetime.now()
+        tournament.status = TournamentStatus.ACTIVE
+        tournament.starts_at = now
+        round_1 = Round(
+            tournament_id=tournament.id,
+            round_number=1,
+            status="waiting_for_actions",
+            started_at=now,
+            deadline=now + timedelta(seconds=tournament.round_deadline_s),
+            state={},
+        )
+        self._session.add(round_1)
+        await self._session.flush()
+        await self._bus.publish(
+            TournamentEvent(
+                event_type="round_started",
+                tournament_id=tournament.id,
+                round_number=1,
+                data={"total_rounds": tournament.total_rounds},
+                timestamp=datetime.now(),
+            )
+        )
+
+    async def get_state_for(
+        self,
+        tournament_id: int,
+        user: User,
+    ) -> RoundState:
+        """Build a player-private RoundState for the current round.
+
+        v1 slice raises NotFoundError if the user is not a participant
+        of the tournament (enumeration-guard: indistinguishable from
+        'tournament does not exist').
+        """
+        tournament = await self._session.get(Tournament, tournament_id)
+        if tournament is None:
+            raise NotFoundError(f"tournament {tournament_id} not found")
+
+        participants = (
+            (
+                await self._session.execute(
+                    select(Participant)
+                    .where(Participant.tournament_id == tournament_id)
+                    .order_by(Participant.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        my_idx = next(
+            (i for i, p in enumerate(participants) if p.user_id == user.id),
+            None,
+        )
+        if my_idx is None:
+            raise NotFoundError(f"tournament {tournament_id} not found")
+
+        rounds = (
+            (
+                await self._session.execute(
+                    select(Round)
+                    .where(Round.tournament_id == tournament_id)
+                    .order_by(Round.round_number)
+                    .options(selectinload(Round.actions))
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        action_history: list[list[str]] = []
+        cumulative_scores: list[float] = [0.0] * len(participants)
+        current_round_number = 1
+        found_active = False
+        for r in rounds:
+            if r.status == "completed":
+                row: list[str] = [""] * len(participants)
+                for action in r.actions:
+                    p_idx = next(
+                        i
+                        for i, p in enumerate(participants)
+                        if p.id == action.participant_id
+                    )
+                    row[p_idx] = action.action_data.get("choice", "")
+                    cumulative_scores[p_idx] += action.payoff or 0.0
+                action_history.append(row)
+            else:
+                current_round_number = r.round_number
+                found_active = True
+                break
+        if not found_active and rounds:
+            current_round_number = len(rounds)
+
+        game = _GAME_INSTANCES[tournament.game_type]
+        formatted = game.format_state_for_player(
+            round_number=current_round_number,
+            total_rounds=tournament.total_rounds,
+            participant_idx=my_idx,
+            action_history=action_history,
+            cumulative_scores=cumulative_scores,
+        )
+        return RoundState(
+            tournament_id=tournament_id,
+            round_number=formatted["round_number"],
+            game_type=formatted["game_type"],
+            your_history=formatted["your_history"],
+            opponent_history=formatted["opponent_history"],
+            your_cumulative_score=formatted["your_cumulative_score"],
+            opponent_cumulative_score=formatted["opponent_cumulative_score"],
+            action_schema=formatted["action_schema"],
+            your_turn=formatted["your_turn"],
+            total_rounds=formatted["total_rounds"],
+            extra=formatted.get("extra", {}),
+        )
+
+    async def submit_action(
+        self,
+        tournament_id: int,
+        user: User,
+        action: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Submit one player's action for the current round.
+
+        Returns:
+            {"status": "waiting", "round_number": N} if more actions
+            are still expected this round.
+
+            {"status": "round_resolved", ...} if this was the last
+            action and the round resolved synchronously.
+        """
+        tournament = await self._session.get(Tournament, tournament_id)
+        if tournament is None:
+            raise NotFoundError(f"tournament {tournament_id} not found")
+        if tournament.status != TournamentStatus.ACTIVE:
+            raise ConflictError(
+                f"tournament {tournament_id} is {tournament.status}, not active"
+            )
+
+        my_participant = (
+            await self._session.execute(
+                select(Participant).where(
+                    Participant.tournament_id == tournament_id,
+                    Participant.user_id == user.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if my_participant is None:
+            raise NotFoundError(f"tournament {tournament_id} not found")
+
+        current_round = (
+            await self._session.execute(
+                select(Round)
+                .where(
+                    Round.tournament_id == tournament_id,
+                    Round.status == "waiting_for_actions",
+                )
+                .order_by(Round.round_number.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if current_round is None:
+            raise ConflictError(
+                f"tournament {tournament_id} has no round accepting actions"
+            )
+
+        game = _GAME_INSTANCES[tournament.game_type]
+        schema_probe = game.format_state_for_player(
+            round_number=1,
+            total_rounds=1,
+            participant_idx=0,
+            action_history=[],
+            cumulative_scores=[0.0, 0.0],
+        )
+        if action.get("choice") not in schema_probe["action_schema"]["options"]:
+            raise ValidationError(
+                f"invalid action {action!r} for game {tournament.game_type}"
+            )
+
+        existing = (
+            await self._session.execute(
+                select(Action).where(
+                    Action.round_id == current_round.id,
+                    Action.participant_id == my_participant.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            raise ConflictError(
+                f"participant {my_participant.id} already submitted in round "
+                f"{current_round.round_number}"
+            )
+
+        new_action = Action(
+            round_id=current_round.id,
+            participant_id=my_participant.id,
+            action_data={"choice": action["choice"]},
+        )
+        self._session.add(new_action)
+        await self._session.flush()
+
+        action_count = (
+            await self._session.scalar(
+                select(func.count(Action.id)).where(Action.round_id == current_round.id)
+            )
+            or 0
+        )
+
+        if action_count < tournament.num_players:
+            return {
+                "status": "waiting",
+                "round_number": current_round.round_number,
+            }
+
+        return await self._resolve_round(current_round, tournament)
+
+    async def _resolve_round(
+        self, round_obj: Round, tournament: Tournament
+    ) -> dict[str, Any]:
+        """Resolve a round: compute payoffs, write Action.payoff, mark
+        round completed, and either create the next round or finish the
+        tournament if this was the last.
+        """
+        round_obj.status = "resolving"
+        await self._session.flush()
+
+        actions = (
+            (
+                await self._session.execute(
+                    select(Action)
+                    .where(Action.round_id == round_obj.id)
+                    .order_by(Action.participant_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        participants = (
+            (
+                await self._session.execute(
+                    select(Participant)
+                    .where(Participant.tournament_id == tournament.id)
+                    .order_by(Participant.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        idx_by_pid = {p.id: i for i, p in enumerate(participants)}
+
+        action_vec: list[str] = [""] * len(participants)
+        actions_by_idx: dict[int, Action] = {}
+        for a in actions:
+            i = idx_by_pid[a.participant_id]
+            action_vec[i] = a.action_data["choice"]
+            actions_by_idx[i] = a
+
+        # PD payoff matrix (slice-local; in Plan 2 this comes from the
+        # game-environments PD class).
+        # CC = 3,3 ; CD = 0,5 ; DC = 5,0 ; DD = 1,1
+        a0, a1 = action_vec[0], action_vec[1]
+        if a0 == "cooperate" and a1 == "cooperate":
+            payoffs = [3.0, 3.0]
+        elif a0 == "cooperate" and a1 == "defect":
+            payoffs = [0.0, 5.0]
+        elif a0 == "defect" and a1 == "cooperate":
+            payoffs = [5.0, 0.0]
+        else:
+            payoffs = [1.0, 1.0]
+
+        for i, action in actions_by_idx.items():
+            action.payoff = payoffs[i]
+
+        round_obj.status = "completed"
+        await self._session.flush()
+
+        if round_obj.round_number >= tournament.total_rounds:
+            await self._complete_tournament(tournament)
+            await self._session.flush()
+            return {
+                "status": "round_resolved",
+                "round_number": round_obj.round_number,
+                "tournament_completed": True,
+                "payoffs": payoffs,
+            }
+
+        now = datetime.now()
+        next_round = Round(
+            tournament_id=tournament.id,
+            round_number=round_obj.round_number + 1,
+            status="waiting_for_actions",
+            started_at=now,
+            deadline=now + timedelta(seconds=tournament.round_deadline_s),
+            state={},
+        )
+        self._session.add(next_round)
+        await self._session.flush()
+        await self._bus.publish(
+            TournamentEvent(
+                event_type="round_started",
+                tournament_id=tournament.id,
+                round_number=next_round.round_number,
+                data={"total_rounds": tournament.total_rounds},
+                timestamp=datetime.now(),
+            )
+        )
+
+        return {
+            "status": "round_resolved",
+            "round_number": round_obj.round_number,
+            "tournament_completed": False,
+            "payoffs": payoffs,
+            "next_round_number": next_round.round_number,
+        }
+
+    async def _complete_tournament(self, tournament: Tournament) -> None:
+        """Mark tournament COMPLETED and write final per-participant scores."""
+        tournament.status = TournamentStatus.COMPLETED
+        tournament.ends_at = datetime.now()
+
+        participants = (
+            (
+                await self._session.execute(
+                    select(Participant).where(
+                        Participant.tournament_id == tournament.id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for p in participants:
+            total = await self._session.scalar(
+                select(func.coalesce(func.sum(Action.payoff), 0.0)).where(
+                    Action.participant_id == p.id
+                )
+            )
+            p.total_score = float(total or 0.0)
+        await self._session.flush()
+        await self._bus.publish(
+            TournamentEvent(
+                event_type="tournament_completed",
+                tournament_id=tournament.id,
+                round_number=None,
+                data={
+                    "final_scores": {p.user_id: p.total_score for p in participants},
+                },
+                timestamp=datetime.now(),
+            )
+        )

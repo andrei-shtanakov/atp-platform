@@ -741,7 +741,13 @@ class SSETransport(MCPTransport):
         self._config: SSETransportConfig = config
         self._client: httpx.AsyncClient | None = None
         self._sse_response: httpx.Response | None = None
+        # ``_message_queue`` holds SERVER-PUSHED NOTIFICATIONS and any
+        # responses we can't route to a pending future. Responses to
+        # in-flight ``send_request`` calls are delivered via
+        # ``_response_futures`` instead.
         self._message_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        self._response_futures: dict[int | str, asyncio.Future[dict[str, Any]]] = {}
+        self._futures_lock: asyncio.Lock = asyncio.Lock()
         self._reader_task: asyncio.Task[None] | None = None
         self._session_id: str | None = None
 
@@ -793,6 +799,24 @@ class SSETransport(MCPTransport):
             self._reader_task = asyncio.create_task(self._read_sse_events())
             self._state = TransportState.CONNECTED
 
+            # Wait for the spec-compliant ``event: endpoint`` frame that
+            # tells us where to POST. Without this, the first
+            # ``send()`` races the reader task and often hits the SSE
+            # GET URL, which returns 405. MCP servers are expected to
+            # emit this frame immediately after the handshake.
+            handshake_deadline = (
+                asyncio.get_running_loop().time() + self._config.connection_timeout
+            )
+            while (
+                self._config.post_endpoint is None
+                and asyncio.get_running_loop().time() < handshake_deadline
+            ):
+                if self._reader_task.done():
+                    # Reader died before emitting endpoint — surface the
+                    # underlying error rather than hanging on the wait.
+                    break
+                await asyncio.sleep(0.01)
+
         except httpx.TimeoutException as e:
             self._state = TransportState.DISCONNECTED
             raise AdapterTimeoutError(
@@ -833,25 +857,119 @@ class SSETransport(MCPTransport):
                     event_data = line[5:].strip()
                 elif line == "" and event_data:
                     # Empty line signals end of event
-                    try:
-                        data = json.loads(event_data)
-
-                        # Handle session ID from endpoint event
-                        if event_type == "endpoint" and "uri" in data:
-                            # Extract session info if provided
-                            self._session_id = data.get("sessionId")
-
-                        # Queue the message for receive()
-                        await self._message_queue.put(data)
-
-                    except json.JSONDecodeError:
-                        pass  # Skip malformed events
+                    if event_type == "endpoint":
+                        self._handle_endpoint_frame(event_data)
+                    else:
+                        try:
+                            data = json.loads(event_data)
+                            await self._route_message(data)
+                        except json.JSONDecodeError:
+                            pass  # Skip malformed events
 
                     event_type = ""
                     event_data = ""
 
         except (httpx.RequestError, httpx.StreamClosed):
             self._state = TransportState.DISCONNECTED
+
+    def _handle_endpoint_frame(self, event_data: str) -> None:
+        """Parse an ``event: endpoint`` frame and update session state.
+
+        Spec-compliant MCP servers send the POST endpoint as a bare
+        path (``/messages/?session_id=abc123``). Legacy stubs used to
+        send a JSON object (``{"uri": "/messages/", "sessionId": ...}``).
+        Support both; never enqueue the endpoint frame as a message —
+        it's metadata, not a JSON-RPC payload.
+        """
+        from urllib.parse import parse_qs, urljoin, urlparse
+
+        endpoint_path: str | None = None
+        session_id: str | None = None
+
+        try:
+            parsed = json.loads(event_data)
+            if isinstance(parsed, dict) and "uri" in parsed:
+                endpoint_path = parsed["uri"]
+                session_id = parsed.get("sessionId")
+        except json.JSONDecodeError:
+            endpoint_path = event_data.strip()
+
+        if not endpoint_path:
+            return
+
+        self._config.post_endpoint = urljoin(self._config.url, endpoint_path)
+        if session_id is None:
+            qs = parse_qs(urlparse(endpoint_path).query)
+            session_id = qs.get("session_id", [None])[0]
+        if session_id:
+            self._session_id = session_id
+
+    async def _route_message(self, data: dict[str, Any]) -> None:
+        """Dispatch one parsed JSON-RPC message.
+
+        Responses whose ``id`` matches a pending future resolve the
+        future (delivered directly to the waiting ``send_request``
+        caller). Everything else — notifications, orphan responses
+        with unknown ids — lands in ``_message_queue`` for
+        ``receive()`` / ``stream_events()`` consumers.
+        """
+        request_id = data.get("id")
+        if request_id is not None and "method" not in data:
+            async with self._futures_lock:
+                future = self._response_futures.pop(request_id, None)
+            if future is not None and not future.done():
+                future.set_result(data)
+                return
+            # Orphan response — fall through.
+        await self._message_queue.put(data)
+
+    async def send_request(
+        self,
+        method: str,
+        params: dict[str, Any] | list[Any] | None = None,
+        timeout: float | None = None,
+    ) -> dict[str, Any]:
+        """Send a JSON-RPC request and wait for its response via a
+        per-request future (not the notification queue).
+
+        Overrides the base implementation to avoid racing with
+        concurrent notifications: the response is delivered directly
+        through ``_response_futures`` from the background reader task.
+        """
+        request_id = self._next_message_id()
+        request = create_jsonrpc_request(method, params, request_id)
+
+        future: asyncio.Future[dict[str, Any]] = (
+            asyncio.get_running_loop().create_future()
+        )
+        async with self._futures_lock:
+            self._response_futures[request_id] = future
+
+        try:
+            await self.send(request)
+        except Exception:
+            async with self._futures_lock:
+                self._response_futures.pop(request_id, None)
+            raise
+
+        read_timeout = timeout or self._config.read_timeout
+        try:
+            response = await asyncio.wait_for(future, timeout=read_timeout)
+        except TimeoutError as e:
+            async with self._futures_lock:
+                self._response_futures.pop(request_id, None)
+            raise AdapterTimeoutError(
+                f"Request timed out after {read_timeout}s",
+                timeout_seconds=read_timeout,
+                adapter_type="mcp",
+            ) from e
+
+        if "error" in response:
+            error = response["error"]
+            raise ValueError(
+                f"JSON-RPC error {error.get('code')}: {error.get('message')}"
+            )
+        return response
 
     async def send(self, message: dict[str, Any]) -> None:
         """Send a JSON-RPC message via HTTP POST.
@@ -959,6 +1077,13 @@ class SSETransport(MCPTransport):
 
         # Clear session
         self._session_id = None
+
+        # Cancel any pending response futures so waiters don't hang.
+        async with self._futures_lock:
+            for fut in self._response_futures.values():
+                if not fut.done():
+                    fut.cancel()
+            self._response_futures.clear()
 
     async def health_check(self) -> bool:
         """Check if the SSE connection is healthy.
