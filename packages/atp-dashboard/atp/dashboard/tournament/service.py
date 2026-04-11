@@ -342,5 +342,115 @@ class TournamentService:
     async def _resolve_round(
         self, round_obj: Round, tournament: Tournament
     ) -> dict[str, Any]:
-        """Resolve a round when all actions are present (Task 5.6)."""
-        raise NotImplementedError("implemented in Task 5.6")
+        """Resolve a round: compute payoffs, write Action.payoff, mark
+        round completed, and either create the next round or finish the
+        tournament if this was the last.
+        """
+        round_obj.status = "resolving"
+        await self._session.flush()
+
+        actions = (
+            (
+                await self._session.execute(
+                    select(Action)
+                    .where(Action.round_id == round_obj.id)
+                    .order_by(Action.participant_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        participants = (
+            (
+                await self._session.execute(
+                    select(Participant)
+                    .where(Participant.tournament_id == tournament.id)
+                    .order_by(Participant.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        idx_by_pid = {p.id: i for i, p in enumerate(participants)}
+
+        action_vec: list[str] = [""] * len(participants)
+        actions_by_idx: dict[int, Action] = {}
+        for a in actions:
+            i = idx_by_pid[a.participant_id]
+            action_vec[i] = a.action_data["choice"]
+            actions_by_idx[i] = a
+
+        # PD payoff matrix (slice-local; in Plan 2 this comes from the
+        # game-environments PD class).
+        # CC = 3,3 ; CD = 0,5 ; DC = 5,0 ; DD = 1,1
+        a0, a1 = action_vec[0], action_vec[1]
+        if a0 == "cooperate" and a1 == "cooperate":
+            payoffs = [3.0, 3.0]
+        elif a0 == "cooperate" and a1 == "defect":
+            payoffs = [0.0, 5.0]
+        elif a0 == "defect" and a1 == "cooperate":
+            payoffs = [5.0, 0.0]
+        else:
+            payoffs = [1.0, 1.0]
+
+        for i, action in actions_by_idx.items():
+            action.payoff = payoffs[i]
+
+        round_obj.status = "completed"
+        await self._session.flush()
+
+        if round_obj.round_number >= tournament.total_rounds:
+            await self._complete_tournament(tournament)
+            await self._session.flush()
+            return {
+                "status": "round_resolved",
+                "round_number": round_obj.round_number,
+                "tournament_completed": True,
+                "payoffs": payoffs,
+            }
+
+        now = datetime.now()
+        next_round = Round(
+            tournament_id=tournament.id,
+            round_number=round_obj.round_number + 1,
+            status="waiting_for_actions",
+            started_at=now,
+            deadline=now + timedelta(seconds=tournament.round_deadline_s),
+            state={},
+        )
+        self._session.add(next_round)
+        await self._session.flush()
+
+        return {
+            "status": "round_resolved",
+            "round_number": round_obj.round_number,
+            "tournament_completed": False,
+            "payoffs": payoffs,
+            "next_round_number": next_round.round_number,
+        }
+
+    async def _complete_tournament(self, tournament: Tournament) -> None:
+        """Mark tournament COMPLETED and write final per-participant scores."""
+        tournament.status = TournamentStatus.COMPLETED
+        tournament.ends_at = datetime.now()
+
+        participants = (
+            (
+                await self._session.execute(
+                    select(Participant).where(
+                        Participant.tournament_id == tournament.id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for p in participants:
+            total = await self._session.scalar(
+                select(func.coalesce(func.sum(Action.payoff), 0.0)).where(
+                    Action.participant_id == p.id
+                )
+            )
+            p.total_score = float(total or 0.0)
+        await self._session.flush()
