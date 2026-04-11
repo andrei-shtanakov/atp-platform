@@ -98,9 +98,10 @@ async def test_join_first_player_creates_participant(
         round_deadline_s=30,
     )
 
-    participant = await svc.join(
+    participant, is_new = await svc.join(
         tournament_id=tournament.id, user=alice, agent_name="alice-tft"
     )
+    assert is_new is True
     assert participant.id is not None
     assert participant.tournament_id == tournament.id
     assert participant.user_id == alice.id
@@ -130,8 +131,8 @@ async def test_join_filling_last_slot_starts_tournament_and_creates_round_1(
         round_deadline_s=30,
     )
 
-    await svc.join(tournament.id, alice, "alice-tft")
-    await svc.join(tournament.id, bob, "bob-random")
+    await svc.join(tournament_id=tournament.id, user=alice, agent_name="alice-tft")
+    await svc.join(tournament_id=tournament.id, user=bob, agent_name="bob-random")
 
     await session.refresh(tournament)
     assert tournament.status == "active"

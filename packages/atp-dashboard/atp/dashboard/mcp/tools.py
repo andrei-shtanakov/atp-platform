@@ -35,7 +35,7 @@ async def _join_tournament_impl(
     user: Any,
     service: TournamentService,
 ) -> dict[str, Any]:
-    participant = await service.join(
+    participant, _is_new = await service.join(
         tournament_id=tournament_id, user=user, agent_name=agent_name
     )
     return {

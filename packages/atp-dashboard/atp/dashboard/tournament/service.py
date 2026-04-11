@@ -17,6 +17,7 @@ from typing import Any
 
 from game_envs.games.prisoners_dilemma import PrisonersDilemma
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -109,41 +110,147 @@ class TournamentService:
         tournament_id: int,
         user: User,
         agent_name: str,
-    ) -> Participant:
-        """Join an open tournament.
+        join_token: str | None = None,
+    ) -> tuple[Participant, bool]:
+        """Idempotent join with race-aware IntegrityError handling.
 
-        v1 slice: open-join only, no join_token, no
-        MAX_ACTIVE_TOURNAMENTS_PER_USER (those land in Plan 2 per
-        AD-10). When the join brings participant count to num_players,
-        the tournament starts immediately and round 1 is created.
+        Returns (participant, is_new).
+
+        Race semantics on INSERT IntegrityError:
+        - uq_participant_tournament_user violation: a concurrent idempotent
+          re-join from the same user won the insert race. Re-read the
+          existing row and return (existing, False).
+        - uq_participant_user_active violation: user has active participation
+          in a different tournament. Raise ConflictError(409).
+        - Any other IntegrityError: re-raise unchanged.
         """
         tournament = await self._session.get(Tournament, tournament_id)
         if tournament is None:
-            raise NotFoundError(f"tournament {tournament_id} not found")
+            raise NotFoundError(f"tournament {tournament_id}")
         if tournament.status != TournamentStatus.PENDING:
             raise ConflictError(
-                f"tournament {tournament_id} is {tournament.status}, "
+                f"tournament {tournament_id} is {tournament.status!r}, "
                 "not accepting joins"
             )
 
+        # Private tournament token check (AD-10)
+        if tournament.join_token is not None:
+            import hmac
+
+            if join_token is None or not hmac.compare_digest(
+                tournament.join_token, join_token
+            ):
+                raise ConflictError(
+                    f"tournament {tournament_id} requires a valid join_token"
+                )
+
+        # Capture scalar values before any potential rollback expiry
+        user_id = user.id
+
+        # Idempotent pre-check
+        existing = await self._session.scalar(
+            select(Participant)
+            .where(Participant.tournament_id == tournament_id)
+            .where(Participant.user_id == user_id)
+        )
+        if existing is not None:
+            if existing.released_at is not None:
+                # Leave is terminal — cannot rejoin
+                raise ConflictError(
+                    f"user {user_id} already left tournament "
+                    f"{tournament_id}; rejoin not permitted"
+                )
+            return existing, False
+
+        # INSERT path
         participant = Participant(
             tournament_id=tournament_id,
-            user_id=user.id,
+            user_id=user_id,
             agent_name=agent_name,
+            released_at=None,
         )
         self._session.add(participant)
-        await self._session.flush()
-        await self._session.refresh(participant)
-
-        count = await self._session.scalar(
-            select(func.count(Participant.id)).where(
-                Participant.tournament_id == tournament_id
+        try:
+            await self._session.flush()
+            count = await self._session.scalar(
+                select(func.count(Participant.id)).where(
+                    Participant.tournament_id == tournament_id
+                )
             )
-        )
-        if count == tournament.num_players:
-            await self._start_tournament(tournament)
+            if count == tournament.num_players:
+                await self._start_tournament(tournament)
+        except IntegrityError as exc:
+            constraint_name = self._extract_constraint_name(exc)
+            await self._session.rollback()
+            if constraint_name in (
+                "uq_participant_tournament_user",
+                "uq_participant_user_active",
+            ):
+                # Re-read to determine actual conflict type.
+                # Both constraints fire when the same user is already active in any
+                # tournament. Check if the existing row is for THIS tournament
+                # (idempotent re-join) or a DIFFERENT one (true conflict).
+                existing = await self._session.scalar(
+                    select(Participant)
+                    .where(Participant.tournament_id == tournament_id)
+                    .where(Participant.user_id == user_id)
+                    .where(Participant.released_at.is_(None))
+                )
+                if existing is not None:
+                    # Same tournament — idempotent re-join
+                    return existing, False
+                # Different tournament active — true conflict
+                raise ConflictError("user already has an active tournament") from exc
+            raise
 
-        return participant
+        return participant, True
+
+    @staticmethod
+    def _extract_constraint_name(exc: Exception) -> str:
+        """Best-effort constraint name extraction from IntegrityError.
+
+        SQLite reports: 'UNIQUE constraint failed: table.col1, table.col2'
+        or 'UNIQUE constraint failed: table.col' for single-column indices.
+        Named constraints may appear as 'constraint failed: <name>'.
+        PostgreSQL: exc.orig.diag.constraint_name is available.
+
+        Disambiguation for tournament_participants:
+        - uq_participant_user_active: single-column partial index on user_id
+          → message contains only 'tournament_participants.user_id'
+        - uq_participant_tournament_user: two-column index on
+          (tournament_id, user_id) → message contains 'tournament_id'
+        """
+        # Extract only the first line of the error — the constraint description.
+        # SQLite format: '(sqlite3.IntegrityError) UNIQUE constraint failed: table.col'
+        # The full message includes the SQL statement which can contaminate searches.
+        first_line = str(exc).split("\n")[0].lower()
+        # Named index/constraint — check for explicit name first
+        for name in (
+            "uq_participant_user_active",
+            "uq_participant_tournament_user",
+            "uq_action_round_participant",
+            "uq_round_tournament_number",
+        ):
+            if name in first_line:
+                return name
+        # SQLite column-based disambiguation for tournament_participants.
+        # The partial unique index on user_id (uq_participant_user_active) shows
+        # only 'tournament_participants.user_id' in the first line (single column).
+        # The composite (tournament_id, user_id) unique constraint shows both
+        # 'tournament_participants.tournament_id' and 'tournament_participants.user_id'.
+        if "tournament_participants" in first_line and "user_id" in first_line:
+            if "tournament_id" in first_line:
+                # composite (tournament_id, user_id) → uq_participant_tournament_user
+                return "uq_participant_tournament_user"
+            else:
+                # single user_id partial index → uq_participant_user_active
+                return "uq_participant_user_active"
+        # PostgreSQL path
+        orig = getattr(exc, "orig", None)
+        diag = getattr(orig, "diag", None)
+        if diag is not None:
+            return getattr(diag, "constraint_name", "") or ""
+        return ""
 
     async def _start_tournament(self, tournament: Tournament) -> None:
         """Transition a PENDING tournament to ACTIVE and create round 1."""
