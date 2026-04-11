@@ -66,8 +66,17 @@ ENV UV_CACHE_DIR=/app/.cache/uv
 
 EXPOSE 8080
 
+# Healthcheck uses stdlib `urllib.request` instead of `httpx` because the
+# `python` binary here is the runtime slim image's system Python, not the
+# venv Python (/app/.venv/bin/python). httpx is only installed inside the
+# venv; system Python has only stdlib. urllib.request is always available.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import httpx; httpx.get('http://localhost:8080/api/health').raise_for_status()" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health').read()" || exit 1
 
+# --workers 1 is required because the tournament deadline worker (wired
+# into FastAPI lifespan) assumes a single process; multi-worker would
+# race on force_resolve_round. docker-compose.yml already overrides with
+# --workers 1 but we keep the Dockerfile CMD consistent so direct
+# `docker run` is also safe.
 CMD ["uv", "run", "--no-sync", "uvicorn", "atp.dashboard.v2.factory:app", \
-     "--host", "0.0.0.0", "--port", "8080", "--workers", "2"]
+     "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]
