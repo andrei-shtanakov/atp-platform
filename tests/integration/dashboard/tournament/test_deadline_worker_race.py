@@ -99,6 +99,8 @@ async def test_force_resolve_vs_submit_action(session_factory):
                 return "deadline_noop"
 
     async def submit_path() -> str:
+        from sqlalchemy.exc import IntegrityError
+
         async with session_factory() as session:
             from atp.dashboard.models import User
 
@@ -112,7 +114,9 @@ async def test_force_resolve_vs_submit_action(session_factory):
                 )
                 await session.commit()
                 return "submit_won"
-            except ConflictError:
+            except (ConflictError, IntegrityError):
+                # IntegrityError fires when deadline_path inserted first and the
+                # unique constraint on (round_id, participant_id) blocks our insert.
                 return "submit_noop"
 
     results = await asyncio.gather(deadline_path(), submit_path())

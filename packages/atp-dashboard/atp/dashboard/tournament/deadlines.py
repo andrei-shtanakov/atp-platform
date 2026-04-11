@@ -30,9 +30,21 @@ from atp.dashboard.tournament.models import (
 from atp.dashboard.tournament.reasons import CancelReason
 from atp.dashboard.tournament.service import TournamentService
 
-POLL_INTERVAL_S: float = float(
-    os.environ.get("ATP_DEADLINE_WORKER_POLL_INTERVAL_S", "5")
-)
+_DEFAULT_POLL_INTERVAL_S = 5.0
+
+
+def _get_poll_interval() -> float:
+    """Read poll interval from env at call time (not at module import).
+
+    Reading at call time (not module-level) ensures that monkeypatched
+    environment variables in tests take effect even when the module was
+    imported before the patch was applied.
+    """
+    return float(
+        os.environ.get(
+            "ATP_DEADLINE_WORKER_POLL_INTERVAL_S", str(_DEFAULT_POLL_INTERVAL_S)
+        )
+    )
 
 
 async def run_deadline_worker(
@@ -43,7 +55,8 @@ async def run_deadline_worker(
 ) -> None:
     """Main loop. Runs until shutdown_event is set or the task is cancelled."""
     log = logging.getLogger("tournament.deadlines")
-    log.info("deadline_worker.started", extra={"poll_interval_s": POLL_INTERVAL_S})
+    poll_interval_s = _get_poll_interval()
+    log.info("deadline_worker.started poll_interval_s=%s", poll_interval_s)
 
     while not shutdown_event.is_set():
         try:
@@ -51,8 +64,9 @@ async def run_deadline_worker(
         except Exception:
             log.exception("deadline_worker.tick_failed")
 
+        poll_interval_s = _get_poll_interval()
         try:
-            await asyncio.wait_for(shutdown_event.wait(), timeout=POLL_INTERVAL_S)
+            await asyncio.wait_for(shutdown_event.wait(), timeout=poll_interval_s)
         except TimeoutError:
             pass  # normal path — interval elapsed
 
@@ -64,13 +78,18 @@ async def _tick(
     bus: TournamentEventBus,
     log: logging.Logger,
 ) -> None:
-    """One scan pass across both paths."""
-    t_start = time.monotonic()
-    async with session_factory() as session:
-        service = TournamentService(session, bus)
+    """One scan pass across both paths.
 
-        # Path 1: expired round deadlines
-        expired_rounds_result = await session.execute(
+    Each round and tournament is processed in its own session so that
+    a commit (and bus.publish inside service methods) occurs atomically
+    per row — the forwarder tasks that respond to bus events need the DB
+    state to already be visible when they open their own sessions.
+    """
+    t_start = time.monotonic()
+
+    # Collect expired round IDs and tournament IDs in a read-only session.
+    async with session_factory() as scan_session:
+        expired_rounds_result = await scan_session.execute(
             select(Round.id)
             .join(Tournament, Tournament.id == Round.tournament_id)
             .where(Round.status == RoundStatus.WAITING_FOR_ACTIONS)
@@ -78,39 +97,47 @@ async def _tick(
             .where(Tournament.status == TournamentStatus.ACTIVE)
         )
         round_ids = [row[0] for row in expired_rounds_result]
-        for round_id in round_ids:
-            try:
-                await service.force_resolve_round(round_id)
-            except Exception:
-                log.exception(
-                    "deadline_worker.round_resolve_failed",
-                    extra={"round_id": round_id},
-                )
 
-        # Path 2: expired PENDING tournaments
-        expired_pending_result = await session.execute(
+        expired_pending_result = await scan_session.execute(
             select(Tournament.id)
             .where(Tournament.status == TournamentStatus.PENDING)
             .where(Tournament.pending_deadline < datetime.utcnow())
         )
         tournament_ids = [row[0] for row in expired_pending_result]
-        for tournament_id in tournament_ids:
-            try:
+
+    # Path 1: expired round deadlines — one session per round so that
+    # service.force_resolve_round() can commit before bus.publish fires.
+    # Note: force_resolve_round() commits internally before publishing, so
+    # no explicit commit here — the session context manager handles cleanup.
+    for round_id in round_ids:
+        try:
+            async with session_factory() as session:
+                service = TournamentService(session, bus)
+                await service.force_resolve_round(round_id)
+        except Exception:
+            log.exception(
+                "deadline_worker.round_resolve_failed",
+                extra={"round_id": round_id},
+            )
+
+    # Path 2: expired PENDING tournaments
+    for tournament_id in tournament_ids:
+        try:
+            async with session_factory() as session:
+                service = TournamentService(session, bus)
                 await service.cancel_tournament_system(
                     tournament_id,
                     reason=CancelReason.PENDING_TIMEOUT,
                 )
-            except Exception:
-                log.exception(
-                    "deadline_worker.pending_cancel_failed",
-                    extra={"tournament_id": tournament_id},
-                )
+        except Exception:
+            log.exception(
+                "deadline_worker.pending_cancel_failed",
+                extra={"tournament_id": tournament_id},
+            )
 
     log.info(
-        "deadline_worker.tick_complete",
-        extra={
-            "rounds_processed": len(round_ids),
-            "pending_cancelled": len(tournament_ids),
-            "elapsed_ms": int((time.monotonic() - t_start) * 1000),
-        },
+        "deadline_worker.tick_complete rounds=%d pending_cancelled=%d elapsed_ms=%d",
+        len(round_ids),
+        len(tournament_ids),
+        int((time.monotonic() - t_start) * 1000),
     )

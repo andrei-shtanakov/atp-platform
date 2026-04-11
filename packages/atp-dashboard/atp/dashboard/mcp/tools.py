@@ -88,7 +88,14 @@ async def join_tournament(
         "tournament_id": tournament_id,
         "state": state_payload,
     }
-    await ctx.session.send_notification(session_sync_payload)
+    # Use send_log_message so the payload is wrapped in a proper
+    # notifications/message JSON-RPC frame — send_notification requires a
+    # typed Pydantic notification model, not a plain dict.
+    await ctx.session.send_log_message(
+        level="info",
+        data=session_sync_payload,
+        logger="atp.tournament",
+    )
 
     return {
         "joined": True,

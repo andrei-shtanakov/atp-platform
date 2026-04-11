@@ -71,7 +71,6 @@ class TournamentEventBus:
         raises — publish is fire-and-forget.
         """
         queues = self._subscribers.get(event.tournament_id, set())
-        event_label = getattr(event, "event_type", type(event).__name__)
         for queue in list(queues):
             try:
                 queue.put_nowait(event)
@@ -79,7 +78,7 @@ class TournamentEventBus:
                 logger.warning(
                     "subscriber queue full for tournament %d, dropping event %s",
                     event.tournament_id,
-                    event_label,
+                    getattr(event, "event_type", type(event).__name__),
                 )
 
     @asynccontextmanager

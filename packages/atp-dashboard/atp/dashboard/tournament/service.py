@@ -155,6 +155,27 @@ class TournamentService:
         tournament = await self._session.get(Tournament, tournament_id)
         if tournament is None:
             raise NotFoundError(f"tournament {tournament_id}")
+
+        # Capture scalar values before any potential rollback expiry
+        user_id = user.id
+
+        # Idempotent pre-check: existing participant can always reconnect,
+        # even when the tournament is already active (MCP reconnect scenario).
+        existing = await self._session.scalar(
+            select(Participant)
+            .where(Participant.tournament_id == tournament_id)
+            .where(Participant.user_id == user_id)
+        )
+        if existing is not None:
+            if existing.released_at is not None:
+                # Leave is terminal — cannot rejoin
+                raise ConflictError(
+                    f"user {user_id} already left tournament "
+                    f"{tournament_id}; rejoin not permitted"
+                )
+            return existing, False
+
+        # Fresh join: tournament must be pending.
         if tournament.status != TournamentStatus.PENDING:
             raise ConflictError(
                 f"tournament {tournament_id} is {tournament.status!r}, "
@@ -171,24 +192,6 @@ class TournamentService:
                 raise ConflictError(
                     f"tournament {tournament_id} requires a valid join_token"
                 )
-
-        # Capture scalar values before any potential rollback expiry
-        user_id = user.id
-
-        # Idempotent pre-check
-        existing = await self._session.scalar(
-            select(Participant)
-            .where(Participant.tournament_id == tournament_id)
-            .where(Participant.user_id == user_id)
-        )
-        if existing is not None:
-            if existing.released_at is not None:
-                # Leave is terminal — cannot rejoin
-                raise ConflictError(
-                    f"user {user_id} already left tournament "
-                    f"{tournament_id}; rejoin not permitted"
-                )
-            return existing, False
 
         # INSERT path
         participant = Participant(
@@ -282,7 +285,7 @@ class TournamentService:
 
     async def _start_tournament(self, tournament: Tournament) -> None:
         """Transition a PENDING tournament to ACTIVE and create round 1."""
-        now = datetime.now()
+        now = datetime.utcnow()
         tournament.status = TournamentStatus.ACTIVE
         tournament.starts_at = now
         round_1 = Round(
@@ -567,7 +570,7 @@ class TournamentService:
                 "payoffs": payoffs,
             }
 
-        now = datetime.now()
+        now = datetime.utcnow()
         next_round = Round(
             tournament_id=tournament.id,
             round_number=round_obj.round_number + 1,
@@ -967,7 +970,8 @@ class TournamentService:
         Called by the deadline worker when a round's deadline has passed and
         not all participants have submitted. Creates synthetic Action rows with
         source=TIMEOUT_DEFAULT for every participant that has not yet acted,
-        then advances the round to COMPLETED status.
+        marks the round COMPLETED, then either starts the next round or
+        completes the tournament.
 
         Task 21 (integration test) validates the full race-guard path.
         """
@@ -982,6 +986,10 @@ class TournamentService:
         round_obj = row.scalar_one_or_none()
         if round_obj is None:
             # Already resolved or cancelled — idempotent no-op
+            return
+
+        tournament = await self._session.get(Tournament, round_obj.tournament_id)
+        if tournament is None:
             return
 
         # Find participant IDs that have NOT submitted
@@ -1004,7 +1012,7 @@ class TournamentService:
                     Action(
                         round_id=round_id,
                         participant_id=participant_id,
-                        action_data={},
+                        action_data={"choice": "defect"},
                         submitted_at=now,
                         source=ActionSource.TIMEOUT_DEFAULT,
                     )
@@ -1012,3 +1020,34 @@ class TournamentService:
 
         round_obj.status = RoundStatus.COMPLETED
         await self._session.flush()
+
+        # Advance: complete tournament or create the next round.
+        if round_obj.round_number >= tournament.total_rounds:
+            await self._complete_tournament(tournament)
+            await self._session.flush()
+        else:
+            next_round = Round(
+                tournament_id=tournament.id,
+                round_number=round_obj.round_number + 1,
+                status=RoundStatus.WAITING_FOR_ACTIONS,
+                started_at=now,
+                deadline=now + timedelta(seconds=tournament.round_deadline_s),
+                state={},
+            )
+            self._session.add(next_round)
+            await self._session.flush()
+
+        # Commit before publishing so MCP notification forwarders that
+        # open their own DB sessions see the new round / completed state.
+        await self._session.commit()
+
+        if round_obj.round_number < tournament.total_rounds:
+            await self._bus.publish(
+                TournamentEvent(
+                    event_type="round_started",
+                    tournament_id=tournament.id,
+                    round_number=round_obj.round_number + 1,
+                    data={"total_rounds": tournament.total_rounds},
+                    timestamp=datetime.now(),
+                )
+            )

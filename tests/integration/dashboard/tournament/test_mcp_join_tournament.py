@@ -36,12 +36,13 @@ async def test_join_tournament_emits_session_sync_first(session_factory):
         )
         await setup.commit()
 
-    notifications = []
+    notifications: list[object] = []
+
+    async def _capture1(level: str, data: object, logger: str | None = None) -> None:
+        notifications.append(data)
 
     ctx = MagicMock()
-    ctx.session.send_notification = AsyncMock(
-        side_effect=lambda n: notifications.append(n)
-    )
+    ctx.session.send_log_message = AsyncMock(side_effect=_capture1)
 
     async with session_factory() as session:
         from atp.dashboard.models import User
@@ -87,12 +88,13 @@ async def test_join_tournament_emits_session_sync_on_reconnect(session_factory):
         )
         await setup.commit()
 
-    notifications: list = []
+    notifications: list[object] = []
+
+    async def _capture2(level: str, data: object, logger: str | None = None) -> None:
+        notifications.append(data)
 
     ctx = MagicMock()
-    ctx.session.send_notification = AsyncMock(
-        side_effect=lambda n: notifications.append(n)
-    )
+    ctx.session.send_log_message = AsyncMock(side_effect=_capture2)
 
     async with session_factory() as session:
         from atp.dashboard.models import User
@@ -112,9 +114,7 @@ async def test_join_tournament_emits_session_sync_on_reconnect(session_factory):
     notifications.clear()
 
     ctx2 = MagicMock()
-    ctx2.session.send_notification = AsyncMock(
-        side_effect=lambda n: notifications.append(n)
-    )
+    ctx2.session.send_log_message = AsyncMock(side_effect=_capture2)
 
     async with session_factory() as session2:
         from atp.dashboard.models import User

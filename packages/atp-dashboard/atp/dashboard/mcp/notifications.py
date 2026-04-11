@@ -153,29 +153,34 @@ async def forward_events_to_session(ctx: Any, tournament_id: int, user: User) ->
 
     session_id = getattr(ctx, "session_id", None) or id(ctx)
 
+    # Capture the ServerSession now, while the request context is active.
+    # After the tool-call HTTP request completes, ctx.session raises
+    # RuntimeError in FastMCP v3 request-mode; the captured reference
+    # remains valid for the lifetime of the SSE connection.
+    mcp_session = getattr(ctx, "session", None)
+
     async def _forward() -> None:
         try:
             async with tournament_event_bus.subscribe(tournament_id) as queue:
                 while True:
                     event = await queue.get()
                     db = get_database()
-                    async with db.session() as session:
-                        service = TournamentService(session, tournament_event_bus)
+                    async with db.session() as db_session:
+                        service = TournamentService(db_session, tournament_event_bus)
                         notification = await _format_notification_for_user(
                             event, user, service
                         )
                     if notification is None:
                         continue
-                    params = notification["params"]
-                    session = getattr(ctx, "session", None)
-                    if session is None:
+                    if mcp_session is None:
                         continue
+                    params = notification["params"]
                     # ``send_log_message`` builds the proper pydantic
                     # notification model internally; we pass the raw
                     # data payload our formatter produced. The SDK
                     # wraps it into a ``notifications/message`` frame
                     # on the wire.
-                    await session.send_log_message(
+                    await mcp_session.send_log_message(
                         level=params["level"],
                         data=params["data"],
                         logger=params.get("logger"),

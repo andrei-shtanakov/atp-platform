@@ -47,10 +47,16 @@ async def test_session_sync_is_first_notification_on_fresh_join(
         await setup.commit()
 
     notifications = []
+
+    async def _capture_log_message(
+        level: str,
+        data: object,
+        logger: str | None = None,
+    ) -> None:
+        notifications.append(data)
+
     ctx = MagicMock()
-    ctx.session.send_notification = AsyncMock(
-        side_effect=lambda n: notifications.append(n)
-    )
+    ctx.session.send_log_message = AsyncMock(side_effect=_capture_log_message)
 
     async with session_factory() as session:
         from atp.dashboard.models import User
@@ -68,7 +74,7 @@ async def test_session_sync_is_first_notification_on_fresh_join(
 
     assert len(notifications) >= 1
     first = notifications[0]
-    assert first.get("event") == "session_sync"
+    assert first.get("event") == "session_sync"  # type: ignore[union-attr]
 
 
 @pytest.mark.anyio
@@ -78,7 +84,7 @@ async def test_session_sync_on_idempotent_rejoin(session_factory):
         await setup.commit()
 
     ctx1 = MagicMock()
-    ctx1.session.send_notification = AsyncMock()
+    ctx1.session.send_log_message = AsyncMock()
 
     # First join
     async with session_factory() as session:
@@ -96,10 +102,16 @@ async def test_session_sync_on_idempotent_rejoin(session_factory):
         )
 
     ctx2 = MagicMock()
-    notifications = []
-    ctx2.session.send_notification = AsyncMock(
-        side_effect=lambda n: notifications.append(n)
-    )
+    notifications: list[object] = []
+
+    async def _capture_log_message2(
+        level: str,
+        data: object,
+        logger: str | None = None,
+    ) -> None:
+        notifications.append(data)
+
+    ctx2.session.send_log_message = AsyncMock(side_effect=_capture_log_message2)
 
     # Reconnect / second join — must also emit session_sync
     async with session_factory() as session:
@@ -117,4 +129,5 @@ async def test_session_sync_on_idempotent_rejoin(session_factory):
         )
 
     assert len(notifications) >= 1
-    assert notifications[0].get("event") == "session_sync"
+    first2 = notifications[0]
+    assert first2.get("event") == "session_sync"  # type: ignore[union-attr]
