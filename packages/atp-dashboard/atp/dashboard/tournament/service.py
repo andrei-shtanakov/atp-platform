@@ -12,7 +12,9 @@ worker, leave/get_history/list, AD-9/AD-10 enforcement, etc.).
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from atp.dashboard.models import User
@@ -24,6 +26,7 @@ from atp.dashboard.tournament.errors import (
 from atp.dashboard.tournament.events import TournamentEventBus
 from atp.dashboard.tournament.models import (
     Participant,
+    Round,
     Tournament,
     TournamentStatus,
 )
@@ -109,4 +112,29 @@ class TournamentService:
         self._session.add(participant)
         await self._session.flush()
         await self._session.refresh(participant)
+
+        count = await self._session.scalar(
+            select(func.count(Participant.id)).where(
+                Participant.tournament_id == tournament_id
+            )
+        )
+        if count == tournament.num_players:
+            await self._start_tournament(tournament)
+
         return participant
+
+    async def _start_tournament(self, tournament: Tournament) -> None:
+        """Transition a PENDING tournament to ACTIVE and create round 1."""
+        now = datetime.now()
+        tournament.status = TournamentStatus.ACTIVE
+        tournament.starts_at = now
+        round_1 = Round(
+            tournament_id=tournament.id,
+            round_number=1,
+            status="waiting_for_actions",
+            started_at=now,
+            deadline=now + timedelta(seconds=tournament.round_deadline_s),
+            state={},
+        )
+        self._session.add(round_1)
+        await self._session.flush()

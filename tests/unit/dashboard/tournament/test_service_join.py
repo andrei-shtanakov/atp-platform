@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from atp.dashboard.models import User
@@ -106,3 +107,44 @@ async def test_join_first_player_creates_participant(
     assert participant.agent_name == "alice-tft"
     await session.refresh(tournament)
     assert tournament.status == "pending"
+
+
+@pytest.mark.anyio
+async def test_join_filling_last_slot_starts_tournament_and_creates_round_1(
+    session: AsyncSession,
+    admin_user: User,
+    alice: User,
+    bob: User,
+    event_bus: TournamentEventBus,
+) -> None:
+    from atp.dashboard.tournament.models import Round
+    from atp.dashboard.tournament.service import TournamentService
+
+    svc = TournamentService(session, event_bus)
+    tournament = await svc.create_tournament(
+        admin=admin_user,
+        name="t",
+        game_type="prisoners_dilemma",
+        num_players=2,
+        total_rounds=3,
+        round_deadline_s=30,
+    )
+
+    await svc.join(tournament.id, alice, "alice-tft")
+    await svc.join(tournament.id, bob, "bob-random")
+
+    await session.refresh(tournament)
+    assert tournament.status == "active"
+
+    rounds = (
+        (
+            await session.execute(
+                select(Round).where(Round.tournament_id == tournament.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(rounds) == 1
+    assert rounds[0].round_number == 1
+    assert rounds[0].status == "waiting_for_actions"
