@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import secrets
 import sys
 from datetime import timedelta
@@ -32,10 +33,29 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from atp.dashboard.auth import create_access_token, create_user
-from atp.dashboard.database import Database, init_database
+from atp.dashboard.database import Database
 from atp.dashboard.models import User
 
 _DEFAULT_TOKEN_DAYS = 30
+
+
+def _open_database() -> Database:
+    """Open a Database handle honoring ATP_DATABASE_URL.
+
+    Bypasses ``init_database()`` because the CLI only needs query /
+    write access — not the full startup sequence (create_tables,
+    _add_missing_columns, _seed_default_roles, _backfill_run_user_id).
+    Those side effects are already performed by the platform process
+    on startup and duplicating them here fights with an already-running
+    container.
+
+    If ``ATP_DATABASE_URL`` is unset, ``Database()`` falls back to the
+    historical default ``~/.atp/dashboard.db``. In a container where
+    HOME=/app owned by root, that path is not writable by the runtime
+    user; the caller must set the env var explicitly in that case.
+    """
+    url = os.environ.get("ATP_DATABASE_URL")
+    return Database(url=url)
 
 
 async def _get_user_by_username(session: AsyncSession, username: str) -> User | None:
@@ -150,7 +170,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 async def _async_main(args: argparse.Namespace) -> int:
-    db = await init_database()
+    db = _open_database()
     try:
         if args.command == "create-bot-user":
             token = await _create_bot_user_impl(
