@@ -28,6 +28,7 @@ from atp.dashboard.tournament.errors import (
 )
 from atp.dashboard.tournament.events import TournamentEventBus
 from atp.dashboard.tournament.models import (
+    Action,
     Participant,
     Round,
     Tournament,
@@ -237,3 +238,109 @@ class TournamentService:
             total_rounds=formatted["total_rounds"],
             extra=formatted.get("extra", {}),
         )
+
+    async def submit_action(
+        self,
+        tournament_id: int,
+        user: User,
+        action: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Submit one player's action for the current round.
+
+        Returns:
+            {"status": "waiting", "round_number": N} if more actions
+            are still expected this round.
+
+            {"status": "round_resolved", ...} if this was the last
+            action and the round resolved synchronously.
+        """
+        tournament = await self._session.get(Tournament, tournament_id)
+        if tournament is None:
+            raise NotFoundError(f"tournament {tournament_id} not found")
+        if tournament.status != TournamentStatus.ACTIVE:
+            raise ConflictError(
+                f"tournament {tournament_id} is {tournament.status}, not active"
+            )
+
+        my_participant = (
+            await self._session.execute(
+                select(Participant).where(
+                    Participant.tournament_id == tournament_id,
+                    Participant.user_id == user.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if my_participant is None:
+            raise NotFoundError(f"tournament {tournament_id} not found")
+
+        current_round = (
+            await self._session.execute(
+                select(Round)
+                .where(
+                    Round.tournament_id == tournament_id,
+                    Round.status == "waiting_for_actions",
+                )
+                .order_by(Round.round_number.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if current_round is None:
+            raise ConflictError(
+                f"tournament {tournament_id} has no round accepting actions"
+            )
+
+        game = _GAME_INSTANCES[tournament.game_type]
+        schema_probe = game.format_state_for_player(
+            round_number=1,
+            total_rounds=1,
+            participant_idx=0,
+            action_history=[],
+            cumulative_scores=[0.0, 0.0],
+        )
+        if action.get("choice") not in schema_probe["action_schema"]["options"]:
+            raise ValidationError(
+                f"invalid action {action!r} for game {tournament.game_type}"
+            )
+
+        existing = (
+            await self._session.execute(
+                select(Action).where(
+                    Action.round_id == current_round.id,
+                    Action.participant_id == my_participant.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            raise ConflictError(
+                f"participant {my_participant.id} already submitted in round "
+                f"{current_round.round_number}"
+            )
+
+        new_action = Action(
+            round_id=current_round.id,
+            participant_id=my_participant.id,
+            action_data={"choice": action["choice"]},
+        )
+        self._session.add(new_action)
+        await self._session.flush()
+
+        action_count = (
+            await self._session.scalar(
+                select(func.count(Action.id)).where(Action.round_id == current_round.id)
+            )
+            or 0
+        )
+
+        if action_count < tournament.num_players:
+            return {
+                "status": "waiting",
+                "round_number": current_round.round_number,
+            }
+
+        return await self._resolve_round(current_round, tournament)
+
+    async def _resolve_round(
+        self, round_obj: Round, tournament: Tournament
+    ) -> dict[str, Any]:
+        """Resolve a round when all actions are present (Task 5.6)."""
+        raise NotImplementedError("implemented in Task 5.6")
