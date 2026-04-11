@@ -20,8 +20,8 @@ async def test_get_state_for_round_1_no_history(
     from atp.dashboard.tournament.service import TournamentService
 
     svc = TournamentService(session, event_bus)
-    tournament = await svc.create_tournament(
-        admin=admin_user,
+    tournament, _ = await svc.create_tournament(
+        creator=admin_user,
         name="t",
         game_type="prisoners_dilemma",
         num_players=2,

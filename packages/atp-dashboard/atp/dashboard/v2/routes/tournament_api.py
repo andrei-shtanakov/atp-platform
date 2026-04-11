@@ -1,117 +1,278 @@
-"""Tournament API routes.
+"""Tournament REST admin endpoints.
 
-Provides endpoints for tournament listing and details, with stubs
-for join, current-round, action, and results endpoints.
+6 handlers for tournament lifecycle management:
+  GET    /api/v1/tournaments              — list (visibility-filtered)
+  GET    /api/v1/tournaments/{id}         — detail
+  GET    /api/v1/tournaments/{id}/rounds  — round history
+  GET    /api/v1/tournaments/{id}/participants — participant list
+  POST   /api/v1/tournaments             — create (returns join_token once)
+  POST   /api/v1/tournaments/{id}/cancel — cancel
+
+All handlers use the shared TournamentService. Transaction boundary is owned
+by the FastAPI DB dependency (ambient autobegin + commit on success).
 """
 
-from fastapi import APIRouter, HTTPException, status
-from sqlalchemy import select
+from __future__ import annotations
 
-from atp.dashboard.tournament.models import Tournament
-from atp.dashboard.tournament.schemas import (
-    ActionRequest,
-    JoinRequest,
-    TournamentResponse,
+import os
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from atp.dashboard.models import User
+from atp.dashboard.tournament.errors import (
+    ConflictError,
+    NotFoundError,
+    ValidationError,
 )
-from atp.dashboard.v2.dependencies import DBSession
+from atp.dashboard.tournament.models import Participant, TournamentStatus
+from atp.dashboard.tournament.service import TournamentService
+from atp.dashboard.v2.dependencies import DBSession, get_db_session
 
 router = APIRouter(prefix="/v1/tournaments", tags=["tournaments"])
 
 
-# ------------------------------------------------------------------
-# Helpers
-# ------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Dependency helpers
+# ---------------------------------------------------------------------------
 
 
-def _tournament_to_response(t: Tournament) -> TournamentResponse:
-    return TournamentResponse(
-        id=t.id,
-        game_type=t.game_type,
-        status=t.status,
-        starts_at=(t.starts_at.isoformat() if t.starts_at else None),
-        ends_at=t.ends_at.isoformat() if t.ends_at else None,
+async def get_current_user_for_tournament(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> User:
+    """Resolve the calling user for tournament endpoints.
+
+    In normal mode the JWT middleware populates request.state.user.
+    In test mode (ATP_DISABLE_AUTH=true) fall back to user id=1.
+    """
+    user: User | None = getattr(request.state, "user", None)
+    if user is not None:
+        return user
+
+    if os.environ.get("ATP_DISABLE_AUTH") == "true":
+        loaded = await session.get(User, 1)
+        if loaded is not None:
+            return loaded
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="unauthenticated",
     )
 
 
-# ------------------------------------------------------------------
-# Implemented endpoints
-# ------------------------------------------------------------------
-
-
-@router.get("", response_model=list[TournamentResponse])
-async def list_tournaments(
+async def get_tournament_service(
     session: DBSession,
-) -> list[TournamentResponse]:
-    """List all tournaments."""
-    result = await session.execute(select(Tournament).order_by(Tournament.id))
-    tournaments = result.scalars().all()
-    return [_tournament_to_response(t) for t in tournaments]
+    request: Request,
+) -> TournamentService:
+    """Provide a TournamentService bound to the request's DB session."""
+    from atp.dashboard.mcp import tournament_event_bus
+
+    bus = getattr(request.app.state, "tournament_event_bus", tournament_event_bus)
+    return TournamentService(session=session, bus=bus)
 
 
-@router.get(
-    "/{tournament_id}",
-    response_model=TournamentResponse,
-)
-async def get_tournament(
+TournamentUser = Annotated[User, Depends(get_current_user_for_tournament)]
+TournamentSvc = Annotated[TournamentService, Depends(get_tournament_service)]
+
+
+# ---------------------------------------------------------------------------
+# Request / response models
+# ---------------------------------------------------------------------------
+
+
+class CreateTournamentRequest(BaseModel):
+    """Payload for creating a new tournament."""
+
+    name: str
+    game_type: str = "prisoners_dilemma"
+    num_players: int = Field(ge=2)
+    total_rounds: int = Field(ge=1)
+    round_deadline_s: int = Field(ge=1)
+    private: bool = False
+
+
+# ---------------------------------------------------------------------------
+# Serialization helper
+# ---------------------------------------------------------------------------
+
+
+def _serialize(t: Any, is_admin: bool) -> dict[str, Any]:
+    """Serialize a Tournament ORM object to a response dict.
+
+    join_token is NEVER included here — it is added only on creation.
+    """
+    base: dict[str, Any] = {
+        "id": t.id,
+        "name": (t.config or {}).get("name", ""),
+        "status": t.status if isinstance(t.status, str) else t.status.value,
+        "game_type": t.game_type,
+        "num_players": t.num_players,
+        "total_rounds": t.total_rounds,
+        "round_deadline_s": t.round_deadline_s,
+        "has_join_token": bool(t.join_token),
+        "cancelled_reason": (
+            t.cancelled_reason.value if t.cancelled_reason is not None else None
+        ),
+        "cancelled_reason_detail": t.cancelled_reason_detail,
+    }
+    if is_admin:
+        base["cancelled_by"] = t.cancelled_by
+    return base
+
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("")
+async def list_tournaments_endpoint(
+    user: TournamentUser,
+    service: TournamentSvc,
+    status_filter: str | None = None,
+) -> dict[str, Any]:
+    """List tournaments visible to the calling user."""
+    filt: TournamentStatus | None = None
+    if status_filter is not None:
+        try:
+            filt = TournamentStatus(status_filter)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"unknown status filter: {status_filter!r}",
+            )
+    tournaments = await service.list_tournaments(user=user, status=filt)
+    return {"tournaments": [_serialize(t, user.is_admin) for t in tournaments]}
+
+
+@router.get("/{tournament_id}")
+async def get_tournament_endpoint(
     tournament_id: int,
-    session: DBSession,
-) -> TournamentResponse:
-    """Get tournament details by id."""
-    t = await session.get(Tournament, tournament_id)
-    if t is None:
+    user: TournamentUser,
+    service: TournamentSvc,
+) -> dict[str, Any]:
+    """Return tournament details (visibility-filtered)."""
+    try:
+        t = await service.get_tournament(tournament_id, user)
+    except NotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Tournament {tournament_id} not found",
+            detail="tournament not found",
         )
-    return _tournament_to_response(t)
+    return _serialize(t, user.is_admin)
 
 
-# ------------------------------------------------------------------
-# Stub endpoints (not yet implemented)
-# ------------------------------------------------------------------
-
-
-@router.post(
-    "/{tournament_id}/join",
-    status_code=status.HTTP_501_NOT_IMPLEMENTED,
-)
-async def join_tournament(
+@router.get("/{tournament_id}/rounds")
+async def get_rounds_endpoint(
     tournament_id: int,
-    data: JoinRequest,
-) -> dict[str, str]:
-    """Join a tournament (stub)."""
-    return {"detail": "Not implemented"}
+    user: TournamentUser,
+    service: TournamentSvc,
+) -> dict[str, Any]:
+    """Return round history for a tournament."""
+    try:
+        rounds = await service.get_history(tournament_id, user)
+    except NotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="tournament not found",
+        )
+    return {
+        "rounds": [
+            {
+                "round_number": r.round_number,
+                "status": (r.status if isinstance(r.status, str) else r.status.value),
+            }
+            for r in rounds
+        ]
+    }
 
 
-@router.get(
-    "/{tournament_id}/current-round",
-    status_code=status.HTTP_501_NOT_IMPLEMENTED,
-)
-async def current_round(
+@router.get("/{tournament_id}/participants")
+async def get_participants_endpoint(
     tournament_id: int,
-) -> dict[str, str]:
-    """Get current round (stub)."""
-    return {"detail": "Not implemented"}
+    user: TournamentUser,
+    service: TournamentSvc,
+    session: DBSession,
+) -> dict[str, Any]:
+    """Return participants of a tournament."""
+    try:
+        await service.get_tournament(tournament_id, user)
+    except NotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="tournament not found",
+        )
+
+    # Explicitly load participants to avoid lazy-loading in async context.
+    result = await session.execute(
+        select(Participant)
+        .where(Participant.tournament_id == tournament_id)
+        .order_by(Participant.id)
+    )
+    raw_participants = result.scalars().all()
+
+    participants: list[dict[str, Any]] = []
+    for p in raw_participants:
+        row: dict[str, Any] = {
+            "id": p.id,
+            "user_id": p.user_id,
+            "agent_name": p.agent_name,
+        }
+        if p.user_id == user.id or user.is_admin:
+            row["released_at"] = p.released_at.isoformat() if p.released_at else None
+        participants.append(row)
+    return {"participants": participants}
 
 
-@router.post(
-    "/{tournament_id}/action",
-    status_code=status.HTTP_501_NOT_IMPLEMENTED,
-)
-async def submit_action(
+@router.post("", status_code=status.HTTP_201_CREATED)
+async def create_tournament_endpoint(
+    req: CreateTournamentRequest,
+    user: TournamentUser,
+    service: TournamentSvc,
+) -> dict[str, Any]:
+    """Create a tournament. Returns join_token once (private tournaments only)."""
+    try:
+        tournament, join_token = await service.create_tournament(
+            creator=user,
+            name=req.name,
+            game_type=req.game_type,
+            num_players=req.num_players,
+            total_rounds=req.total_rounds,
+            round_deadline_s=req.round_deadline_s,
+            private=req.private,
+        )
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e),
+        )
+
+    response = _serialize(tournament, user.is_admin)
+    response["join_token"] = join_token  # None for public, token string for private
+    return response
+
+
+@router.post("/{tournament_id}/cancel")
+async def cancel_tournament_endpoint(
     tournament_id: int,
-    data: ActionRequest,
-) -> dict[str, str]:
-    """Submit an action in the current round (stub)."""
-    return {"detail": "Not implemented"}
-
-
-@router.get(
-    "/{tournament_id}/results",
-    status_code=status.HTTP_501_NOT_IMPLEMENTED,
-)
-async def get_results(
-    tournament_id: int,
-) -> dict[str, str]:
-    """Get tournament results (stub)."""
-    return {"detail": "Not implemented"}
+    user: TournamentUser,
+    service: TournamentSvc,
+) -> dict[str, Any]:
+    """Cancel a tournament (admin or owner only)."""
+    try:
+        await service.cancel_tournament(user=user, tournament_id=tournament_id)
+    except NotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="tournament not found",
+        )
+    except ConflictError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e),
+        )
+    return {"cancelled": True}

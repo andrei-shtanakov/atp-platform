@@ -19,8 +19,8 @@ async def test_create_tournament_persists_basic_fields(
     from atp.dashboard.tournament.service import TournamentService
 
     svc = TournamentService(session, event_bus)
-    tournament = await svc.create_tournament(
-        admin=admin_user,
+    tournament, _ = await svc.create_tournament(
+        creator=admin_user,
         name="slice-test",
         game_type="prisoners_dilemma",
         num_players=2,
@@ -49,7 +49,7 @@ async def test_create_tournament_rejects_unknown_game_type(
     svc = TournamentService(session, event_bus)
     with pytest.raises(ValidationError, match="unsupported game_type"):
         await svc.create_tournament(
-            admin=admin_user,
+            creator=admin_user,
             name="bad-game",
             game_type="chess",
             num_players=2,
@@ -70,7 +70,7 @@ async def test_create_tournament_rejects_invalid_num_players(
     svc = TournamentService(session, event_bus)
     with pytest.raises(ValidationError, match="num_players"):
         await svc.create_tournament(
-            admin=admin_user,
+            creator=admin_user,
             name="single-player-pd",
             game_type="prisoners_dilemma",
             num_players=1,
@@ -89,8 +89,8 @@ async def test_join_first_player_creates_participant(
     from atp.dashboard.tournament.service import TournamentService
 
     svc = TournamentService(session, event_bus)
-    tournament = await svc.create_tournament(
-        admin=admin_user,
+    tournament, _ = await svc.create_tournament(
+        creator=admin_user,
         name="t",
         game_type="prisoners_dilemma",
         num_players=2,
@@ -98,9 +98,10 @@ async def test_join_first_player_creates_participant(
         round_deadline_s=30,
     )
 
-    participant = await svc.join(
+    participant, is_new = await svc.join(
         tournament_id=tournament.id, user=alice, agent_name="alice-tft"
     )
+    assert is_new is True
     assert participant.id is not None
     assert participant.tournament_id == tournament.id
     assert participant.user_id == alice.id
@@ -121,8 +122,8 @@ async def test_join_filling_last_slot_starts_tournament_and_creates_round_1(
     from atp.dashboard.tournament.service import TournamentService
 
     svc = TournamentService(session, event_bus)
-    tournament = await svc.create_tournament(
-        admin=admin_user,
+    tournament, _ = await svc.create_tournament(
+        creator=admin_user,
         name="t",
         game_type="prisoners_dilemma",
         num_players=2,
@@ -130,8 +131,8 @@ async def test_join_filling_last_slot_starts_tournament_and_creates_round_1(
         round_deadline_s=30,
     )
 
-    await svc.join(tournament.id, alice, "alice-tft")
-    await svc.join(tournament.id, bob, "bob-random")
+    await svc.join(tournament_id=tournament.id, user=alice, agent_name="alice-tft")
+    await svc.join(tournament_id=tournament.id, user=bob, agent_name="bob-random")
 
     await session.refresh(tournament)
     assert tournament.status == "active"

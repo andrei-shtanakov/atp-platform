@@ -4,8 +4,10 @@ This module provides a factory function for creating FastAPI application
 instances with proper configuration, middleware, and routes.
 """
 
+import asyncio
+import os
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +20,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from atp.dashboard.database import init_database
+from atp.dashboard.tournament.deadlines import run_deadline_worker
 from atp.dashboard.v2.config import DashboardConfig, get_config
 from atp.dashboard.v2.rate_limit import (
     JWTUserStateMiddleware,
@@ -30,6 +33,20 @@ from atp.dashboard.v2.routes import router as api_router
 V2_DIR = Path(__file__).parent
 TEMPLATES_DIR = V2_DIR / "templates"
 STATIC_DIR = V2_DIR / "static"
+
+
+def assert_single_worker() -> None:
+    """Crash at startup if the deadline worker would race itself across
+    multiple uvicorn workers. Multi-worker support is backlog I."""
+    wc = int(os.environ.get("WEB_CONCURRENCY", "1"))
+    if wc != 1:
+        raise RuntimeError(
+            f"ATP Tournament deadline worker requires WEB_CONCURRENCY=1 "
+            f"(got {wc}). Multiple workers would each run a deadline "
+            f"worker, racing on force_resolve_round and wasting DB reads. "
+            f"Multi-worker support is backlog item I (Redis bus + "
+            f"PostgreSQL migration)."
+        )
 
 
 @asynccontextmanager
@@ -94,7 +111,7 @@ def create_app(
     # into the outer FastAPI lifespan. Phase 0.2 verified that Starlette
     # does NOT propagate sub-app lifespans under mount(), so we must
     # drive FastMCP's session-manager lifespan ourselves.
-    from atp.dashboard.mcp import mcp_server
+    from atp.dashboard.mcp import mcp_server, tournament_event_bus
     from atp.dashboard.mcp import tools as _mcp_tools  # noqa: F401
     from atp.dashboard.mcp.auth import MCPAuthMiddleware
 
@@ -102,9 +119,29 @@ def create_app(
 
     @asynccontextmanager
     async def _combined_lifespan(app_: FastAPI) -> AsyncGenerator[None, None]:
+        assert_single_worker()
+
         async with lifespan(app_):
-            async with mcp_app.router.lifespan_context(app_):
-                yield
+            # session_factory is available after init_database() in lifespan
+            from atp.dashboard.database import get_database
+
+            session_factory = get_database().session_factory
+            shutdown_event = asyncio.Event()
+            worker_task = asyncio.create_task(
+                run_deadline_worker(
+                    session_factory,
+                    tournament_event_bus,
+                    shutdown_event=shutdown_event,
+                )
+            )
+            try:
+                async with mcp_app.router.lifespan_context(app_):
+                    yield
+            finally:
+                shutdown_event.set()
+                worker_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await asyncio.gather(worker_task, return_exceptions=True)
 
     # Merge default settings with any provided kwargs
     app_settings: dict[str, Any] = {

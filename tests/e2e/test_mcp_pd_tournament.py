@@ -38,8 +38,8 @@ async def test_admin_creates_tournament_directly(
         admin = await session.get(User, mcp_seeded_users["admin"]["id"])
         assert admin is not None
         svc = TournamentService(session, TournamentEventBus())
-        t = await svc.create_tournament(
-            admin=admin,
+        t, _ = await svc.create_tournament(
+            creator=admin,
             name="e2e-pd",
             game_type="prisoners_dilemma",
             num_players=2,
@@ -82,8 +82,8 @@ async def test_two_bots_play_pd_tournament_end_to_end(
         admin = await session.get(User, mcp_seeded_users["admin"]["id"])
         assert admin is not None
         svc = TournamentService(session, TournamentEventBus())
-        t = await svc.create_tournament(
-            admin=admin,
+        t, _ = await svc.create_tournament(
+            creator=admin,
             name="e2e-pd-acceptance",
             game_type="prisoners_dilemma",
             num_players=2,
