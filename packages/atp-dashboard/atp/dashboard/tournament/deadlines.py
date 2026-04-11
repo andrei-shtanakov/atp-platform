@@ -129,6 +129,10 @@ async def _tick(
                     tournament_id,
                     reason=CancelReason.PENDING_TIMEOUT,
                 )
+                # cancel_tournament_system/_cancel_impl does not commit — the
+                # session context manager only closes, never commits. Explicit
+                # commit required so the state transition is durable.
+                await session.commit()
         except Exception:
             log.exception(
                 "deadline_worker.pending_cancel_failed",
