@@ -46,6 +46,26 @@ async def _join_tournament_impl(
     }
 
 
+async def _get_current_state_impl(
+    *,
+    tournament_id: int,
+    user: Any,
+    service: TournamentService,
+) -> dict[str, Any]:
+    state = await service.get_state_for(tournament_id, user)
+    return state.to_dict()
+
+
+async def _make_move_impl(
+    *,
+    tournament_id: int,
+    action: dict[str, Any],
+    user: Any,
+    service: TournamentService,
+) -> dict[str, Any]:
+    return await service.submit_action(tournament_id, user, action=action)
+
+
 # ---------------------------------------------------------------------------
 # FastMCP-registered tool entry points
 # ---------------------------------------------------------------------------
@@ -80,3 +100,43 @@ async def join_tournament(
 
     await forward_events_to_session(ctx, tournament_id, user)
     return result
+
+
+@mcp_server.tool()
+async def get_current_state(
+    ctx: Context,
+    tournament_id: int,
+) -> dict:
+    """Return a player-private RoundState for the current round."""
+    from atp.dashboard.mcp.notifications import (
+        resolve_user_from_ctx,
+        with_service,
+    )
+
+    user = await resolve_user_from_ctx(ctx)
+    async with with_service(ctx, tournament_event_bus) as service:
+        return await _get_current_state_impl(
+            tournament_id=tournament_id, user=user, service=service
+        )
+
+
+@mcp_server.tool()
+async def make_move(
+    ctx: Context,
+    tournament_id: int,
+    action: dict,
+) -> dict:
+    """Submit an action for the current round."""
+    from atp.dashboard.mcp.notifications import (
+        resolve_user_from_ctx,
+        with_service,
+    )
+
+    user = await resolve_user_from_ctx(ctx)
+    async with with_service(ctx, tournament_event_bus) as service:
+        return await _make_move_impl(
+            tournament_id=tournament_id,
+            action=action,
+            user=user,
+            service=service,
+        )
