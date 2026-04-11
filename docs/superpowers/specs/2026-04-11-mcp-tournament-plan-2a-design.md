@@ -94,6 +94,8 @@ Source spec backlog items (existing letters) plus three new Plan 2a items:
 
 - **`join_token` is not recoverable.** The token is returned once in the 201 response body to `POST /api/v1/tournaments` and never echoed back in any subsequent `GET` response (the column is excluded from serialization; only `has_join_token: bool` is exposed). If the creator loses the token before distributing it, the only recovery is `POST /api/v1/tournaments/{id}/cancel` followed by creating a new tournament with a fresh token. Regeneration is explicitly out of scope — it would introduce token-rotation semantics that complicate the "generated once, distributed once" model without clear value for Plan 2a.
 
+- **Cancel audit attribution under concurrent race.** When a user-initiated cancel (`cancel_tournament`) and a system cancel (`cancel_tournament_system` via deadline worker `pending_timeout` or `leave()` abandoned cascade) target the same tournament within the same tick window, both transactions see `status IN (PENDING, ACTIVE)` in their respective snapshots (SQLAlchemy's SQLite dialect silently drops `FOR UPDATE`; SQLite WAL serializes writes at commit time but does not provide row-level isolation for reads), both pass the step-2 idempotent guard in `_cancel_impl`, both reach step 4 and write audit fields to their session-local `Tournament` instance, and both commit — serialized at the WAL write lock. The status transition itself is deterministic (always `CANCELLED`) and the cascade operations on participants and rounds are idempotent bulk UPDATEs (second pass matches zero rows). Only the **audit attribution** fields (`cancelled_by`, `cancelled_reason`, `cancelled_reason_detail`) reflect whichever writer committed **last** — the second `UPDATE tournaments SET ... WHERE id = ?` overwrites the first without a version check. Both callers receive success, and both publish a `TournamentCancelEvent` — subscribers see two events with conflicting attribution for the same tournament and must treat the second as authoritative. Resolved under backlog item I (PostgreSQL migration), where `FOR UPDATE` becomes a real row-level lock and the second caller observes `status=CANCELLED` at step 2, returning `None` without publishing. Plan 2a accepts the race because: (a) the window is sub-second and requires exact coincidence of admin action and deadline expiry, (b) safety (status, cascades) is guaranteed, only audit attribution is non-deterministic, and (c) backlog I closes the race without a separate fix on SQLite.
+
 ### Deployment constraints
 
 - Production must run uvicorn with `--workers 1`. Enforced via a FastAPI startup assertion on `WEB_CONCURRENCY` env var that crashes with a descriptive message referencing backlog I if violated.
@@ -103,7 +105,7 @@ Source spec backlog items (existing letters) plus three new Plan 2a items:
 
 ### Acceptance criteria
 
-1. **Two `MCPAdapter` bots run a 90-round PD tournament end-to-end** without losing state across simulated connection drops. Mid-tournament reconnect triggers `session_sync` with the authoritative `RoundState` as the first notification on the reconnected session, and gameplay resumes correctly.
+1. **Two `MCPAdapter` bots run a multi-round PD tournament end-to-end** without losing state across simulated connection drops. Mid-tournament reconnect triggers `session_sync` with the authoritative `RoundState` as the first notification on the reconnected session, and gameplay resumes correctly. CI gate uses **30 rounds** for wall-clock economy (~30–40 seconds with `round_deadline_s=1`). A **90-round** variant exists as a manual benchmark test runnable locally before release to exercise the full AD-9 flagship formula; it is not part of the CI e2e job to keep the e2e stage under its 10-minute budget.
 
 2. **A tournament with one of two players not submitting** resolves via the deadline worker within `poll_interval + 1s` of deadline expiry, with correct payoffs and a `round_ended` notification carrying `source=timeout_default` for the missing action.
 
@@ -218,9 +220,30 @@ class TournamentService:
         If Tournament.join_token is not NULL, requires matching join_token
         parameter; raises ConflictError on mismatch (constant-time comparison).
 
-        New-participant path catches IntegrityError on uq_participant_user_active
-        and re-raises as ConflictError(409, 'user already has an active
-        tournament') — DB is single source of truth for concurrency.
+        Race semantics on INSERT IntegrityError. The idempotent pre-check
+        (SELECT existing Participant) and the INSERT are not atomic under
+        SQLite WAL — two concurrent join calls from the same user can both
+        pass the pre-check and race on INSERT. The handler must inspect the
+        constraint name on IntegrityError and resolve per case:
+
+        - `uq_participant_tournament_user` violation: a concurrent idempotent
+          re-join from the same user to the same tournament won the insert
+          race. The losing caller re-reads the existing Participant row
+          (now committed by the winner) and returns (existing, False). The
+          idempotent contract holds under concurrency: both callers see the
+          same (participant, False) outcome even though exactly one of them
+          actually performed the INSERT.
+
+        - `uq_participant_user_active` violation: the caller has an active
+          participation in a different tournament. Raise
+          ConflictError(409, 'user already has an active tournament').
+
+        - Any other IntegrityError: re-raise unchanged — unknown constraint
+          violations are not silently swallowed.
+
+        DB is the single source of truth for concurrency; both constraints
+        are enforced at the partial/unique index level and the service layer
+        only interprets which class of race happened after the fact.
         """
 
     # ── New methods ─────────────────────────────────────────────
@@ -546,7 +569,7 @@ Bus events carry generic payloads — every subscriber sees the same bus-level e
 | REST | `GET /api/v1/tournaments/{id}` | Authenticated user; same visibility filter | `404 NotFoundError` (enumeration guard) |
 | REST | `GET /api/v1/tournaments/{id}/rounds` | Authenticated user; same visibility filter | `404 NotFoundError` |
 | REST | `GET /api/v1/tournaments/{id}/participants` | Authenticated user; same visibility filter | `404 NotFoundError` |
-| REST | `POST /api/v1/tournaments` | Authenticated user (any — not admin-only) | `401 Unauthorized` (normal auth middleware) |
+| REST | `POST /api/v1/tournaments` | Authenticated user (any — not admin-only) | — (no service-level authz denial path; authentication is enforced by middleware before the handler, not by the service method) |
 | REST | `POST /api/v1/tournaments/{id}/cancel` | `user.id == tournament.created_by` (NULL-safe) OR `user.is_admin` | `404 NotFoundError` (enumeration guard, NOT 403) |
 | MCP | `join_tournament` | Authenticated user; `join_token` required if `tournament.join_token IS NOT NULL` | `ToolError(409_conflict)` on wrong token, `ToolError(409_conflict)` on AD-10 violation |
 | MCP | `leave_tournament` | Participant must exist in tournament | `ToolError(404_not_found)` if not a participant |
@@ -786,7 +809,11 @@ class Participant(Base):
 class Round(Base):
     __tablename__ = "tournament_rounds"
 
-    # ... existing columns unchanged ...
+    # ... existing columns unchanged, INCLUDING:
+    # - deadline: Mapped[datetime] (from vertical slice). Plan 2a uses
+    #   this column in the deadline worker Path 1 scan and adds
+    #   idx_round_status_deadline below to speed up that query. The
+    #   column itself is not modified.
 
     __table_args__ = (
         Index("idx_round_tournament", "tournament_id"),
@@ -1019,7 +1046,21 @@ def check_tournament_schema_ready(connection: Connection) -> list[str]:
 
 
 def _main() -> int:
-    db_url = os.environ.get("ATP_DATABASE_URL", "sqlite:///./atp.db")
+    # Fail-loud on unset env var: this is a pre-deploy safety tool. A
+    # cwd-relative default (e.g. "sqlite:///./atp.db") could silently
+    # open an empty database in a staging or CI environment, report
+    # "OK", and give the operator false confidence that their check
+    # passed. Require explicit configuration.
+    db_url = os.environ.get("ATP_DATABASE_URL")
+    if not db_url:
+        print(
+            "FAIL: ATP_DATABASE_URL environment variable is not set. "
+            "Pre-deploy probe requires an explicit database URL — there "
+            "is no default to prevent silent misconfiguration.",
+            file=sys.stderr,
+        )
+        return 2
+
     engine = create_engine(db_url)
     try:
         with engine.connect() as conn:
@@ -1569,7 +1610,7 @@ async def _cancel_impl(
 
 - **`_cancel_impl` does not commit and does not publish.** It mutates session state and returns an event. This lets it be called from inside an existing transaction (the `leave()` cascade path) without nested-transaction semantics and without double-publishing.
 - **Idempotent via status guard.** Second cancel on already-CANCELLED tournament returns None silently.
-- **`with_for_update=True` on SELECT.** On PostgreSQL this acquires a row lock. On SQLite it's a no-op hint, but the step-2 idempotent guard makes concurrent calls safe anyway.
+- **`with_for_update=True` on SELECT.** On PostgreSQL acquires a real row lock preventing concurrent cancel mutations. On SQLite the SQLAlchemy dialect silently drops the clause; WAL mode's single-writer serialization at commit time provides atomicity but not row-level isolation — concurrent cancels from different transactions can both reach step 2 with `status IN (PENDING, ACTIVE)` in their respective snapshots and both pass the idempotent guard. Plan 2a accepts this limitation for audit attribution only (status transition and cascade effects remain safe); see Known Limitations "Cancel audit attribution under concurrent race". Resolved under backlog I when `FOR UPDATE` becomes a real lock.
 - **Bulk UPDATEs** for participants and rounds. Steps 5 and 6 use `UPDATE ... WHERE` rather than iterating over ORM objects.
 - **Bus publish failures after commit report success.** Once `session.commit()` returns, the cancellation is fact. If `bus.publish(event)` subsequently raises, the caller's response is still 200/success; the failure is logged at WARN with `tournament.cancel.publish_failed` and `exc_info`. Subscribers who missed the event recover their state via the next `session_sync` on reconnect. DB is the single source of truth, bus is a best-effort push layer.
 
@@ -1728,6 +1769,7 @@ Single `_cancel_impl` call produces the following state transitions, all in one 
 | Process shutdown mid-transaction | CancelledError → rollback, caller sees 500 or connection reset | CancelledError → rollback, next restart picks up expired tournaments via fresh tick | CancelledError → rollback, caller's request never completes; post-restart state unchanged |
 | Process shutdown between commit and publish | DB is in CANCELLED state, event lost, caller may see 500. Recovery via session_sync. | Same — next restart doesn't re-publish but idempotent status guard prevents double-cancel | Same |
 | Retry of `leave()` after successful first call | N/A | N/A | Second call returns `NotFoundError` because `released_at IS NULL` filter excludes the already-released row. **SDK retry layers MUST treat NotFoundError after leave_tournament as a terminal success signal**. |
+| Concurrent cancel from another path on the same tournament (SQLite WAL) | Both commit (WAL serializes writes), audit attribution = last writer wins, two `TournamentCancelEvent`s published to bus with conflicting `cancelled_by` / `cancelled_reason`. Status and cascade effects are safe (deterministic `CANCELLED`, idempotent bulk UPDATEs). See Known Limitations "Cancel audit attribution under concurrent race". Resolved under backlog I (PG `FOR UPDATE`). | Same. | Same. |
 
 **Invariant.** DB state is either "fully cancelled" or "fully pre-cancel state", never partial. Bus state can lag DB state (published event missing), and `session_sync` is the universal catchup path.
 
@@ -1811,9 +1853,9 @@ Critical invariant: all four denial paths raise `NotFoundError` (same class as "
 
 - Happy path (PENDING → CANCELLED) — tournament.status is set, all four cancel audit fields set, return value is a `TournamentCancelEvent` with matching fields.
 - Happy path (ACTIVE → CANCELLED).
-- Idempotent on CANCELLED — return None, zero UPDATE calls beyond initial SELECT.
+- Idempotent on CANCELLED — return None, no UPDATE calls (only the initial `session.get` SELECT executes).
 - Idempotent on COMPLETED — same.
-- `final_rounds_played` ordering regression test: mock round set (2 COMPLETED, 1 WAITING_FOR_ACTIONS, 1 IN_PROGRESS) → event has `final_rounds_played == 2`, not 4. Anyone refactoring step 3 below step 6 fails this test instantly.
+- `final_rounds_played` ordering regression test: mock round set (2 COMPLETED, 1 WAITING_FOR_ACTIONS, 1 IN_PROGRESS) → event has `final_rounds_played == 2`, not 4. Anyone refactoring step 3 below step 6 fails this test instantly. Uses the `frozen_clock` fixture so `cancelled_at` in the returned event is deterministic for assertion (`assert event.cancelled_at == datetime(2026, 4, 15, 10, 0, 0)`).
 - In-flight round transitions use one bulk UPDATE.
 - Participant release uses one bulk UPDATE.
 - Event built after mutations (verified via mock call ordering).
@@ -1952,7 +1994,7 @@ Probes correspond exactly to Section 3 probe module (P1–P6). Each gets positiv
 | Probe | Covers | Positive | Negative | Edge case |
 |---|---|---|---|---|
 | P1 | `Participant.user_id IS NULL` | Clean DB → `[]` | Seed 1 anonymous participant → returns "P1:" | — |
-| P2 | FK orphans on `Participant.user_id` | Clean DB | Seed participant with user_id pointing to non-existent user → "P2:" | — |
+| P2 | FK orphans on `Participant.user_id` | Clean DB | `PRAGMA foreign_keys=OFF`, seed participant with user_id pointing to non-existent user, `PRAGMA foreign_keys=ON`, run probe → "P2:". The fixture default enables FK enforcement, so the negative test must toggle it explicitly to seed the orphan — this mirrors production exposure where FK=OFF is the silent-failure mode P2 defends against. | — |
 | P3 | Duplicate `(tournament_id, user_id)` in participants | Clean DB | Seed 2 rows with same pair → "P3:" | — |
 | P4 | Duplicate `(round_id, participant_id)` in actions | Clean DB | Seed 2 action rows for same pair → "P4:" | — |
 | P5 | Duplicate `(tournament_id, round_number)` in rounds | Clean DB | Seed 2 rounds with same pair → "P5:" | — |
@@ -2027,32 +2069,45 @@ Bypasses `TournamentService` entirely and writes directly via `session.execute(u
 
 All concurrent tests use **separate sessions per concurrent actor** from a shared factory. A single `AsyncSession` is not safe for parallel operations in SQLAlchemy async.
 
-**`test_idempotent_join_concurrent.py`** — AD-10 under race:
+**`test_idempotent_join_concurrent.py`** — two tests, one per SC. SC-5 verifies idempotent re-join from the same user to the **same** tournament under race; SC-4 verifies the AD-10 partial unique index across **different** tournaments.
 
 ```python
-async def test_five_concurrent_joins_to_same_tournament(
+async def test_sc5_five_concurrent_joins_same_tournament_all_idempotent(
     session_factory, factory, bus
 ):
+    """SC-5: five concurrent join calls from the same user to the SAME
+    tournament must all succeed idempotently. Exactly one row ends up in
+    the DB; all callers receive the same Participant. This exercises the
+    uq_participant_tournament_user race path in the join() contract."""
     t = await factory.tournament(num_players=4)
     user = await factory.user()
 
     async def one_join():
         async with session_factory() as session:
             svc = TournamentService(session, bus)
-            try:
-                return await svc.join(
-                    tournament_id=t.id, user=user, agent_name="bot"
-                )
-            except ConflictError as e:
-                return e
+            return await svc.join(
+                tournament_id=t.id, user=user, agent_name="bot"
+            )
 
     results = await asyncio.gather(*[one_join() for _ in range(5)])
-    successes = [r for r in results if not isinstance(r, Exception)]
-    conflicts = [r for r in results if isinstance(r, ConflictError)]
 
-    assert len(successes) == 1
-    assert len(conflicts) == 4
+    # All five calls returned successfully (no ConflictError raised)
+    assert len(results) == 5
+    for participant, is_new in results:
+        assert participant is not None
 
+    # Exactly one call reported is_new=True; the other four resolved to
+    # (existing, False) via the uq_participant_tournament_user race path
+    # in join()
+    new_flags = [is_new for _, is_new in results]
+    assert new_flags.count(True) == 1
+    assert new_flags.count(False) == 4
+
+    # All five Participant references point at the same row
+    participant_ids = {p.id for p, _ in results}
+    assert len(participant_ids) == 1
+
+    # DB has exactly one row
     async with session_factory() as verify:
         count = await verify.scalar(
             select(func.count()).select_from(Participant)
@@ -2060,6 +2115,43 @@ async def test_five_concurrent_joins_to_same_tournament(
               .where(Participant.user_id == user.id)
         )
         assert count == 1
+
+
+async def test_sc4_two_concurrent_joins_different_tournaments_one_wins(
+    session_factory, factory, bus
+):
+    """SC-4: two concurrent join calls from the same user to two DIFFERENT
+    tournaments must resolve to exactly one success and one ConflictError.
+    This exercises the uq_participant_user_active partial unique index."""
+    t_a = await factory.tournament(name="a", num_players=4)
+    t_b = await factory.tournament(name="b", num_players=4)
+    user = await factory.user()
+
+    async def one_join(tournament_id):
+        async with session_factory() as session:
+            svc = TournamentService(session, bus)
+            try:
+                return await svc.join(
+                    tournament_id=tournament_id, user=user, agent_name="bot"
+                )
+            except ConflictError as e:
+                return e
+
+    results = await asyncio.gather(one_join(t_a.id), one_join(t_b.id))
+    successes = [r for r in results if not isinstance(r, Exception)]
+    conflicts = [r for r in results if isinstance(r, ConflictError)]
+
+    assert len(successes) == 1
+    assert len(conflicts) == 1
+    assert "already has an active tournament" in str(conflicts[0])
+
+    async with session_factory() as verify:
+        total = await verify.scalar(
+            select(func.count()).select_from(Participant)
+              .where(Participant.user_id == user.id)
+              .where(Participant.released_at.is_(None))
+        )
+        assert total == 1  # exactly one active slot across all tournaments
 ```
 
 **`test_deadline_worker_race.py`** — AD-6 race guard:
@@ -2210,15 +2302,21 @@ async def test_cancel_succeeds_when_bus_publish_raises(
 
 #### Lifecycle tests
 
-**`test_e2e_full_90_round_pd_with_reconnect.py`** — SC-1. Primary e2e test.
+**`test_e2e_30_round_pd_with_reconnect.py`** — SC-1 CI gate.
 
-1. Admin creates a PD tournament (90 rounds, 2 players, `round_deadline_s=1` for test wall-clock economy — the 90-round count matches AD-9 flagship formula).
+1. Admin creates a PD tournament (30 rounds, 2 players, `round_deadline_s=1` for test wall-clock economy).
 2. Two `MCPAdapter` clients connect via MCP SSE and call `join_tournament`.
-3. Loop for 90 rounds: both clients await `round_started`, call `make_move(cooperate)`, await `round_ended`.
-4. **Mid-tournament reconnect** at round 45: client 1 drops SSE transport and reconnects with a fresh session. First notification after reconnect must be `session_sync` with `round_number=45`.
-5. Tournament continues to round 90.
+3. Loop for 30 rounds: both clients await `round_started`, call `make_move(cooperate)`, await `round_ended`.
+4. **Mid-tournament reconnect** at round 15: client 1 drops SSE transport and reconnects with a fresh session. First notification after reconnect must be `session_sync` with `round_number=15`.
+5. Tournament continues to round 30.
 6. Both clients receive `tournament_completed`.
-7. Final payoffs match `cooperate-cooperate × 90`.
+7. Final payoffs match `cooperate-cooperate × 30`.
+
+Target wall-clock budget: ~30–40 seconds at `round_deadline_s=1` + reconnect sequence + setup/teardown.
+
+**`test_e2e_90_round_pd_benchmark.py`** — AD-9 flagship formula verification, **not in CI**.
+
+Manual benchmark variant: 90 rounds × 30 seconds (per AD-9 default formula), mid-tournament reconnect at round 45. Designed to be run locally before release to confirm the full flagship path holds. Marked `@pytest.mark.benchmark` and skipped by default (`pytest --benchmark` or equivalent marker selection to include). Expected runtime ~45 minutes — unsuitable for CI e2e budget.
 
 **`test_e2e_deadline_timeout_default.py`** — SC-2:
 
@@ -2334,7 +2432,12 @@ async def tournament_db(tmp_path):
     sync_engine = create_engine(f"sqlite:///{db_path}")
     with sync_engine.connect() as conn:
         conn.execute(text("PRAGMA journal_mode=WAL"))
-        conn.execute(text("PRAGMA foreign_keys=ON"))  # for P2 probe
+        # FK enforcement ON by default — matches production configuration
+        # and protects most tests from accidentally seeding orphan rows.
+        # The P2 probe negative test explicitly toggles FK=OFF to seed an
+        # orphan row, because P2 exists to catch orphans that SQLite-without-
+        # FK-enforcement would silently accept on production.
+        conn.execute(text("PRAGMA foreign_keys=ON"))
         conn.commit()
     sync_engine.dispose()
 
@@ -2404,7 +2507,7 @@ Mirror of Section 1 SC numbering. Every SC is covered by tests in at least one l
 
 | SC # | Section 1 criterion | Unit | Integration | E2E |
 |---|---|---|---|---|
-| **SC-1** | Two `MCPAdapter` bots run a 90-round PD tournament end-to-end with mid-tournament reconnect → `session_sync` restores baseline | `test_tournament_cancel_event_post_init` (event shape invariant) | `test_session_sync_on_join`, `test_session_sync_closes_commit_publish_gap` | `test_e2e_full_90_round_pd_with_reconnect`, `test_e2e_reconnect_session_sync` |
+| **SC-1** | Two `MCPAdapter` bots run a multi-round PD tournament end-to-end with mid-tournament reconnect → `session_sync` restores baseline. 30-round variant in CI; 90-round variant as manual pre-release benchmark. | `test_tournament_cancel_event_post_init` (event shape invariant) | `test_session_sync_on_join`, `test_session_sync_closes_commit_publish_gap` | `test_e2e_30_round_pd_with_reconnect` (CI), `test_e2e_reconnect_session_sync`, `test_e2e_90_round_pd_benchmark` (manual) |
 | **SC-2** | Tournament with one non-submitting player resolves via deadline worker with `source=timeout_default` | `test_deadline_tick_isolation`, `test_deadline_tick_two_paths` | `test_deadline_worker_race` | `test_e2e_deadline_timeout_default` |
 | **SC-3** | AD-9 pending auto-cancel | `test_deadline_tick_two_paths` (Path 2) | `test_cancel_cascade_complete[pending_timeout]` | `test_e2e_pending_timeout_autocancel`, `test_e2e_ad9_duration_cap_validation` |
 | **SC-4** | AD-10 concurrent join — exactly one success, one ConflictError | — | `test_idempotent_join_concurrent`, `test_partial_unique_index` | `test_e2e_ad10_one_active_per_user`, `test_e2e_ad10_join_token_enforcement` |
