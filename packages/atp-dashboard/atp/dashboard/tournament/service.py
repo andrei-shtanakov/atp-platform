@@ -1018,36 +1018,7 @@ class TournamentService:
                     )
                 )
 
-        round_obj.status = RoundStatus.COMPLETED
+        # Reuse the normal resolution path so timeout-forced rounds compute
+        # and persist payoffs identically to submit-driven resolution.
         await self._session.flush()
-
-        # Advance: complete tournament or create the next round.
-        if round_obj.round_number >= tournament.total_rounds:
-            await self._complete_tournament(tournament)
-            await self._session.flush()
-        else:
-            next_round = Round(
-                tournament_id=tournament.id,
-                round_number=round_obj.round_number + 1,
-                status=RoundStatus.WAITING_FOR_ACTIONS,
-                started_at=now,
-                deadline=now + timedelta(seconds=tournament.round_deadline_s),
-                state={},
-            )
-            self._session.add(next_round)
-            await self._session.flush()
-
-        # Commit before publishing so MCP notification forwarders that
-        # open their own DB sessions see the new round / completed state.
-        await self._session.commit()
-
-        if round_obj.round_number < tournament.total_rounds:
-            await self._bus.publish(
-                TournamentEvent(
-                    event_type="round_started",
-                    tournament_id=tournament.id,
-                    round_number=round_obj.round_number + 1,
-                    data={"total_rounds": tournament.total_rounds},
-                    timestamp=datetime.now(),
-                )
-            )
+        await self._resolve_round(round_obj, tournament)
