@@ -31,6 +31,7 @@ from atp.dashboard.tournament.models import (
     Action,
     Participant,
     Round,
+    RoundStatus,
     Tournament,
     TournamentStatus,
 )
@@ -145,7 +146,7 @@ class TournamentService:
         round_1 = Round(
             tournament_id=tournament.id,
             round_number=1,
-            status="waiting_for_actions",
+            status=RoundStatus.WAITING_FOR_ACTIONS,
             started_at=now,
             deadline=now + timedelta(seconds=tournament.round_deadline_s),
             state={},
@@ -213,7 +214,7 @@ class TournamentService:
         current_round_number = 1
         found_active = False
         for r in rounds:
-            if r.status == "completed":
+            if r.status == RoundStatus.COMPLETED:
                 row: list[str] = [""] * len(participants)
                 for action in r.actions:
                     p_idx = next(
@@ -292,7 +293,7 @@ class TournamentService:
                 select(Round)
                 .where(
                     Round.tournament_id == tournament_id,
-                    Round.status == "waiting_for_actions",
+                    Round.status == RoundStatus.WAITING_FOR_ACTIONS,
                 )
                 .order_by(Round.round_number.desc())
                 .limit(1)
@@ -411,7 +412,7 @@ class TournamentService:
         for i, action in actions_by_idx.items():
             action.payoff = payoffs[i]
 
-        round_obj.status = "completed"
+        round_obj.status = RoundStatus.COMPLETED
         await self._session.flush()
 
         if round_obj.round_number >= tournament.total_rounds:
@@ -428,7 +429,7 @@ class TournamentService:
         next_round = Round(
             tournament_id=tournament.id,
             round_number=round_obj.round_number + 1,
-            status="waiting_for_actions",
+            status=RoundStatus.WAITING_FOR_ACTIONS,
             started_at=now,
             deadline=now + timedelta(seconds=tournament.round_deadline_s),
             state={},

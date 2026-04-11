@@ -26,6 +26,40 @@ class TournamentStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class RoundStatus(StrEnum):
+    """Round lifecycle status.
+
+    WAITING_FOR_ACTIONS, IN_PROGRESS, COMPLETED existed as bare string
+    literals in vertical slice service.py. Plan 2a introduces this StrEnum
+    for type safety and adds CANCELLED as a new value used by _cancel_impl
+    to transition in-flight rounds when their tournament is cancelled.
+
+    Stored as plain String(20) in the DB without a native enum type or
+    CHECK constraint.
+    """
+
+    WAITING_FOR_ACTIONS = "waiting_for_actions"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+class ActionSource(StrEnum):
+    """Origin of an Action row.
+
+    SUBMITTED — player sent make_move via MCP tool before deadline.
+    TIMEOUT_DEFAULT — deadline worker force_resolve_round created a
+    default action for a participant who did not submit before the
+    round deadline.
+
+    Stored as plain String(32) without a native enum type or CHECK
+    constraint.
+    """
+
+    SUBMITTED = "submitted"
+    TIMEOUT_DEFAULT = "timeout_default"
+
+
 class Tournament(Base):
     """A tournament definition for game-theoretic evaluation."""
 
