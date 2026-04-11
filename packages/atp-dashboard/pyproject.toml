@@ -18,6 +18,11 @@ dependencies = [
     "slowapi>=0.1.9",
     "fastmcp>=3.0",
     "game-environments>=1.0.0",
+    # Runtime dependency: migrations/dashboard/versions/*.py are applied
+    # in prod via `alembic upgrade head`. Previously this was only in the
+    # root dev dependency-group, so `uv sync --no-dev` in the production
+    # Dockerfile skipped it and `alembic` was missing from the image.
+    "alembic>=1.18.4",
 ]
 
 [project.optional-dependencies]
