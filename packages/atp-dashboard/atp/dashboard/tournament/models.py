@@ -6,6 +6,7 @@ from enum import StrEnum
 import sqlalchemy as sa
 from sqlalchemy import (
     JSON,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
@@ -145,6 +146,28 @@ class Tournament(Base):
             "idx_tournaments_status_pending_deadline",
             "status",
             "pending_deadline",
+        ),
+        # Cancel audit invariant: either all cancelled_* fields are NULL
+        # (not cancelled), or admin_action has cancelled_by set, or system
+        # reasons (pending_timeout/abandoned) have cancelled_by NULL but
+        # cancelled_at set. This mirrors the DB CHECK constraint added by
+        # the Plan 2a Alembic migration and is duplicated here so that
+        # `Base.metadata.create_all()` produces a schema equivalent to
+        # `alembic upgrade head`. Also enforced in application code by
+        # TournamentCancelEvent.__post_init__ (defence in depth).
+        CheckConstraint(
+            "("
+            "  (cancelled_reason IS NULL"
+            "   AND cancelled_by IS NULL"
+            "   AND cancelled_at IS NULL)"
+            "  OR (cancelled_reason = 'admin_action'"
+            "      AND cancelled_by IS NOT NULL"
+            "      AND cancelled_at IS NOT NULL)"
+            "  OR (cancelled_reason IN ('pending_timeout', 'abandoned')"
+            "      AND cancelled_by IS NULL"
+            "      AND cancelled_at IS NOT NULL)"
+            ")",
+            name="ck_tournament_cancel_consistency",
         ),
     )
 
