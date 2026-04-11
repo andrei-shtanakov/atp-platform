@@ -16,9 +16,14 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from atp.dashboard.models import User
-from atp.dashboard.tournament.errors import ValidationError
+from atp.dashboard.tournament.errors import (
+    ConflictError,
+    NotFoundError,
+    ValidationError,
+)
 from atp.dashboard.tournament.events import TournamentEventBus
 from atp.dashboard.tournament.models import (
+    Participant,
     Tournament,
     TournamentStatus,
 )
@@ -73,3 +78,35 @@ class TournamentService:
         await self._session.flush()
         await self._session.refresh(tournament)
         return tournament
+
+    async def join(
+        self,
+        tournament_id: int,
+        user: User,
+        agent_name: str,
+    ) -> Participant:
+        """Join an open tournament.
+
+        v1 slice: open-join only, no join_token, no
+        MAX_ACTIVE_TOURNAMENTS_PER_USER (those land in Plan 2 per
+        AD-10). When the join brings participant count to num_players,
+        the tournament starts immediately and round 1 is created.
+        """
+        tournament = await self._session.get(Tournament, tournament_id)
+        if tournament is None:
+            raise NotFoundError(f"tournament {tournament_id} not found")
+        if tournament.status != TournamentStatus.PENDING:
+            raise ConflictError(
+                f"tournament {tournament_id} is {tournament.status}, "
+                "not accepting joins"
+            )
+
+        participant = Participant(
+            tournament_id=tournament_id,
+            user_id=user.id,
+            agent_name=agent_name,
+        )
+        self._session.add(participant)
+        await self._session.flush()
+        await self._session.refresh(participant)
+        return participant

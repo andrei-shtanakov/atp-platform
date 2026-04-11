@@ -76,3 +76,33 @@ async def test_create_tournament_rejects_invalid_num_players(
             total_rounds=3,
             round_deadline_s=30,
         )
+
+
+@pytest.mark.anyio
+async def test_join_first_player_creates_participant(
+    session: AsyncSession,
+    admin_user: User,
+    alice: User,
+    event_bus: TournamentEventBus,
+) -> None:
+    from atp.dashboard.tournament.service import TournamentService
+
+    svc = TournamentService(session, event_bus)
+    tournament = await svc.create_tournament(
+        admin=admin_user,
+        name="t",
+        game_type="prisoners_dilemma",
+        num_players=2,
+        total_rounds=3,
+        round_deadline_s=30,
+    )
+
+    participant = await svc.join(
+        tournament_id=tournament.id, user=alice, agent_name="alice-tft"
+    )
+    assert participant.id is not None
+    assert participant.tournament_id == tournament.id
+    assert participant.user_id == alice.id
+    assert participant.agent_name == "alice-tft"
+    await session.refresh(tournament)
+    assert tournament.status == "pending"
