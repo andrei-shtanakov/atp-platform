@@ -46,12 +46,16 @@ async def get_current_user_for_tournament(
 ) -> User:
     """Resolve the calling user for tournament endpoints.
 
-    In normal mode the JWT middleware populates request.state.user.
-    In test mode (ATP_DISABLE_AUTH=true) fall back to user id=1.
+    JWTUserStateMiddleware decodes the Bearer JWT and populates
+    ``request.state.user_id`` (integer) — this dependency then loads
+    the corresponding User row from the DB and verifies it is active.
+    In test mode (``ATP_DISABLE_AUTH=true``) falls back to user id=1.
     """
-    user: User | None = getattr(request.state, "user", None)
-    if user is not None:
-        return user
+    user_id: int | None = getattr(request.state, "user_id", None)
+    if user_id is not None:
+        user = await session.get(User, user_id)
+        if user is not None and user.is_active:
+            return user
 
     if os.environ.get("ATP_DISABLE_AUTH") == "true":
         loaded = await session.get(User, 1)
