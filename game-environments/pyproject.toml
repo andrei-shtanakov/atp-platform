@@ -15,7 +15,11 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    "numpy>=2.4.2",
+    # Pinned to <2.0 because numpy 2.x wheels require x86_v2 CPU baseline
+    # (SSSE3/SSE4.1/SSE4.2/POPCNT), which Namecheap's QEMU Virtual CPU 2.5+
+    # (default qemu64 model, pre-Nehalem) does not expose. Numpy 1.x has
+    # no such baseline requirement.
+    "numpy>=1.26,<2.0",
     "pydantic>=2.0",
 ]
 
