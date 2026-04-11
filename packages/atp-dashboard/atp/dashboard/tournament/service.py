@@ -956,3 +956,55 @@ class TournamentService:
             final_rounds_played=final_rounds_played,
             final_status=TournamentStatus.CANCELLED,
         )
+
+    async def force_resolve_round(self, round_id: int) -> None:
+        """Force-resolve an expired round by creating TIMEOUT_DEFAULT actions.
+
+        Called by the deadline worker when a round's deadline has passed and
+        not all participants have submitted. Creates synthetic Action rows with
+        source=TIMEOUT_DEFAULT for every participant that has not yet acted,
+        then advances the round to COMPLETED status.
+
+        Task 21 (integration test) validates the full race-guard path.
+        """
+        from atp.dashboard.tournament.models import Action, ActionSource, Participant
+
+        # Load the round with its tournament
+        row = await self._session.execute(
+            select(Round)
+            .where(Round.id == round_id)
+            .where(Round.status == RoundStatus.WAITING_FOR_ACTIONS)
+        )
+        round_obj = row.scalar_one_or_none()
+        if round_obj is None:
+            # Already resolved or cancelled — idempotent no-op
+            return
+
+        # Find participant IDs that have NOT submitted
+        submitted_result = await self._session.execute(
+            select(Action.participant_id).where(Action.round_id == round_id)
+        )
+        submitted_ids = {row[0] for row in submitted_result}
+
+        participants_result = await self._session.execute(
+            select(Participant.id).where(
+                Participant.tournament_id == round_obj.tournament_id
+            )
+        )
+        all_participant_ids = [row[0] for row in participants_result]
+
+        now = datetime.utcnow()
+        for participant_id in all_participant_ids:
+            if participant_id not in submitted_ids:
+                self._session.add(
+                    Action(
+                        round_id=round_id,
+                        participant_id=participant_id,
+                        action_data={},
+                        submitted_at=now,
+                        source=ActionSource.TIMEOUT_DEFAULT,
+                    )
+                )
+
+        round_obj.status = RoundStatus.COMPLETED
+        await self._session.flush()
