@@ -70,8 +70,12 @@ class TournamentService:
                 f"unsupported game_type {game_type!r}; "
                 f"v1 slice supports: {sorted(_SUPPORTED_GAMES)}"
             )
-        if num_players < 2:
-            raise ValidationError("num_players must be >= 2")
+        required_players = _GAME_INSTANCES[game_type].config.num_players
+        if num_players != required_players:
+            raise ValidationError(
+                f"{game_type} requires exactly {required_players} players, "
+                f"got {num_players}"
+            )
         if total_rounds < 1:
             raise ValidationError("total_rounds must be >= 1")
         if round_deadline_s < 1:
