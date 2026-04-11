@@ -1076,6 +1076,146 @@ class TestSSETransport:
         assert result is False
 
     @pytest.mark.anyio
+    async def test_send_request_gets_matching_response_while_notifications_arrive(
+        self, sse_config: SSETransportConfig
+    ) -> None:
+        """A pending send_request must NOT lose notifications that
+        arrive during the in-flight request, AND must still receive
+        the matching response when it arrives (demux invariant).
+        """
+        transport = SSETransport(sse_config)
+        transport._state = TransportState.CONNECTED
+        transport._client = MagicMock()
+        transport._client.post = AsyncMock(return_value=MagicMock(status_code=200))
+
+        async def _driver() -> None:
+            # Wait until the future is registered (send_request has run
+            # at least up to `self.send`).
+            for _ in range(100):
+                if transport._response_futures:
+                    break
+                await asyncio.sleep(0.001)
+            # Emit 3 notifications, then the matching response.
+            await transport._route_message(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "notifications/message",
+                    "params": {"n": 1},
+                }
+            )
+            await transport._route_message(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "notifications/message",
+                    "params": {"n": 2},
+                }
+            )
+            await transport._route_message(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "notifications/message",
+                    "params": {"n": 3},
+                }
+            )
+            await transport._route_message(
+                {"jsonrpc": "2.0", "result": {"ok": True}, "id": 1}
+            )
+
+        driver = asyncio.create_task(_driver())
+        response = await transport.send_request("tools/call", {})
+        await driver
+
+        assert response["id"] == 1
+        assert response["result"] == {"ok": True}
+        # All 3 notifications arrived in the notification queue intact.
+        assert transport._message_queue.qsize() == 3
+
+    @pytest.mark.anyio
+    async def test_two_concurrent_send_requests_each_get_their_response(
+        self, sse_config: SSETransportConfig
+    ) -> None:
+        """Two in-flight send_request calls must each receive the
+        response matching their own request_id — never cross-deliver.
+        """
+        transport = SSETransport(sse_config)
+        transport._state = TransportState.CONNECTED
+        transport._client = MagicMock()
+        transport._client.post = AsyncMock(return_value=MagicMock(status_code=200))
+
+        async def _driver() -> None:
+            for _ in range(100):
+                if len(transport._response_futures) == 2:
+                    break
+                await asyncio.sleep(0.001)
+            await transport._route_message(
+                {"jsonrpc": "2.0", "result": "second", "id": 2}
+            )
+            await transport._route_message(
+                {"jsonrpc": "2.0", "result": "first", "id": 1}
+            )
+
+        driver = asyncio.create_task(_driver())
+        req1 = asyncio.create_task(transport.send_request("a", {}))
+        req2 = asyncio.create_task(transport.send_request("b", {}))
+        r1, r2 = await asyncio.gather(req1, req2)
+        await driver
+
+        assert r1["result"] == "first"
+        assert r1["id"] == 1
+        assert r2["result"] == "second"
+        assert r2["id"] == 2
+
+    @pytest.mark.anyio
+    async def test_orphan_notifications_buffer_until_consumer_reads(
+        self, sse_config: SSETransportConfig
+    ) -> None:
+        """Notifications that arrive before any stream_events consumer
+        runs must buffer in the queue, not be dropped.
+        """
+        transport = SSETransport(sse_config)
+        transport._state = TransportState.CONNECTED
+
+        await transport._route_message(
+            {
+                "jsonrpc": "2.0",
+                "method": "notifications/message",
+                "params": {"early": 1},
+            }
+        )
+        await transport._route_message(
+            {
+                "jsonrpc": "2.0",
+                "method": "notifications/message",
+                "params": {"early": 2},
+            }
+        )
+
+        assert transport._message_queue.qsize() == 2
+        first = await transport.receive()
+        second = await transport.receive()
+        assert first["params"] == {"early": 1}
+        assert second["params"] == {"early": 2}
+
+    @pytest.mark.anyio
+    async def test_response_with_unknown_id_falls_through_to_notification_queue(
+        self, sse_config: SSETransportConfig
+    ) -> None:
+        """A response whose id does not match any pending future is
+        treated as a notification (graceful fallback, not an error).
+        """
+        transport = SSETransport(sse_config)
+        transport._state = TransportState.CONNECTED
+
+        await transport._route_message(
+            {"jsonrpc": "2.0", "result": "orphan", "id": 999}
+        )
+
+        assert transport._message_queue.qsize() == 1
+        msg = await transport.receive()
+        assert msg["id"] == 999
+        assert msg["result"] == "orphan"
+
+    @pytest.mark.anyio
     async def test_read_sse_events_parses_spec_compliant_endpoint_frame(
         self, sse_config: SSETransportConfig
     ) -> None:

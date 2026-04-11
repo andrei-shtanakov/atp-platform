@@ -741,7 +741,13 @@ class SSETransport(MCPTransport):
         self._config: SSETransportConfig = config
         self._client: httpx.AsyncClient | None = None
         self._sse_response: httpx.Response | None = None
+        # ``_message_queue`` holds SERVER-PUSHED NOTIFICATIONS and any
+        # responses we can't route to a pending future. Responses to
+        # in-flight ``send_request`` calls are delivered via
+        # ``_response_futures`` instead.
         self._message_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        self._response_futures: dict[int | str, asyncio.Future[dict[str, Any]]] = {}
+        self._futures_lock: asyncio.Lock = asyncio.Lock()
         self._reader_task: asyncio.Task[None] | None = None
         self._session_id: str | None = None
 
@@ -838,7 +844,7 @@ class SSETransport(MCPTransport):
                     else:
                         try:
                             data = json.loads(event_data)
-                            await self._message_queue.put(data)
+                            await self._route_message(data)
                         except json.JSONDecodeError:
                             pass  # Skip malformed events
 
@@ -879,6 +885,73 @@ class SSETransport(MCPTransport):
             session_id = qs.get("session_id", [None])[0]
         if session_id:
             self._session_id = session_id
+
+    async def _route_message(self, data: dict[str, Any]) -> None:
+        """Dispatch one parsed JSON-RPC message.
+
+        Responses whose ``id`` matches a pending future resolve the
+        future (delivered directly to the waiting ``send_request``
+        caller). Everything else — notifications, orphan responses
+        with unknown ids — lands in ``_message_queue`` for
+        ``receive()`` / ``stream_events()`` consumers.
+        """
+        request_id = data.get("id")
+        if request_id is not None and "method" not in data:
+            async with self._futures_lock:
+                future = self._response_futures.pop(request_id, None)
+            if future is not None and not future.done():
+                future.set_result(data)
+                return
+            # Orphan response — fall through.
+        await self._message_queue.put(data)
+
+    async def send_request(
+        self,
+        method: str,
+        params: dict[str, Any] | list[Any] | None = None,
+        timeout: float | None = None,
+    ) -> dict[str, Any]:
+        """Send a JSON-RPC request and wait for its response via a
+        per-request future (not the notification queue).
+
+        Overrides the base implementation to avoid racing with
+        concurrent notifications: the response is delivered directly
+        through ``_response_futures`` from the background reader task.
+        """
+        request_id = self._next_message_id()
+        request = create_jsonrpc_request(method, params, request_id)
+
+        future: asyncio.Future[dict[str, Any]] = (
+            asyncio.get_running_loop().create_future()
+        )
+        async with self._futures_lock:
+            self._response_futures[request_id] = future
+
+        try:
+            await self.send(request)
+        except Exception:
+            async with self._futures_lock:
+                self._response_futures.pop(request_id, None)
+            raise
+
+        read_timeout = timeout or self._config.read_timeout
+        try:
+            response = await asyncio.wait_for(future, timeout=read_timeout)
+        except TimeoutError as e:
+            async with self._futures_lock:
+                self._response_futures.pop(request_id, None)
+            raise AdapterTimeoutError(
+                f"Request timed out after {read_timeout}s",
+                timeout_seconds=read_timeout,
+                adapter_type="mcp",
+            ) from e
+
+        if "error" in response:
+            error = response["error"]
+            raise ValueError(
+                f"JSON-RPC error {error.get('code')}: {error.get('message')}"
+            )
+        return response
 
     async def send(self, message: dict[str, Any]) -> None:
         """Send a JSON-RPC message via HTTP POST.
@@ -986,6 +1059,13 @@ class SSETransport(MCPTransport):
 
         # Clear session
         self._session_id = None
+
+        # Cancel any pending response futures so waiters don't hang.
+        async with self._futures_lock:
+            for fut in self._response_futures.values():
+                if not fut.done():
+                    fut.cancel()
+            self._response_futures.clear()
 
     async def health_check(self) -> bool:
         """Check if the SSE connection is healthy.
