@@ -799,6 +799,24 @@ class SSETransport(MCPTransport):
             self._reader_task = asyncio.create_task(self._read_sse_events())
             self._state = TransportState.CONNECTED
 
+            # Wait for the spec-compliant ``event: endpoint`` frame that
+            # tells us where to POST. Without this, the first
+            # ``send()`` races the reader task and often hits the SSE
+            # GET URL, which returns 405. MCP servers are expected to
+            # emit this frame immediately after the handshake.
+            handshake_deadline = (
+                asyncio.get_running_loop().time() + self._config.connection_timeout
+            )
+            while (
+                self._config.post_endpoint is None
+                and asyncio.get_running_loop().time() < handshake_deadline
+            ):
+                if self._reader_task.done():
+                    # Reader died before emitting endpoint — surface the
+                    # underlying error rather than hanging on the wait.
+                    break
+                await asyncio.sleep(0.01)
+
         except httpx.TimeoutException as e:
             self._state = TransportState.DISCONNECTED
             raise AdapterTimeoutError(

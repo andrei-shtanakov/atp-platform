@@ -88,6 +88,12 @@ async def _format_notification_for_user(
     For ``round_started``, calls ``service.get_state_for`` to build the
     player-private RoundState. For ``tournament_completed`` the final
     scoreboard is global so no per-player call is needed.
+
+    Returns the structured payload that the forwarder passes to
+    ``session.send_log_message(..., data=payload)``. The wire-level
+    envelope is built by the MCP SDK; the outer ``method`` /
+    ``params`` keys are retained here so unit tests can assert on the
+    same shape the clients ultimately see.
     """
     if event.event_type == "round_started":
         state = await service.get_state_for(event.tournament_id, user)
@@ -142,13 +148,20 @@ async def forward_events_to_session(ctx: Any, tournament_id: int, user: User) ->
                         )
                     if notification is None:
                         continue
-                    # PLACEHOLDER — real send_notification path lands in
-                    # Phase 8 alongside MCPAdapter e2e verification.
-                    send = getattr(
-                        getattr(ctx, "session", None), "send_notification", None
+                    params = notification["params"]
+                    session = getattr(ctx, "session", None)
+                    if session is None:
+                        continue
+                    # ``send_log_message`` builds the proper pydantic
+                    # notification model internally; we pass the raw
+                    # data payload our formatter produced. The SDK
+                    # wraps it into a ``notifications/message`` frame
+                    # on the wire.
+                    await session.send_log_message(
+                        level=params["level"],
+                        data=params["data"],
+                        logger=params.get("logger"),
                     )
-                    if send is not None:
-                        await send(notification)
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -160,3 +173,24 @@ async def forward_events_to_session(ctx: Any, tournament_id: int, user: User) ->
 
     task = asyncio.create_task(_forward())
     _session_tasks.setdefault(session_id, {})[tournament_id] = task
+    # Let the forwarder's ``subscribe()`` context register on the bus
+    # before returning — otherwise the caller may publish events that
+    # this fresh subscriber misses.
+    await asyncio.sleep(0)
+
+
+async def _cancel_session_task(ctx: Any, tournament_id: int) -> None:
+    """Cancel the per-session forwarder task for one tournament."""
+    session_id = getattr(ctx, "session_id", None) or id(ctx)
+    tasks = _session_tasks.get(session_id)
+    if tasks is None:
+        return
+    task = tasks.pop(tournament_id, None)
+    if task is not None and not task.done():
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):
+            pass
+    if not tasks:
+        _session_tasks.pop(session_id, None)

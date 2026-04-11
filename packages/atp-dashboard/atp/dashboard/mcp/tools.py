@@ -79,9 +79,11 @@ async def join_tournament(
 ) -> dict:
     """Join an open tournament.
 
-    Starts an event subscription for this MCP session — ``round_started``
-    and ``tournament_completed`` notifications are pushed automatically
-    until the session disconnects.
+    Starts an event subscription for this MCP session BEFORE calling
+    the service — otherwise the ``round_started`` event that fires
+    when our join fills the last slot races us and is published to a
+    bus channel that nobody is listening on yet. With the subscriber
+    attached first, that first event is guaranteed to reach us.
     """
     from atp.dashboard.mcp.notifications import (
         forward_events_to_session,
@@ -90,15 +92,25 @@ async def join_tournament(
     )
 
     user = await resolve_user_from_ctx(ctx)
-    async with with_service(ctx, tournament_event_bus) as service:
-        result = await _join_tournament_impl(
-            tournament_id=tournament_id,
-            agent_name=agent_name,
-            user=user,
-            service=service,
-        )
 
     await forward_events_to_session(ctx, tournament_id, user)
+    try:
+        async with with_service(ctx, tournament_event_bus) as service:
+            result = await _join_tournament_impl(
+                tournament_id=tournament_id,
+                agent_name=agent_name,
+                user=user,
+                service=service,
+            )
+    except Exception:
+        # Join failed — cancel the orphan forwarder task so we don't
+        # leak a subscription for a tournament the caller never
+        # actually joined.
+        from atp.dashboard.mcp.notifications import _cancel_session_task
+
+        await _cancel_session_task(ctx, tournament_id)
+        raise
+
     return result
 
 
