@@ -222,6 +222,50 @@ class PrisonersDilemma(Game):
     def is_terminal(self) -> bool:
         return self._terminal
 
+    def format_state_for_player(
+        self,
+        round_number: int,
+        total_rounds: int,
+        participant_idx: int,
+        action_history: list[list[str]],
+        cumulative_scores: list[float],
+    ) -> dict[str, Any]:
+        """Build a player-private RoundState dict for the given player.
+
+        Args:
+            round_number: The 1-indexed round about to be played.
+            total_rounds: Total rounds in the tournament.
+            participant_idx: Which participant we are formatting for
+                (0 or 1 in 2-player PD).
+            action_history: List per round of [player0_action, player1_action]
+                strings. Empty list = no rounds played yet.
+            cumulative_scores: Per-participant cumulative scores so far.
+
+        Returns:
+            Dict matching the RoundState shape, with this player's view
+            (your_history vs opponent_history correctly oriented). The
+            ``tournament_id`` field is -1 and must be filled by the caller.
+        """
+        opponent_idx = 1 - participant_idx
+        your_history = [r[participant_idx] for r in action_history]
+        opponent_history = [r[opponent_idx] for r in action_history]
+        return {
+            "tournament_id": -1,
+            "round_number": round_number,
+            "game_type": "prisoners_dilemma",
+            "your_history": your_history,
+            "opponent_history": opponent_history,
+            "your_cumulative_score": cumulative_scores[participant_idx],
+            "opponent_cumulative_score": cumulative_scores[opponent_idx],
+            "action_schema": {
+                "type": "choice",
+                "options": [COOPERATE, DEFECT],
+            },
+            "your_turn": True,
+            "total_rounds": total_rounds,
+            "extra": {},
+        }
+
     def _compute_payoffs(self, a0: str, a1: str) -> dict[str, float]:
         """Compute round payoffs from the payoff matrix."""
         c = self._pd_config
