@@ -349,3 +349,156 @@ def tmp_output_dir(tmp_path: Path) -> Path:
     output_dir = tmp_path / "output"
     output_dir.mkdir()
     return output_dir
+
+
+# ---------------------------------------------------------------------------
+# MCP tournament e2e fixtures (Phase 8 of the MCP tournament vertical slice)
+# ---------------------------------------------------------------------------
+
+
+_E2E_SECRET = "e2e-test-secret-32-bytes-long-pad"
+
+
+@pytest.fixture
+async def e2e_mcp_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Boot a real uvicorn instance on a free port with an ephemeral
+    SQLite database, yielding ``(base_url, port)``.
+
+    The fixture resets the ``get_config`` LRU cache and patches
+    ``atp.dashboard.auth.SECRET_KEY`` so JWTs minted with the e2e
+    secret decode correctly in-process.
+    """
+    import asyncio
+    import socket
+
+    import uvicorn
+
+    db_path = tmp_path / "e2e.db"
+    monkeypatch.setenv("ATP_DATABASE_URL", f"sqlite+aiosqlite:///{db_path}")
+    monkeypatch.setenv("ATP_SECRET_KEY", _E2E_SECRET)
+    monkeypatch.setenv("ATP_RATE_LIMIT_ENABLED", "false")
+    monkeypatch.setenv("ATP_DEBUG", "false")
+
+    # SECRET_KEY is bound at import time — patch the live module value
+    # so the JWT middleware decodes the tokens we mint.
+    import atp.dashboard.auth as auth_module
+
+    monkeypatch.setattr(auth_module, "SECRET_KEY", _E2E_SECRET)
+
+    # Drop any cached config so the new env vars take effect.
+    from atp.dashboard.v2.config import get_config
+
+    get_config.cache_clear()
+
+    from atp.dashboard.v2.factory import create_app
+
+    app = create_app()
+
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+
+    config = uvicorn.Config(
+        app, host="127.0.0.1", port=port, log_level="warning", lifespan="on"
+    )
+    server = uvicorn.Server(config)
+    server_task = asyncio.create_task(server.serve())
+
+    loop = asyncio.get_event_loop()
+    deadline = loop.time() + 5.0
+    started = False
+    while loop.time() < deadline:
+        try:
+            reader, writer = await asyncio.open_connection("127.0.0.1", port)
+            writer.close()
+            await writer.wait_closed()
+            started = True
+            break
+        except OSError:
+            await asyncio.sleep(0.05)
+    if not started:
+        server.should_exit = True
+        await server_task
+        raise RuntimeError(f"uvicorn did not come up on port {port}")
+
+    try:
+        yield (f"http://127.0.0.1:{port}", port)
+    finally:
+        server.should_exit = True
+        await server_task
+        get_config.cache_clear()
+
+
+def _make_e2e_jwt(user_id: int, username: str) -> str:
+    from datetime import UTC, datetime, timedelta
+
+    import jwt
+
+    return jwt.encode(
+        {
+            "sub": username,
+            "user_id": user_id,
+            "exp": datetime.now(tz=UTC) + timedelta(hours=1),
+        },
+        _E2E_SECRET,
+        algorithm="HS256",
+    )
+
+
+@pytest.fixture
+async def mcp_seeded_users(e2e_mcp_server) -> dict[str, dict]:
+    """Insert admin + alice + bob into the e2e database, return JWTs.
+
+    Depends on ``e2e_mcp_server`` so that the runtime database has
+    been initialised via ``init_database`` in the app's lifespan.
+    """
+    from atp.dashboard.database import get_database
+    from atp.dashboard.models import User
+
+    db = get_database()
+    async with db.session() as session:
+        admin = User(
+            username="admin",
+            email="admin@e2e",
+            hashed_password="x",
+            is_admin=True,
+            is_active=True,
+        )
+        alice = User(
+            username="alice",
+            email="alice@e2e",
+            hashed_password="x",
+            is_admin=False,
+            is_active=True,
+        )
+        bob = User(
+            username="bob",
+            email="bob@e2e",
+            hashed_password="x",
+            is_admin=False,
+            is_active=True,
+        )
+        session.add_all([admin, alice, bob])
+        await session.commit()
+        await session.refresh(admin)
+        await session.refresh(alice)
+        await session.refresh(bob)
+
+        return {
+            "admin": {
+                "id": admin.id,
+                "username": "admin",
+                "jwt": _make_e2e_jwt(admin.id, "admin"),
+            },
+            "alice": {
+                "id": alice.id,
+                "username": "alice",
+                "jwt": _make_e2e_jwt(alice.id, "alice"),
+            },
+            "bob": {
+                "id": bob.id,
+                "username": "bob",
+                "jwt": _make_e2e_jwt(bob.id, "bob"),
+            },
+        }
