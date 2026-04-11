@@ -48,6 +48,15 @@ class Tournament(Base):
     starts_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ends_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     rules: Mapped[dict] = mapped_column(JSON, default=dict)
+    num_players: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="2"
+    )
+    total_rounds: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="1"
+    )
+    round_deadline_s: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="30"
+    )
     created_by: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("users.id"),
@@ -170,6 +179,7 @@ class Action(Base):
     )
     action_data: Mapped[dict] = mapped_column(JSON, default=dict)
     submitted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    payoff: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # Relationships
     round: Mapped["Round"] = relationship(
