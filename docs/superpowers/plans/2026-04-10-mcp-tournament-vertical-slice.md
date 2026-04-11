@@ -10,6 +10,30 @@
 
 **Source spec:** `docs/superpowers/specs/2026-04-10-mcp-tournament-server-design.md`. Decisions referenced as AD-N below come from there.
 
+**Phase 0 status (updated 2026-04-10 after verification):**
+
+- ✅ Task 0.1 PASSED (commit `87054c2` on branch `feat/mcp-tournament-vertical-slice`) — `MCPAdapter` can receive server-pushed notifications via `adapter._transport.stream_events()`. TWO latent bugs discovered in `SSETransport` (see §Phase Pre-8 added below).
+- ✅ Task 0.2 PASSED (commit `713d7f4`) — FastMCP mount under FastAPI correctly triggers outer middleware. Three corrections to FastMCP API pattern applied throughout plan (see below).
+
+**FastMCP 3.x API corrections** (verified empirically in Task 0.2, apply these patterns throughout the plan):
+
+1. **Mount API:** `mcp_server.sse_app()` → `mcp_server.http_app(transport="sse")`. There is no `sse_app()` in FastMCP 3.x. Default mounted paths: `/sse` (SSE handshake) and `/messages/` (POST for JSON-RPC). Under `app.mount("/mcp", mcp_app)` the full URL is `/mcp/sse`.
+2. **Request access from tool handlers:** use the public helper `from fastmcp.server.dependencies import get_http_request; request = get_http_request()` — NOT `ctx.request_context.request` (internal, version-fragile). `get_http_request()` resolves the underlying Starlette `Request` via a ContextVar managed by FastMCP.
+3. **Mounted sub-app lifespan is NOT propagated automatically by Starlette.** The FastMCP sub-app has its own lifespan that must be composed into the outer FastAPI lifespan, e.g.:
+   ```python
+   mcp_app = mcp_server.http_app(transport="sse")
+   @asynccontextmanager
+   async def combined_lifespan(app):
+       async with original_lifespan(app):
+           async with mcp_app.router.lifespan_context(app):
+               yield
+   app = FastAPI(lifespan=combined_lifespan)
+   app.mount("/mcp", mcp_app)
+   ```
+   Without this composition, FastMCP's internal session manager is never initialized and SSE connections hang or 500.
+4. **Integration test harness:** `TestClient.stream()` hangs on SSE endpoints because the in-memory `ASGITransport` drives the app to completion. Use either `httpx.AsyncClient(transport=ASGITransport(app)) + anyio.move_on_after(timeout)` for quick in-memory checks, or a real uvicorn instance (Phase 8 pattern) for full end-to-end.
+5. **Dependency constraint:** Task 6.1 pins `fastmcp >= 3.0`.
+
 **Scope of THIS plan:**
 - Phase 0 verification (MCPAdapter + FastMCP/middleware integration)
 - Additive schema columns ONLY (no UNIQUE constraints, no NOT NULL flips — those are in Plan 2)
@@ -29,6 +53,12 @@
 - Schema constraints: `uq_participant_tournament_user`, `uq_action_round_participant`, `uq_round_tournament_number`, `Index(status, deadline)`, `Participant.user_id NOT NULL`
 - REST admin endpoints + dashboard UI
 - `round_ended`, `tournament_cancelled` notifications
+
+**NEW: Added to scope after Phase 0 verification** (see §Phase Pre-8 below):
+- Fixing two latent bugs in `packages/atp-adapters/atp/adapters/mcp/transport.py` that Phase 0.1 surfaced:
+  1. `SSETransport._read_sse_events` cannot parse the `event: endpoint` frame from spec-compliant MCP servers (bare path string, not JSON) → any real MCP server → 405 on first POST.
+  2. `SSETransport` has a single `_message_queue` shared between `_wait_for_response` and `stream_events`; notifications arriving during a pending request are silently dropped.
+  Neither bug affects Phases 1-7 (service layer + unit tests are isolated from `SSETransport`), but both must be fixed before Phase 8 (e2e with real `MCPAdapter` ↔ real `FastMCP`).
 
 ---
 
@@ -91,7 +121,7 @@ packages/atp-adapters/atp/adapters/mcp/...                   — IF Phase 0 reve
 **Goal of phase:** Determine before writing any service-layer code whether two unverified assumptions in the spec hold:
 
 1. `packages/atp-adapters/atp/adapters/mcp/MCPAdapter` (existing 1900+ line in-house client) can sit on a long-running SSE connection and surface server-pushed `notifications/message` to the caller via some callback or async iterator.
-2. Mounting a FastMCP `sse_app()` under FastAPI as a Starlette sub-app correctly triggers the outer app's middleware stack — specifically, `JWTUserStateMiddleware` must populate `request.state.user_id` on the SSE handshake request.
+2. Mounting a FastMCP `http_app(transport="sse")` under FastAPI as a Starlette sub-app correctly triggers the outer app's middleware stack — specifically, `JWTUserStateMiddleware` must populate `request.state.user_id` on the SSE handshake request.
 
 **Failure mode if skipped:** Either failure surfaces deep in Phase 8 (e2e test) and forces 1+ week of rework or pivot to a different MCP client library.
 
@@ -329,12 +359,13 @@ def test_fastmcp_mount_sees_jwt_user_state_middleware() -> None:
         # accessing the underlying Request from a FastMCP Context
         # depends on FastMCP version — discover and document in
         # docs/notes/phase0-fastmcp-findings.md.
-        request = ctx.request  # PLACEHOLDER — actual attribute may differ
+        from fastmcp.server.dependencies import get_http_request
+        request = get_http_request()
         captured_user_id.append(getattr(request.state, "user_id", None))
         return {"user_id": captured_user_id[-1]}
 
-    # Mount FastMCP's SSE app under /mcp.
-    app.mount("/mcp", mcp.sse_app())
+    # Mount FastMCP's HTTP/SSE app under /mcp (FastMCP 3.x API).
+    app.mount("/mcp", mcp.http_app(transport="sse"))
 
     token = _make_jwt(user_id=42)
 
@@ -388,14 +419,15 @@ While running the test, find by experimentation or by reading FastMCP source how
 
 **Accessing request.state from a tool handler:**
 ```python
-# Inside @mcp.tool() async def my_tool(ctx, ...):
-request = ctx.<exact attribute path>
+# Inside @mcp.tool async def my_tool(ctx: Context, ...):
+from fastmcp.server.dependencies import get_http_request
+request = get_http_request()
 user_id = request.state.user_id
 ```
 
 **Mount pattern in factory.py (verified working):**
 ```python
-app.mount("/mcp", mcp.sse_app())
+app.mount("/mcp", mcp.http_app(transport="sse"))
 ```
 
 **Middleware ordering (verified working):**
@@ -2757,13 +2789,15 @@ grep -l "fastapi" pyproject.toml packages/*/pyproject.toml
 
 The match is the file to add `fastmcp` to.
 
-- [ ] **Step 2: Add fastmcp using uv**
+- [ ] **Step 2: Add fastmcp using uv with version constraint**
 
 ```bash
-uv add fastmcp
+uv add 'fastmcp>=3.0'
 ```
 
-(If the grep showed it should go into a workspace package, run `uv add --package atp-dashboard fastmcp` instead.)
+(If the grep showed it should go into a workspace package, run `uv add --package atp-dashboard 'fastmcp>=3.0'` instead.)
+
+The `>=3.0` constraint is mandatory: the plan is verified against FastMCP 3.x API (`http_app(transport="sse")`, `get_http_request()`). 2.x uses different patterns (`sse_app()`, different ctx access) that would break every Phase 6-7 task.
 
 - [ ] **Step 3: Verify install**
 
@@ -2954,25 +2988,51 @@ mcp_server: FastMCP = FastMCP("atp-platform-tournaments")
 tournament_event_bus: TournamentEventBus = TournamentEventBus()
 ```
 
-- [ ] **Step 2: Mount it in factory.py**
+- [ ] **Step 2: Mount it in factory.py (with lifespan composition — critical gotcha from Phase 0)**
 
-Open `packages/atp-dashboard/atp/dashboard/v2/factory.py`. Find the section after `add_middleware(JWTUserStateMiddleware)` and `add_middleware(CORSMiddleware, ...)`. Add the FastMCP mount immediately before `app.include_router(api_router, prefix="/api")`:
+Open `packages/atp-dashboard/atp/dashboard/v2/factory.py`. This task has TWO parts: (a) mount the FastMCP sub-app, and (b) compose its lifespan into the outer FastAPI lifespan. Part (b) is non-negotiable — Phase 0.2 verified that Starlette does NOT propagate sub-app lifespans automatically, and without composition FastMCP's internal session manager never initializes.
+
+First, find the existing `lifespan` function and the `create_app` body. Before `app = FastAPI(...)`, compose lifespans:
+
+```python
+from contextlib import asynccontextmanager
+
+# ... inside create_app, AFTER computing config but BEFORE creating app ...
+from atp.dashboard.mcp import mcp_server
+from atp.dashboard.mcp.auth import MCPAuthMiddleware
+from atp.dashboard.mcp import tools  # noqa: F401 — registers tools as side effect
+
+mcp_app = mcp_server.http_app(transport="sse")
+
+# Compose outer lifespan with FastMCP's inner lifespan. The inner
+# lifespan is what initializes FastMCP's session manager; Starlette
+# does NOT propagate sub-app lifespans under mount(), so we have to
+# drive it ourselves from the outer FastAPI lifespan.
+_original_lifespan = lifespan  # the existing lifespan defined higher in this file
+
+@asynccontextmanager
+async def _combined_lifespan(app_):
+    async with _original_lifespan(app_):
+        async with mcp_app.router.lifespan_context(app_):
+            yield
+
+app_settings["lifespan"] = _combined_lifespan
+```
+
+Then the `FastAPI(**app_settings)` call picks up the combined lifespan. After `app = FastAPI(**app_settings)`, add the mount + middleware (still before `app.include_router(api_router, prefix="/api")`):
 
 ```python
     # Mount the MCP tournament server under /mcp.
     # MCPAuthMiddleware sits between JWTUserStateMiddleware (which
     # populates request.state.user_id) and FastMCP, rejecting
     # unauthenticated handshakes with 401.
-    from atp.dashboard.mcp import mcp_server
-    from atp.dashboard.mcp.auth import MCPAuthMiddleware
-    from atp.dashboard.mcp import tools  # noqa: F401 — registers tools as side effect
-
-    mcp_app = mcp_server.sse_app()
     mcp_app.add_middleware(MCPAuthMiddleware)
     app.mount("/mcp", mcp_app)
 ```
 
 The `tools` import is a side-effect import: importing it registers all `@mcp_server.tool()` decorators. We will create that module in the next task.
+
+**Note on API:** use `mcp_server.http_app(transport="sse")`, NOT `mcp_server.sse_app()` — the latter does not exist in FastMCP 3.x. See the Phase 0 FastMCP corrections at the top of this plan.
 
 - [ ] **Step 3: Create a stub `tools.py` so the import does not fail**
 
@@ -3462,13 +3522,14 @@ _session_tasks: dict[str, dict[int, asyncio.Task[None]]] = {}
 async def resolve_user_from_ctx(ctx: Any) -> User:
     """Look up the User row corresponding to ctx's session.
 
-    Reads request.state.user_id from the underlying Starlette request.
-    The exact ctx attribute path is documented in
-    docs/notes/phase0-fastmcp-findings.md §Task 0.2.
+    Reads request.state.user_id from the underlying Starlette request
+    via FastMCP's public get_http_request() helper. This is the
+    verified pattern from Phase 0.2 findings — do NOT use
+    ctx.request_context.request (internal, version-fragile).
     """
-    # PLACEHOLDER attribute path. Replace with the verified path
-    # from phase0 findings, e.g. ctx.request_context.request.state.user_id
-    request = ctx.request_context.request  # type: ignore[attr-defined]
+    from fastmcp.server.dependencies import get_http_request
+
+    request = get_http_request()
     user_id: int | None = getattr(request.state, "user_id", None)
     if user_id is None:
         raise RuntimeError("MCP session has no authenticated user_id")
@@ -3600,11 +3661,300 @@ git commit -m "feat(mcp): notification formatter and per-session forwarder"
 
 ---
 
+## Phase Pre-8 — MCPAdapter SSETransport remediation
+
+**Goal:** Fix the two latent bugs in `packages/atp-adapters/atp/adapters/mcp/transport.py` that Phase 0.1 surfaced, so that Phase 8's e2e test can use stock `MCPAdapter` against stock `FastMCP` without monkey-patches.
+
+**Why this is a phase, not a simple task.** The fix touches live production code (`MCPAdapter`) that is used by every existing SSE-based MCP adapter in the ATP platform. It affects other test suites and has non-trivial concurrency implications. Each task in this phase is independently committable and regression-safe for existing users.
+
+**Scope guardrail.** If implementation in this phase starts to exceed ~1.5 days or the changes cascade into other adapter modules, STOP and split this phase into its own standalone plan (call it `docs/superpowers/plans/2026-04-XX-mcpadapter-sse-demux.md`). Do not let the scope expand inside the tournament slice plan.
+
+**Source of the bug descriptions:** `docs/notes/phase0-fastmcp-findings.md` §"Critical caveats — two latent bugs in SSETransport" — READ IT BEFORE STARTING.
+
+### Task Pre-8.1: Fix `SSETransport._read_sse_events` endpoint frame parsing
+
+**Files:**
+- Modify: `packages/atp-adapters/atp/adapters/mcp/transport.py` (around line 820)
+- Modify or create: `tests/unit/adapters/mcp/test_sse_transport.py` (find the existing location — there are some SSE tests in the repo)
+
+**The bug** (verbatim from `_read_sse_events`, transport.py:820):
+
+```python
+try:
+    data = json.loads(event_data)
+    if event_type == "endpoint" and "uri" in data:
+        self._session_id = data.get("sessionId")
+    await self._message_queue.put(data)
+except json.JSONDecodeError:
+    pass  # Skip malformed events
+```
+
+MCP-compliant servers (FastMCP, reference SDK) send the endpoint frame as a bare path:
+
+```
+event: endpoint
+data: /messages/?session_id=e519ec7f97674620865b363add0d9da9
+```
+
+`json.loads("/messages/?session_id=...")` raises `JSONDecodeError`, the `except: pass` swallows it, `_session_id` is never set, and `self._config.post_endpoint` is never updated. Every subsequent `send()` POSTs to the `/sse` GET URL → HTTP 405.
+
+- [ ] **Step 1: Find existing SSETransport tests**
+
+```bash
+find tests -name "test_*sse*" -o -name "*transport*test*" 2>&1 | head
+grep -rnl "SSETransport\|_read_sse_events" tests/ 2>&1 | head
+```
+
+If there is an existing test file for `SSETransport`, extend it. If not, create `tests/unit/adapters/mcp/test_sse_transport.py`.
+
+- [ ] **Step 2: Write failing tests**
+
+Test 1: when the transport receives a spec-compliant endpoint frame (`event: endpoint\ndata: /messages/?session_id=abc123\n\n`), `_session_id` is set to `"abc123"` and `self._config.post_endpoint` is set to the absolute URL `"{base_url}/messages/?session_id=abc123"`.
+
+Test 2: legacy JSON-shaped endpoint frame (`data: {"uri": "/messages/", "sessionId": "xyz"}\n\n`) ALSO works (backwards compatibility — don't break any existing user who relied on the old, wrong, interpretation).
+
+Test 3: the `_message_queue` does NOT receive the endpoint frame as a regular message (endpoint frames are metadata, not messages).
+
+The exact test harness depends on what exists — most likely feed a `httpx.MockTransport` or stub the SSE stream with an `async def` that yields lines from a list.
+
+- [ ] **Step 3: Implement the fix**
+
+Replace the `_read_sse_events` event-completion block with:
+
+```python
+elif line == "" and event_data:
+    # Empty line signals end of event
+    if event_type == "endpoint":
+        # MCP spec: endpoint frame data is a bare path, not JSON.
+        # Legacy: some older stubs sent JSON with {"uri": ..., "sessionId": ...}.
+        # Support both for backwards compatibility.
+        endpoint_path: str | None = None
+        session_id: str | None = None
+        try:
+            parsed = json.loads(event_data)
+            if isinstance(parsed, dict) and "uri" in parsed:
+                endpoint_path = parsed["uri"]
+                session_id = parsed.get("sessionId")
+        except json.JSONDecodeError:
+            # Spec-compliant: bare path
+            endpoint_path = event_data.strip()
+
+        if endpoint_path:
+            # Resolve against the SSE GET URL to get the absolute POST URL.
+            from urllib.parse import urljoin, urlparse, parse_qs
+            self._config.post_endpoint = urljoin(self._config.url, endpoint_path)
+            if session_id is None:
+                qs = parse_qs(urlparse(endpoint_path).query)
+                session_id = qs.get("session_id", [None])[0]
+            if session_id:
+                self._session_id = session_id
+        # Do NOT enqueue the endpoint frame — it is metadata, not a message.
+    else:
+        try:
+            data = json.loads(event_data)
+            await self._message_queue.put(data)
+        except json.JSONDecodeError:
+            pass  # Skip malformed data events
+
+    event_type = ""
+    event_data = ""
+```
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+```bash
+uv run python -m pytest tests/unit/adapters/mcp/test_sse_transport.py -v
+```
+
+Expected: all new tests PASS, existing tests unchanged.
+
+- [ ] **Step 5: Run the full adapter test suite as a regression check**
+
+```bash
+uv run python -m pytest tests/unit/adapters/ -v 2>&1 | tail -20
+```
+
+Expected: no regressions.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add packages/atp-adapters/atp/adapters/mcp/transport.py \
+        tests/unit/adapters/mcp/test_sse_transport.py
+git commit -m "fix(adapters-mcp): parse spec-compliant SSE endpoint frame as bare path"
+```
+
+### Task Pre-8.2: Demux `SSETransport` responses and notifications into separate queues
+
+**Files:**
+- Modify: `packages/atp-adapters/atp/adapters/mcp/transport.py` (`_read_sse_events`, `_wait_for_response`, `stream_events`, `receive`)
+- Modify: `tests/unit/adapters/mcp/test_sse_transport.py`
+
+**The bug** (verbatim from `_wait_for_response`, transport.py:308):
+
+```python
+async def _wait_for_response(self, request_id: int | str) -> dict[str, Any]:
+    while True:
+        response = await self.receive()
+        if response.get("id") == request_id:
+            return response
+        # Could buffer other messages here for out-of-order responses
+```
+
+`receive()` pulls from `_message_queue` which is the ONLY queue. When a notification arrives during a pending `send_request()`, it is popped, its `id` does not match, it is silently dropped. When a consumer task runs `stream_events()` in parallel with `send_request()`, they race for every message — and since the consumer cannot look at `id`, responses get stolen.
+
+**The fix.** Split `_message_queue` into two queues inside `SSETransport`:
+
+- `_response_futures: dict[int | str, asyncio.Future[dict]]` — pending `send_request` call lookups by request_id
+- `_notification_queue: asyncio.Queue[dict]` — server-pushed notifications
+
+`_read_sse_events` becomes the single routing point: for each incoming JSON-RPC dict, if it has an `id` that matches a pending future, resolve the future; otherwise (no `id`, or unknown `id`), enqueue into `_notification_queue`.
+
+`send_request` registers a future under its request_id before sending, awaits the future (with timeout), and cleans up on return.
+
+`stream_events` drains `_notification_queue` only.
+
+- [ ] **Step 1: Write failing tests**
+
+Test 1 — notification during in-flight request: start a concurrent notification stream, issue `send_request("tools/call", ...)` while 3 notifications arrive during the request, verify that (a) `send_request` gets exactly the matching response, (b) all 3 notifications arrive via `stream_events()`, none are dropped.
+
+Test 2 — multiple concurrent requests: issue two `send_request` calls in parallel, each gets the correct response by id.
+
+Test 3 — orphan notification before any consumer: publish 2 notifications before any `stream_events()` starts, then start a consumer, verify it receives both (queue was buffering).
+
+Test 4 — response without matching future: a response with an unknown `id` goes into `_notification_queue` (graceful fallback, not an error) — document and accept this behavior.
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Expected: current shared-queue implementation fails test 1 (notifications dropped) and test 2 (race condition).
+
+- [ ] **Step 3: Implement demux**
+
+Refactor roughly along these lines (exact shape depends on existing code — do NOT blindly replace; integrate carefully):
+
+```python
+class SSETransport(MCPTransport):
+    def __init__(self, config: SSETransportConfig) -> None:
+        super().__init__(config)
+        self._config = config
+        # ... existing fields ...
+        self._response_futures: dict[
+            int | str, asyncio.Future[dict[str, Any]]
+        ] = {}
+        self._notification_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        self._futures_lock = asyncio.Lock()
+
+    async def _read_sse_events(self) -> None:
+        # ... existing event parsing into `data` dict ...
+        async def _route(data: dict[str, Any]) -> None:
+            if "id" in data and "method" not in data:
+                # This is a response — try to deliver to a waiting future.
+                async with self._futures_lock:
+                    fut = self._response_futures.pop(data["id"], None)
+                if fut is not None and not fut.done():
+                    fut.set_result(data)
+                    return
+                # Orphan response — fall through to notification queue.
+            # Everything else (notifications, orphan responses) → notifications.
+            await self._notification_queue.put(data)
+
+        # Inside the line-parsing loop, replace `await self._message_queue.put(data)`
+        # with `await _route(data)`.
+
+    async def send_request(
+        self,
+        method: str,
+        params: dict[str, Any] | list[Any] | None = None,
+        request_id: int | str | None = None,
+    ) -> dict[str, Any]:
+        # ... existing request_id generation ...
+        future: asyncio.Future[dict[str, Any]] = asyncio.get_event_loop().create_future()
+        async with self._futures_lock:
+            self._response_futures[request_id] = future
+        try:
+            await self.send(request)
+            return await asyncio.wait_for(future, timeout=self._config.request_timeout)
+        finally:
+            async with self._futures_lock:
+                self._response_futures.pop(request_id, None)
+
+    async def receive(self) -> dict[str, Any]:
+        """Blocking receive from the notification queue.
+
+        Deprecated for new code — prefer `stream_events()` or the
+        response-future path via `send_request()`. Kept for any
+        existing caller that polls.
+        """
+        return await self._notification_queue.get()
+
+    async def stream_events(self) -> AsyncIterator[dict[str, Any]]:
+        """Yield server-pushed notifications as they arrive."""
+        while self._state == TransportState.CONNECTED:
+            msg = await self._notification_queue.get()
+            yield msg
+```
+
+**Critical:** keep the OLD `_message_queue` attribute in place and keep `_wait_for_response` as a back-compat shim that raises `NotImplementedError("replaced by send_request future path")` — OR leave it untouched and route old callers transparently. Existing tests and existing adapter code MUST keep working.
+
+- [ ] **Step 4: Run the new demux tests**
+
+```bash
+uv run python -m pytest tests/unit/adapters/mcp/test_sse_transport.py -v
+```
+
+Expected: all new tests PASS.
+
+- [ ] **Step 5: Full regression sweep across adapters**
+
+```bash
+uv run python -m pytest tests/unit/adapters/ tests/integration/ -v 2>&1 | tail -30
+```
+
+Expected: no regressions. If existing tests break, it means the old `_message_queue` path is still in use somewhere. Do one of:
+- Add a back-compat shim in `receive()` / `_wait_for_response()` that pulls from `_notification_queue` with request-id filtering (temporary compromise).
+- Update the calling code.
+Prefer a back-compat shim to keep the blast radius small.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add packages/atp-adapters/atp/adapters/mcp/transport.py \
+        tests/unit/adapters/mcp/test_sse_transport.py
+git commit -m "fix(adapters-mcp): demux SSE responses and notifications into separate queues"
+```
+
+### Task Pre-8.3: Verify Phase 0.1 scratch test passes without monkey-patch
+
+**Files:**
+- Modify (temporarily): `tests/scratch/test_mcp_adapter_notifications.py`
+
+- [ ] **Step 1: Remove the monkey-patch**
+
+The scratch test from Task 0.1 at `tests/scratch/test_mcp_adapter_notifications.py` contains a monkey-patch of `_read_sse_events` to work around Bug #1. Remove it. The scratch test should now rely on stock `SSETransport`.
+
+- [ ] **Step 2: Run the scratch test**
+
+```bash
+uv run --with fastmcp python -m pytest tests/scratch/test_mcp_adapter_notifications.py -v -s
+```
+
+Expected: PASS without monkey-patch. All 10 notifications received via stock `MCPAdapter._transport.stream_events()`. If this passes, both bugs are genuinely fixed from MCPAdapter's perspective.
+
+If it fails, one of the two fixes is incomplete. Debug and iterate.
+
+- [ ] **Step 3: Leave the scratch test untracked**
+
+Do not commit the scratch test. It remains an investigation artifact.
+
+- [ ] **Step 4: No commit** — this is verification only.
+
+---
+
 ## Phase 8 — End-to-end test
 
 **Goal:** Two `MCPAdapter` bots play a 3-round PD tournament against a real uvicorn instance, and the test asserts both the protocol behavior (notifications received, tools return correct shapes) and the persisted DB state.
 
-> **Prerequisite:** Phase 0 verification must have PASSED. The exact MCPAdapter notification API and FastMCP test client API used here come from `docs/notes/phase0-fastmcp-findings.md`. The code below uses placeholder API shapes — replace before running.
+> **Prerequisite:** Phase 0 verification AND Phase Pre-8 (`SSETransport` remediation) must have PASSED. The exact MCPAdapter notification API comes from `docs/notes/phase0-fastmcp-findings.md` — use `adapter._transport.stream_events()` pattern, OR a public method added in a follow-up if Phase Pre-8 also adds one.
 
 ### Task 8.1: e2e fixtures — uvicorn server, test users, JWT helpers
 
@@ -4125,7 +4475,8 @@ If working in a feature branch off main, also open a PR for review. If working d
 | §Persistence (full) | Phase 1 partial — additive columns only, no constraints |
 | §Error handling | Phase 3 (errors module) |
 | §Testing strategy unit + e2e | Phases 2-9 (every task is TDD) |
-| §Phase 0 verification | Phase 0 |
+| §Phase 0 verification | Phase 0 ✅ (both tasks PASSED, commits `87054c2` + `713d7f4`) |
+| **(New) MCPAdapter SSETransport bugs discovered during Phase 0.1** | Phase Pre-8 — added post-verification |
 | §Backlog | Plan 2 will reference items from spec backlog |
 
 **Placeholders** — searched plan for `TODO`, `TBD`, `FIXME`, `XXX`. None present except deliberate `PLACEHOLDER` notes pointing engineers to the phase 0 findings doc, which is intentional and explicit.
