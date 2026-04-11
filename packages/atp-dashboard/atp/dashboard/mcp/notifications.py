@@ -22,7 +22,11 @@ from typing import Any
 
 from atp.dashboard.database import get_database
 from atp.dashboard.models import User
-from atp.dashboard.tournament.events import TournamentEvent, TournamentEventBus
+from atp.dashboard.tournament.events import (
+    AnyTournamentEvent,
+    TournamentCancelEvent,
+    TournamentEventBus,
+)
 from atp.dashboard.tournament.service import TournamentService
 
 logger = logging.getLogger("atp.dashboard.mcp.notifications")
@@ -79,7 +83,7 @@ async def with_service(
 
 
 async def _format_notification_for_user(
-    event: TournamentEvent,
+    event: AnyTournamentEvent,
     user: User,
     service: TournamentService,
 ) -> dict[str, Any] | None:
@@ -95,6 +99,12 @@ async def _format_notification_for_user(
     ``params`` keys are retained here so unit tests can assert on the
     same shape the clients ultimately see.
     """
+    if isinstance(event, TournamentCancelEvent):
+        # Cancel events are handled by a dedicated formatter (Task 16).
+        # Return None for now so subscribers silently skip them.
+        return None
+
+    # From here on, event is narrowed to TournamentEvent.
     if event.event_type == "round_started":
         state = await service.get_state_for(event.tournament_id, user)
         return {

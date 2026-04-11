@@ -61,9 +61,9 @@ class TournamentEventBus:
     """
 
     def __init__(self) -> None:
-        self._subscribers: dict[int, set[asyncio.Queue[TournamentEvent]]] = {}
+        self._subscribers: dict[int, set[asyncio.Queue[AnyTournamentEvent]]] = {}
 
-    async def publish(self, event: TournamentEvent) -> None:
+    async def publish(self, event: AnyTournamentEvent) -> None:
         """Fan out an event to all subscribers of event.tournament_id.
 
         Best-effort: if a subscriber's queue is full, the event is
@@ -71,6 +71,7 @@ class TournamentEventBus:
         raises — publish is fire-and-forget.
         """
         queues = self._subscribers.get(event.tournament_id, set())
+        event_label = getattr(event, "event_type", type(event).__name__)
         for queue in list(queues):
             try:
                 queue.put_nowait(event)
@@ -78,13 +79,13 @@ class TournamentEventBus:
                 logger.warning(
                     "subscriber queue full for tournament %d, dropping event %s",
                     event.tournament_id,
-                    event.event_type,
+                    event_label,
                 )
 
     @asynccontextmanager
     async def subscribe(
         self, tournament_id: int
-    ) -> AsyncIterator[asyncio.Queue[TournamentEvent]]:
+    ) -> AsyncIterator[asyncio.Queue[AnyTournamentEvent]]:
         """Subscribe to events for one tournament.
 
         Usage::
@@ -97,7 +98,7 @@ class TournamentEventBus:
         On context exit (including via task cancellation), the queue
         is removed from the subscribers set.
         """
-        queue: asyncio.Queue[TournamentEvent] = asyncio.Queue(maxsize=_QUEUE_MAXSIZE)
+        queue: asyncio.Queue[AnyTournamentEvent] = asyncio.Queue(maxsize=_QUEUE_MAXSIZE)
         self._subscribers.setdefault(tournament_id, set()).add(queue)
         try:
             yield queue
@@ -161,3 +162,10 @@ class TournamentCancelEvent:
                 f"TournamentCancelEvent.final_status must be CANCELLED, "
                 f"got {self.final_status.value}"
             )
+
+
+# Union of all event types the bus can carry.  Defined after both
+# dataclasses so that `AnyTournamentEvent` is resolvable at runtime
+# (with `from __future__ import annotations` all class-body annotations
+# are lazy strings, so the forward reference in TournamentEventBus is safe).
+AnyTournamentEvent = TournamentEvent | TournamentCancelEvent

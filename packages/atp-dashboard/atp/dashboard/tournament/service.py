@@ -497,6 +497,68 @@ class TournamentService:
             )
         )
 
+    async def cancel_tournament(
+        self,
+        user: User,
+        tournament_id: int,
+        reason_detail: str | None = None,
+    ) -> None:
+        """User-facing cancel entry point.
+
+        Called by REST POST /api/v1/tournaments/{id}/cancel and the MCP
+        `cancel_tournament` tool. Authorization runs against an unlocked
+        SELECT before the write transaction.
+        """
+        await self._load_for_auth(tournament_id, user)
+
+        async with self._session.begin():
+            event = await self._cancel_impl(
+                tournament_id,
+                reason=CancelReason.ADMIN_ACTION,
+                cancelled_by=user.id,
+                reason_detail=reason_detail,
+            )
+
+        if event is not None:
+            try:
+                await self._bus.publish(event)
+            except Exception:
+                logger.warning(
+                    "tournament.cancel.publish_failed",
+                    extra={"tournament_id": tournament_id},
+                    exc_info=True,
+                )
+
+    async def cancel_tournament_system(
+        self,
+        tournament_id: int,
+        reason: CancelReason,
+        reason_detail: str | None = None,
+    ) -> None:
+        """System-initiated cancel. Called ONLY by the deadline worker
+        (pending_timeout path) and `leave()` (abandoned cascade).
+
+        Code-review invariant: no handler file imports this method.
+        Enforced by tests/unit/dashboard/tournament/test_static_guards.py.
+        """
+        async with self._session.begin():
+            event = await self._cancel_impl(
+                tournament_id,
+                reason=reason,
+                cancelled_by=None,
+                reason_detail=reason_detail,
+            )
+
+        if event is not None:
+            try:
+                await self._bus.publish(event)
+            except Exception:
+                logger.warning(
+                    "tournament.cancel.publish_failed",
+                    extra={"tournament_id": tournament_id},
+                    exc_info=True,
+                )
+
     async def _load_for_auth(
         self,
         tournament_id: int,
