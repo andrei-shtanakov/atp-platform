@@ -20,8 +20,8 @@ async def test_submit_action_first_player_returns_waiting(
     from atp.dashboard.tournament.service import TournamentService
 
     svc = TournamentService(session, event_bus)
-    t = await svc.create_tournament(
-        admin=admin_user,
+    t, _ = await svc.create_tournament(
+        creator=admin_user,
         name="t",
         game_type="prisoners_dilemma",
         num_players=2,
@@ -51,8 +51,8 @@ async def test_submit_action_last_player_resolves_round(
     from atp.dashboard.tournament.service import TournamentService
 
     svc = TournamentService(session, event_bus)
-    t = await svc.create_tournament(
-        admin=admin_user,
+    t, _ = await svc.create_tournament(
+        creator=admin_user,
         name="t",
         game_type="prisoners_dilemma",
         num_players=2,
@@ -116,8 +116,8 @@ async def test_full_3_round_pd_tournament_completes(
     from atp.dashboard.tournament.service import TournamentService
 
     svc = TournamentService(session, event_bus)
-    t = await svc.create_tournament(
-        admin=admin_user,
+    t, _ = await svc.create_tournament(
+        creator=admin_user,
         name="t",
         game_type="prisoners_dilemma",
         num_players=2,
@@ -167,8 +167,8 @@ async def test_full_3_round_publishes_round_started_and_tournament_completed(
 
     svc = TournamentService(session, event_bus)
 
-    t = await svc.create_tournament(
-        admin=admin_user,
+    t, _ = await svc.create_tournament(
+        creator=admin_user,
         name="t",
         game_type="prisoners_dilemma",
         num_players=2,

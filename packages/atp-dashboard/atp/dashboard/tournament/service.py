@@ -12,6 +12,8 @@ worker, leave/get_history/list, AD-9/AD-10 enforcement, etc.).
 from __future__ import annotations
 
 import logging
+import os
+import secrets
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -45,6 +47,8 @@ from atp.dashboard.tournament.state import RoundState
 
 logger = logging.getLogger("atp.dashboard.tournament.service")
 
+TOURNAMENT_PENDING_MAX_WAIT_S: int = 300
+
 _SUPPORTED_GAMES = frozenset({"prisoners_dilemma"})
 
 _GAME_INSTANCES: dict[str, Any] = {
@@ -59,18 +63,19 @@ class TournamentService:
 
     async def create_tournament(
         self,
-        admin: User,
+        creator: User,
         *,
         name: str,
         game_type: str,
         num_players: int,
         total_rounds: int,
         round_deadline_s: int,
-    ) -> Tournament:
-        """Create a new tournament in PENDING (accepting-joins) state.
+        private: bool = False,
+    ) -> tuple[Tournament, str | None]:
+        """Create a tournament. AD-9 duration cap validation, pending_deadline,
+        optional join_token.
 
-        Caller is responsible for verifying admin authorization at the
-        transport layer; this method trusts that admin.is_admin == True.
+        Does NOT auto-join the creator.
         """
         if game_type not in _SUPPORTED_GAMES:
             raise ValidationError(
@@ -81,7 +86,7 @@ class TournamentService:
         if num_players != required_players:
             _p = "player" if required_players == 1 else "players"
             raise ValidationError(
-                f"{game_type} requires exactly {required_players} {_p}, "
+                f"num_players: {game_type} requires exactly {required_players} {_p}, "
                 f"got {num_players}"
             )
         if total_rounds < 1:
@@ -89,21 +94,42 @@ class TournamentService:
         if round_deadline_s < 1:
             raise ValidationError("round_deadline_s must be >= 1")
 
-        # TODO(Task 12): replace with computed deadline from pending_timeout_seconds
+        # AD-9 duration cap
+        token_expire_minutes = int(os.environ.get("ATP_TOKEN_EXPIRE_MINUTES", "60"))
+        max_wall_clock = TOURNAMENT_PENDING_MAX_WAIT_S + total_rounds * round_deadline_s
+        budget = (token_expire_minutes - 10) * 60
+        if max_wall_clock > budget:
+            raise ValidationError(
+                f"max duration {budget}s (pending {TOURNAMENT_PENDING_MAX_WAIT_S}s "
+                f"+ {total_rounds} rounds × {round_deadline_s}s = "
+                f"{max_wall_clock}s) exceeds "
+                f"(ATP_TOKEN_EXPIRE_MINUTES − 10) × 60 = {budget}s cap. "
+                f"Reduce total_rounds or round_deadline_s."
+            )
+
+        now = datetime.utcnow()
+        pending_deadline = now + timedelta(seconds=TOURNAMENT_PENDING_MAX_WAIT_S)
+
+        join_token_plaintext: str | None = None
+        if private:
+            join_token_plaintext = secrets.token_urlsafe(32)
+
         tournament = Tournament(
             game_type=game_type,
             status=TournamentStatus.PENDING,
             num_players=num_players,
             total_rounds=total_rounds,
             round_deadline_s=round_deadline_s,
-            created_by=admin.id,
+            created_by=creator.id,
             config={"name": name},
-            pending_deadline=datetime.now(),
+            pending_deadline=pending_deadline,
+            join_token=join_token_plaintext,
         )
-        self._session.add(tournament)
-        await self._session.flush()
-        await self._session.refresh(tournament)
-        return tournament
+        async with self._session.begin():
+            self._session.add(tournament)
+            await self._session.flush()
+
+        return tournament, join_token_plaintext
 
     async def join(
         self,
