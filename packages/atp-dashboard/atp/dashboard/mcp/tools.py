@@ -277,7 +277,7 @@ async def list_tournaments(
         "tournaments": [
             {
                 "id": t.id,
-                "name": getattr(t, "name", ""),
+                "name": (getattr(t, "config", {}) or {}).get("name", ""),
                 "status": getattr(t, "status", None),
                 "has_join_token": bool(getattr(t, "join_token", None)),
             }
@@ -297,7 +297,7 @@ async def get_tournament(
     return {
         "tournament": {
             "id": t.id,
-            "name": getattr(t, "name", ""),
+            "name": (getattr(t, "config", {}) or {}).get("name", ""),
             "status": getattr(t, "status", None),
             "has_join_token": bool(getattr(t, "join_token", None)),
         }
