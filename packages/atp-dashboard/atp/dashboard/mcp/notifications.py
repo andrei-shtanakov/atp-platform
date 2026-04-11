@@ -100,9 +100,17 @@ async def _format_notification_for_user(
     same shape the clients ultimately see.
     """
     if isinstance(event, TournamentCancelEvent):
-        # Cancel events are handled by a dedicated formatter (Task 16).
-        # Return None for now so subscribers silently skip them.
-        return None
+        payload = _format_for_user(event, user)
+        if payload is None:
+            return None
+        return {
+            "method": "notifications/message",
+            "params": {
+                "level": "info",
+                "logger": "atp.tournament",
+                "data": payload,
+            },
+        }
 
     # From here on, event is narrowed to TournamentEvent.
     if event.event_type == "round_started":
@@ -204,3 +212,43 @@ async def _cancel_session_task(ctx: Any, tournament_id: int) -> None:
             pass
     if not tasks:
         _session_tasks.pop(session_id, None)
+
+
+def _format_for_user(event: Any, user: Any) -> dict[str, Any] | None:
+    """Dispatch-based notification formatter.
+
+    Takes a bus event and a recipient User, returns the personalized
+    ``data`` dict to send via session.send_notification, or None if the
+    event is not deliverable to this user.
+
+    Responsibilities:
+    1. Add ``event`` discriminator.
+    2. Apply game-specific reveal semantics (Plan 2a is PD-only, near-identity).
+    3. Privacy filter admin-only fields (cancelled_by for non-admins).
+    """
+    if isinstance(event, TournamentCancelEvent):
+        cancelled_by = event.cancelled_by if user.is_admin else None
+        return {
+            "event": "tournament_cancelled",
+            "tournament_id": event.tournament_id,
+            "reason": event.cancelled_reason.value,
+            "reason_detail": event.cancelled_reason_detail,
+            "cancelled_by": cancelled_by,
+            "final_rounds_played": event.final_rounds_played,
+            "cancelled_at": event.cancelled_at.isoformat(),
+        }
+
+    # round_started, round_ended, tournament_completed events are
+    # existing dict-shaped payloads from the vertical slice bus.
+    # For Plan 2a they pass through with an added `event` discriminator
+    # only — no per-recipient privacy filtering is needed because PD
+    # reveals all actions after each round (source spec §Notification
+    # personalization). Future hidden-information games override this
+    # branch per-game.
+    if isinstance(event, dict) and "event_type" in event:
+        event_type = event["event_type"]
+        payload = {k: v for k, v in event.items() if k != "event_type"}
+        payload["event"] = event_type
+        return payload
+
+    return None
