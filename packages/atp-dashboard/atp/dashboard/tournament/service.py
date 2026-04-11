@@ -747,6 +747,97 @@ class TournamentService:
                     exc_info=True,
                 )
 
+    async def list_tournaments(
+        self,
+        user: User,
+        status: TournamentStatus | None = None,
+    ) -> list[Tournament]:
+        """Return tournaments visible to `user`, optionally filtered by status.
+
+        Visibility rule:
+        - user.is_admin: all tournaments.
+        - Else: Tournament.join_token IS NULL OR created_by = user.id
+                OR EXISTS participant row for (tournament, user).
+        """
+        from sqlalchemy import exists, or_
+
+        stmt = select(Tournament)
+        if status is not None:
+            stmt = stmt.where(Tournament.status == status)
+
+        if not user.is_admin:
+            stmt = stmt.where(
+                or_(
+                    Tournament.join_token.is_(None),
+                    Tournament.created_by == user.id,
+                    exists().where(
+                        (Participant.tournament_id == Tournament.id)
+                        & (Participant.user_id == user.id)
+                    ),
+                )
+            )
+
+        result = await self._session.scalars(stmt)
+        return list(result)
+
+    async def get_tournament(
+        self,
+        tournament_id: int,
+        user: User,
+    ) -> Tournament:
+        """Return a single tournament if visible to `user`.
+
+        Uses the same visibility rules as list_tournaments. Invisible
+        tournaments raise NotFoundError (enumeration guard).
+        """
+        tournament = await self._session.get(Tournament, tournament_id)
+        if tournament is None:
+            raise NotFoundError(f"tournament {tournament_id}")
+
+        if user.is_admin:
+            return tournament
+        if tournament.join_token is None:
+            return tournament
+        if tournament.created_by == user.id:
+            return tournament
+
+        # Check participant rows
+        exists_row = await self._session.scalar(
+            select(Participant)
+            .where(Participant.tournament_id == tournament_id)
+            .where(Participant.user_id == user.id)
+        )
+        if exists_row is not None:
+            return tournament
+        raise NotFoundError(f"tournament {tournament_id}")
+
+    async def get_history(
+        self,
+        tournament_id: int,
+        user: User,
+        last_n: int | None = None,
+    ) -> list[Round]:
+        """Return rounds for a tournament visible to `user`.
+
+        Plan 2a ships PD-only, so all participants see all actions
+        post-resolution. last_n is hard-capped at 100.
+        """
+        # Visibility check reuses get_tournament's rule
+        await self.get_tournament(tournament_id, user)
+
+        cap = min(last_n or 100, 100)
+        stmt = (
+            select(Round)
+            .where(Round.tournament_id == tournament_id)
+            .order_by(Round.round_number.desc())
+            .limit(cap)
+        )
+
+        result = await self._session.scalars(stmt)
+        rounds = list(result)
+        rounds.reverse()  # ascending by round_number for consumer convenience
+        return rounds
+
     async def _load_for_auth(
         self,
         tournament_id: int,
