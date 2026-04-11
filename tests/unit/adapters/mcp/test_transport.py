@@ -1076,6 +1076,107 @@ class TestSSETransport:
         assert result is False
 
     @pytest.mark.anyio
+    async def test_read_sse_events_parses_spec_compliant_endpoint_frame(
+        self, sse_config: SSETransportConfig
+    ) -> None:
+        """A spec-compliant ``event: endpoint`` frame carries the POST
+        endpoint as a bare path string (not JSON). The transport must
+        parse it and set ``post_endpoint`` / ``_session_id``.
+        """
+        transport = SSETransport(sse_config)
+
+        lines = [
+            "event: endpoint",
+            "data: /messages/?session_id=abc123",
+            "",
+        ]
+
+        async def mock_aiter_lines():
+            for line in lines:
+                yield line
+
+        mock_response = MagicMock()
+        mock_response.aiter_lines = mock_aiter_lines
+        transport._sse_response = mock_response
+
+        await transport._read_sse_events()
+
+        assert transport._session_id == "abc123"
+        assert transport._config.post_endpoint == (
+            "http://localhost:8080/messages/?session_id=abc123"
+        )
+        # Endpoint frame is metadata; must NOT land in the message queue.
+        assert transport._message_queue.empty()
+
+    @pytest.mark.anyio
+    async def test_read_sse_events_parses_legacy_json_endpoint_frame(
+        self, sse_config: SSETransportConfig
+    ) -> None:
+        """Backwards compatibility: the old JSON-shaped endpoint frame
+        (``{"uri": "/messages/", "sessionId": "xyz"}``) must still work.
+        """
+        transport = SSETransport(sse_config)
+
+        lines = [
+            "event: endpoint",
+            'data: {"uri": "/messages/", "sessionId": "xyz"}',
+            "",
+        ]
+
+        async def mock_aiter_lines():
+            for line in lines:
+                yield line
+
+        mock_response = MagicMock()
+        mock_response.aiter_lines = mock_aiter_lines
+        transport._sse_response = mock_response
+
+        await transport._read_sse_events()
+
+        assert transport._session_id == "xyz"
+        assert transport._config.post_endpoint == "http://localhost:8080/messages/"
+        assert transport._message_queue.empty()
+
+    @pytest.mark.anyio
+    async def test_read_sse_events_does_not_enqueue_endpoint_frame(
+        self, sse_config: SSETransportConfig
+    ) -> None:
+        """The endpoint frame is session metadata and must not be
+        delivered to ``receive()`` / ``stream_events()`` consumers.
+        Regular JSON-RPC messages that follow the endpoint frame
+        should still land in the queue.
+        """
+        transport = SSETransport(sse_config)
+
+        lines = [
+            "event: endpoint",
+            "data: /messages/?session_id=abc123",
+            "",
+            "event: message",
+            'data: {"jsonrpc":"2.0","method":"notifications/message","params":{"x":1}}',
+            "",
+        ]
+
+        async def mock_aiter_lines():
+            for line in lines:
+                yield line
+
+        mock_response = MagicMock()
+        mock_response.aiter_lines = mock_aiter_lines
+        transport._sse_response = mock_response
+
+        await transport._read_sse_events()
+
+        # Exactly one message enqueued — the JSON-RPC payload.
+        assert transport._message_queue.qsize() == 1
+        msg = await transport._message_queue.get()
+        assert msg == {
+            "jsonrpc": "2.0",
+            "method": "notifications/message",
+            "params": {"x": 1},
+        }
+
+    @pytest.mark.anyio
     async def test_context_manager(self, sse_config: SSETransportConfig) -> None:
         """Test SSE transport as async context manager."""
         transport = SSETransport(sse_config)

@@ -833,25 +833,52 @@ class SSETransport(MCPTransport):
                     event_data = line[5:].strip()
                 elif line == "" and event_data:
                     # Empty line signals end of event
-                    try:
-                        data = json.loads(event_data)
-
-                        # Handle session ID from endpoint event
-                        if event_type == "endpoint" and "uri" in data:
-                            # Extract session info if provided
-                            self._session_id = data.get("sessionId")
-
-                        # Queue the message for receive()
-                        await self._message_queue.put(data)
-
-                    except json.JSONDecodeError:
-                        pass  # Skip malformed events
+                    if event_type == "endpoint":
+                        self._handle_endpoint_frame(event_data)
+                    else:
+                        try:
+                            data = json.loads(event_data)
+                            await self._message_queue.put(data)
+                        except json.JSONDecodeError:
+                            pass  # Skip malformed events
 
                     event_type = ""
                     event_data = ""
 
         except (httpx.RequestError, httpx.StreamClosed):
             self._state = TransportState.DISCONNECTED
+
+    def _handle_endpoint_frame(self, event_data: str) -> None:
+        """Parse an ``event: endpoint`` frame and update session state.
+
+        Spec-compliant MCP servers send the POST endpoint as a bare
+        path (``/messages/?session_id=abc123``). Legacy stubs used to
+        send a JSON object (``{"uri": "/messages/", "sessionId": ...}``).
+        Support both; never enqueue the endpoint frame as a message —
+        it's metadata, not a JSON-RPC payload.
+        """
+        from urllib.parse import parse_qs, urljoin, urlparse
+
+        endpoint_path: str | None = None
+        session_id: str | None = None
+
+        try:
+            parsed = json.loads(event_data)
+            if isinstance(parsed, dict) and "uri" in parsed:
+                endpoint_path = parsed["uri"]
+                session_id = parsed.get("sessionId")
+        except json.JSONDecodeError:
+            endpoint_path = event_data.strip()
+
+        if not endpoint_path:
+            return
+
+        self._config.post_endpoint = urljoin(self._config.url, endpoint_path)
+        if session_id is None:
+            qs = parse_qs(urlparse(endpoint_path).query)
+            session_id = qs.get("session_id", [None])[0]
+        if session_id:
+            self._session_id = session_id
 
     async def send(self, message: dict[str, Any]) -> None:
         """Send a JSON-RPC message via HTTP POST.
