@@ -209,3 +209,210 @@ async def make_move(
             user=user,
             service=service,
         )
+
+
+# ---------------------------------------------------------------------------
+# Plan 2a: five additional MCP tool functions (unit-testable, no decorator)
+# ---------------------------------------------------------------------------
+
+
+async def leave_tournament(
+    ctx: Any,
+    service: Any,
+    user: Any,
+    tournament_id: int,
+) -> dict[str, Any]:
+    """MCP tool: leave a tournament.
+
+    Idempotent at the DB level — a retry after a successful-but-unacknowledged
+    first call will return NotFoundError; SDK callers MUST treat that as
+    success.
+    """
+    await service.leave(tournament_id=tournament_id, user=user)
+    return {"left": True, "tournament_id": tournament_id}
+
+
+async def get_history(
+    ctx: Any,
+    service: Any,
+    user: Any,
+    tournament_id: int,
+    last_n: int | None = None,
+) -> dict[str, Any]:
+    """MCP tool: retrieve round history for a tournament."""
+    rounds = await service.get_history(
+        tournament_id=tournament_id, user=user, last_n=last_n
+    )
+    return {
+        "tournament_id": tournament_id,
+        "rounds": [
+            {
+                "round_number": r.round_number,
+                "status": getattr(r, "status", None),
+            }
+            for r in rounds
+        ],
+    }
+
+
+async def list_tournaments(
+    ctx: Any,
+    service: Any,
+    user: Any,
+    status: str | None = None,
+) -> dict[str, Any]:
+    """MCP tool: list tournaments, optionally filtered by status."""
+    from atp.dashboard.tournament.models import TournamentStatus
+
+    status_filter = TournamentStatus(status) if status else None
+    tournaments = await service.list_tournaments(user=user, status=status_filter)
+    return {
+        "tournaments": [
+            {
+                "id": t.id,
+                "name": getattr(t, "name", ""),
+                "status": getattr(t, "status", None),
+                "has_join_token": bool(getattr(t, "join_token", None)),
+            }
+            for t in tournaments
+        ]
+    }
+
+
+async def get_tournament(
+    ctx: Any,
+    service: Any,
+    user: Any,
+    tournament_id: int,
+) -> dict[str, Any]:
+    """MCP tool: get details for a single tournament."""
+    t = await service.get_tournament(tournament_id=tournament_id, user=user)
+    return {
+        "tournament": {
+            "id": t.id,
+            "name": getattr(t, "name", ""),
+            "status": getattr(t, "status", None),
+            "has_join_token": bool(getattr(t, "join_token", None)),
+        }
+    }
+
+
+async def cancel_tournament(
+    ctx: Any,
+    service: Any,
+    user: Any,
+    tournament_id: int,
+    reason_detail: str | None = None,
+) -> dict[str, Any]:
+    """MCP tool: cancel a tournament (admin or owner only)."""
+    await service.cancel_tournament(
+        user=user,
+        tournament_id=tournament_id,
+        reason_detail=reason_detail,
+    )
+    return {"cancelled": True, "tournament_id": tournament_id}
+
+
+# ---------------------------------------------------------------------------
+# FastMCP-registered wrappers for the Plan 2a tools
+# ---------------------------------------------------------------------------
+
+
+@mcp_server.tool()
+async def mcp_leave_tournament(
+    ctx: Context,
+    tournament_id: int,
+) -> dict:
+    """Leave a tournament. Idempotent."""
+    from atp.dashboard.mcp.notifications import (
+        resolve_user_from_ctx,
+        with_service,
+    )
+
+    user = await resolve_user_from_ctx(ctx)
+    async with with_service(ctx, tournament_event_bus) as service:
+        return await leave_tournament(
+            ctx=ctx, service=service, user=user, tournament_id=tournament_id
+        )
+
+
+@mcp_server.tool()
+async def mcp_get_history(
+    ctx: Context,
+    tournament_id: int,
+    last_n: int | None = None,
+) -> dict:
+    """Return round history for a tournament."""
+    from atp.dashboard.mcp.notifications import (
+        resolve_user_from_ctx,
+        with_service,
+    )
+
+    user = await resolve_user_from_ctx(ctx)
+    async with with_service(ctx, tournament_event_bus) as service:
+        return await get_history(
+            ctx=ctx,
+            service=service,
+            user=user,
+            tournament_id=tournament_id,
+            last_n=last_n,
+        )
+
+
+@mcp_server.tool()
+async def mcp_list_tournaments(
+    ctx: Context,
+    status: str | None = None,
+) -> dict:
+    """List tournaments, optionally filtered by status string."""
+    from atp.dashboard.mcp.notifications import (
+        resolve_user_from_ctx,
+        with_service,
+    )
+
+    user = await resolve_user_from_ctx(ctx)
+    async with with_service(ctx, tournament_event_bus) as service:
+        return await list_tournaments(
+            ctx=ctx, service=service, user=user, status=status
+        )
+
+
+@mcp_server.tool()
+async def mcp_get_tournament(
+    ctx: Context,
+    tournament_id: int,
+) -> dict:
+    """Get details for a single tournament."""
+    from atp.dashboard.mcp.notifications import (
+        resolve_user_from_ctx,
+        with_service,
+    )
+
+    user = await resolve_user_from_ctx(ctx)
+    async with with_service(ctx, tournament_event_bus) as service:
+        return await get_tournament(
+            ctx=ctx, service=service, user=user, tournament_id=tournament_id
+        )
+
+
+@mcp_server.tool()
+async def mcp_cancel_tournament(
+    ctx: Context,
+    tournament_id: int,
+    reason_detail: str | None = None,
+) -> dict:
+    """Cancel a tournament (admin or owner only)."""
+    from atp.dashboard.mcp.notifications import (
+        resolve_user_from_ctx,
+        with_service,
+    )
+
+    user = await resolve_user_from_ctx(ctx)
+    async with with_service(ctx, tournament_event_bus) as service:
+        return await cancel_tournament(
+            ctx=ctx,
+            service=service,
+            user=user,
+            tournament_id=tournament_id,
+            reason_detail=reason_detail,
+        )
