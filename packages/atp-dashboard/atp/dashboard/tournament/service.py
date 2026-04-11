@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from game_envs.games.prisoners_dilemma import PrisonersDilemma
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -26,7 +26,11 @@ from atp.dashboard.tournament.errors import (
     NotFoundError,
     ValidationError,
 )
-from atp.dashboard.tournament.events import TournamentEvent, TournamentEventBus
+from atp.dashboard.tournament.events import (
+    TournamentCancelEvent,
+    TournamentEvent,
+    TournamentEventBus,
+)
 from atp.dashboard.tournament.models import (
     Action,
     Participant,
@@ -35,6 +39,7 @@ from atp.dashboard.tournament.models import (
     Tournament,
     TournamentStatus,
 )
+from atp.dashboard.tournament.reasons import CancelReason
 from atp.dashboard.tournament.state import RoundState
 
 logger = logging.getLogger("atp.dashboard.tournament.service")
@@ -524,3 +529,89 @@ class TournamentService:
             raise NotFoundError(f"tournament {tournament_id}")
 
         return tournament
+
+    async def _cancel_impl(
+        self,
+        tournament_id: int,
+        reason: CancelReason,
+        cancelled_by: int | None,
+        reason_detail: str | None,
+    ) -> TournamentCancelEvent | None:
+        """Shared cancellation logic. Single source of truth.
+
+        Mutates DB state but does NOT commit — caller owns the transaction.
+        Does NOT publish to bus — returns the event for the caller to
+        publish after its commit succeeds.
+
+        Returns None if the tournament was already in a terminal state
+        (idempotent no-op); returns a TournamentCancelEvent if the call
+        caused a state transition.
+        """
+        # Step 1: Lock + load tournament
+        tournament = await self._session.get(
+            Tournament, tournament_id, with_for_update=True
+        )
+        if tournament is None:
+            raise NotFoundError(f"tournament {tournament_id}")
+
+        # Step 2: Idempotent guard
+        if tournament.status in (
+            TournamentStatus.CANCELLED,
+            TournamentStatus.COMPLETED,
+        ):
+            return None
+
+        # Step 3: Snapshot final_rounds_played BEFORE step 6 bulk UPDATE.
+        # Otherwise the count would include in-flight rounds that step 6
+        # transitions to CANCELLED.
+        final_rounds_played = (
+            await self._session.scalar(
+                select(func.count())
+                .select_from(Round)
+                .where(Round.tournament_id == tournament_id)
+                .where(Round.status == RoundStatus.COMPLETED)
+            )
+            or 0
+        )
+
+        # Step 4: Write tournament audit fields
+        now = datetime.utcnow()
+        tournament.status = TournamentStatus.CANCELLED
+        tournament.cancelled_at = now
+        tournament.cancelled_by = cancelled_by
+        tournament.cancelled_reason = reason
+        tournament.cancelled_reason_detail = reason_detail
+
+        # Step 5: Release all unreleased participants (bulk UPDATE)
+        await self._session.execute(
+            update(Participant)
+            .where(Participant.tournament_id == tournament_id)
+            .where(Participant.released_at.is_(None))
+            .values(released_at=now)
+        )
+
+        # Step 6: Cancel all in-flight rounds (bulk UPDATE)
+        await self._session.execute(
+            update(Round)
+            .where(Round.tournament_id == tournament_id)
+            .where(
+                Round.status.in_(
+                    [
+                        RoundStatus.WAITING_FOR_ACTIONS,
+                        RoundStatus.IN_PROGRESS,
+                    ]
+                )
+            )
+            .values(status=RoundStatus.CANCELLED)
+        )
+
+        # Step 7: Build event (caller publishes post-commit)
+        return TournamentCancelEvent(
+            tournament_id=tournament_id,
+            cancelled_at=now,
+            cancelled_by=cancelled_by,
+            cancelled_reason=reason,
+            cancelled_reason_detail=reason_detail,
+            final_rounds_played=final_rounds_played,
+            final_status=TournamentStatus.CANCELLED,
+        )
