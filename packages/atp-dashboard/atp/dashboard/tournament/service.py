@@ -604,6 +604,61 @@ class TournamentService:
             )
         )
 
+    async def leave(self, tournament_id: int, user: User) -> None:
+        """Mark the caller's Participant as released.
+
+        If the caller is the last active participant of an ACTIVE
+        tournament, cascade to _cancel_impl with reason=ABANDONED inside
+        the same transaction. Caller owns the transaction boundary.
+        """
+        participant = await self._session.scalar(
+            select(Participant)
+            .where(Participant.tournament_id == tournament_id)
+            .where(Participant.user_id == user.id)
+            .where(Participant.released_at.is_(None))
+        )
+        if participant is None:
+            raise NotFoundError(
+                f"user {user.id} is not active in tournament {tournament_id}"
+            )
+
+        participant.released_at = datetime.now()
+        await self._session.flush()
+
+        remaining = await self._session.scalar(
+            select(func.count())
+            .select_from(Participant)
+            .where(Participant.tournament_id == tournament_id)
+            .where(Participant.released_at.is_(None))
+        )
+        tournament = await self._session.get(Tournament, tournament_id)
+        if tournament is None:
+            raise NotFoundError(f"tournament {tournament_id}")
+
+        if remaining == 0 and tournament.status == TournamentStatus.ACTIVE:
+            logger.info(
+                "tournament.leave.abandoned_cascade",
+                extra={
+                    "tournament_id": tournament_id,
+                    "leaving_user_id": user.id,
+                },
+            )
+            cancel_event = await self._cancel_impl(
+                tournament_id,
+                reason=CancelReason.ABANDONED,
+                cancelled_by=None,
+                reason_detail=None,
+            )
+            if cancel_event is not None:
+                try:
+                    await self._bus.publish(cancel_event)
+                except Exception:
+                    logger.warning(
+                        "tournament.cancel.publish_failed",
+                        extra={"tournament_id": tournament_id},
+                        exc_info=True,
+                    )
+
     async def cancel_tournament(
         self,
         user: User,

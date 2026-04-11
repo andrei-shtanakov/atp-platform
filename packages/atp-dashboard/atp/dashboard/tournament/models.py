@@ -116,7 +116,12 @@ class Tournament(Base):
         nullable=True,
     )
     cancelled_reason: Mapped[CancelReason | None] = mapped_column(
-        sa.Enum(CancelReason, native_enum=False, length=32),
+        sa.Enum(
+            CancelReason,
+            native_enum=False,
+            length=32,
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=True,
     )
     cancelled_reason_detail: Mapped[str | None] = mapped_column(
