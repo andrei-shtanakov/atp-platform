@@ -125,9 +125,11 @@ class TournamentService:
             pending_deadline=pending_deadline,
             join_token=join_token_plaintext,
         )
-        async with self._session.begin():
-            self._session.add(tournament)
-            await self._session.flush()
+        # Caller owns the transaction boundary (ambient autobegin from FastAPI
+        # DB dependency). Do NOT wrap in begin() here — that would nest
+        # transactions and conflict with the ambient session.
+        self._session.add(tournament)
+        await self._session.flush()
 
         return tournament, join_token_plaintext
 
@@ -699,13 +701,14 @@ class TournamentService:
         """
         await self._load_for_auth(tournament_id, user)
 
-        async with self._session.begin():
-            event = await self._cancel_impl(
-                tournament_id,
-                reason=CancelReason.ADMIN_ACTION,
-                cancelled_by=user.id,
-                reason_detail=reason_detail,
-            )
+        # Caller owns the transaction boundary (ambient autobegin from FastAPI
+        # DB dependency or MCP session). Do NOT wrap in begin() here.
+        event = await self._cancel_impl(
+            tournament_id,
+            reason=CancelReason.ADMIN_ACTION,
+            cancelled_by=user.id,
+            reason_detail=reason_detail,
+        )
 
         if event is not None:
             try:
@@ -729,13 +732,14 @@ class TournamentService:
         Code-review invariant: no handler file imports this method.
         Enforced by tests/unit/dashboard/tournament/test_static_guards.py.
         """
-        async with self._session.begin():
-            event = await self._cancel_impl(
-                tournament_id,
-                reason=reason,
-                cancelled_by=None,
-                reason_detail=reason_detail,
-            )
+        # Caller owns the transaction boundary (ambient autobegin from the
+        # session_factory() context manager in the deadline worker or test).
+        event = await self._cancel_impl(
+            tournament_id,
+            reason=reason,
+            cancelled_by=None,
+            reason_detail=reason_detail,
+        )
 
         if event is not None:
             try:
