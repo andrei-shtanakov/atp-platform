@@ -491,3 +491,36 @@ class TournamentService:
                 timestamp=datetime.now(),
             )
         )
+
+    async def _load_for_auth(
+        self,
+        tournament_id: int,
+        user: User,
+    ) -> Tournament:
+        """Load tournament and verify that `user` is authorized to act on it.
+
+        Authorization rule:
+        - Admins (user.is_admin): always allowed.
+        - Owners (tournament.created_by == user.id): allowed.
+        - Legacy with no owner (tournament.created_by IS NULL): admin only.
+        - Everyone else: denied.
+
+        All denial cases raise NotFoundError — same exception as
+        "tournament doesn't exist". Preserves the enumeration-guard
+        invariant: unauthorized callers cannot distinguish between
+        "doesn't exist" and "not allowed".
+        """
+        tournament = await self._session.get(Tournament, tournament_id)
+        if tournament is None:
+            raise NotFoundError(f"tournament {tournament_id}")
+
+        if user.is_admin:
+            return tournament
+
+        if tournament.created_by is None:
+            raise NotFoundError(f"tournament {tournament_id}")
+
+        if tournament.created_by != user.id:
+            raise NotFoundError(f"tournament {tournament_id}")
+
+        return tournament
