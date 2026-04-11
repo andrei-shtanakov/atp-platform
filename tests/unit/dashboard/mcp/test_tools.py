@@ -18,7 +18,7 @@ async def test_join_tournament_calls_service_and_returns_participant_info() -> N
     fake_user = MagicMock(id=42, is_admin=False)
     fake_participant = MagicMock(id=99)
     fake_service = MagicMock()
-    fake_service.join = AsyncMock(return_value=fake_participant)
+    fake_service.join = AsyncMock(return_value=(fake_participant, True))
 
     result = await tools._join_tournament_impl(
         tournament_id=7,
@@ -35,6 +35,7 @@ async def test_join_tournament_calls_service_and_returns_participant_info() -> N
         "participant_id": 99,
         "agent_name": "alice-tft",
         "status": "joined",
+        "is_new": True,
     }
 
 

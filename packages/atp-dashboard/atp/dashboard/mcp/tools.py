@@ -35,7 +35,7 @@ async def _join_tournament_impl(
     user: Any,
     service: TournamentService,
 ) -> dict[str, Any]:
-    participant, _is_new = await service.join(
+    participant, is_new = await service.join(
         tournament_id=tournament_id, user=user, agent_name=agent_name
     )
     return {
@@ -43,6 +43,57 @@ async def _join_tournament_impl(
         "participant_id": participant.id,
         "agent_name": agent_name,
         "status": "joined",
+        "is_new": is_new,
+    }
+
+
+async def join_tournament(
+    ctx: Any,
+    service: TournamentService,
+    user: Any,
+    tournament_id: int,
+    agent_name: str,
+    join_token: str | None = None,
+) -> dict[str, Any]:
+    """MCP tool handler: idempotent join with session_sync on every call.
+
+    Called both from the FastMCP tool decorator shim and from integration
+    tests. Extracting the body from the decorator makes it testable
+    without a live MCP session.
+
+    session_sync is emitted on BOTH new-join (is_new=True) AND reconnect
+    (is_new=False) so that the MCP client can catch up on state it missed
+    while disconnected.
+    """
+    participant, is_new = await service.join(
+        tournament_id=tournament_id,
+        user=user,
+        agent_name=agent_name,
+        join_token=join_token,
+    )
+    await service._session.commit()
+
+    try:
+        state = await service.get_state_for(tournament_id=tournament_id, user=user)
+        state_payload: dict[str, Any] = (
+            state.to_dict() if hasattr(state, "to_dict") else state  # type: ignore[assignment]
+        )
+    except Exception:
+        # Tournament may be PENDING with fewer than num_players joined;
+        # state is not yet available. Return a minimal pending snapshot.
+        state_payload = {"status": "pending", "tournament_id": tournament_id}
+
+    session_sync_payload = {
+        "event": "session_sync",
+        "tournament_id": tournament_id,
+        "state": state_payload,
+    }
+    await ctx.session.send_notification(session_sync_payload)
+
+    return {
+        "joined": True,
+        "participant_id": participant.id,
+        "is_new": is_new,
     }
 
 
@@ -72,18 +123,22 @@ async def _make_move_impl(
 
 
 @mcp_server.tool()
-async def join_tournament(
+async def _join_tournament_mcp(
     ctx: Context,
     tournament_id: int,
     agent_name: str,
+    join_token: str | None = None,
 ) -> dict:
-    """Join an open tournament.
+    """FastMCP shim: join an open tournament.
 
     Starts an event subscription for this MCP session BEFORE calling
     the service — otherwise the ``round_started`` event that fires
     when our join fills the last slot races us and is published to a
     bus channel that nobody is listening on yet. With the subscriber
     attached first, that first event is guaranteed to reach us.
+
+    Delegates to the testable ``join_tournament`` function after
+    setting up the event subscription.
     """
     from atp.dashboard.mcp.notifications import (
         forward_events_to_session,
@@ -96,11 +151,13 @@ async def join_tournament(
     await forward_events_to_session(ctx, tournament_id, user)
     try:
         async with with_service(ctx, tournament_event_bus) as service:
-            result = await _join_tournament_impl(
+            result = await join_tournament(
+                ctx=ctx,
+                service=service,
+                user=user,
                 tournament_id=tournament_id,
                 agent_name=agent_name,
-                user=user,
-                service=service,
+                join_token=join_token,
             )
     except Exception:
         # Join failed — cancel the orphan forwarder task so we don't
