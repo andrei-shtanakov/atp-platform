@@ -86,3 +86,66 @@ async def test_unsubscribe_on_context_exit_removes_queue() -> None:
     async with bus.subscribe(tournament_id=1):
         pass
     assert 1 not in bus._subscribers
+
+
+@pytest.mark.anyio
+async def test_publish_fans_out_to_multiple_subscribers() -> None:
+    from atp.dashboard.tournament.events import TournamentEvent, TournamentEventBus
+
+    bus = TournamentEventBus()
+    event = TournamentEvent(
+        event_type="round_started",
+        tournament_id=1,
+        round_number=1,
+        data={},
+        timestamp=datetime.now(tz=UTC),
+    )
+
+    async with bus.subscribe(tournament_id=1) as q1:
+        async with bus.subscribe(tournament_id=1) as q2:
+            await bus.publish(event)
+            assert (await q1.get()) is event
+            assert (await q2.get()) is event
+
+
+@pytest.mark.anyio
+async def test_publish_drops_when_subscriber_queue_full(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    import logging
+
+    from atp.dashboard.tournament.events import (
+        _QUEUE_MAXSIZE,
+        TournamentEvent,
+        TournamentEventBus,
+    )
+
+    bus = TournamentEventBus()
+
+    async with bus.subscribe(tournament_id=1) as queue:
+        for i in range(_QUEUE_MAXSIZE):
+            await bus.publish(
+                TournamentEvent(
+                    event_type="round_started",
+                    tournament_id=1,
+                    round_number=i,
+                    data={},
+                    timestamp=datetime.now(tz=UTC),
+                )
+            )
+
+        with caplog.at_level(logging.WARNING, logger="atp.dashboard.tournament.events"):
+            await bus.publish(
+                TournamentEvent(
+                    event_type="round_started",
+                    tournament_id=1,
+                    round_number=999,
+                    data={},
+                    timestamp=datetime.now(tz=UTC),
+                )
+            )
+
+        assert queue.qsize() == _QUEUE_MAXSIZE
+        assert any("queue full" in rec.message for rec in caplog.records), (
+            "expected queue-full warning to be logged"
+        )
