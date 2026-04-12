@@ -1,0 +1,39 @@
+{% extends "ui/base_ui.html" %}
+
+{% block title %}Tournaments - ATP Platform{% endblock %}
+
+{% block content %}
+<h2>Tournaments</h2>
+<p>{{ total }} tournament{{ "s" if total != 1 else "" }}</p>
+
+<table>
+    <thead>
+        <tr>
+            <th>Tournament</th>
+            <th>Players</th>
+            <th>Rounds</th>
+            <th>Scores</th>
+            <th>Status</th>
+            <th>Created by</th>
+            <th>Created</th>
+        </tr>
+    </thead>
+    <tbody id="tournament-table-body"
+           hx-get="/ui/tournaments?partial=1&page={{ page }}"
+           hx-trigger="none">
+        {% include "ui/partials/tournament_list_table.html" %}
+    </tbody>
+</table>
+
+{% if total_pages > 1 %}
+<nav style="margin-top:1rem; display:flex; gap:0.5rem; justify-content:center;">
+    {% for p in range(1, total_pages + 1) %}
+    <a href="/ui/tournaments?page={{ p }}"
+       hx-get="/ui/tournaments?partial=1&page={{ p }}"
+       hx-target="#tournament-table-body"
+       hx-swap="innerHTML"
+       {% if p == page %}style="font-weight:bold"{% endif %}>{{ p }}</a>
+    {% endfor %}
+</nav>
+{% endif %}
+{% endblock %}

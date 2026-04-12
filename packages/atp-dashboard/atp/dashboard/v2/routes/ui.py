@@ -12,6 +12,7 @@ from datetime import datetime
 from fastapi import APIRouter, Request, UploadFile
 from fastapi.responses import HTMLResponse
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 from atp.dashboard.benchmark.models import Benchmark, Run, RunStatus, TaskResult
 from atp.dashboard.models import SuiteDefinition
@@ -235,6 +236,65 @@ async def ui_games(request: Request, session: DBSession) -> HTMLResponse:
             "active_page": "games",
             "games": games,
             "tournaments": tournaments,
+        },
+    )
+
+
+@router.get("/tournaments", response_class=HTMLResponse)
+@limiter.limit("120/minute")
+async def ui_tournaments(
+    request: Request,
+    session: DBSession,
+    page: int = 1,
+) -> HTMLResponse:
+    """Render tournament list page."""
+    from atp.dashboard.models import User
+    from atp.dashboard.tournament.models import Tournament
+
+    per_page = 50
+    offset = (page - 1) * per_page
+
+    result = await session.execute(select(func.count(Tournament.id)))
+    total = result.scalar() or 0
+
+    result = await session.execute(
+        select(Tournament)
+        .options(
+            selectinload(Tournament.participants),
+            selectinload(Tournament.rounds),
+        )
+        .order_by(Tournament.id.desc())
+        .limit(per_page)
+        .offset(offset)
+    )
+    tournaments = result.scalars().all()
+
+    # Batch-load creator usernames
+    creator_ids = {t.created_by for t in tournaments if t.created_by}
+    creators: dict[int, str] = {}
+    if creator_ids:
+        user_result = await session.execute(
+            select(User).where(User.id.in_(creator_ids))
+        )
+        creators = {u.id: u.username for u in user_result.scalars()}
+
+    total_pages = (total + per_page - 1) // per_page
+
+    template_name = "ui/tournaments.html"
+    partial = request.query_params.get("partial")
+    if partial:
+        template_name = "ui/partials/tournament_list_table.html"
+
+    return _templates(request).TemplateResponse(
+        request=request,
+        name=template_name,
+        context={
+            "active_page": "tournaments",
+            "tournaments": tournaments,
+            "creators": creators,
+            "page": page,
+            "total_pages": total_pages,
+            "total": total,
         },
     )
 

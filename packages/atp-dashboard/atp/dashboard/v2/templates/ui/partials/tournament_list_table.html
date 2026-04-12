@@ -1,0 +1,68 @@
+{% for t in tournaments %}
+{% set name = (t.config or {}).get("name", "Tournament #" ~ t.id) %}
+{% set active_players = t.participants | selectattr("released_at", "none") | list | length %}
+{% set total_players = t.participants | length %}
+{% set completed_rounds = t.rounds | selectattr("status", "equalto", "completed") | list | length %}
+{% set scores = t.participants | sort(attribute="id") %}
+<tr>
+    <td>
+        <a href="/ui/tournaments/{{ t.id }}" class="tournament-name">{{ name }}</a>
+        <div class="game-type">{{ t.game_type }}</div>
+    </td>
+    <td>
+        {% if t.status in ("pending", "active") %}
+        {{ active_players }} / {{ t.num_players }}
+        {% else %}
+        {{ total_players }} / {{ t.num_players }}
+        {% endif %}
+    </td>
+    <td>
+        {% if completed_rounds > 0 %}
+        {{ completed_rounds }} / {{ t.total_rounds }}
+        {% else %}
+        — / {{ t.total_rounds }}
+        {% endif %}
+    </td>
+    <td class="score-pair">
+        {% if scores | length == 2 %}
+            {% set s0 = scores[0].total_score %}
+            {% set s1 = scores[1].total_score %}
+            {% if s0 is not none or s1 is not none %}
+                {{ s0 if s0 is not none else "—" }} : {{ s1 if s1 is not none else "—" }}
+            {% else %}
+            —
+            {% endif %}
+        {% elif scores | length > 2 %}
+            {% set best = scores | map(attribute="total_score") | reject("none") | sort(reverse=true) | first %}
+            {% if best is defined %}{{ best }} (best){% else %}—{% endif %}
+        {% else %}
+        —
+        {% endif %}
+    </td>
+    <td>
+        {% if t.status == "completed" %}
+        <span class="status-badge" style="background:#28a745">completed</span>
+        {% elif t.status == "active" %}
+        <span class="status-badge" style="background:#007bff">active</span>
+        {% elif t.status == "pending" %}
+        <span class="status-badge" style="background:#ffc107;color:#333">pending</span>
+        {% elif t.status == "cancelled" %}
+        <span class="status-badge" style="background:#dc3545">cancelled</span>
+        {% if t.cancelled_reason %}
+        <div class="cancel-reason">
+            {% if t.cancelled_reason.value == "pending_timeout" %}Expired before full roster
+            {% elif t.cancelled_reason.value == "admin_action" %}Cancelled by admin
+            {% elif t.cancelled_reason.value == "abandoned" %}All participants left
+            {% endif %}
+        </div>
+        {% endif %}
+        {% else %}
+        <span class="status-badge" style="background:#6c757d">{{ t.status }}</span>
+        {% endif %}
+    </td>
+    <td style="font-size:0.85rem;color:#666">{{ creators.get(t.created_by, "—") }}</td>
+    <td style="font-size:0.85rem;color:#666">
+        {{ t.created_at.strftime("%b %d, %H:%M") if t.created_at else "—" }}
+    </td>
+</tr>
+{% endfor %}
