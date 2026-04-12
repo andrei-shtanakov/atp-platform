@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from types import SimpleNamespace
 
 from fastapi import APIRouter, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -973,40 +974,33 @@ async def ui_agents(request: Request, session: DBSession) -> HTMLResponse:
     if not user:
         return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
 
+    # Single query: agents + active token count via LEFT JOIN + GROUP BY
+    token_count_sub = (
+        select(
+            APIToken.agent_id,
+            func.count(APIToken.id).label("token_count"),
+        )
+        .where(APIToken.revoked_at.is_(None))
+        .group_by(APIToken.agent_id)
+        .subquery()
+    )
     result = await session.execute(
-        select(Agent)
+        select(Agent, func.coalesce(token_count_sub.c.token_count, 0))
+        .outerjoin(token_count_sub, Agent.id == token_count_sub.c.agent_id)
         .where(Agent.owner_id == user.id, Agent.deleted_at.is_(None))
         .order_by(Agent.created_at.desc())
     )
-    agents_raw = result.scalars().all()
-
-    agents = []
-    for a in agents_raw:
-        count_result = await session.execute(
-            select(func.count(APIToken.id)).where(
-                APIToken.agent_id == a.id,
-                APIToken.revoked_at.is_(None),
-            )
+    agents = [
+        SimpleNamespace(
+            id=a.id,
+            name=a.name,
+            version=a.version,
+            agent_type=a.agent_type,
+            created_at=a.created_at,
+            token_count=tc,
         )
-        agents.append(
-            type(
-                "AgentRow",
-                (),
-                {
-                    **{
-                        k: getattr(a, k)
-                        for k in [
-                            "id",
-                            "name",
-                            "version",
-                            "agent_type",
-                            "created_at",
-                        ]
-                    },
-                    "token_count": count_result.scalar_one(),
-                },
-            )
-        )
+        for a, tc in result.all()
+    ]
 
     return _templates(request).TemplateResponse(
         request=request,
@@ -1057,15 +1051,11 @@ async def ui_agent_detail(
         .order_by(Participant.joined_at.desc())
     )
     tournament_history = [
-        type(
-            "ParticipantRow",
-            (),
-            {
-                "tournament_id": p.tournament_id,
-                "tournament_status": t_status,
-                "total_score": p.total_score,
-                "joined_at": p.joined_at,
-            },
+        SimpleNamespace(
+            tournament_id=p.tournament_id,
+            tournament_status=t_status,
+            total_score=p.total_score,
+            joined_at=p.joined_at,
         )
         for p, t_status in history_result.all()
     ]
@@ -1092,41 +1082,27 @@ async def ui_tokens(request: Request, session: DBSession) -> HTMLResponse:
     if not user:
         return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
 
+    # Single query: tokens + agent name via LEFT JOIN
     token_result = await session.execute(
-        select(APIToken)
+        select(APIToken, Agent.name.label("agent_name"))
+        .outerjoin(Agent, APIToken.agent_id == Agent.id)
         .where(APIToken.user_id == user.id)
         .order_by(APIToken.created_at.desc())
     )
-    tokens_raw = token_result.scalars().all()
-
-    tokens = []
-    for t in tokens_raw:
-        agent_name = None
-        if t.agent_id:
-            agent = await session.get(Agent, t.agent_id)
-            agent_name = agent.name if agent else f"#{t.agent_id}"
-        tokens.append(
-            type(
-                "TokenRow",
-                (),
-                {
-                    **{
-                        k: getattr(t, k)
-                        for k in [
-                            "id",
-                            "name",
-                            "token_prefix",
-                            "agent_id",
-                            "expires_at",
-                            "last_used_at",
-                            "revoked_at",
-                            "created_at",
-                        ]
-                    },
-                    "agent_name": agent_name,
-                },
-            )
+    tokens = [
+        SimpleNamespace(
+            id=t.id,
+            name=t.name,
+            token_prefix=t.token_prefix,
+            agent_id=t.agent_id,
+            expires_at=t.expires_at,
+            last_used_at=t.last_used_at,
+            revoked_at=t.revoked_at,
+            created_at=t.created_at,
+            agent_name=agent_name,
         )
+        for t, agent_name in token_result.all()
+    ]
 
     return _templates(request).TemplateResponse(
         request=request,
@@ -1148,36 +1124,32 @@ async def ui_invites(request: Request, session: DBSession) -> HTMLResponse:
     if not user or not user.is_admin:
         return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
 
-    result = await session.execute(select(Invite).order_by(Invite.created_at.desc()))
-    invites_raw = result.scalars().all()
+    # Single query: invites + creator/used_by names via aliased JOINs
+    from sqlalchemy.orm import aliased
 
-    invites = []
-    for inv in invites_raw:
-        creator = await session.get(User, inv.created_by_id)
-        used_by = await session.get(User, inv.used_by_id) if inv.used_by_id else None
-        invites.append(
-            type(
-                "InviteRow",
-                (),
-                {
-                    **{
-                        k: getattr(inv, k)
-                        for k in [
-                            "id",
-                            "code",
-                            "created_by_id",
-                            "used_by_id",
-                            "use_count",
-                            "max_uses",
-                            "expires_at",
-                            "created_at",
-                        ]
-                    },
-                    "created_by_name": creator.username if creator else None,
-                    "used_by_name": used_by.username if used_by else None,
-                },
-            )
+    Creator = aliased(User)
+    UsedBy = aliased(User)
+    result = await session.execute(
+        select(Invite, Creator.username, UsedBy.username)
+        .outerjoin(Creator, Invite.created_by_id == Creator.id)
+        .outerjoin(UsedBy, Invite.used_by_id == UsedBy.id)
+        .order_by(Invite.created_at.desc())
+    )
+    invites = [
+        SimpleNamespace(
+            id=inv.id,
+            code=inv.code,
+            created_by_id=inv.created_by_id,
+            used_by_id=inv.used_by_id,
+            use_count=inv.use_count,
+            max_uses=inv.max_uses,
+            expires_at=inv.expires_at,
+            created_at=inv.created_at,
+            created_by_name=creator_name,
+            used_by_name=used_by_name,
         )
+        for inv, creator_name, used_by_name in result.all()
+    ]
 
     return _templates(request).TemplateResponse(
         request=request,
