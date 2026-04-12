@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 import jwt
@@ -208,13 +208,18 @@ class JWTUserStateMiddleware(BaseHTTPMiddleware):
                 request.state.agent_id = api_token.agent_id
                 request.state.token_type = "api"
 
-                # Debounced last_used_at update — WHERE clause prevents
-                # unnecessary writes when multiple requests arrive in quick
-                # succession.
+                # Debounced last_used_at: skip if updated within last 60s
                 now = datetime.now()
+                debounce = timedelta(seconds=60)
                 await session.execute(
                     update(APIToken)
-                    .where(APIToken.id == api_token.id)
+                    .where(
+                        APIToken.id == api_token.id,
+                        (
+                            APIToken.last_used_at.is_(None)
+                            | (APIToken.last_used_at < now - debounce)
+                        ),
+                    )
                     .values(last_used_at=now)
                 )
         except Exception:
