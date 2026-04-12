@@ -79,6 +79,9 @@ def upgrade() -> None:
             sa.Column("deleted_at", sa.DateTime(), nullable=True),
         )
         batch_op.create_index("idx_agent_owner", ["owner_id"])
+        # Drop old constraint before creating the new one —
+        # (tenant_id, name) would block multiple versions per agent.
+        batch_op.drop_constraint("uq_agent_tenant_name", type_="unique")
         batch_op.create_unique_constraint(
             "uq_agent_tenant_owner_name_version",
             ["tenant_id", "owner_id", "name", "version"],
@@ -96,6 +99,8 @@ def downgrade() -> None:
 
     with op.batch_alter_table("agents") as batch_op:
         batch_op.drop_constraint("uq_agent_tenant_owner_name_version", type_="unique")
+        # Restore old constraint that was replaced in upgrade
+        batch_op.create_unique_constraint("uq_agent_tenant_name", ["tenant_id", "name"])
         batch_op.drop_index("idx_agent_owner")
         batch_op.drop_column("deleted_at")
         batch_op.drop_column("version")
