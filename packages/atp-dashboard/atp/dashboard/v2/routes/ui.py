@@ -51,11 +51,17 @@ async def _get_ui_user(request: Request, session: DBSession) -> User | None:
 @limiter.limit("120/minute")
 async def ui_login(request: Request) -> HTMLResponse:
     """Render login page."""
+    from atp.dashboard.v2.config import get_config
+
+    config = get_config()
     expired = request.query_params.get("expired")
     return _templates(request).TemplateResponse(
         request=request,
         name="ui/login.html",
-        context={"expired": expired},
+        context={
+            "expired": expired,
+            "registration_mode": config.registration_mode,
+        },
     )
 
 
