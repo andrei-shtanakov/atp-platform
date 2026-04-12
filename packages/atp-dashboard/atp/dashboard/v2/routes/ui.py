@@ -248,16 +248,43 @@ async def ui_tournaments(
     page: int = 1,
 ) -> HTMLResponse:
     """Render tournament list page."""
+    from sqlalchemy import exists, or_
+
     from atp.dashboard.models import User
-    from atp.dashboard.tournament.models import Tournament
+    from atp.dashboard.tournament.models import Participant, Tournament
 
     per_page = 50
     offset = (page - 1) * per_page
 
-    result = await session.execute(select(func.count(Tournament.id)))
+    # Resolve current user for visibility filtering
+    user_id = getattr(request.state, "user_id", None)
+    user: User | None = None
+    if user_id:
+        user = await session.get(User, user_id)
+
+    def _visibility_filter(stmt):  # type: ignore[no-untyped-def]
+        """Apply same visibility rules as TournamentService.list_tournaments."""
+        if user and user.is_admin:
+            return stmt
+        if user:
+            return stmt.where(
+                or_(
+                    Tournament.join_token.is_(None),
+                    Tournament.created_by == user.id,
+                    exists().where(
+                        (Participant.tournament_id == Tournament.id)
+                        & (Participant.user_id == user.id)
+                    ),
+                )
+            )
+        # Anonymous: public tournaments only
+        return stmt.where(Tournament.join_token.is_(None))
+
+    count_stmt = _visibility_filter(select(func.count(Tournament.id)))
+    result = await session.execute(count_stmt)
     total = result.scalar() or 0
 
-    result = await session.execute(
+    list_stmt = _visibility_filter(
         select(Tournament)
         .options(
             selectinload(Tournament.participants),
@@ -267,6 +294,7 @@ async def ui_tournaments(
         .limit(per_page)
         .offset(offset)
     )
+    result = await session.execute(list_stmt)
     tournaments = result.scalars().all()
 
     # Batch-load creator usernames
@@ -323,16 +351,37 @@ async def ui_tournament_detail(
     )
     tournament = result.scalar_one_or_none()
 
+    # Resolve current user
+    user_id = getattr(request.state, "user_id", None)
+    user: User | None = None
+    is_admin = False
+    if user_id:
+        user = await session.get(User, user_id)
+        if user and user.is_admin:
+            is_admin = True
+
+    # Visibility check (same rules as TournamentService.get_tournament)
+    not_found_resp = _templates(request).TemplateResponse(
+        request=request,
+        name="ui/error.html",
+        context={
+            "error_title": "Not Found",
+            "error_message": f"Tournament #{tournament_id} not found.",
+        },
+        status_code=404,
+    )
+
     if tournament is None:
-        return _templates(request).TemplateResponse(
-            request=request,
-            name="ui/error.html",
-            context={
-                "error_title": "Not Found",
-                "error_message": f"Tournament #{tournament_id} not found.",
-            },
-            status_code=404,
-        )
+        return not_found_resp
+
+    if not is_admin and tournament.join_token is not None:
+        # Private tournament — check ownership or participation
+        is_owner = user and tournament.created_by == user.id
+        is_participant = False
+        if user:
+            is_participant = any(p.user_id == user.id for p in tournament.participants)
+        if not is_owner and not is_participant:
+            return not_found_resp
 
     # Creator username
     creator_name = "—"
@@ -340,14 +389,6 @@ async def ui_tournament_detail(
         creator = await session.get(User, tournament.created_by)
         if creator:
             creator_name = creator.username
-
-    # Admin check
-    is_admin = False
-    user_id = getattr(request.state, "user_id", None)
-    if user_id:
-        user = await session.get(User, user_id)
-        if user and user.is_admin:
-            is_admin = True
 
     # Cancelled-by username
     cancelled_by_name = None
