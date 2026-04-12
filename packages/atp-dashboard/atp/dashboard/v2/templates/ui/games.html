@@ -38,32 +38,6 @@
 
 <section>
     <h3>Tournaments</h3>
-    {% if tournaments %}
-    <p>{{ tournaments | length }} tournament{{ "s" if tournaments | length != 1 else "" }}</p>
-    <table>
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Game Type</th>
-                <th>Status</th>
-                <th>Starts At</th>
-                <th>Ends At</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for t in tournaments %}
-            <tr>
-                <td>{{ t.id }}</td>
-                <td>{{ t.game_type }}</td>
-                <td>{{ t.status }}</td>
-                <td>{{ t.starts_at.strftime("%Y-%m-%d %H:%M") if t.starts_at else "—" }}</td>
-                <td>{{ t.ends_at.strftime("%Y-%m-%d %H:%M") if t.ends_at else "—" }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    {% else %}
-    <p>No tournaments yet. Tournaments will appear here once created via the API.</p>
-    {% endif %}
+    <p><a href="/ui/tournaments">View Tournaments →</a></p>
 </section>
 {% endblock %}
