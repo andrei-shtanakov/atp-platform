@@ -1,0 +1,113 @@
+{% extends "ui/base_ui.html" %}
+
+{% set t = tournament %}
+{% set name = (t.config or {}).get("name", "Tournament #" ~ t.id) %}
+
+{% block title %}{{ name }} - ATP Platform{% endblock %}
+
+{% block content %}
+<h2>{{ name }}</h2>
+<div class="tournament-meta">
+    {% if t.status == "completed" %}
+    <span class="status-badge" style="background:#28a745">completed</span>
+    {% elif t.status == "active" %}
+    <span class="status-badge" style="background:#007bff">active</span>
+    {% elif t.status == "pending" %}
+    <span class="status-badge" style="background:#ffc107;color:#333">pending</span>
+    {% elif t.status == "cancelled" %}
+    <span class="status-badge" style="background:#dc3545">cancelled</span>
+    {% endif %}
+    <span>{{ t.game_type }}</span>
+    <span>by {{ creator_name }}</span>
+    <span>
+        {% if t.status == "completed" and t.starts_at and t.ends_at %}
+        {{ t.starts_at.strftime("%b %d, %H:%M") }} — {{ t.ends_at.strftime("%H:%M") }}
+        {% elif t.status == "active" and t.starts_at %}
+        Started {{ t.starts_at.strftime("%b %d, %H:%M") }}
+        {% else %}
+        Created {{ t.created_at.strftime("%b %d, %H:%M") if t.created_at else "—" }}
+        {% endif %}
+    </span>
+</div>
+
+{% if t.status == "cancelled" %}
+<div class="cancel-box">
+    <div class="reason">
+        {% if t.cancelled_reason and t.cancelled_reason.value == "pending_timeout" %}
+        Expired before full roster
+        {% elif t.cancelled_reason and t.cancelled_reason.value == "admin_action" %}
+        Cancelled by {{ cancelled_by_name or "admin" }}
+        {% elif t.cancelled_reason and t.cancelled_reason.value == "abandoned" %}
+        All participants left
+        {% else %}
+        Cancelled
+        {% endif %}
+    </div>
+    <div class="detail">
+        {% if t.cancelled_reason and t.cancelled_reason.value == "pending_timeout" %}
+        Tournament did not reach the required {{ t.num_players }} players.
+        Auto-cancelled at {{ t.cancelled_at.strftime("%b %d, %H:%M") if t.cancelled_at else "—" }}.
+        {% elif t.cancelled_reason and t.cancelled_reason.value == "admin_action" %}
+        {{ t.cancelled_reason_detail or "" }}
+        Cancelled at {{ t.cancelled_at.strftime("%b %d, %H:%M") if t.cancelled_at else "—" }}.
+        {% elif t.cancelled_reason and t.cancelled_reason.value == "abandoned" %}
+        {% set last_release = sorted_participants | map(attribute="released_at") | reject("none") | sort(reverse=true) | first %}
+        Last departure at {{ last_release.strftime("%b %d, %H:%M") if last_release else "—" }}.
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<div id="live-content"
+     {% if t.status == "active" %}
+     hx-get="/ui/tournaments/{{ t.id }}?partial=live"
+     hx-trigger="every 10s"
+     hx-swap="innerHTML"
+     {% endif %}>
+    {% include "ui/partials/tournament_live.html" %}
+</div>
+
+{% if is_admin and timeline %}
+<hr style="margin: 2rem 0;">
+<h3>Event Timeline <span class="admin-badge">admin only</span></h3>
+<div class="timeline" style="padding: 1rem; background: white; border: 1px solid #e0e0e0; border-radius: 0.5rem;">
+    {% if timeline | length <= 10 %}
+        {% for event_name, event_time, event_detail in timeline %}
+        <div class="timeline-item">
+            <span class="event-name">{{ event_name }}</span>
+            <span class="event-time">{{ event_time.strftime("%H:%M:%S") }}</span>
+            {% if event_detail %}
+            <div class="event-detail">{{ event_detail }}</div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    {% else %}
+        {% for event_name, event_time, event_detail in timeline[:5] %}
+        <div class="timeline-item">
+            <span class="event-name">{{ event_name }}</span>
+            <span class="event-time">{{ event_time.strftime("%H:%M:%S") }}</span>
+            {% if event_detail %}
+            <div class="event-detail">{{ event_detail }}</div>
+            {% endif %}
+        </div>
+        {% endfor %}
+        <div class="timeline-item" style="color:#999">
+            <span class="event-name" style="color:#999">... {{ timeline | length - 10 }} more events ...</span>
+        </div>
+        {% for event_name, event_time, event_detail in timeline[-5:] %}
+        <div class="timeline-item">
+            <span class="event-name">{{ event_name }}</span>
+            <span class="event-time">{{ event_time.strftime("%H:%M:%S") }}</span>
+            {% if event_detail %}
+            <div class="event-detail">{{ event_detail }}</div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    {% endif %}
+</div>
+{% endif %}
+
+<p style="margin-top:1.5rem">
+    <a href="/api/v1/tournaments/{{ t.id }}" style="color:#7c3aed">View raw JSON →</a>
+</p>
+{% endblock %}

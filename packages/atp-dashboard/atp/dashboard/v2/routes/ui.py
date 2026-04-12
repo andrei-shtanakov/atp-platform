@@ -299,6 +299,148 @@ async def ui_tournaments(
     )
 
 
+@router.get("/tournaments/{tournament_id}", response_class=HTMLResponse)
+@limiter.limit("120/minute")
+async def ui_tournament_detail(
+    request: Request,
+    tournament_id: int,
+    session: DBSession,
+) -> HTMLResponse:
+    """Render tournament detail page or HTMX live partial."""
+    from atp.dashboard.models import User
+    from atp.dashboard.tournament.models import (
+        Round,
+        Tournament,
+    )
+
+    result = await session.execute(
+        select(Tournament)
+        .where(Tournament.id == tournament_id)
+        .options(
+            selectinload(Tournament.participants),
+            selectinload(Tournament.rounds).selectinload(Round.actions),
+        )
+    )
+    tournament = result.scalar_one_or_none()
+
+    if tournament is None:
+        return _templates(request).TemplateResponse(
+            request=request,
+            name="ui/error.html",
+            context={
+                "error_title": "Not Found",
+                "error_message": f"Tournament #{tournament_id} not found.",
+            },
+            status_code=404,
+        )
+
+    # Creator username
+    creator_name = "—"
+    if tournament.created_by:
+        creator = await session.get(User, tournament.created_by)
+        if creator:
+            creator_name = creator.username
+
+    # Admin check
+    is_admin = False
+    user_id = getattr(request.state, "user_id", None)
+    if user_id:
+        user = await session.get(User, user_id)
+        if user and user.is_admin:
+            is_admin = True
+
+    # Cancelled-by username
+    cancelled_by_name = None
+    if tournament.cancelled_by:
+        cb_user = await session.get(User, tournament.cancelled_by)
+        if cb_user:
+            cancelled_by_name = cb_user.username
+
+    # Sort rounds newest-first
+    sorted_rounds = sorted(
+        tournament.rounds,
+        key=lambda r: r.round_number,
+        reverse=True,
+    )
+
+    # Sort participants by id for consistent score display
+    sorted_participants = sorted(
+        tournament.participants,
+        key=lambda p: p.id,
+    )
+
+    # Build participant id->name map for round history columns
+    participant_map = {p.id: p.agent_name for p in sorted_participants}
+
+    # Completed round count
+    completed_rounds = sum(1 for r in tournament.rounds if r.status == "completed")
+
+    # Build event timeline (admin only)
+    timeline: list[tuple[str, datetime, str]] = []
+    if is_admin:
+        if tournament.created_at:
+            timeline.append(
+                (
+                    "tournament_created",
+                    tournament.created_at,
+                    f"{tournament.game_type}, {tournament.num_players} players, "
+                    f"{tournament.total_rounds} rounds",
+                )
+            )
+        for p in sorted(
+            tournament.participants, key=lambda p: p.joined_at or datetime.min
+        ):
+            if p.joined_at:
+                timeline.append(("participant_joined", p.joined_at, p.agent_name))
+        for r in sorted(tournament.rounds, key=lambda r: r.round_number):
+            if r.started_at:
+                timeline.append(
+                    (
+                        "round_started",
+                        r.started_at,
+                        f"Round {r.round_number} of {tournament.total_rounds}",
+                    )
+                )
+        if tournament.ends_at and tournament.status == "completed":
+            timeline.append(("tournament_completed", tournament.ends_at, ""))
+        if tournament.cancelled_at and tournament.status == "cancelled":
+            reason_text = ""
+            if tournament.cancelled_reason:
+                reason_text = tournament.cancelled_reason.value
+            timeline.append(
+                ("tournament_cancelled", tournament.cancelled_at, reason_text)
+            )
+        # Newest first
+        timeline.sort(key=lambda e: e[1], reverse=True)
+
+    context = {
+        "active_page": "tournaments",
+        "tournament": tournament,
+        "creator_name": creator_name,
+        "is_admin": is_admin,
+        "cancelled_by_name": cancelled_by_name,
+        "sorted_rounds": sorted_rounds,
+        "sorted_participants": sorted_participants,
+        "participant_map": participant_map,
+        "completed_rounds": completed_rounds,
+        "timeline": timeline,
+    }
+
+    partial = request.query_params.get("partial")
+    if partial == "live":
+        return _templates(request).TemplateResponse(
+            request=request,
+            name="ui/partials/tournament_live.html",
+            context=context,
+        )
+
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/tournament_detail.html",
+        context=context,
+    )
+
+
 @router.get("/runs", response_class=HTMLResponse)
 @limiter.limit("120/minute")
 async def ui_runs(

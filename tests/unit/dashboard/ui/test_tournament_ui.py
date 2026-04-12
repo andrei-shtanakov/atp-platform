@@ -2,9 +2,21 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from atp.dashboard.models import User
+from atp.dashboard.tournament.models import (
+    Action,
+    ActionSource,
+    Participant,
+    Round,
+    RoundStatus,
+    Tournament,
+    TournamentStatus,
+)
 from atp.dashboard.v2.factory import create_test_app
 
 
@@ -34,3 +46,106 @@ async def test_tournament_detail_404_for_missing(client: AsyncClient):
     resp = await client.get("/ui/tournaments/99999")
     assert resp.status_code == 404
     assert "Not Found" in resp.text
+
+
+async def _seed_tournament(client: AsyncClient) -> int:
+    """Create a completed 2-player, 2-round PD tournament in the test DB."""
+    import uuid
+
+    from atp.dashboard.database import get_database
+
+    uid = uuid.uuid4().hex[:8]
+    async with get_database().session_factory() as session:
+        user = User(
+            username=f"test_admin_{uid}",
+            email=f"a_{uid}@test.com",
+            is_admin=True,
+            hashed_password="x",
+        )
+        session.add(user)
+        await session.flush()
+
+        now = datetime.utcnow()
+        t = Tournament(
+            game_type="prisoners_dilemma",
+            config={"name": "Test PD"},
+            status=TournamentStatus.COMPLETED,
+            num_players=2,
+            total_rounds=2,
+            round_deadline_s=30,
+            created_by=user.id,
+            created_at=now - timedelta(minutes=5),
+            starts_at=now - timedelta(minutes=4),
+            ends_at=now,
+            pending_deadline=now,
+        )
+        session.add(t)
+        await session.flush()
+
+        p1 = Participant(
+            tournament_id=t.id,
+            user_id=user.id,
+            agent_name="alice",
+            total_score=6.0,
+        )
+        p2_user = User(
+            username=f"bot_bob_{uid}", email=f"b_{uid}@test.com", hashed_password="x"
+        )
+        session.add(p2_user)
+        await session.flush()
+        p2 = Participant(
+            tournament_id=t.id,
+            user_id=p2_user.id,
+            agent_name="bob",
+            total_score=6.0,
+        )
+        session.add_all([p1, p2])
+        await session.flush()
+
+        for rn in (1, 2):
+            r = Round(
+                tournament_id=t.id,
+                round_number=rn,
+                status=RoundStatus.COMPLETED,
+                started_at=now - timedelta(minutes=4 - rn),
+            )
+            session.add(r)
+            await session.flush()
+            for p in (p1, p2):
+                session.add(
+                    Action(
+                        round_id=r.id,
+                        participant_id=p.id,
+                        action_data={"choice": "cooperate"},
+                        submitted_at=now,
+                        payoff=3.0,
+                        source=ActionSource.SUBMITTED,
+                    )
+                )
+        await session.commit()
+        return t.id
+
+
+@pytest.mark.anyio
+async def test_tournament_detail_returns_200(client: AsyncClient):
+    tid = await _seed_tournament(client)
+    resp = await client.get(f"/ui/tournaments/{tid}")
+    assert resp.status_code == 200
+    assert "Test PD" in resp.text
+    assert "alice" in resp.text
+    assert "bob" in resp.text
+
+
+@pytest.mark.anyio
+async def test_tournament_detail_shows_round_history(client: AsyncClient):
+    tid = await _seed_tournament(client)
+    resp = await client.get(f"/ui/tournaments/{tid}")
+    assert resp.status_code == 200
+    assert "cooperate" in resp.text
+
+
+@pytest.mark.anyio
+async def test_tournament_detail_partial_live(client: AsyncClient):
+    tid = await _seed_tournament(client)
+    resp = await client.get(f"/ui/tournaments/{tid}?partial=live")
+    assert resp.status_code == 200

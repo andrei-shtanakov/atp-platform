@@ -1,0 +1,124 @@
+{% set t = tournament %}
+{% set active_players = t.participants | selectattr("released_at", "none") | list | length %}
+
+{# Stat cards #}
+<div class="stat-cards">
+    <div class="stat-card">
+        <div class="value">{{ active_players }} / {{ t.num_players }}</div>
+        <div class="label">Players</div>
+    </div>
+    <div class="stat-card">
+        <div class="value">{{ completed_rounds }} / {{ t.total_rounds }}</div>
+        <div class="label">Rounds</div>
+    </div>
+    <div class="stat-card">
+        <div class="value">
+            {% if t.status == "completed" and t.starts_at and t.ends_at %}
+                {% set dur = (t.ends_at - t.starts_at).total_seconds() | int %}
+                {{ dur // 60 }}m {{ dur % 60 }}s
+            {% elif t.status == "active" %}
+                In progress
+            {% else %}
+                —
+            {% endif %}
+        </div>
+        <div class="label">Duration</div>
+    </div>
+    <div class="stat-card">
+        <div class="value">{{ t.round_deadline_s }}s</div>
+        <div class="label">Round Deadline</div>
+    </div>
+</div>
+
+{# Scoreboard #}
+{% if sorted_participants and completed_rounds > 0 %}
+<h3>Scoreboard</h3>
+<table>
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>Agent</th>
+            <th>Score</th>
+            <th>Avg / Round</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% set ranked = sorted_participants | sort(attribute="total_score", reverse=true) %}
+        {% set ns = namespace(rank=0, prev_score=none) %}
+        {% for p in ranked %}
+        {% if p.total_score != ns.prev_score %}
+            {% set ns.rank = loop.index %}
+        {% endif %}
+        {% set ns.prev_score = p.total_score %}
+        <tr{% if ns.rank <= 3 %} style="background:#f8f5ff"{% endif %}>
+            <td>
+                {% if ns.rank == 1 %}🥇{% elif ns.rank == 2 %}🥈{% elif ns.rank == 3 %}🥉{% endif %}
+                {{ ns.rank }}
+            </td>
+            <td>{{ p.agent_name }}</td>
+            <td class="score-pair" style="color:#7c3aed">
+                {{ p.total_score if p.total_score is not none else "—" }}
+            </td>
+            <td class="score-pair">
+                {% if p.total_score is not none and completed_rounds > 0 %}
+                {{ "%.2f" | format(p.total_score / completed_rounds) }}
+                {% else %}—{% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+{# Round history #}
+{% if sorted_rounds and completed_rounds > 0 %}
+<h3>Round History</h3>
+<table>
+    <thead>
+        <tr>
+            <th>Round</th>
+            {% for p in sorted_participants %}
+            <th>{{ p.agent_name }}</th>
+            {% endfor %}
+            <th>Payoff</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for r in sorted_rounds %}
+        {% if r.status == "completed" %}
+        <tr>
+            <td class="score-pair">{{ r.round_number }}</td>
+            {% for p in sorted_participants %}
+                {% set action = r.actions | selectattr("participant_id", "equalto", p.id) | first %}
+                {% if action %}
+                    {% set choice = (action.action_data or {}).get("choice", "—") %}
+                    <td>
+                        <span class="{{ 'cooperate' if choice == 'cooperate' else 'defect' }}">{{ choice }}</span>
+                        {% if is_admin and action.source == "TIMEOUT_DEFAULT" %}
+                        <span style="font-size:0.75rem;color:#999">(timeout)</span>
+                        {% endif %}
+                    </td>
+                {% else %}
+                    <td>—</td>
+                {% endif %}
+            {% endfor %}
+            <td class="score-pair">
+                {% set ns = namespace(parts=[]) %}
+                {% for p in sorted_participants %}
+                    {% set action = r.actions | selectattr("participant_id", "equalto", p.id) | first %}
+                    {% if action and action.payoff is not none %}
+                        {% set ns.parts = ns.parts + [action.payoff | string] %}
+                    {% else %}
+                        {% set ns.parts = ns.parts + ["—"] %}
+                    {% endif %}
+                {% endfor %}
+                {{ ns.parts | join(" : ") }}
+            </td>
+            <td style="font-size:0.8rem;color:#999">{{ r.status }}</td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
