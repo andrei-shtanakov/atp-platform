@@ -21,6 +21,7 @@ Each module handles a specific domain of functionality:
 - upload: YAML suite file upload with validation
 - templates: Test template discovery
 - traces: Debug endpoint for OpenTelemetry traces (dev mode only)
+- token_api: API token management (create, list, revoke)
 - users: User management (list, get, role assignment)
 - metrics: Prometheus metrics endpoint
 - costs: Cost analytics and breakdowns
@@ -71,6 +72,7 @@ from atp.dashboard.v2.routes.templates import router as templates_router
 from atp.dashboard.v2.routes.tenants import router as tenants_router
 from atp.dashboard.v2.routes.tests import router as tests_router
 from atp.dashboard.v2.routes.timeline import router as timeline_router
+from atp.dashboard.v2.routes.token_api import router as token_api_router
 from atp.dashboard.v2.routes.tournament_api import (
     router as tournament_api_router,
 )
@@ -117,6 +119,7 @@ router.include_router(agent_traces_router)
 router.include_router(catalog_router)
 router.include_router(benchmark_api_router)
 router.include_router(tournament_api_router)
+router.include_router(token_api_router)
 
 __all__ = [
     "router",
@@ -153,4 +156,5 @@ __all__ = [
     "users_router",
     "websocket_router",
     "tournament_api_router",
+    "token_api_router",
 ]
