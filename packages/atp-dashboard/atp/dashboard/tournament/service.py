@@ -47,7 +47,9 @@ from atp.dashboard.tournament.state import RoundState
 
 logger = logging.getLogger("atp.dashboard.tournament.service")
 
-TOURNAMENT_PENDING_MAX_WAIT_S: int = 300
+TOURNAMENT_PENDING_MAX_WAIT_S: int = int(
+    os.environ.get("ATP_TOURNAMENT_PENDING_MAX_WAIT_S", "300")
+)
 
 _SUPPORTED_GAMES = frozenset({"prisoners_dilemma"})
 
