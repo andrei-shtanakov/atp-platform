@@ -37,6 +37,9 @@ Each module handles a specific domain of functionality:
 
 from fastapi import APIRouter
 
+from atp.dashboard.v2.routes.agent_management_api import (
+    router as agent_management_api_router,
+)
 from atp.dashboard.v2.routes.agent_traces import (
     router as agent_traces_router,
 )
@@ -120,6 +123,7 @@ router.include_router(catalog_router)
 router.include_router(benchmark_api_router)
 router.include_router(tournament_api_router)
 router.include_router(token_api_router)
+router.include_router(agent_management_api_router)
 
 __all__ = [
     "router",
@@ -157,4 +161,5 @@ __all__ = [
     "websocket_router",
     "tournament_api_router",
     "token_api_router",
+    "agent_management_api_router",
 ]
