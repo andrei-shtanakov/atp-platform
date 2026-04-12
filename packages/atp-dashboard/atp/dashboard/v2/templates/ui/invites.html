@@ -1,0 +1,40 @@
+{% extends "ui/base_ui.html" %}
+
+{% block title %}Invites — ATP Platform{% endblock %}
+
+{% block content %}
+<h1>Invite Management</h1>
+
+{% if invites %}
+<figure>
+<table>
+    <thead>
+        <tr>
+            <th>Code</th>
+            <th>Created By</th>
+            <th>Used By</th>
+            <th>Status</th>
+            <th>Created</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for inv in invites %}
+        <tr>
+            <td><code>{{ inv.code[:20] }}...</code></td>
+            <td>{{ inv.created_by_name or inv.created_by_id }}</td>
+            <td>{{ inv.used_by_name or '—' }}</td>
+            <td>
+                {% if inv.use_count >= inv.max_uses %}used
+                {% elif inv.expires_at and inv.expires_at < now %}expired
+                {% else %}active{% endif %}
+            </td>
+            <td>{{ inv.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</figure>
+{% else %}
+<p>No invites yet.</p>
+{% endif %}
+{% endblock %}

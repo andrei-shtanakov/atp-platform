@@ -16,7 +16,7 @@ from sqlalchemy.orm import selectinload
 
 from atp.dashboard.benchmark.models import Benchmark, Run, RunStatus, TaskResult
 from atp.dashboard.models import Agent, SuiteDefinition, User
-from atp.dashboard.tokens import APIToken
+from atp.dashboard.tokens import APIToken, Invite
 from atp.dashboard.tournament.models import Participant
 from atp.dashboard.tournament.models import Tournament as TournamentModel
 from atp.dashboard.v2.dependencies import DBSession
@@ -1073,6 +1073,113 @@ async def ui_agent_detail(
             "agent": agent,
             "tokens": tokens,
             "tournament_history": tournament_history,
+            "now": datetime.now(),
+        },
+    )
+
+
+@router.get("/tokens", response_class=HTMLResponse)
+@limiter.limit("120/minute")
+async def ui_tokens(request: Request, session: DBSession) -> HTMLResponse:
+    """My Tokens page."""
+    user = await _get_ui_user(request, session)
+    if not user:
+        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+
+    token_result = await session.execute(
+        select(APIToken)
+        .where(APIToken.user_id == user.id)
+        .order_by(APIToken.created_at.desc())
+    )
+    tokens_raw = token_result.scalars().all()
+
+    tokens = []
+    for t in tokens_raw:
+        agent_name = None
+        if t.agent_id:
+            agent = await session.get(Agent, t.agent_id)
+            agent_name = agent.name if agent else f"#{t.agent_id}"
+        tokens.append(
+            type(
+                "TokenRow",
+                (),
+                {
+                    **{
+                        k: getattr(t, k)
+                        for k in [
+                            "id",
+                            "name",
+                            "token_prefix",
+                            "agent_id",
+                            "expires_at",
+                            "last_used_at",
+                            "revoked_at",
+                            "created_at",
+                        ]
+                    },
+                    "agent_name": agent_name,
+                },
+            )
+        )
+
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/tokens.html",
+        context={
+            "active_page": "tokens",
+            "user": user,
+            "tokens": tokens,
+            "now": datetime.now(),
+        },
+    )
+
+
+@router.get("/invites", response_class=HTMLResponse)
+@limiter.limit("120/minute")
+async def ui_invites(request: Request, session: DBSession) -> HTMLResponse:
+    """Invite management page (admin only)."""
+    user = await _get_ui_user(request, session)
+    if not user or not user.is_admin:
+        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+
+    result = await session.execute(select(Invite).order_by(Invite.created_at.desc()))
+    invites_raw = result.scalars().all()
+
+    invites = []
+    for inv in invites_raw:
+        creator = await session.get(User, inv.created_by_id)
+        used_by = await session.get(User, inv.used_by_id) if inv.used_by_id else None
+        invites.append(
+            type(
+                "InviteRow",
+                (),
+                {
+                    **{
+                        k: getattr(inv, k)
+                        for k in [
+                            "id",
+                            "code",
+                            "created_by_id",
+                            "used_by_id",
+                            "use_count",
+                            "max_uses",
+                            "expires_at",
+                            "created_at",
+                        ]
+                    },
+                    "created_by_name": creator.username if creator else None,
+                    "used_by_name": used_by.username if used_by else None,
+                },
+            )
+        )
+
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/invites.html",
+        context={
+            "active_page": "invites",
+            "user": user,
+            "invites": invites,
             "now": datetime.now(),
         },
     )
