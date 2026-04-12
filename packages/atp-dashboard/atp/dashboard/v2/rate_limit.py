@@ -7,8 +7,10 @@ falls back to client IP for anonymous requests.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 import jwt
@@ -89,8 +91,11 @@ def create_limiter(config: DashboardConfig) -> Limiter:
     return limiter
 
 
+_API_TOKEN_PREFIXES = ("atp_u_", "atp_a_")
+
+
 class JWTUserStateMiddleware(BaseHTTPMiddleware):
-    """Best-effort: populate ``request.state.user_id`` from a Bearer JWT.
+    """Best-effort: populate ``request.state.user_id`` from a Bearer JWT or API token.
 
     Runs BEFORE ``SlowAPIMiddleware`` so the rate-limit key function can
     see the authenticated identity and key per-user instead of per-IP
@@ -102,6 +107,11 @@ class JWTUserStateMiddleware(BaseHTTPMiddleware):
     ``get_current_user`` on protected routes; this middleware only
     enriches the request with an advisory user_id when trivially
     available.
+
+    For API tokens (``atp_u_``/``atp_a_`` prefix), the token hash is looked
+    up in the ``api_tokens`` table.  ``request.state.token_type`` is set to
+    ``"api"`` in that case so downstream dependencies can distinguish token
+    kinds.
     """
 
     async def dispatch(
@@ -109,6 +119,11 @@ class JWTUserStateMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
+        # Default state — always set so downstream code can safely read these.
+        request.state.user_id = None
+        request.state.agent_id = None
+        request.state.token_type = None
+
         token: str | None = None
 
         # 1. Try Authorization: Bearer header
@@ -122,23 +137,92 @@ class JWTUserStateMiddleware(BaseHTTPMiddleware):
             token = request.cookies.get("atp_token")
 
         if token:
-            # Late import so test monkeypatching of SECRET_KEY takes effect
-            # and to avoid a circular import at module load.
-            from atp.dashboard import auth as auth_module
-
-            try:
-                payload = jwt.decode(
-                    token,
-                    auth_module.SECRET_KEY,
-                    algorithms=[auth_module.ALGORITHM],
-                )
-            except InvalidTokenError:
-                pass
+            if token.startswith(_API_TOKEN_PREFIXES):
+                await self._resolve_api_token(request, token)
             else:
-                user_id = payload.get("user_id")
-                if user_id is not None:
-                    request.state.user_id = user_id
+                self._resolve_jwt(request, token)
+
         return await call_next(request)
+
+    @staticmethod
+    def _resolve_jwt(request: Request, token: str) -> None:
+        """Populate request.state.user_id from a JWT token.
+
+        Silently ignores invalid or expired tokens.
+        """
+        # Late import so test monkeypatching of SECRET_KEY takes effect
+        # and to avoid a circular import at module load.
+        from atp.dashboard import auth as auth_module
+
+        try:
+            payload = jwt.decode(
+                token,
+                auth_module.SECRET_KEY,
+                algorithms=[auth_module.ALGORITHM],
+            )
+        except InvalidTokenError:
+            return
+
+        user_id = payload.get("user_id")
+        if user_id is not None:
+            request.state.user_id = user_id
+
+    @staticmethod
+    async def _resolve_api_token(request: Request, token: str) -> None:
+        """Populate request.state from an API token (atp_u_ / atp_a_ prefix).
+
+        Looks up the token hash in the ``api_tokens`` table.  Updates
+        ``last_used_at`` atomically with a WHERE-clause debounce to avoid
+        races.  Silently skips on any error (DB not ready, token not found,
+        token revoked/expired).
+        """
+        from sqlalchemy import select, update
+
+        from atp.dashboard.database import get_database
+        from atp.dashboard.tokens import APIToken
+
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+
+        try:
+            db = get_database()
+            async with db.session() as session:
+                result = await session.execute(
+                    select(APIToken).where(
+                        APIToken.token_hash == token_hash,
+                        APIToken.revoked_at.is_(None),
+                    )
+                )
+                api_token = result.scalar_one_or_none()
+
+                if api_token is None:
+                    return
+
+                # Check expiry
+                if (
+                    api_token.expires_at is not None
+                    and api_token.expires_at < datetime.now()
+                ):
+                    return
+
+                request.state.user_id = api_token.user_id
+                request.state.agent_id = api_token.agent_id
+                request.state.token_type = "api"
+
+                # Debounced last_used_at update — WHERE clause prevents
+                # unnecessary writes when multiple requests arrive in quick
+                # succession.
+                now = datetime.now()
+                await session.execute(
+                    update(APIToken)
+                    .where(APIToken.id == api_token.id)
+                    .values(last_used_at=now)
+                )
+        except Exception:
+            # DB not initialised yet or any other transient error — skip.
+            logger.debug(
+                "API token resolution skipped (DB error or token not found)",
+                exc_info=True,
+            )
 
 
 async def rate_limit_exceeded_handler(request: Request, exc: Exception) -> JSONResponse:

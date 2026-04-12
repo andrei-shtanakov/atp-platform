@@ -187,17 +187,23 @@ async def create_user(
     return user
 
 
+_API_TOKEN_PREFIXES = ("atp_u_", "atp_a_")
+
+
 async def get_current_user(
     request: Request,
     token: Annotated[str | None, Depends(oauth2_scheme)],
 ) -> User | None:
-    """Get current user from JWT token.
+    """Get current user from JWT token or API token.
 
     Reads token from Authorization: Bearer header first (via oauth2_scheme),
     then falls back to atp_token cookie for browser sessions.
 
+    For API tokens (``atp_u_``/``atp_a_`` prefix), uses ``request.state.user_id``
+    populated by ``JWTUserStateMiddleware`` to look up the user directly.
+
     Args:
-        request: The incoming request (for cookie access).
+        request: The incoming request (for cookie access and state).
         token: JWT token from Authorization header (auto_error=False).
 
     Returns:
@@ -210,13 +216,25 @@ async def get_current_user(
     if token is None:
         return None
 
+    # API tokens: rely on user_id already resolved by JWTUserStateMiddleware.
+    if token.startswith(_API_TOKEN_PREFIXES):
+        user_id = getattr(request.state, "user_id", None)
+        if user_id is None:
+            return None
+        db = get_database()
+        async with db.session() as session:
+            user = await session.get(User, user_id)
+            if user is None or not user.is_active:
+                return None
+            return user
+
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str | None = payload.get("sub")
-        user_id: int | None = payload.get("user_id")
+        user_id_jwt: int | None = payload.get("user_id")
         if username is None:
             return None
-        token_data = TokenData(username=username, user_id=user_id)
+        token_data = TokenData(username=username, user_id=user_id_jwt)
     except InvalidTokenError:
         return None
 
