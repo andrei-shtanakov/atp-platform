@@ -26,7 +26,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from atp.dashboard.auth.sso import OIDCProvider, SSOConfig, SSOManager
 from atp.dashboard.database import get_database
 from atp.dashboard.models import User
-from atp.dashboard.schemas import TokenData
 
 # Configuration
 SECRET_KEY = os.getenv("ATP_SECRET_KEY", "")
@@ -230,18 +229,20 @@ async def get_current_user(
 
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str | None = payload.get("sub")
         user_id_jwt: int | None = payload.get("user_id")
-        if username is None:
-            return None
-        token_data = TokenData(username=username, user_id=user_id_jwt)
+        username: str | None = payload.get("sub")
     except InvalidTokenError:
         return None
 
-    # Get user from database
+    # Prefer user_id (PK lookup, rename-safe); fall back to sub for legacy tokens
     db = get_database()
     async with db.session() as session:
-        user = await get_user_by_username(session, token_data.username or "")
+        user: User | None = None
+        if user_id_jwt is not None:
+            user = await session.get(User, user_id_jwt)
+        elif username is not None:
+            user = await get_user_by_username(session, username)
+
         if user is None or not user.is_active:
             return None
         return user

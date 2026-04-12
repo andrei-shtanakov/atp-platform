@@ -316,27 +316,43 @@ class TestGetCurrentUser:
 
     @pytest.mark.anyio
     async def test_get_current_user_token_missing_username(self) -> None:
-        """Test getting current user with token missing username claim."""
-        # Create a token without the 'sub' claim
+        """Test getting current user with token missing sub but having user_id."""
         from datetime import datetime, timedelta
 
         expire = datetime.now(UTC) + timedelta(minutes=15)
         payload = {"user_id": 1, "exp": expire}  # Missing 'sub' claim
         token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
+        mock_user = User(
+            id=1,
+            username="test_admin",
+            email="admin@test.com",
+            hashed_password="hashed",
+            is_active=True,
+        )
+
+        mock_db = MagicMock()
+        mock_session = AsyncMock()
+        mock_session.get = AsyncMock(return_value=mock_user)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_db.session.return_value = mock_session
+
         mock_request = MagicMock(spec=Request)
         mock_request.cookies = {}
-        user = await get_current_user(mock_request, token)
-        assert user is None
+
+        # user_id-only tokens now work (user_id lookup, no sub required)
+        with patch("atp.dashboard.auth.get_database", return_value=mock_db):
+            user = await get_current_user(mock_request, token)
+            assert user is not None
+            assert user.username == "test_admin"
 
     @pytest.mark.anyio
     async def test_get_current_user_valid_token(self) -> None:
         """Test getting current user with valid token."""
-        # Create a valid token
         data = {"sub": "testuser", "user_id": 1}
         token = create_access_token(data)
 
-        # Mock the database
         mock_user = User(
             id=1,
             username="testuser",
@@ -347,11 +363,7 @@ class TestGetCurrentUser:
 
         mock_db = MagicMock()
         mock_session = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = mock_user
-        mock_session.execute.return_value = mock_result
-
-        # Use context manager mock
+        mock_session.get = AsyncMock(return_value=mock_user)
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=None)
         mock_db.session.return_value = mock_session
@@ -380,10 +392,7 @@ class TestGetCurrentUser:
 
         mock_db = MagicMock()
         mock_session = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = mock_user
-        mock_session.execute.return_value = mock_result
-
+        mock_session.get = AsyncMock(return_value=mock_user)
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=None)
         mock_db.session.return_value = mock_session
@@ -398,11 +407,9 @@ class TestGetCurrentUser:
     @pytest.mark.anyio
     async def test_get_current_user_cookie_fallback(self) -> None:
         """Test getting current user via cookie fallback when no Bearer token."""
-        # Create a valid token for use in cookie
         data = {"sub": "testuser", "user_id": 1}
         token = create_access_token(data)
 
-        # Mock the database
         mock_user = User(
             id=1,
             username="testuser",
@@ -413,16 +420,11 @@ class TestGetCurrentUser:
 
         mock_db = MagicMock()
         mock_session = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = mock_user
-        mock_session.execute.return_value = mock_result
-
-        # Use context manager mock
+        mock_session.get = AsyncMock(return_value=mock_user)
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=None)
         mock_db.session.return_value = mock_session
 
-        # Mock request with token in cookie
         mock_request = MagicMock(spec=Request)
         mock_request.cookies = {"atp_token": token}
 
