@@ -70,7 +70,14 @@ async def create_token(
         expires_in_days = config.default_token_days
 
     expires_at = None
-    if expires_in_days > 0:
+    if expires_in_days == 0:
+        # "never expires" — only allowed when max_token_days == 0
+        if config.max_token_days != 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Non-expiring tokens are not allowed by configuration",
+            )
+    elif expires_in_days > 0:
         if config.max_token_days > 0 and expires_in_days > config.max_token_days:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
