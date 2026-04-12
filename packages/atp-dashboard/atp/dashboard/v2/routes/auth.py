@@ -85,6 +85,7 @@ async def register(
     """
     try:
         config = get_config()
+        invite = None
 
         # Invite validation
         if config.registration_mode == "invite":
@@ -141,16 +142,11 @@ async def register(
         if role is not None:
             session.add(UserRole(user_id=user.id, role_id=role.id))
 
-        # Mark invite as used
-        if config.registration_mode == "invite" and user_data.invite_code:
-            invite_result = await session.execute(
-                select(Invite).where(Invite.code == user_data.invite_code)
-            )
-            used_invite = invite_result.scalar_one_or_none()
-            if used_invite:
-                used_invite.use_count += 1
-                used_invite.used_by_id = user.id
-                used_invite.used_at = datetime.now()
+        # Mark invite as used (reuse object loaded during validation)
+        if config.registration_mode == "invite" and invite is not None:
+            invite.use_count += 1
+            invite.used_by_id = user.id
+            invite.used_at = datetime.now()
 
         await session.commit()
         return UserResponse.model_validate(user)
