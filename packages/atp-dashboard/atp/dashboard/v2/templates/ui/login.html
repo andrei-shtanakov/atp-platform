@@ -42,10 +42,10 @@
         {% endif %}
 
         <article>
-            <h3>Login with GitHub</h3>
+            <h3>Sign in with GitHub</h3>
             <p>Click below to start the login process. You'll be redirected to GitHub to authorize.</p>
             <button id="start-login" onclick="startDeviceFlow()">
-                Login with GitHub
+                Sign in with GitHub
             </button>
             <div id="device-flow" style="display:none">
                 <p>Enter this code at GitHub:</p>
@@ -56,16 +56,20 @@
             <div id="error-msg" style="display:none; color: red;"></div>
         </article>
 
-        <article>
-            <h3>Login with credentials</h3>
-            <form id="login-form">
-                <label for="username">Username</label>
-                <input type="text" id="username" name="username" required>
-                <label for="password">Password</label>
-                <input type="password" id="password" name="password" required>
-                <button type="submit">Sign in</button>
-            </form>
-        </article>
+        <details style="margin-top: 1rem;">
+            <summary style="font-size: 0.85rem; color: #666; cursor: pointer;">
+                Or sign in with credentials
+            </summary>
+            <article style="margin-top: 0.5rem;">
+                <form id="login-form">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" required>
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required>
+                    <button type="submit">Sign in</button>
+                </form>
+            </article>
+        </details>
     </div>
 
     <script>
