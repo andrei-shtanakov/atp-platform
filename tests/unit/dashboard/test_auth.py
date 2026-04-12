@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import jwt
 import pytest
+from fastapi import Request
 
 from atp.dashboard.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
@@ -300,13 +301,17 @@ class TestGetCurrentUser:
     @pytest.mark.anyio
     async def test_get_current_user_no_token(self) -> None:
         """Test getting current user with no token."""
-        user = await get_current_user(None)
+        mock_request = MagicMock(spec=Request)
+        mock_request.cookies = {}
+        user = await get_current_user(mock_request, None)
         assert user is None
 
     @pytest.mark.anyio
     async def test_get_current_user_invalid_token(self) -> None:
         """Test getting current user with invalid token."""
-        user = await get_current_user("invalid_token")
+        mock_request = MagicMock(spec=Request)
+        mock_request.cookies = {}
+        user = await get_current_user(mock_request, "invalid_token")
         assert user is None
 
     @pytest.mark.anyio
@@ -319,7 +324,9 @@ class TestGetCurrentUser:
         payload = {"user_id": 1, "exp": expire}  # Missing 'sub' claim
         token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
-        user = await get_current_user(token)
+        mock_request = MagicMock(spec=Request)
+        mock_request.cookies = {}
+        user = await get_current_user(mock_request, token)
         assert user is None
 
     @pytest.mark.anyio
@@ -349,8 +356,11 @@ class TestGetCurrentUser:
         mock_session.__aexit__ = AsyncMock(return_value=None)
         mock_db.session.return_value = mock_session
 
+        mock_request = MagicMock(spec=Request)
+        mock_request.cookies = {}
+
         with patch("atp.dashboard.auth.get_database", return_value=mock_db):
-            user = await get_current_user(token)
+            user = await get_current_user(mock_request, token)
             assert user is not None
             assert user.username == "testuser"
 
@@ -378,9 +388,48 @@ class TestGetCurrentUser:
         mock_session.__aexit__ = AsyncMock(return_value=None)
         mock_db.session.return_value = mock_session
 
+        mock_request = MagicMock(spec=Request)
+        mock_request.cookies = {}
+
         with patch("atp.dashboard.auth.get_database", return_value=mock_db):
-            user = await get_current_user(token)
+            user = await get_current_user(mock_request, token)
             assert user is None
+
+    @pytest.mark.anyio
+    async def test_get_current_user_cookie_fallback(self) -> None:
+        """Test getting current user via cookie fallback when no Bearer token."""
+        # Create a valid token for use in cookie
+        data = {"sub": "testuser", "user_id": 1}
+        token = create_access_token(data)
+
+        # Mock the database
+        mock_user = User(
+            id=1,
+            username="testuser",
+            email="test@example.com",
+            hashed_password="hashed",
+            is_active=True,
+        )
+
+        mock_db = MagicMock()
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_user
+        mock_session.execute.return_value = mock_result
+
+        # Use context manager mock
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_db.session.return_value = mock_session
+
+        # Mock request with token in cookie
+        mock_request = MagicMock(spec=Request)
+        mock_request.cookies = {"atp_token": token}
+
+        with patch("atp.dashboard.auth.get_database", return_value=mock_db):
+            user = await get_current_user(mock_request, None)
+            assert user is not None
+            assert user.username == "testuser"
 
 
 class TestConstants:

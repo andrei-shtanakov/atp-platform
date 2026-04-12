@@ -17,7 +17,7 @@ from typing import Annotated
 
 import bcrypt
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jwt.exceptions import InvalidTokenError
 from sqlalchemy import select
@@ -188,18 +188,25 @@ async def create_user(
 
 
 async def get_current_user(
+    request: Request,
     token: Annotated[str | None, Depends(oauth2_scheme)],
 ) -> User | None:
     """Get current user from JWT token.
 
-    This is a dependency that can be used in FastAPI routes.
+    Reads token from Authorization: Bearer header first (via oauth2_scheme),
+    then falls back to atp_token cookie for browser sessions.
 
     Args:
-        token: JWT token from Authorization header.
+        request: The incoming request (for cookie access).
+        token: JWT token from Authorization header (auto_error=False).
 
     Returns:
         User if token is valid, None otherwise.
     """
+    # Fallback to cookie if no Bearer token
+    if token is None:
+        token = request.cookies.get("atp_token")
+
     if token is None:
         return None
 
