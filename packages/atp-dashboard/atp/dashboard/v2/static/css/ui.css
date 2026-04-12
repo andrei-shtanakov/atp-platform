@@ -215,3 +215,130 @@ body {
     border-radius: 4px;
     font-size: 0.85em;
 }
+
+/* Tournament styles */
+.tournament-name {
+    font-weight: 500;
+    color: #7c3aed;
+    text-decoration: none;
+}
+
+.tournament-name:hover {
+    text-decoration: underline;
+}
+
+.game-type {
+    font-size: 0.8rem;
+    color: #888;
+}
+
+.score-pair {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.cooperate {
+    color: #28a745;
+    font-weight: 600;
+}
+
+.defect {
+    color: #dc3545;
+    font-weight: 600;
+}
+
+.cancel-reason {
+    font-size: 0.8rem;
+    color: #999;
+    margin-top: 0.15rem;
+}
+
+.cancel-box {
+    background: #fff5f5;
+    border: 1px solid #fed7d7;
+    border-radius: 0.5rem;
+    padding: 1.25rem;
+    margin-bottom: 1.5rem;
+}
+
+.cancel-box .reason {
+    font-weight: 600;
+    color: #c53030;
+}
+
+.cancel-box .detail {
+    color: #666;
+    font-size: 0.9rem;
+    margin-top: 0.35rem;
+}
+
+.tournament-meta {
+    font-size: 0.9rem;
+    color: #666;
+    margin-bottom: 1.5rem;
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.admin-badge {
+    font-size: 0.75rem;
+    color: #7c3aed;
+    background: #f3eefe;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+}
+
+/* Event timeline */
+.timeline {
+    position: relative;
+    padding-left: 24px;
+}
+
+.timeline::before {
+    content: '';
+    position: absolute;
+    left: 7px;
+    top: 8px;
+    bottom: 8px;
+    width: 2px;
+    background: #e0e0e0;
+}
+
+.timeline-item {
+    position: relative;
+    padding: 8px 0;
+    font-size: 0.85rem;
+}
+
+.timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -20px;
+    top: 14px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #7c3aed;
+    border: 2px solid white;
+}
+
+.timeline-item .event-name {
+    font-weight: 600;
+    color: #333;
+}
+
+.timeline-item .event-time {
+    color: #999;
+    font-size: 0.8rem;
+    margin-left: 0.5rem;
+}
+
+.timeline-item .event-detail {
+    color: #666;
+    font-size: 0.8rem;
+    margin-top: 0.15rem;
+}
