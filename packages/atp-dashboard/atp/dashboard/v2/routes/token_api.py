@@ -64,15 +64,19 @@ async def create_token(
                 detail=f"Token limit reached (max {config.max_user_tokens})",
             )
 
-    # Compute expiry
+    # Compute expiry: None = use config default, 0 = never
+    expires_in_days = body.expires_in_days
+    if expires_in_days is None:
+        expires_in_days = config.default_token_days
+
     expires_at = None
-    if body.expires_in_days is not None:
-        if config.max_token_days > 0 and body.expires_in_days > config.max_token_days:
+    if expires_in_days > 0:
+        if config.max_token_days > 0 and expires_in_days > config.max_token_days:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Token expiry exceeds maximum ({config.max_token_days} days)",
             )
-        expires_at = datetime.now() + timedelta(days=body.expires_in_days)
+        expires_at = datetime.now() + timedelta(days=expires_in_days)
 
     raw_token = generate_api_token(agent_scoped=body.agent_id is not None)
     db_token = APIToken(

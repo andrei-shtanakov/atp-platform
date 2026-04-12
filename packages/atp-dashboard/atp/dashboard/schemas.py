@@ -1815,7 +1815,7 @@ class APITokenCreate(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=100)
     agent_id: int | None = None
-    expires_in_days: int | None = 30  # None = never
+    expires_in_days: int | None = None  # None = use config default; 0 = never
 
     model_config = {
         "json_schema_extra": {
