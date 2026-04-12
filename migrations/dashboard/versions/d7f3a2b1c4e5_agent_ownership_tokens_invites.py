@@ -64,41 +64,43 @@ def upgrade() -> None:
     )
     op.create_index("idx_invite_code", "invites", ["code"])
 
-    # --- Columns on existing tables ---
+    # --- Columns on existing tables (use batch mode for SQLite compatibility) ---
 
-    op.add_column(
-        "agents",
-        sa.Column("owner_id", sa.Integer(), sa.ForeignKey("users.id"), nullable=True),
-    )
-    op.add_column(
-        "agents",
-        sa.Column("version", sa.String(50), nullable=False, server_default="latest"),
-    )
-    op.add_column(
-        "agents",
-        sa.Column("deleted_at", sa.DateTime(), nullable=True),
-    )
-    op.create_index("idx_agent_owner", "agents", ["owner_id"])
+    with op.batch_alter_table("agents") as batch_op:
+        batch_op.add_column(
+            sa.Column("owner_id", sa.Integer(), nullable=True),
+        )
+        batch_op.add_column(
+            sa.Column(
+                "version", sa.String(50), nullable=False, server_default="latest"
+            ),
+        )
+        batch_op.add_column(
+            sa.Column("deleted_at", sa.DateTime(), nullable=True),
+        )
+        batch_op.create_index("idx_agent_owner", ["owner_id"])
+        batch_op.create_unique_constraint(
+            "uq_agent_tenant_owner_name_version",
+            ["tenant_id", "owner_id", "name", "version"],
+        )
 
-    op.create_unique_constraint(
-        "uq_agent_tenant_owner_name_version",
-        "agents",
-        ["tenant_id", "owner_id", "name", "version"],
-    )
-
-    op.add_column(
-        "tournament_participants",
-        sa.Column("agent_id", sa.Integer(), sa.ForeignKey("agents.id"), nullable=True),
-    )
+    with op.batch_alter_table("tournament_participants") as batch_op:
+        batch_op.add_column(
+            sa.Column("agent_id", sa.Integer(), nullable=True),
+        )
 
 
 def downgrade() -> None:
-    op.drop_column("tournament_participants", "agent_id")
-    op.drop_constraint("uq_agent_tenant_owner_name_version", "agents", type_="unique")
-    op.drop_index("idx_agent_owner", table_name="agents")
-    op.drop_column("agents", "deleted_at")
-    op.drop_column("agents", "version")
-    op.drop_column("agents", "owner_id")
+    with op.batch_alter_table("tournament_participants") as batch_op:
+        batch_op.drop_column("agent_id")
+
+    with op.batch_alter_table("agents") as batch_op:
+        batch_op.drop_constraint("uq_agent_tenant_owner_name_version", type_="unique")
+        batch_op.drop_index("idx_agent_owner")
+        batch_op.drop_column("deleted_at")
+        batch_op.drop_column("version")
+        batch_op.drop_column("owner_id")
+
     op.drop_table("invites")
     op.drop_index("idx_api_token_hash", table_name="api_tokens")
     op.drop_index("idx_api_token_user", table_name="api_tokens")
