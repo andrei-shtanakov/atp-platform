@@ -78,6 +78,7 @@ def upgrade() -> None:
         batch_op.add_column(
             sa.Column("deleted_at", sa.DateTime(), nullable=True),
         )
+        batch_op.create_foreign_key("fk_agent_owner_id", "users", ["owner_id"], ["id"])
         batch_op.create_index("idx_agent_owner", ["owner_id"])
         # Drop old constraint before creating the new one —
         # (tenant_id, name) would block multiple versions per agent.
@@ -91,16 +92,21 @@ def upgrade() -> None:
         batch_op.add_column(
             sa.Column("agent_id", sa.Integer(), nullable=True),
         )
+        batch_op.create_foreign_key(
+            "fk_participant_agent_id", "agents", ["agent_id"], ["id"]
+        )
 
 
 def downgrade() -> None:
     with op.batch_alter_table("tournament_participants") as batch_op:
+        batch_op.drop_constraint("fk_participant_agent_id", type_="foreignkey")
         batch_op.drop_column("agent_id")
 
     with op.batch_alter_table("agents") as batch_op:
         batch_op.drop_constraint("uq_agent_tenant_owner_name_version", type_="unique")
         # Restore old constraint that was replaced in upgrade
         batch_op.create_unique_constraint("uq_agent_tenant_name", ["tenant_id", "name"])
+        batch_op.drop_constraint("fk_agent_owner_id", type_="foreignkey")
         batch_op.drop_index("idx_agent_owner")
         batch_op.drop_column("deleted_at")
         batch_op.drop_column("version")
