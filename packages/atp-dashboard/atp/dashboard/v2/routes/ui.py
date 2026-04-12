@@ -15,7 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from atp.dashboard.benchmark.models import Benchmark, Run, RunStatus, TaskResult
-from atp.dashboard.models import SuiteDefinition
+from atp.dashboard.models import SuiteDefinition, User
 from atp.dashboard.v2.dependencies import DBSession
 from atp.dashboard.v2.rate_limit import limiter
 
@@ -27,6 +27,21 @@ router = APIRouter(prefix="/ui", tags=["ui"])
 def _templates(request: Request):
     """Get Jinja2Templates from app state."""
     return request.app.state.templates
+
+
+async def _get_ui_user(request: Request, session: DBSession) -> User | None:
+    """Resolve the current user from cookie/header for UI templates.
+
+    Returns User object if authenticated, None otherwise.
+    Uses request.state.user_id set by JWTUserStateMiddleware.
+    """
+    user_id = getattr(request.state, "user_id", None)
+    if user_id is None:
+        return None
+    user = await session.get(User, user_id)
+    if user is None or not user.is_active:
+        return None
+    return user
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -55,6 +70,7 @@ async def ui_register(request: Request) -> HTMLResponse:
 @limiter.limit("120/minute")
 async def ui_home(request: Request, session: DBSession) -> HTMLResponse:
     """Render home page with summary stats."""
+    user = await _get_ui_user(request, session)
     result = await session.execute(select(func.count(Benchmark.id)))
     total_benchmarks = result.scalar() or 0
 
@@ -80,6 +96,7 @@ async def ui_home(request: Request, session: DBSession) -> HTMLResponse:
             "total_runs": total_runs,
             "active_runs": active_runs,
             "recent_runs": recent_runs,
+            "user": user,
         },
     )
 
@@ -92,6 +109,7 @@ async def ui_benchmarks(
     page: int = 1,
 ) -> HTMLResponse:
     """Render benchmarks list page."""
+    user = await _get_ui_user(request, session)
     per_page = 50
     offset = (page - 1) * per_page
 
@@ -119,6 +137,7 @@ async def ui_benchmarks(
             "page": page,
             "total_pages": total_pages,
             "total": total,
+            "user": user,
         },
     )
 
@@ -133,6 +152,7 @@ async def ui_benchmark_detail(
     """Render benchmark detail page."""
     from atp.loader.models import TestSuite
 
+    user = await _get_ui_user(request, session)
     benchmark = await session.get(Benchmark, benchmark_id)
     if benchmark is None:
         return _templates(request).TemplateResponse(
@@ -186,6 +206,7 @@ async def ui_benchmark_detail(
             "tests": tests,
             "runs": runs,
             "leaderboard": leaderboard,
+            "user": user,
         },
     )
 
@@ -194,6 +215,7 @@ async def ui_benchmark_detail(
 @limiter.limit("120/minute")
 async def ui_games(request: Request, session: DBSession) -> HTMLResponse:
     """Render games page with game registry and tournaments."""
+    user = await _get_ui_user(request, session)
     games: list[dict] = []
     try:
         from game_envs.games import (  # noqa: PLC0415
@@ -236,6 +258,7 @@ async def ui_games(request: Request, session: DBSession) -> HTMLResponse:
             "active_page": "games",
             "games": games,
             "tournaments": tournaments,
+            "user": user,
         },
     )
 
@@ -250,7 +273,6 @@ async def ui_tournaments(
     """Render tournament list page."""
     from sqlalchemy import exists, or_
 
-    from atp.dashboard.models import User
     from atp.dashboard.tournament.models import Participant, Tournament
 
     per_page = 50
@@ -323,6 +345,7 @@ async def ui_tournaments(
             "page": page,
             "total_pages": total_pages,
             "total": total,
+            "user": user,
         },
     )
 
@@ -335,7 +358,6 @@ async def ui_tournament_detail(
     session: DBSession,
 ) -> HTMLResponse:
     """Render tournament detail page or HTMX live partial."""
-    from atp.dashboard.models import User
     from atp.dashboard.tournament.models import (
         Round,
         Tournament,
@@ -465,6 +487,7 @@ async def ui_tournament_detail(
         "participant_map": participant_map,
         "completed_rounds": completed_rounds,
         "timeline": timeline,
+        "user": user,
     }
 
     partial = request.query_params.get("partial")
@@ -490,6 +513,7 @@ async def ui_runs(
     page: int = 1,
 ) -> HTMLResponse:
     """Render runs list page."""
+    user = await _get_ui_user(request, session)
     per_page = 50
     offset = (page - 1) * per_page
 
@@ -517,6 +541,7 @@ async def ui_runs(
             "page": page,
             "total_pages": total_pages,
             "total": total,
+            "user": user,
         },
     )
 
@@ -529,6 +554,7 @@ async def ui_run_detail(
     session: DBSession,
 ) -> HTMLResponse:
     """Render run detail page or HTMX partial."""
+    user = await _get_ui_user(request, session)
     stmt = (
         select(Run, Benchmark.name.label("benchmark_name"), Benchmark.tasks_count)
         .outerjoin(Benchmark, Run.benchmark_id == Benchmark.id)
@@ -564,6 +590,7 @@ async def ui_run_detail(
         "tasks_count": tasks_count or 0,
         "task_results": task_results,
         "now": datetime.now(),
+        "user": user,
     }
 
     # HTMX partial responses
@@ -598,6 +625,7 @@ async def ui_cancel_run(
     session: DBSession,
 ) -> HTMLResponse:
     """Cancel an in-progress run."""
+    user = await _get_ui_user(request, session)
     run = await session.get(Run, run_id)
     if run is None:
         return HTMLResponse("<p style='color:red'>Run not found</p>")
@@ -625,6 +653,7 @@ async def ui_cancel_run(
                 "benchmark_name": benchmark_name,
                 "tasks_count": tasks_count,
                 "now": datetime.now(),
+                "user": user,
             },
         )
 
@@ -639,6 +668,7 @@ async def ui_leaderboard(
     benchmark_id: int | None = None,
 ) -> HTMLResponse:
     """Render global leaderboard page with optional benchmark filter."""
+    user = await _get_ui_user(request, session)
     result = await session.execute(select(Benchmark).order_by(Benchmark.name))
     benchmarks = result.scalars().all()
 
@@ -664,6 +694,7 @@ async def ui_leaderboard(
             context={
                 "entries": entries,
                 "selected_benchmark_id": benchmark_id,
+                "user": user,
             },
         )
 
@@ -675,6 +706,7 @@ async def ui_leaderboard(
             "benchmarks": benchmarks,
             "entries": entries,
             "selected_benchmark_id": benchmark_id,
+            "user": user,
         },
     )
 
@@ -687,6 +719,7 @@ async def ui_suites(
     page: int = 1,
 ) -> HTMLResponse:
     """Render suites list page."""
+    user = await _get_ui_user(request, session)
     per_page = 50
     offset = (page - 1) * per_page
 
@@ -712,6 +745,7 @@ async def ui_suites(
             "page": page,
             "total_pages": total_pages,
             "total": total,
+            "user": user,
         },
     )
 
@@ -841,6 +875,7 @@ async def ui_create_benchmark(
 @limiter.limit("120/minute")
 async def ui_analytics(request: Request, session: DBSession) -> HTMLResponse:
     """Render analytics page with platform stats and agent rankings."""
+    user = await _get_ui_user(request, session)
     result = await session.execute(select(func.count(Benchmark.id)))
     total_benchmarks = result.scalar() or 0
 
@@ -905,5 +940,6 @@ async def ui_analytics(request: Request, session: DBSession) -> HTMLResponse:
             "runs_by_status": runs_by_status,
             "top_agents": top_agents,
             "recent_runs": recent_runs,
+            "user": user,
         },
     )
