@@ -1804,3 +1804,98 @@ class TournamentResultList(BaseModel):
 # Update forward references
 SuiteExecutionDetail.model_rebuild()
 MarketplaceSuiteDetail.model_rebuild()
+
+
+# --- Token Self-Service Schemas (Scope #2) ---
+
+
+class APITokenCreate(BaseModel):
+    """Request body for creating an API token."""
+
+    name: str = Field(..., min_length=1, max_length=100)
+    agent_id: int | None = None
+    expires_in_days: int | None = 30  # None = never
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [{"name": "ci-runner", "expires_in_days": 90}]
+        }
+    }
+
+
+class APITokenResponse(BaseModel):
+    """API token in list responses (no secret)."""
+
+    id: int
+    name: str
+    token_prefix: str
+    agent_id: int | None
+    scopes: list[str]
+    expires_at: datetime | None
+    last_used_at: datetime | None
+    revoked_at: datetime | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class APITokenCreated(APITokenResponse):
+    """Response when a token is first created (includes the raw token ONCE)."""
+
+    token: str
+
+
+class InviteCreate(BaseModel):
+    """Request body for creating an invite code."""
+
+    expires_in_days: int | None = 7  # None = never
+
+
+class InviteResponse(BaseModel):
+    """Invite code in list responses."""
+
+    id: int
+    code: str
+    created_by_id: int
+    used_by_id: int | None
+    used_at: datetime | None
+    expires_at: datetime | None
+    max_uses: int
+    use_count: int
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AgentOwnerCreate(BaseModel):
+    """Request body for creating an owned agent."""
+
+    name: str = Field(..., min_length=1, max_length=100)
+    version: str = Field(default="latest", min_length=1, max_length=50)
+    agent_type: str = Field(..., min_length=1, max_length=50)
+    config: dict[str, Any] = Field(default_factory=dict)
+    description: str | None = None
+
+
+class AgentOwnerUpdate(BaseModel):
+    """Request body for updating an owned agent."""
+
+    version: str | None = Field(default=None, min_length=1, max_length=50)
+    config: dict[str, Any] | None = None
+    description: str | None = None
+
+
+class AgentOwnerResponse(BaseModel):
+    """Agent in ownership API responses."""
+
+    id: int
+    name: str
+    version: str
+    agent_type: str
+    config: dict[str, Any]
+    description: str | None
+    owner_id: int | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
