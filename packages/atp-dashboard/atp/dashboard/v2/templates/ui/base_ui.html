@@ -26,7 +26,14 @@
             </ul>
             <div class="sidebar-footer">
                 {% if user %}
-                <span class="sidebar-user">{{ user.username }}</span>
+                <div class="sidebar-user-section">
+                    <span class="sidebar-user">{{ user.username }}</span>
+                    <a href="#" class="sidebar-signout"
+                       hx-post="/ui/logout"
+                       hx-swap="none">Sign out</a>
+                </div>
+                {% else %}
+                <a href="/ui/login" class="sidebar-signin">Sign in</a>
                 {% endif %}
             </div>
         </nav>

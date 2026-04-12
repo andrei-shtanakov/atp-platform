@@ -342,3 +342,39 @@ body {
     font-size: 0.8rem;
     margin-top: 0.15rem;
 }
+
+/* Sidebar auth controls */
+.sidebar-signin {
+    display: block;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.375rem;
+    color: #c0c0c0;
+    text-decoration: none;
+    font-size: 0.85rem;
+    border: 1px solid #444;
+    text-align: center;
+    transition: background 0.15s;
+}
+
+.sidebar-signin:hover {
+    background: #2d2d44;
+    color: #fff;
+    border-color: #666;
+}
+
+.sidebar-user-section {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.4rem 0.75rem;
+}
+
+.sidebar-signout {
+    font-size: 0.75rem;
+    color: #888;
+    text-decoration: underline;
+}
+
+.sidebar-signout:hover {
+    color: #ccc;
+}
