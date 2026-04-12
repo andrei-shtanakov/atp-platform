@@ -1,0 +1,40 @@
+{% extends "ui/base_ui.html" %}
+
+{% block title %}My Tokens — ATP Platform{% endblock %}
+
+{% block content %}
+<h1>My Tokens</h1>
+
+{% if tokens %}
+<figure>
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Agent</th>
+            <th>Prefix</th>
+            <th>Expires</th>
+            <th>Last Used</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for t in tokens %}
+        <tr{% if t.revoked_at or (t.expires_at and t.expires_at < now) %} style="opacity:0.5"{% endif %}>
+            <td>{{ t.name }}</td>
+            <td>{{ 'agent' if t.agent_id else 'user' }}</td>
+            <td>{{ t.agent_name or '—' }}</td>
+            <td><code>{{ t.token_prefix }}...</code></td>
+            <td>{{ t.expires_at.strftime('%Y-%m-%d') if t.expires_at else 'never' }}</td>
+            <td>{{ t.last_used_at.strftime('%Y-%m-%d %H:%M') if t.last_used_at else '—' }}</td>
+            <td>{% if t.revoked_at %}revoked{% elif t.expires_at and t.expires_at < now %}expired{% else %}active{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</figure>
+{% else %}
+<p>No tokens yet. Create tokens from the agent detail page.</p>
+{% endif %}
+{% endblock %}

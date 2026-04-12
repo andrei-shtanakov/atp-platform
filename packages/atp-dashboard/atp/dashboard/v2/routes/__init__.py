@@ -21,6 +21,7 @@ Each module handles a specific domain of functionality:
 - upload: YAML suite file upload with validation
 - templates: Test template discovery
 - traces: Debug endpoint for OpenTelemetry traces (dev mode only)
+- token_api: API token management (create, list, revoke)
 - users: User management (list, get, role assignment)
 - metrics: Prometheus metrics endpoint
 - costs: Cost analytics and breakdowns
@@ -32,10 +33,14 @@ Each module handles a specific domain of functionality:
 - audit: Audit logging (query, filter, export, retention)
 - websocket: Real-time updates via WebSocket (TASK-801)
 - agent_traces: Agent execution trace listing and viewing (TASK-1601)
+- invite_api: Invite code management (create, list, deactivate)
 """
 
 from fastapi import APIRouter
 
+from atp.dashboard.v2.routes.agent_management_api import (
+    router as agent_management_api_router,
+)
 from atp.dashboard.v2.routes.agent_traces import (
     router as agent_traces_router,
 )
@@ -57,6 +62,7 @@ from atp.dashboard.v2.routes.device_auth import (
 from atp.dashboard.v2.routes.experiments import router as experiments_router
 from atp.dashboard.v2.routes.games import router as games_router
 from atp.dashboard.v2.routes.home import router as home_router
+from atp.dashboard.v2.routes.invite_api import router as invite_api_router
 from atp.dashboard.v2.routes.leaderboard import router as leaderboard_router
 from atp.dashboard.v2.routes.marketplace import router as marketplace_router
 from atp.dashboard.v2.routes.metrics import router as metrics_router
@@ -71,6 +77,7 @@ from atp.dashboard.v2.routes.templates import router as templates_router
 from atp.dashboard.v2.routes.tenants import router as tenants_router
 from atp.dashboard.v2.routes.tests import router as tests_router
 from atp.dashboard.v2.routes.timeline import router as timeline_router
+from atp.dashboard.v2.routes.token_api import router as token_api_router
 from atp.dashboard.v2.routes.tournament_api import (
     router as tournament_api_router,
 )
@@ -117,6 +124,9 @@ router.include_router(agent_traces_router)
 router.include_router(catalog_router)
 router.include_router(benchmark_api_router)
 router.include_router(tournament_api_router)
+router.include_router(token_api_router)
+router.include_router(agent_management_api_router)
+router.include_router(invite_api_router)
 
 __all__ = [
     "router",
@@ -153,4 +163,7 @@ __all__ = [
     "users_router",
     "websocket_router",
     "tournament_api_router",
+    "token_api_router",
+    "agent_management_api_router",
+    "invite_api_router",
 ]

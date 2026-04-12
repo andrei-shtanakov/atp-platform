@@ -1,0 +1,62 @@
+{% extends "ui/base_ui.html" %}
+
+{% block title %}My Agents — ATP Platform{% endblock %}
+
+{% block content %}
+<h1>My Agents</h1>
+
+<details id="new-agent-form">
+    <summary role="button" class="outline">New Agent</summary>
+    <form method="post" action="/api/v1/agents">
+        <div class="grid">
+            <label>Name <input type="text" name="name" required></label>
+            <label>Version <input type="text" name="version" value="latest"></label>
+            <label>Type
+                <select name="agent_type">
+                    <option value="http">HTTP</option>
+                    <option value="mcp">MCP</option>
+                    <option value="cli">CLI</option>
+                    <option value="container">Container</option>
+                </select>
+            </label>
+        </div>
+        <label>Description <input type="text" name="description"></label>
+        <button type="submit">Create Agent</button>
+    </form>
+</details>
+
+<div id="agents-table">
+{% if agents %}
+<figure>
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Version</th>
+            <th>Type</th>
+            <th>Active Tokens</th>
+            <th>Created</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for agent in agents %}
+        <tr>
+            <td><a href="/ui/agents/{{ agent.id }}">{{ agent.name }}</a></td>
+            <td><code>{{ agent.version }}</code></td>
+            <td>{{ agent.agent_type }}</td>
+            <td>{{ agent.token_count }}</td>
+            <td>{{ agent.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+            <td>
+                <a href="/ui/agents/{{ agent.id }}">View</a>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</figure>
+{% else %}
+<p>No agents yet. Create your first agent above.</p>
+{% endif %}
+</div>
+{% endblock %}

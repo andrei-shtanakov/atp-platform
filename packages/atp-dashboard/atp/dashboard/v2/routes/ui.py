@@ -8,14 +8,18 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from types import SimpleNamespace
 
 from fastapi import APIRouter, Request, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from atp.dashboard.benchmark.models import Benchmark, Run, RunStatus, TaskResult
-from atp.dashboard.models import SuiteDefinition, User
+from atp.dashboard.models import Agent, SuiteDefinition, User
+from atp.dashboard.tokens import APIToken, Invite
+from atp.dashboard.tournament.models import Participant
+from atp.dashboard.tournament.models import Tournament as TournamentModel
 from atp.dashboard.v2.dependencies import DBSession
 from atp.dashboard.v2.rate_limit import limiter
 
@@ -48,11 +52,17 @@ async def _get_ui_user(request: Request, session: DBSession) -> User | None:
 @limiter.limit("120/minute")
 async def ui_login(request: Request) -> HTMLResponse:
     """Render login page."""
+    from atp.dashboard.v2.config import get_config
+
+    config = get_config()
     expired = request.query_params.get("expired")
     return _templates(request).TemplateResponse(
         request=request,
         name="ui/login.html",
-        context={"expired": expired},
+        context={
+            "expired": expired,
+            "registration_mode": config.registration_mode,
+        },
     )
 
 
@@ -952,5 +962,202 @@ async def ui_analytics(request: Request, session: DBSession) -> HTMLResponse:
             "top_agents": top_agents,
             "recent_runs": recent_runs,
             "user": user,
+        },
+    )
+
+
+@router.get("/agents", response_class=HTMLResponse)
+@limiter.limit("120/minute")
+async def ui_agents(request: Request, session: DBSession) -> HTMLResponse:
+    """My Agents page."""
+    user = await _get_ui_user(request, session)
+    if not user:
+        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+
+    # Single query: agents + active token count via LEFT JOIN + GROUP BY
+    token_count_sub = (
+        select(
+            APIToken.agent_id,
+            func.count(APIToken.id).label("token_count"),
+        )
+        .where(APIToken.revoked_at.is_(None))
+        .group_by(APIToken.agent_id)
+        .subquery()
+    )
+    result = await session.execute(
+        select(Agent, func.coalesce(token_count_sub.c.token_count, 0))
+        .outerjoin(token_count_sub, Agent.id == token_count_sub.c.agent_id)
+        .where(Agent.owner_id == user.id, Agent.deleted_at.is_(None))
+        .order_by(Agent.created_at.desc())
+    )
+    agents = [
+        SimpleNamespace(
+            id=a.id,
+            name=a.name,
+            version=a.version,
+            agent_type=a.agent_type,
+            created_at=a.created_at,
+            token_count=tc,
+        )
+        for a, tc in result.all()
+    ]
+
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/agents.html",
+        context={"active_page": "agents", "user": user, "agents": agents},
+    )
+
+
+@router.get("/agents/{agent_id}", response_class=HTMLResponse)
+@limiter.limit("120/minute")
+async def ui_agent_detail(
+    request: Request, session: DBSession, agent_id: int
+) -> HTMLResponse:
+    """Agent detail page."""
+    user = await _get_ui_user(request, session)
+    if not user:
+        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+
+    agent = await session.get(Agent, agent_id)
+    if (
+        not agent
+        or agent.deleted_at
+        or (agent.owner_id != user.id and not user.is_admin)
+    ):
+        return _templates(request).TemplateResponse(
+            request=request,
+            name="ui/error.html",
+            context={
+                "active_page": "agents",
+                "user": user,
+                "error_title": "Not Found",
+                "error_message": "Agent not found",
+            },
+            status_code=404,
+        )
+
+    token_result = await session.execute(
+        select(APIToken)
+        .where(APIToken.agent_id == agent_id)
+        .order_by(APIToken.created_at.desc())
+    )
+    tokens = token_result.scalars().all()
+
+    history_result = await session.execute(
+        select(Participant, TournamentModel.status)
+        .join(TournamentModel, Participant.tournament_id == TournamentModel.id)
+        .where(Participant.agent_id == agent_id)
+        .order_by(Participant.joined_at.desc())
+    )
+    tournament_history = [
+        SimpleNamespace(
+            tournament_id=p.tournament_id,
+            tournament_status=t_status,
+            total_score=p.total_score,
+            joined_at=p.joined_at,
+        )
+        for p, t_status in history_result.all()
+    ]
+
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/agent_detail.html",
+        context={
+            "active_page": "agents",
+            "user": user,
+            "agent": agent,
+            "tokens": tokens,
+            "tournament_history": tournament_history,
+            "now": datetime.now(),
+        },
+    )
+
+
+@router.get("/tokens", response_class=HTMLResponse)
+@limiter.limit("120/minute")
+async def ui_tokens(request: Request, session: DBSession) -> HTMLResponse:
+    """My Tokens page."""
+    user = await _get_ui_user(request, session)
+    if not user:
+        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+
+    # Single query: tokens + agent name via LEFT JOIN
+    token_result = await session.execute(
+        select(APIToken, Agent.name.label("agent_name"))
+        .outerjoin(Agent, APIToken.agent_id == Agent.id)
+        .where(APIToken.user_id == user.id)
+        .order_by(APIToken.created_at.desc())
+    )
+    tokens = [
+        SimpleNamespace(
+            id=t.id,
+            name=t.name,
+            token_prefix=t.token_prefix,
+            agent_id=t.agent_id,
+            expires_at=t.expires_at,
+            last_used_at=t.last_used_at,
+            revoked_at=t.revoked_at,
+            created_at=t.created_at,
+            agent_name=agent_name,
+        )
+        for t, agent_name in token_result.all()
+    ]
+
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/tokens.html",
+        context={
+            "active_page": "tokens",
+            "user": user,
+            "tokens": tokens,
+            "now": datetime.now(),
+        },
+    )
+
+
+@router.get("/invites", response_class=HTMLResponse)
+@limiter.limit("120/minute")
+async def ui_invites(request: Request, session: DBSession) -> HTMLResponse:
+    """Invite management page (admin only)."""
+    user = await _get_ui_user(request, session)
+    if not user or not user.is_admin:
+        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+
+    # Single query: invites + creator/used_by names via aliased JOINs
+    from sqlalchemy.orm import aliased
+
+    Creator = aliased(User)
+    UsedBy = aliased(User)
+    result = await session.execute(
+        select(Invite, Creator.username, UsedBy.username)
+        .outerjoin(Creator, Invite.created_by_id == Creator.id)
+        .outerjoin(UsedBy, Invite.used_by_id == UsedBy.id)
+        .order_by(Invite.created_at.desc())
+    )
+    invites = [
+        SimpleNamespace(
+            id=inv.id,
+            code=inv.code,
+            created_by_id=inv.created_by_id,
+            used_by_id=inv.used_by_id,
+            use_count=inv.use_count,
+            max_uses=inv.max_uses,
+            expires_at=inv.expires_at,
+            created_at=inv.created_at,
+            created_by_name=creator_name,
+            used_by_name=used_by_name,
+        )
+        for inv, creator_name, used_by_name in result.all()
+    ]
+
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/invites.html",
+        context={
+            "active_page": "invites",
+            "user": user,
+            "invites": invites,
+            "now": datetime.now(),
         },
     )
