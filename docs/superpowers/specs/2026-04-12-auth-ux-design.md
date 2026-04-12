@@ -38,7 +38,7 @@
   andrei-shtanakov   Sign out
 ```
 
-"Sign out" is a link to `POST /ui/logout` (via HTMX or a small form).
+"Sign out" uses `hx-post="/ui/logout"` (HTMX only, not a plain form). Reason: `base_ui.html` has `hx-headers='{"X-CSRF": "1"}'` on `<body>` — HTMX requests automatically include this header. A plain `<form method="POST">` would not, and would break if server-side CSRF checking is added later.
 
 ### 2. Logout route (`ui.py`)
 
@@ -50,7 +50,7 @@ New route `POST /ui/logout`:
 
 **`JWTUserStateMiddleware`** (`rate_limit.py`): after checking `Authorization: Bearer`, also check `request.cookies.get("atp_token")`. Same JWT decode logic.
 
-**`get_current_user`** (`auth/__init__.py`): the `OAuth2PasswordBearer` dependency only reads `Authorization` header. Add a secondary source: if Bearer token is None, try `request.cookies.get("atp_token")`. This requires changing the dependency signature to also accept `Request`.
+**`get_current_user`** (`auth/__init__.py`): the `OAuth2PasswordBearer` dependency only reads `Authorization` header. Add a secondary source: if Bearer token is None, try `request.cookies.get("atp_token")`. This requires adding `Request` to the dependency signature — FastAPI auto-injects it, so all existing `Depends(get_current_user)` continue to work. The existing `oauth2_scheme` has `auto_error=False` — preserve this. Cookie fallback uses the same JWT decode logic (HS256, same `SECRET_KEY`).
 
 ### 4. Pass `user` to all UI templates
 
@@ -93,6 +93,17 @@ No functional change to the login logic — just CSS/layout reordering.
 
 None.
 
+## Implementation Order
+
+Each step is independently verifiable:
+
+1. Middleware cookie fallback (`rate_limit.py`) — `request.state.user_id` populates for browser sessions
+2. `get_current_user` cookie fallback (`auth/__init__.py`) — "View raw JSON →" starts working
+3. `_get_ui_user()` helper + pass `user` to all templates (`ui.py`)
+4. Sidebar auth controls (`base_ui.html`) — login/logout/username
+5. Logout route (`ui.py`) — HTMX-based
+6. Login page reorder (`login.html`) — cosmetic, last
+
 ## Non-goals
 
 - User self-registration flow changes (works as-is via `/ui/register`)
@@ -101,3 +112,4 @@ None.
 - Session management / token revocation
 - Password reset flow
 - 2FA/MFA
+- HttpOnly / Secure cookie migration (requires server-side `Set-Cookie` flow, separate scope)
