@@ -280,11 +280,12 @@ class AgentComparisonResponse(BaseModel):
 
 
 class UserCreate(BaseModel):
-    """Schema for creating a user."""
+    """User registration request."""
 
     username: str = Field(..., min_length=3, max_length=50)
     email: str = Field(..., max_length=255)
     password: str = Field(..., min_length=8)
+    invite_code: str | None = None
 
 
 class UserResponse(BaseModel):

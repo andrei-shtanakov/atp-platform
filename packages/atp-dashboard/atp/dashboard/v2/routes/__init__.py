@@ -33,6 +33,7 @@ Each module handles a specific domain of functionality:
 - audit: Audit logging (query, filter, export, retention)
 - websocket: Real-time updates via WebSocket (TASK-801)
 - agent_traces: Agent execution trace listing and viewing (TASK-1601)
+- invite_api: Invite code management (create, list, deactivate)
 """
 
 from fastapi import APIRouter
@@ -61,6 +62,7 @@ from atp.dashboard.v2.routes.device_auth import (
 from atp.dashboard.v2.routes.experiments import router as experiments_router
 from atp.dashboard.v2.routes.games import router as games_router
 from atp.dashboard.v2.routes.home import router as home_router
+from atp.dashboard.v2.routes.invite_api import router as invite_api_router
 from atp.dashboard.v2.routes.leaderboard import router as leaderboard_router
 from atp.dashboard.v2.routes.marketplace import router as marketplace_router
 from atp.dashboard.v2.routes.metrics import router as metrics_router
@@ -124,6 +126,7 @@ router.include_router(benchmark_api_router)
 router.include_router(tournament_api_router)
 router.include_router(token_api_router)
 router.include_router(agent_management_api_router)
+router.include_router(invite_api_router)
 
 __all__ = [
     "router",
@@ -162,4 +165,5 @@ __all__ = [
     "tournament_api_router",
     "token_api_router",
     "agent_management_api_router",
+    "invite_api_router",
 ]

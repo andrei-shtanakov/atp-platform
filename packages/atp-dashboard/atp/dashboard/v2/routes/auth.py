@@ -4,7 +4,7 @@ This module provides authentication endpoints for login, registration,
 and user information retrieval.
 """
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -20,6 +20,8 @@ from atp.dashboard.auth import (
 from atp.dashboard.models import User
 from atp.dashboard.rbac.models import Role, UserRole
 from atp.dashboard.schemas import Token, UserCreate, UserResponse
+from atp.dashboard.tokens import Invite
+from atp.dashboard.v2.config import get_config
 from atp.dashboard.v2.dependencies import DBSession, RequiredUser
 from atp.dashboard.v2.rate_limit import limiter
 
@@ -82,6 +84,35 @@ async def register(
         HTTPException: If registration fails (e.g., username already exists).
     """
     try:
+        config = get_config()
+
+        # Invite validation
+        if config.registration_mode == "invite":
+            if not user_data.invite_code:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invite code required",
+                )
+            result = await session.execute(
+                select(Invite).where(Invite.code == user_data.invite_code)
+            )
+            invite = result.scalar_one_or_none()
+            if invite is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid or expired invite code",
+                )
+            if invite.use_count >= invite.max_uses:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid or expired invite code",
+                )
+            if invite.expires_at and invite.expires_at < datetime.now():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid or expired invite code",
+                )
+
         # First user becomes admin automatically
         result = await session.execute(select(func.count(User.id)))
         user_count = result.scalar_one()
@@ -95,8 +126,14 @@ async def register(
             is_admin=is_first_user,
         )
 
-        # Assign default role: admin for first user, viewer for others
-        default_role_name = "admin" if is_first_user else "viewer"
+        # Assign default role
+        if is_first_user:
+            default_role_name = "admin"
+        elif config.registration_mode == "invite":
+            default_role_name = "developer"
+        else:
+            default_role_name = "viewer"
+
         role_result = await session.execute(
             select(Role).where(Role.name == default_role_name)
         )
@@ -104,8 +141,21 @@ async def register(
         if role is not None:
             session.add(UserRole(user_id=user.id, role_id=role.id))
 
+        # Mark invite as used
+        if config.registration_mode == "invite" and user_data.invite_code:
+            invite_result = await session.execute(
+                select(Invite).where(Invite.code == user_data.invite_code)
+            )
+            used_invite = invite_result.scalar_one_or_none()
+            if used_invite:
+                used_invite.use_count += 1
+                used_invite.used_by_id = user.id
+                used_invite.used_at = datetime.now()
+
         await session.commit()
         return UserResponse.model_validate(user)
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
