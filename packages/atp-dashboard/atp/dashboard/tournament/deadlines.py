@@ -15,7 +15,7 @@ import asyncio
 import logging
 import os
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -29,6 +29,12 @@ from atp.dashboard.tournament.models import (
 )
 from atp.dashboard.tournament.reasons import CancelReason
 from atp.dashboard.tournament.service import TournamentService
+
+
+def _utc_now() -> datetime:
+    """Current UTC time as naive datetime (SQLite-compatible)."""
+    return datetime.now(UTC).replace(tzinfo=None)
+
 
 _DEFAULT_POLL_INTERVAL_S = 5.0
 
@@ -93,7 +99,7 @@ async def _tick(
             select(Round.id)
             .join(Tournament, Tournament.id == Round.tournament_id)
             .where(Round.status == RoundStatus.WAITING_FOR_ACTIONS)
-            .where(Round.deadline < datetime.utcnow())
+            .where(Round.deadline < _utc_now())
             .where(Tournament.status == TournamentStatus.ACTIVE)
         )
         round_ids = [row[0] for row in expired_rounds_result]
@@ -101,7 +107,7 @@ async def _tick(
         expired_pending_result = await scan_session.execute(
             select(Tournament.id)
             .where(Tournament.status == TournamentStatus.PENDING)
-            .where(Tournament.pending_deadline < datetime.utcnow())
+            .where(Tournament.pending_deadline < _utc_now())
         )
         tournament_ids = [row[0] for row in expired_pending_result]
 

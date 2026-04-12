@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import os
 import secrets
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from game_envs.games.prisoners_dilemma import PrisonersDilemma
@@ -46,6 +46,16 @@ from atp.dashboard.tournament.reasons import CancelReason
 from atp.dashboard.tournament.state import RoundState
 
 logger = logging.getLogger("atp.dashboard.tournament.service")
+
+
+def _utc_now() -> datetime:
+    """Current UTC time as naive datetime (SQLite-compatible).
+
+    Uses ``datetime.now(UTC)`` (no deprecation warning), then strips
+    tzinfo so comparisons with existing naive DB values work correctly.
+    """
+    return datetime.now(UTC).replace(tzinfo=None)
+
 
 TOURNAMENT_PENDING_MAX_WAIT_S: int = int(
     os.environ.get("ATP_TOURNAMENT_PENDING_MAX_WAIT_S", "300")
@@ -109,7 +119,7 @@ class TournamentService:
                 f"Reduce total_rounds or round_deadline_s."
             )
 
-        now = datetime.utcnow()
+        now = _utc_now()
         pending_deadline = now + timedelta(seconds=TOURNAMENT_PENDING_MAX_WAIT_S)
 
         join_token_plaintext: str | None = None
@@ -287,7 +297,7 @@ class TournamentService:
 
     async def _start_tournament(self, tournament: Tournament) -> None:
         """Transition a PENDING tournament to ACTIVE and create round 1."""
-        now = datetime.utcnow()
+        now = _utc_now()
         tournament.status = TournamentStatus.ACTIVE
         tournament.starts_at = now
         round_1 = Round(
@@ -306,7 +316,7 @@ class TournamentService:
                 tournament_id=tournament.id,
                 round_number=1,
                 data={"total_rounds": tournament.total_rounds},
-                timestamp=datetime.utcnow(),
+                timestamp=_utc_now(),
             )
         )
 
@@ -572,7 +582,7 @@ class TournamentService:
                 "payoffs": payoffs,
             }
 
-        now = datetime.utcnow()
+        now = _utc_now()
         next_round = Round(
             tournament_id=tournament.id,
             round_number=round_obj.round_number + 1,
@@ -589,7 +599,7 @@ class TournamentService:
                 tournament_id=tournament.id,
                 round_number=next_round.round_number,
                 data={"total_rounds": tournament.total_rounds},
-                timestamp=datetime.utcnow(),
+                timestamp=_utc_now(),
             )
         )
 
@@ -604,7 +614,7 @@ class TournamentService:
     async def _complete_tournament(self, tournament: Tournament) -> None:
         """Mark tournament COMPLETED and write final per-participant scores."""
         tournament.status = TournamentStatus.COMPLETED
-        tournament.ends_at = datetime.utcnow()
+        tournament.ends_at = _utc_now()
 
         participants = (
             (
@@ -633,7 +643,7 @@ class TournamentService:
                 data={
                     "final_scores": {p.user_id: p.total_score for p in participants},
                 },
-                timestamp=datetime.utcnow(),
+                timestamp=_utc_now(),
             )
         )
 
@@ -655,7 +665,7 @@ class TournamentService:
                 f"user {user.id} is not active in tournament {tournament_id}"
             )
 
-        participant.released_at = datetime.utcnow()
+        participant.released_at = _utc_now()
         await self._session.flush()
 
         remaining = await self._session.scalar(
@@ -925,7 +935,7 @@ class TournamentService:
         )
 
         # Step 4: Write tournament audit fields
-        now = datetime.utcnow()
+        now = _utc_now()
         tournament.status = TournamentStatus.CANCELLED
         tournament.cancelled_at = now
         tournament.cancelled_by = cancelled_by
@@ -1007,7 +1017,7 @@ class TournamentService:
         )
         all_participant_ids = [row[0] for row in participants_result]
 
-        now = datetime.utcnow()
+        now = _utc_now()
         for participant_id in all_participant_ids:
             if participant_id not in submitted_ids:
                 self._session.add(
