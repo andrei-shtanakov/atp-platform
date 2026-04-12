@@ -8,7 +8,9 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[deploy]')
+    # Every push to main auto-deploys. Use workflow_dispatch for manual triggers.
+    # Previously required [deploy] tag in commit message, but PR merge commits
+    # don't contain it — causing missed deploys (Plan 2a incident #9).
 
     steps:
       - name: Deploy via SSH

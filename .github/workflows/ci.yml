@@ -197,3 +197,33 @@ jobs:
       - name: Check linting
         run: |
           uv run ruff check .
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build production Docker image
+        run: docker compose -f deploy/docker-compose.yml build platform
+
+      - name: Start platform container
+        env:
+          SECRET_KEY: "ci-test-secret-key-not-for-production"
+          ATP_DISABLE_AUTH: "true"
+        run: |
+          docker compose -f deploy/docker-compose.yml up -d platform
+          # Wait for container to become healthy (up to 60s)
+          for i in $(seq 1 12); do
+            if curl -sf http://localhost:8080/api/health > /dev/null 2>&1; then
+              echo "Health check passed on attempt $i"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Health check failed after 60s"
+          docker compose -f deploy/docker-compose.yml logs platform
+          exit 1
+
+      - name: Teardown
+        if: always()
+        run: docker compose -f deploy/docker-compose.yml down -v
