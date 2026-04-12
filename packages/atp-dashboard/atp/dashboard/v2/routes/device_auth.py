@@ -73,7 +73,7 @@ async def initiate_device_flow(request: Request) -> DeviceInitResponse:
 
 
 @router.post("/device/poll")
-@limiter.limit("5/minute")
+@limiter.limit("30/minute")
 async def poll_device_flow(
     request: Request, body: DevicePollRequest, session: DBSession
 ) -> Token:

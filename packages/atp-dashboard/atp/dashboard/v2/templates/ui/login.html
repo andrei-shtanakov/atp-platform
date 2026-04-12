@@ -109,6 +109,11 @@
                         setTimeout(poll, interval * 1000);
                         return;
                     }
+                    if (resp.status === 429) {
+                        // Rate limited — back off and retry
+                        setTimeout(poll, (interval * 2) * 1000);
+                        return;
+                    }
                     if (resp.status === 410) {
                         showError('Code expired. Please try again.');
                         return;
