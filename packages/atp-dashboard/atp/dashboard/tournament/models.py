@@ -199,6 +199,11 @@ class Participant(Base):
     # Plan 2a additive column — AD-10 slot release
     released_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
+    # Scope #2 — link to Agent record (nullable for old participants)
+    agent_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("agents.id"), nullable=True
+    )
+
     # Relationships
     tournament: Mapped["Tournament"] = relationship(
         "Tournament",

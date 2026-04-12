@@ -80,16 +80,30 @@ class Agent(Base):
         DateTime, default=datetime.now, onupdate=datetime.now
     )
 
+    # Ownership fields (Scope #2)
+    owner_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=True
+    )
+    version: Mapped[str] = mapped_column(String(50), nullable=False, default="latest")
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
     # Relationships
     suite_executions: Mapped[list["SuiteExecution"]] = relationship(
         back_populates="agent", cascade="all, delete-orphan"
     )
 
-    # Indexes for common queries - agent name unique within tenant
+    # Indexes for common queries
     __table_args__ = (
-        UniqueConstraint("tenant_id", "name", name="uq_agent_tenant_name"),
+        UniqueConstraint(
+            "tenant_id",
+            "owner_id",
+            "name",
+            "version",
+            name="uq_agent_tenant_owner_name_version",
+        ),
         Index("idx_agent_name", "name"),
         Index("idx_agent_tenant", "tenant_id"),
+        Index("idx_agent_owner", "owner_id"),
     )
 
     def __repr__(self) -> str:
