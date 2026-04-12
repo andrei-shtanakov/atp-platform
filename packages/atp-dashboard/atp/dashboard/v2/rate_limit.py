@@ -109,16 +109,26 @@ class JWTUserStateMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
+        token: str | None = None
+
+        # 1. Try Authorization: Bearer header
         header = request.headers.get("authorization", "")
-        scheme, _, token = header.partition(" ")
-        if scheme.lower() == "bearer" and token.strip():
+        scheme, _, header_token = header.partition(" ")
+        if scheme.lower() == "bearer" and header_token.strip():
+            token = header_token.strip()
+
+        # 2. Fallback to atp_token cookie (browser sessions)
+        if token is None:
+            token = request.cookies.get("atp_token")
+
+        if token:
             # Late import so test monkeypatching of SECRET_KEY takes effect
             # and to avoid a circular import at module load.
             from atp.dashboard import auth as auth_module
 
             try:
                 payload = jwt.decode(
-                    token.strip(),
+                    token,
                     auth_module.SECRET_KEY,
                     algorithms=[auth_module.ALGORITHM],
                 )
