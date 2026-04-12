@@ -124,6 +124,37 @@ class DashboardConfig(BaseSettings):
         description=("Rate limit storage URI (memory:// or redis://host:port)"),
     )
 
+    # Token self-service settings
+    registration_mode: str = Field(
+        default="invite",
+        description="Registration mode: 'invite' (code required) or 'open'",
+    )
+    max_agents_per_user: int = Field(
+        default=10,
+        ge=1,
+        description="Maximum agents per user",
+    )
+    max_tokens_per_agent: int = Field(
+        default=3,
+        ge=1,
+        description="Maximum active API tokens per agent",
+    )
+    max_user_tokens: int = Field(
+        default=5,
+        ge=1,
+        description="Maximum user-level API tokens",
+    )
+    default_token_days: int = Field(
+        default=30,
+        ge=1,
+        description="Default token expiry in days",
+    )
+    max_token_days: int = Field(
+        default=365,
+        ge=0,
+        description="Maximum token expiry in days (0 = allow 'never')",
+    )
+
     # App metadata
     title: str = Field(
         default="ATP Dashboard",
