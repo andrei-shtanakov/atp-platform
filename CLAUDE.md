@@ -90,6 +90,9 @@ uv run atp sync                    # Sync local YAML suites with remote server
 9. **Auth** (`atp/dashboard/auth/`) - Authentication system with GitHub OAuth (OIDC), Device Flow for CLI login, JWT tokens
 10. **RBAC** (`atp/dashboard/rbac/`) - Role-based access control with auto-admin for first user
 11. **Dashboard UI** (`atp/dashboard/v2/routes/ui.py`) - HTMX + Pico CSS frontend served at `/ui/` (login, benchmarks, games, runs + run detail `/ui/runs/{id}`, leaderboard, suites, analytics)
+21. **Token Self-Service** (`atp/dashboard/tokens.py`, `atp/dashboard/v2/routes/token_api.py`) - APIToken and Invite ORM models; API endpoints `POST/GET/DELETE /api/v1/tokens`, invite-gated registration; agent-scoped tokens (prefix `atp_a_`) and user-level tokens (prefix `atp_u_`)
+22. **Agent Ownership** (`atp/dashboard/v2/routes/agent_management_api.py`) - Agent CRUD with ownership checks; `POST/GET/DELETE /api/v1/agents`; per-user agent quota enforced via `ATP_MAX_AGENTS_PER_USER`
+23. **Invite System** (`atp/dashboard/v2/routes/invite_api.py`) - Admin-only invite code management; `POST/GET/DELETE /api/v1/invites`; controls registration when `ATP_REGISTRATION_MODE=invite`
 12. **YAML Upload** (`POST /api/suite-definitions/upload`) - Upload YAML test suites to the server; used by `atp push`
 13. **Trend Analysis** (`atp/analytics/trend.py`) - Cross-run trend analysis detecting gradual success_rate drift via OLS slope
 14. **Rate Limiting** (`atp/dashboard/v2/rate_limit.py`) - Per-endpoint HTTP rate limiting via slowapi, keyed by JWT user_id or client IP, configurable via `ATP_RATE_LIMIT_*` env vars
@@ -183,6 +186,13 @@ Key environment variables for the dashboard and SDK:
 - `ATP_RATE_LIMIT_STORAGE` - Rate limit storage URI (default: "memory://", supports "redis://host:port")
 - `ATP_BATCH_MAX_SIZE` - Max batch size for next-task endpoint (default: 10)
 - `ATP_UPLOAD_MAX_SIZE_MB` - Max YAML upload file size in MB (default: 1)
+- `ATP_REGISTRATION_MODE` - Registration mode: `invite` (invite code required) or `open` (default: "invite")
+- `ATP_MAX_AGENTS_PER_USER` - Maximum agents per user (default: 10)
+- `ATP_MAX_TOKENS_PER_AGENT` - Maximum active API tokens per agent (default: 3)
+- `ATP_MAX_USER_TOKENS` - Maximum user-level API tokens (default: 5)
+- `ATP_DEFAULT_TOKEN_DAYS` - Default token expiry in days (default: 30)
+- `ATP_MAX_TOKEN_DAYS` - Maximum allowed token expiry in days; 0 = allow "never" (default: 365)
+- `ATP_TOURNAMENT_PENDING_MAX_WAIT_S` - Max seconds to wait for tournament participants before timing out (default: 300)
 
 ## Code Style
 
