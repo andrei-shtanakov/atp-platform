@@ -129,7 +129,7 @@ async def _make_move_impl(
 # ---------------------------------------------------------------------------
 
 
-@mcp_server.tool()
+@mcp_server.tool(name="join_tournament")
 async def _join_tournament_mcp(
     ctx: Context,
     tournament_id: int,

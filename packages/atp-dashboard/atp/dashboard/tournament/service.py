@@ -304,7 +304,7 @@ class TournamentService:
                 tournament_id=tournament.id,
                 round_number=1,
                 data={"total_rounds": tournament.total_rounds},
-                timestamp=datetime.now(),
+                timestamp=datetime.utcnow(),
             )
         )
 
@@ -587,7 +587,7 @@ class TournamentService:
                 tournament_id=tournament.id,
                 round_number=next_round.round_number,
                 data={"total_rounds": tournament.total_rounds},
-                timestamp=datetime.now(),
+                timestamp=datetime.utcnow(),
             )
         )
 
@@ -602,7 +602,7 @@ class TournamentService:
     async def _complete_tournament(self, tournament: Tournament) -> None:
         """Mark tournament COMPLETED and write final per-participant scores."""
         tournament.status = TournamentStatus.COMPLETED
-        tournament.ends_at = datetime.now()
+        tournament.ends_at = datetime.utcnow()
 
         participants = (
             (
@@ -631,7 +631,7 @@ class TournamentService:
                 data={
                     "final_scores": {p.user_id: p.total_score for p in participants},
                 },
-                timestamp=datetime.now(),
+                timestamp=datetime.utcnow(),
             )
         )
 
