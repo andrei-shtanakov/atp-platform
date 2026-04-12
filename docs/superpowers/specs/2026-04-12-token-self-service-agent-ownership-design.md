@@ -35,10 +35,13 @@ class Agent(Base):
     # new fields:
     owner_id: int | None  # FK -> users.id, nullable for backwards compat
     version: str = "latest"  # string label, like docker tag
+    deleted_at: datetime | None  # soft delete — None = active
 
     # new constraint (replaces existing unique(tenant_id, name)):
     # unique(tenant_id, owner_id, name, version)
 ```
+
+**Soft delete:** `DELETE /api/v1/agents/{id}` sets `deleted_at = now()` and revokes all agent tokens. Agent is hidden from UI/API listings but remains in DB for tournament history and participant FK integrity. `Participant.agent_id` FK is never dangling.
 
 ### New table: `APIToken`
 
@@ -52,7 +55,7 @@ class APIToken(Base):
     agent_id: int | None  # FK -> agents.id, None = user-level token
 
     name: str  # human-readable ("my-bot-prod", "ci-runner")
-    token_prefix: str  # first 8 chars of token for UI display ("atp_u_3f")
+    token_prefix: str  # first 12 chars of token for UI display ("atp_u_3f8a1b")
     token_hash: str  # sha256(full_token), indexed, unique
 
     scopes: list[str] = ["*"]  # JSON, unused for now
@@ -107,7 +110,7 @@ class Participant(Base):
 | `GET` | `/api/v1/agents` | List my agents | user token |
 | `GET` | `/api/v1/agents/{id}` | Agent details | owner or admin |
 | `PATCH` | `/api/v1/agents/{id}` | Update agent | owner or admin |
-| `DELETE` | `/api/v1/agents/{id}` | Delete agent + revoke all its tokens | owner or admin |
+| `DELETE` | `/api/v1/agents/{id}` | Soft-delete agent + revoke all its tokens | owner or admin |
 
 **Create agent request:**
 ```json
@@ -154,12 +157,14 @@ POST /api/v1/tokens
 
 Validations: limit 5 user-tokens, 3 agent-tokens per agent, agent must belong to user.
 
+**Rate limiting:** `POST /api/v1/tokens` and `POST /api/v1/agents` are rate-limited to `10/minute` per user to prevent create/revoke churn attacks.
+
 **List tokens response:**
 ```json
 [
-  {"id": 1, "name": "ci-runner", "token_prefix": "atp_u_3f", "agent_id": null,
+  {"id": 1, "name": "ci-runner", "token_prefix": "atp_u_3f8a1b", "agent_id": null,
    "created_at": "...", "expires_at": "...", "last_used_at": "...", "revoked_at": null},
-  {"id": 2, "name": "tft-prod", "token_prefix": "atp_a_9c", "agent_id": 42, ...}
+  {"id": 2, "name": "tft-prod", "token_prefix": "atp_a_9c1b2d", "agent_id": 42, ...}
 ]
 ```
 
@@ -193,7 +198,7 @@ When `ATP_REGISTRATION_MODE=invite`: invite_code is required. When `=open`: igno
 2. If starts with "atp_u_" or "atp_a_":
    -> sha256(token) -> SELECT FROM api_tokens WHERE token_hash = ? AND revoked_at IS NULL
    -> check expires_at
-   -> UPDATE last_used_at (debounced, max once per 60 sec)
+   -> UPDATE api_tokens SET last_used_at = now() WHERE id = ? AND (last_used_at IS NULL OR last_used_at < now() - 60s)  -- atomic, no race
    -> request.state.user_id = token.user_id
    -> request.state.agent_id = token.agent_id  (None for user-level)
    -> request.state.token_type = "api"
@@ -212,12 +217,18 @@ When a bot with agent-scoped token calls `join_tournament`:
 ### GitHub OAuth with invite-only mode
 
 ```
-1. /ui/login -> "Sign in with GitHub"
-2. GitHub callback -> post_auth.py -> user doesn't exist yet
-3. invite mode: redirect to /ui/register?github=1&username=...&email=...
-   (pre-fill from GitHub profile, invite_code required)
-4. open mode: create user automatically (current behavior)
+Invite mode:
+1. /ui/register -> user enters invite_code -> validated -> stored in session
+2. "Continue with GitHub" button -> GitHub OAuth flow
+3. GitHub callback -> post_auth.py -> invite already validated in session
+4. User created automatically (username/email from GitHub profile)
+
+Open mode:
+1. /ui/login -> "Sign in with GitHub" -> GitHub OAuth flow
+2. GitHub callback -> post_auth.py -> user created automatically (current behavior)
 ```
+
+Invite code is validated **before** OAuth redirect to avoid UX friction (user expects to be logged in after GitHub auth, not redirected to another form).
 
 ## Dashboard UI Pages
 
@@ -272,14 +283,16 @@ Button: "Generate Invite" -> shows code + copy button.
 
 ## Database Migration
 
-New tables (`APIToken`, `Invite`): created via `create_all()` + Alembic migration.
+**Production (Alembic):** Single migration creates new tables (`APIToken`, `Invite`) and adds columns/constraints to existing tables. This is the authoritative migration path.
 
-Changes to existing tables:
-- `Agent`: add `owner_id`, `version` via `_add_missing_columns()` + Alembic
-- `Participant`: add `agent_id` via `_add_missing_columns()` + Alembic
-- Unique constraint `(tenant_id, owner_id, name, version)` on Agent: **Alembic only** (`_add_missing_columns` doesn't handle constraints)
+**Dev/SQLite (`create_all()` + `_add_missing_columns()`):** Handles new tables and new nullable columns automatically at startup. Does NOT handle constraints, indexes, or column alterations — those require Alembic even in dev.
 
-Backwards compatibility: existing agents get `owner_id = NULL`, existing participants get `agent_id = NULL`.
+Changes:
+- New tables: `api_tokens`, `invites` — created by both paths
+- `Agent`: add `owner_id` (nullable FK), `version` (default "latest"), `deleted_at` (nullable) — columns via both paths, unique constraint via Alembic only
+- `Participant`: add `agent_id` (nullable FK) — via both paths
+
+Backwards compatibility: existing agents get `owner_id = NULL, version = "latest", deleted_at = NULL`, existing participants get `agent_id = NULL`.
 
 ## Environment Variables
 
@@ -298,4 +311,4 @@ Backwards compatibility: existing agents get `owner_id = NULL`, existing partici
 - Test history per agent (Agent model ready, test runner integration separate)
 - Agent monitoring/control via platform (future scope)
 - Multi-use invites (max_uses field exists, UI shows single-use only for now)
-- Rate limiting per token type (current per-user_id limits apply equally)
+- Granular rate limiting per token type (current per-user_id limits apply equally; creation endpoints rate-limited)
