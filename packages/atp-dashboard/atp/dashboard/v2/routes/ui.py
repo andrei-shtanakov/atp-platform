@@ -10,12 +10,15 @@ import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Request, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from atp.dashboard.benchmark.models import Benchmark, Run, RunStatus, TaskResult
-from atp.dashboard.models import SuiteDefinition, User
+from atp.dashboard.models import Agent, SuiteDefinition, User
+from atp.dashboard.tokens import APIToken
+from atp.dashboard.tournament.models import Participant
+from atp.dashboard.tournament.models import Tournament as TournamentModel
 from atp.dashboard.v2.dependencies import DBSession
 from atp.dashboard.v2.rate_limit import limiter
 
@@ -952,5 +955,124 @@ async def ui_analytics(request: Request, session: DBSession) -> HTMLResponse:
             "top_agents": top_agents,
             "recent_runs": recent_runs,
             "user": user,
+        },
+    )
+
+
+@router.get("/agents", response_class=HTMLResponse)
+@limiter.limit("120/minute")
+async def ui_agents(request: Request, session: DBSession) -> HTMLResponse:
+    """My Agents page."""
+    user = await _get_ui_user(request, session)
+    if not user:
+        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+
+    result = await session.execute(
+        select(Agent)
+        .where(Agent.owner_id == user.id, Agent.deleted_at.is_(None))
+        .order_by(Agent.created_at.desc())
+    )
+    agents_raw = result.scalars().all()
+
+    agents = []
+    for a in agents_raw:
+        count_result = await session.execute(
+            select(func.count(APIToken.id)).where(
+                APIToken.agent_id == a.id,
+                APIToken.revoked_at.is_(None),
+            )
+        )
+        agents.append(
+            type(
+                "AgentRow",
+                (),
+                {
+                    **{
+                        k: getattr(a, k)
+                        for k in [
+                            "id",
+                            "name",
+                            "version",
+                            "agent_type",
+                            "created_at",
+                        ]
+                    },
+                    "token_count": count_result.scalar_one(),
+                },
+            )
+        )
+
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/agents.html",
+        context={"active_page": "agents", "user": user, "agents": agents},
+    )
+
+
+@router.get("/agents/{agent_id}", response_class=HTMLResponse)
+@limiter.limit("120/minute")
+async def ui_agent_detail(
+    request: Request, session: DBSession, agent_id: int
+) -> HTMLResponse:
+    """Agent detail page."""
+    user = await _get_ui_user(request, session)
+    if not user:
+        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+
+    agent = await session.get(Agent, agent_id)
+    if (
+        not agent
+        or agent.deleted_at
+        or (agent.owner_id != user.id and not user.is_admin)
+    ):
+        return _templates(request).TemplateResponse(
+            request=request,
+            name="ui/error.html",
+            context={
+                "active_page": "agents",
+                "user": user,
+                "error_title": "Not Found",
+                "error_message": "Agent not found",
+            },
+            status_code=404,
+        )
+
+    token_result = await session.execute(
+        select(APIToken)
+        .where(APIToken.agent_id == agent_id)
+        .order_by(APIToken.created_at.desc())
+    )
+    tokens = token_result.scalars().all()
+
+    history_result = await session.execute(
+        select(Participant, TournamentModel.status)
+        .join(TournamentModel, Participant.tournament_id == TournamentModel.id)
+        .where(Participant.agent_id == agent_id)
+        .order_by(Participant.joined_at.desc())
+    )
+    tournament_history = [
+        type(
+            "ParticipantRow",
+            (),
+            {
+                "tournament_id": p.tournament_id,
+                "tournament_status": t_status,
+                "total_score": p.total_score,
+                "joined_at": p.joined_at,
+            },
+        )
+        for p, t_status in history_result.all()
+    ]
+
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/agent_detail.html",
+        context={
+            "active_page": "agents",
+            "user": user,
+            "agent": agent,
+            "tokens": tokens,
+            "tournament_history": tournament_history,
+            "now": datetime.now(),
         },
     )
