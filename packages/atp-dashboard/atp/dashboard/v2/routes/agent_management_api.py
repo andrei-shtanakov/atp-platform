@@ -2,9 +2,10 @@
 
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, select, update
 
+from atp.dashboard.auth import require_user_level_token
 from atp.dashboard.models import Agent
 from atp.dashboard.schemas import AgentOwnerCreate, AgentOwnerResponse, AgentOwnerUpdate
 from atp.dashboard.tokens import APIToken
@@ -13,7 +14,11 @@ from atp.dashboard.v2.config import get_config
 from atp.dashboard.v2.dependencies import DBSession, RequiredUser
 from atp.dashboard.v2.rate_limit import limiter
 
-router = APIRouter(prefix="/v1/agents", tags=["agent-management"])
+router = APIRouter(
+    prefix="/v1/agents",
+    tags=["agent-management"],
+    dependencies=[Depends(require_user_level_token)],
+)
 
 
 @router.post("", response_model=AgentOwnerResponse, status_code=status.HTTP_201_CREATED)

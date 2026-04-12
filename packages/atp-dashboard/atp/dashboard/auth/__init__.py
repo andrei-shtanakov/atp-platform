@@ -292,6 +292,23 @@ async def get_current_admin_user(
     return current_user
 
 
+async def require_user_level_token(request: Request) -> None:
+    """Reject agent-scoped API tokens on management endpoints.
+
+    Agent-scoped tokens (atp_a_) should only be used for operations
+    on the bound agent (tournament participation, test runs). They must
+    not grant access to user-level management (creating agents/tokens,
+    invites, etc.).
+    """
+    token_type = getattr(request.state, "token_type", None)
+    agent_id = getattr(request.state, "agent_id", None)
+    if token_type == "api" and agent_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Agent-scoped tokens cannot access management endpoints",
+        )
+
+
 __all__ = [
     # Core auth
     "ACCESS_TOKEN_EXPIRE_MINUTES",

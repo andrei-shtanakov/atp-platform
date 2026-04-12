@@ -2,15 +2,20 @@
 
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 
+from atp.dashboard.auth import require_user_level_token
 from atp.dashboard.schemas import InviteCreate, InviteResponse
 from atp.dashboard.tokens import Invite, generate_invite_code
 from atp.dashboard.v2.dependencies import AdminUser, DBSession
 from atp.dashboard.v2.rate_limit import limiter
 
-router = APIRouter(prefix="/v1/invites", tags=["invites"])
+router = APIRouter(
+    prefix="/v1/invites",
+    tags=["invites"],
+    dependencies=[Depends(require_user_level_token)],
+)
 
 
 @router.post("", response_model=InviteResponse, status_code=status.HTTP_201_CREATED)

@@ -9,7 +9,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from atp.dashboard.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
@@ -85,30 +85,28 @@ async def register(
     """
     try:
         config = get_config()
-        invite = None
 
-        # Invite validation
+        # Invite validation — atomic claim to prevent concurrent reuse
         if config.registration_mode == "invite":
             if not user_data.invite_code:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Invite code required",
                 )
-            result = await session.execute(
-                select(Invite).where(Invite.code == user_data.invite_code)
+            # Atomically increment use_count only if invite is valid
+            claim_result = await session.execute(
+                update(Invite)
+                .where(
+                    Invite.code == user_data.invite_code,
+                    Invite.use_count < Invite.max_uses,
+                    (
+                        Invite.expires_at.is_(None)
+                        | (Invite.expires_at >= datetime.now())
+                    ),
+                )
+                .values(use_count=Invite.use_count + 1)
             )
-            invite = result.scalar_one_or_none()
-            if invite is None:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid or expired invite code",
-                )
-            if invite.use_count >= invite.max_uses:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid or expired invite code",
-                )
-            if invite.expires_at and invite.expires_at < datetime.now():
+            if claim_result.rowcount == 0:  # type: ignore[union-attr]
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Invalid or expired invite code",
@@ -142,11 +140,13 @@ async def register(
         if role is not None:
             session.add(UserRole(user_id=user.id, role_id=role.id))
 
-        # Mark invite as used (reuse object loaded during validation)
-        if config.registration_mode == "invite" and invite is not None:
-            invite.use_count += 1
-            invite.used_by_id = user.id
-            invite.used_at = datetime.now()
+        # Set used_by on the invite (use_count already incremented atomically)
+        if config.registration_mode == "invite" and user_data.invite_code:
+            await session.execute(
+                update(Invite)
+                .where(Invite.code == user_data.invite_code)
+                .values(used_by_id=user.id, used_at=datetime.now())
+            )
 
         await session.commit()
         return UserResponse.model_validate(user)
