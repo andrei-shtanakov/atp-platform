@@ -56,6 +56,17 @@ async def ui_login(request: Request) -> HTMLResponse:
     )
 
 
+@router.post("/logout")
+@limiter.limit("120/minute")
+async def ui_logout(request: Request) -> HTMLResponse:
+    """Clear auth cookie and redirect to home."""
+    from starlette.responses import RedirectResponse
+
+    response = RedirectResponse(url="/ui/", status_code=303)
+    response.delete_cookie("atp_token", path="/")
+    return response  # type: ignore[return-value]
+
+
 @router.get("/register", response_class=HTMLResponse)
 @limiter.limit("120/minute")
 async def ui_register(request: Request) -> HTMLResponse:
