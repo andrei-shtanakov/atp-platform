@@ -19,23 +19,25 @@
         <div class="value">{{ active_runs }}</div>
         <div class="label">Active Runs</div>
     </div>
+    <div class="stat-card">
+        <div class="value">{{ total_tournaments }}</div>
+        <div class="label">Tournaments</div>
+    </div>
 </div>
 
 <h3>Recent Activity</h3>
-{% if recent_runs %}
-    {% for run in recent_runs %}
+{% if recent_items %}
+    {% for item in recent_items %}
     <div class="activity-item">
         <span>
-            Run #{{ run.id }}
-            {% if run.status == "COMPLETED" %}completed{% elif run.status == "IN_PROGRESS" %}started{% else %}{{ run.status }}{% endif %}
-            — {{ run.agent_name or "unnamed" }}
+            <a href="{{ item.href }}">{{ item.label }}</a>
         </span>
         <span class="time">
-            {% if run.started_at %}{{ run.started_at.strftime("%Y-%m-%d %H:%M") }}{% endif %}
+            {% if item.ts %}{{ item.ts.strftime("%Y-%m-%d %H:%M") }}{% endif %}
         </span>
     </div>
     {% endfor %}
 {% else %}
-    <p>No activity yet. Start a benchmark run to see results here.</p>
+    <p>No activity yet. Start a benchmark run or a tournament to see results here.</p>
 {% endif %}
 {% endblock %}

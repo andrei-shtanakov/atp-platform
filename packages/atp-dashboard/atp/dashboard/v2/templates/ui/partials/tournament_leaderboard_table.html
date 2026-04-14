@@ -1,0 +1,30 @@
+{% if not selected_game_type %}
+<tr>
+    <td colspan="4" style="text-align:center; color:#888">
+        Select a game above to see the tournament leaderboard.
+    </td>
+</tr>
+{% elif tournament_entries %}
+{% for entry in tournament_entries %}
+<tr>
+    <td>
+        <strong>
+            {% if loop.index == 1 %}#1
+            {% elif loop.index == 2 %}#2
+            {% elif loop.index == 3 %}#3
+            {% else %}{{ loop.index }}
+            {% endif %}
+        </strong>
+    </td>
+    <td>{{ entry.agent_name }}</td>
+    <td><strong>{{ "%.2f"|format(entry.total_score or 0) }}</strong></td>
+    <td>{{ entry.tournament_count }}</td>
+</tr>
+{% endfor %}
+{% else %}
+<tr>
+    <td colspan="4" style="text-align:center; color:#888">
+        No completed tournaments for this game yet.
+    </td>
+</tr>
+{% endif %}

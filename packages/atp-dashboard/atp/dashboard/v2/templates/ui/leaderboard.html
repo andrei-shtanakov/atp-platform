@@ -5,39 +5,80 @@
 {% block content %}
 <h2>Leaderboard</h2>
 
-<form hx-get="/ui/leaderboard" hx-target="#leaderboard-table-body" hx-swap="innerHTML"
-      hx-include="[name='benchmark_id']" style="margin-bottom:1rem;">
-    <label for="benchmark_id">Filter by benchmark:</label>
-    <select name="benchmark_id" id="benchmark_id"
-            hx-get="/ui/leaderboard"
-            hx-target="#leaderboard-table-body"
-            hx-swap="innerHTML"
-            hx-params="benchmark_id"
-            hx-trigger="change"
-            hx-include="[name='benchmark_id']">
-        <option value="">All benchmarks</option>
-        {% for bm in benchmarks %}
-        <option value="{{ bm.id }}" {% if selected_benchmark_id == bm.id %}selected{% endif %}>
-            {{ bm.name }}
-        </option>
-        {% endfor %}
-    </select>
-</form>
+<article>
+    <header><strong>Benchmarks</strong></header>
+    <form style="margin-bottom:1rem;">
+        <label for="benchmark_id">Filter by benchmark:</label>
+        <select name="benchmark_id" id="benchmark_id"
+                hx-get="/ui/leaderboard"
+                hx-target="#leaderboard-table-body"
+                hx-swap="innerHTML"
+                hx-vals='{"partial": "benchmark"}'
+                hx-trigger="change"
+                hx-include="[name='benchmark_id']">
+            <option value="">All benchmarks</option>
+            {% for bm in benchmarks %}
+            <option value="{{ bm.id }}" {% if selected_benchmark_id == bm.id %}selected{% endif %}>
+                {{ bm.name }}
+            </option>
+            {% endfor %}
+        </select>
+    </form>
 
-<table>
-    <thead>
-        <tr>
-            <th>Rank</th>
-            <th>Agent</th>
-            <th>Best Score</th>
-            <th>Runs</th>
-            {% if not selected_benchmark_id %}
-            <th>Benchmarks</th>
-            {% endif %}
-        </tr>
-    </thead>
-    <tbody id="leaderboard-table-body">
-        {% include "ui/partials/leaderboard_table.html" %}
-    </tbody>
-</table>
+    <table>
+        <thead>
+            <tr>
+                <th>Rank</th>
+                <th>Agent</th>
+                <th>Best Score</th>
+                <th>Runs</th>
+                {% if not selected_benchmark_id %}
+                <th>Benchmarks</th>
+                {% endif %}
+            </tr>
+        </thead>
+        <tbody id="leaderboard-table-body">
+            {% include "ui/partials/leaderboard_table.html" %}
+        </tbody>
+    </table>
+</article>
+
+<article>
+    <header><strong>Tournaments</strong></header>
+    <p style="font-size:0.85rem; color:#666;">
+        Scores are cumulative payoffs within a single game. They are not
+        comparable across different games, so pick a specific game first.
+    </p>
+    <form style="margin-bottom:1rem;">
+        <label for="game_type">Game:</label>
+        <select name="game_type" id="game_type"
+                hx-get="/ui/leaderboard"
+                hx-target="#tournament-leaderboard-body"
+                hx-swap="innerHTML"
+                hx-vals='{"partial": "tournament"}'
+                hx-trigger="change"
+                hx-include="[name='game_type']">
+            <option value="">— select a game —</option>
+            {% for gt in game_types %}
+            <option value="{{ gt }}" {% if selected_game_type == gt %}selected{% endif %}>
+                {{ gt }}
+            </option>
+            {% endfor %}
+        </select>
+    </form>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Rank</th>
+                <th>Agent</th>
+                <th>Total Score</th>
+                <th>Tournaments</th>
+            </tr>
+        </thead>
+        <tbody id="tournament-leaderboard-body">
+            {% include "ui/partials/tournament_leaderboard_table.html" %}
+        </tbody>
+    </table>
+</article>
 {% endblock %}

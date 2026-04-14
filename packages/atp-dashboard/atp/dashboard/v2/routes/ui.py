@@ -7,6 +7,7 @@ All UI routes are under /ui/ prefix.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from datetime import datetime
 from types import SimpleNamespace
 
@@ -19,7 +20,7 @@ from atp.dashboard.benchmark.models import Benchmark, Run, RunStatus, TaskResult
 from atp.dashboard.models import Agent, SuiteDefinition, User
 from atp.dashboard.rbac.models import Role, UserRole
 from atp.dashboard.tokens import APIToken, Invite
-from atp.dashboard.tournament.models import Participant
+from atp.dashboard.tournament.models import Participant, TournamentStatus
 from atp.dashboard.tournament.models import Tournament as TournamentModel
 from atp.dashboard.v2.dependencies import DBSession
 from atp.dashboard.v2.rate_limit import limiter
@@ -190,23 +191,71 @@ async def ui_setup_submit(
 @router.get("/", response_class=HTMLResponse)
 @limiter.limit("120/minute")
 async def ui_home(request: Request, session: DBSession) -> HTMLResponse:
-    """Render home page with summary stats."""
+    """Render home page with summary stats and a unified activity feed."""
     user = await _get_ui_user(request, session)
-    result = await session.execute(select(func.count(Benchmark.id)))
-    total_benchmarks = result.scalar() or 0
 
-    result = await session.execute(select(func.count(Run.id)))
-    total_runs = result.scalar() or 0
+    total_benchmarks = (
+        await session.execute(select(func.count(Benchmark.id)))
+    ).scalar() or 0
+    total_runs = (await session.execute(select(func.count(Run.id)))).scalar() or 0
+    active_runs = (
+        await session.execute(
+            select(func.count(Run.id)).where(Run.status == RunStatus.IN_PROGRESS)
+        )
+    ).scalar() or 0
+    total_tournaments = (
+        await session.execute(select(func.count(TournamentModel.id)))
+    ).scalar() or 0
 
-    result = await session.execute(
-        select(func.count(Run.id)).where(Run.status == RunStatus.IN_PROGRESS)
+    recent_runs = (
+        (await session.execute(select(Run).order_by(Run.started_at.desc()).limit(10)))
+        .scalars()
+        .all()
     )
-    active_runs = result.scalar() or 0
-
-    result = await session.execute(
-        select(Run).order_by(Run.started_at.desc()).limit(10)
+    recent_tournaments = (
+        (
+            await session.execute(
+                select(TournamentModel)
+                .order_by(TournamentModel.created_at.desc())
+                .limit(10)
+            )
+        )
+        .scalars()
+        .all()
     )
-    recent_runs = result.scalars().all()
+
+    fallback_ts = datetime.min
+    recent_items: list[SimpleNamespace] = []
+    for run in recent_runs:
+        status = str(run.status or "").lower()
+        verb = (
+            "completed"
+            if status == "completed"
+            else "started"
+            if status == "in_progress"
+            else status or "unknown"
+        )
+        recent_items.append(
+            SimpleNamespace(
+                kind="run",
+                label=(f"Run #{run.id} {verb} — {run.agent_name or 'unnamed'}"),
+                href=f"/ui/runs/{run.id}",
+                ts=run.started_at,
+            )
+        )
+    for t in recent_tournaments:
+        ts = t.cancelled_at or t.ends_at or t.starts_at or t.created_at
+        status = str(t.status or "").lower()
+        recent_items.append(
+            SimpleNamespace(
+                kind="tournament",
+                label=(f"Tournament #{t.id} {status} — {t.game_type}"),
+                href=f"/ui/tournaments/{t.id}",
+                ts=ts,
+            )
+        )
+    recent_items.sort(key=lambda item: item.ts or fallback_ts, reverse=True)
+    recent_items = recent_items[:10]
 
     return _templates(request).TemplateResponse(
         request=request,
@@ -216,7 +265,8 @@ async def ui_home(request: Request, session: DBSession) -> HTMLResponse:
             "total_benchmarks": total_benchmarks,
             "total_runs": total_runs,
             "active_runs": active_runs,
-            "recent_runs": recent_runs,
+            "total_tournaments": total_tournaments,
+            "recent_items": recent_items,
             "user": user,
         },
     )
@@ -787,11 +837,21 @@ async def ui_leaderboard(
     request: Request,
     session: DBSession,
     benchmark_id: int | None = None,
+    game_type: str | None = None,
 ) -> HTMLResponse:
-    """Render global leaderboard page with optional benchmark filter."""
+    """Render global leaderboard page (benchmark + tournament sections).
+
+    Scores are never mixed across the two: benchmark runs and tournament
+    payoffs live on different scales, and even across game types within
+    tournaments they aren't directly comparable — so the tournament section
+    requires a specific ``game_type`` filter before it aggregates.
+    """
     user = await _get_ui_user(request, session)
-    result = await session.execute(select(Benchmark).order_by(Benchmark.name))
-    benchmarks = result.scalars().all()
+    benchmarks = (
+        (await session.execute(select(Benchmark).order_by(Benchmark.name)))
+        .scalars()
+        .all()
+    )
 
     stmt = select(
         Run.agent_name,
@@ -804,17 +864,60 @@ async def ui_leaderboard(
         stmt = stmt.where(Run.benchmark_id == benchmark_id)
 
     stmt = stmt.group_by(Run.agent_name).order_by(func.max(Run.total_score).desc())
-    result = await session.execute(stmt)
-    entries = result.all()
+    entries = (await session.execute(stmt)).all()
 
     partial = request.query_params.get("partial")
-    if partial:
+    if partial == "benchmark":
         return _templates(request).TemplateResponse(
             request=request,
             name="ui/partials/leaderboard_table.html",
             context={
                 "entries": entries,
                 "selected_benchmark_id": benchmark_id,
+                "user": user,
+            },
+        )
+
+    game_types = [
+        gt
+        for (gt,) in (
+            await session.execute(
+                select(TournamentModel.game_type)
+                .where(TournamentModel.status == TournamentStatus.COMPLETED)
+                .distinct()
+                .order_by(TournamentModel.game_type)
+            )
+        ).all()
+    ]
+
+    tournament_entries: Sequence = []
+    if game_type:
+        tournament_stmt = (
+            select(
+                Participant.agent_name,
+                func.sum(Participant.total_score).label("total_score"),
+                func.count(func.distinct(Participant.tournament_id)).label(
+                    "tournament_count"
+                ),
+            )
+            .join(TournamentModel, TournamentModel.id == Participant.tournament_id)
+            .where(
+                TournamentModel.status == TournamentStatus.COMPLETED,
+                TournamentModel.game_type == game_type,
+                Participant.total_score.isnot(None),
+            )
+            .group_by(Participant.agent_name)
+            .order_by(func.sum(Participant.total_score).desc())
+        )
+        tournament_entries = (await session.execute(tournament_stmt)).all()
+
+    if partial == "tournament":
+        return _templates(request).TemplateResponse(
+            request=request,
+            name="ui/partials/tournament_leaderboard_table.html",
+            context={
+                "tournament_entries": tournament_entries,
+                "selected_game_type": game_type,
                 "user": user,
             },
         )
@@ -827,6 +930,9 @@ async def ui_leaderboard(
             "benchmarks": benchmarks,
             "entries": entries,
             "selected_benchmark_id": benchmark_id,
+            "game_types": game_types,
+            "tournament_entries": tournament_entries,
+            "selected_game_type": game_type,
             "user": user,
         },
     )
