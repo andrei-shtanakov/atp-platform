@@ -369,10 +369,21 @@ body {
     padding: 0.4rem 0.75rem;
 }
 
+.sidebar-signout-form {
+    margin: 0;
+    padding: 0;
+}
+
 .sidebar-signout {
     font-size: 0.75rem;
     color: #888;
     text-decoration: underline;
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    font-family: inherit;
 }
 
 .sidebar-signout:hover {

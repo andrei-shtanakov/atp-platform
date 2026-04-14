@@ -222,6 +222,25 @@ async def test_ui_create_invite_requires_admin(admin_app: tuple) -> None:
 
 
 @pytest.mark.anyio
+async def test_logout_clears_cookie_and_redirects(admin_app: tuple) -> None:
+    """POST /ui/logout → 303 to /ui/login + Set-Cookie that clears atp_token."""
+    app, cookies, _admin, _db = admin_app
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport, base_url="http://test", cookies=cookies
+    ) as client:
+        resp = await client.post("/ui/logout")
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/ui/login"
+
+    set_cookie = resp.headers.get("set-cookie", "")
+    assert "atp_token=" in set_cookie
+    assert 'atp_token=""' in set_cookie or "Max-Age=0" in set_cookie
+    assert "Path=/" in set_cookie
+    assert "samesite=strict" in set_cookie.lower()
+
+
+@pytest.mark.anyio
 async def test_ui_deactivate_invite(admin_app: tuple) -> None:
     app, cookies, _admin, db = admin_app
     transport = ASGITransport(app=app)

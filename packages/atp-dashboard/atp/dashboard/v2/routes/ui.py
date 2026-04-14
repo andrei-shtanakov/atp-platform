@@ -79,11 +79,16 @@ async def ui_login(request: Request, session: DBSession) -> HTMLResponse:
 @router.post("/logout")
 @limiter.limit("120/minute")
 async def ui_logout(request: Request) -> HTMLResponse:
-    """Clear auth cookie and redirect to home."""
+    """Clear auth cookie and redirect to login.
+
+    The delete_cookie attributes (path, samesite) must match how the cookie
+    was originally set by login.html; otherwise some browsers keep the
+    cookie because attributes don't line up.
+    """
     from starlette.responses import RedirectResponse
 
-    response = RedirectResponse(url="/ui/", status_code=303)
-    response.delete_cookie("atp_token", path="/")
+    response = RedirectResponse(url="/ui/login", status_code=303)
+    response.delete_cookie("atp_token", path="/", samesite="strict")
     return response  # type: ignore[return-value]
 
 

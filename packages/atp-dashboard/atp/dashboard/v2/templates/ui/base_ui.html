@@ -35,9 +35,9 @@
                 {% if user %}
                 <div class="sidebar-user-section">
                     <span class="sidebar-user">{{ user.username }}</span>
-                    <a href="#" class="sidebar-signout"
-                       hx-post="/ui/logout"
-                       hx-swap="none">Sign out</a>
+                    <form method="post" action="/ui/logout" class="sidebar-signout-form">
+                        <button type="submit" class="sidebar-signout">Sign out</button>
+                    </form>
                 </div>
                 {% else %}
                 <a href="/ui/login" class="sidebar-signin">Sign in</a>
