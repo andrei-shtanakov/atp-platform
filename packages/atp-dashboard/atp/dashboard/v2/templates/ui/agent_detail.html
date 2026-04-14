@@ -5,6 +5,21 @@
 {% block content %}
 <h1>{{ agent.name }} <small><code>{{ agent.version }}</code></small></h1>
 
+{% if error %}
+<article style="background-color: #fde2e2; border-color: #c62828; color: #8b0000;">
+    <strong>Error:</strong> {{ error }}
+</article>
+{% endif %}
+
+{% if new_token %}
+<article style="background-color: #e8f5e9; border-color: #2e7d32;">
+    <header><strong>Token created — copy it now, it will not be shown again</strong></header>
+    <pre style="white-space: pre-wrap; word-break: break-all;"><code>{{ new_token }}</code></pre>
+    <small>Save this value in a secure place (password manager, CI secret). Once you
+    leave this page, only the prefix <code>{{ new_token[:12] }}...</code> will be visible.</small>
+</article>
+{% endif %}
+
 <article>
     <header>Agent Info</header>
     <div class="grid">
@@ -24,19 +39,54 @@
 
 <article>
     <header>API Tokens</header>
+
+    <details{% if error and not new_token %} open{% endif %}>
+        <summary role="button" class="outline">New Token</summary>
+        <form method="post" action="/ui/agents/{{ agent.id }}/tokens">
+            <div class="grid">
+                <label>Name
+                    <input type="text" name="name" required placeholder="e.g. ci-bot">
+                </label>
+                <label>Expires (days, blank = default)
+                    <input type="number" name="expires_in_days" min="0" placeholder="30">
+                </label>
+            </div>
+            <button type="submit">Create Token</button>
+        </form>
+    </details>
+
     {% if tokens %}
     <table>
         <thead>
-            <tr><th>Name</th><th>Prefix</th><th>Expires</th><th>Last Used</th><th>Status</th></tr>
+            <tr>
+                <th>Name</th><th>Prefix</th><th>Expires</th>
+                <th>Last Used</th><th>Status</th><th>Actions</th>
+            </tr>
         </thead>
         <tbody>
             {% for t in tokens %}
-            <tr>
+            {% set is_revoked = t.revoked_at is not none %}
+            {% set is_expired = t.expires_at and t.expires_at < now %}
+            <tr{% if is_revoked or is_expired %} style="opacity:0.5"{% endif %}>
                 <td>{{ t.name }}</td>
                 <td><code>{{ t.token_prefix }}...</code></td>
                 <td>{{ t.expires_at.strftime('%Y-%m-%d') if t.expires_at else 'never' }}</td>
                 <td>{{ t.last_used_at.strftime('%Y-%m-%d %H:%M') if t.last_used_at else '—' }}</td>
-                <td>{% if t.revoked_at %}revoked{% elif t.expires_at and t.expires_at < now %}expired{% else %}active{% endif %}</td>
+                <td>{% if is_revoked %}revoked{% elif is_expired %}expired{% else %}active{% endif %}</td>
+                <td>
+                    {% if not is_revoked %}
+                    <form method="post" action="/ui/tokens/{{ t.id }}/revoke"
+                          onsubmit="return confirm('Revoke token {{ t.name }}? This cannot be undone.');"
+                          style="display:inline">
+                        <button type="submit" class="secondary outline"
+                                style="padding:0.25rem 0.5rem; font-size:0.85rem;">
+                            Revoke
+                        </button>
+                    </form>
+                    {% else %}
+                    —
+                    {% endif %}
+                </td>
             </tr>
             {% endfor %}
         </tbody>

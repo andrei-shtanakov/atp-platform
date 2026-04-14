@@ -1057,16 +1057,17 @@ async def ui_create_agent(
     return RedirectResponse(url="/ui/agents", status_code=303)  # type: ignore[return-value]
 
 
-@router.get("/agents/{agent_id}", response_class=HTMLResponse)
-@limiter.limit("120/minute")
-async def ui_agent_detail(
-    request: Request, session: DBSession, agent_id: int
+async def _render_agent_detail(
+    request: Request,
+    session: DBSession,
+    user: User,
+    agent_id: int,
+    *,
+    new_token: str | None = None,
+    error: str | None = None,
+    status_code: int = 200,
 ) -> HTMLResponse:
-    """Agent detail page."""
-    user = await _get_ui_user(request, session)
-    if not user:
-        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
-
+    """Build the /ui/agents/{id} response; reused by GET and token POST handlers."""
     agent = await session.get(Agent, agent_id)
     if (
         not agent
@@ -1118,8 +1119,123 @@ async def ui_agent_detail(
             "tokens": tokens,
             "tournament_history": tournament_history,
             "now": datetime.now(),
+            "new_token": new_token,
+            "error": error,
         },
+        status_code=status_code,
     )
+
+
+@router.get("/agents/{agent_id}", response_class=HTMLResponse)
+@limiter.limit("120/minute")
+async def ui_agent_detail(
+    request: Request, session: DBSession, agent_id: int
+) -> HTMLResponse:
+    """Agent detail page."""
+    user = await _get_ui_user(request, session)
+    if not user:
+        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+    return await _render_agent_detail(request, session, user, agent_id)
+
+
+@router.post("/agents/{agent_id}/tokens", response_class=HTMLResponse)
+@limiter.limit("10/minute")
+async def ui_create_agent_token(
+    request: Request,
+    session: DBSession,
+    agent_id: int,
+    name: str = Form(...),
+    expires_in_days: str = Form(""),
+) -> HTMLResponse:
+    """Create an API token scoped to an owned agent."""
+    from atp.dashboard.v2.routes.token_api import create_token_for_user
+
+    user = await _get_ui_user(request, session)
+    if not user:
+        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+
+    days: int | None = None
+    raw_days = expires_in_days.strip()
+    if raw_days:
+        try:
+            days = int(raw_days)
+        except ValueError:
+            return await _render_agent_detail(
+                request,
+                session,
+                user,
+                agent_id,
+                error="Expiry must be a whole number of days (or blank)",
+                status_code=400,
+            )
+
+    try:
+        _, raw = await create_token_for_user(
+            session=session,
+            user=user,
+            name=name.strip(),
+            agent_id=agent_id,
+            expires_in_days=days,
+        )
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Failed to create token"
+        return await _render_agent_detail(
+            request,
+            session,
+            user,
+            agent_id,
+            error=detail,
+            status_code=exc.status_code,
+        )
+
+    return await _render_agent_detail(
+        request, session, user, agent_id, new_token=raw, status_code=201
+    )
+
+
+@router.post("/tokens/{token_id}/revoke", response_class=HTMLResponse)
+@limiter.limit("10/minute")
+async def ui_revoke_token(
+    request: Request,
+    session: DBSession,
+    token_id: int,
+) -> HTMLResponse:
+    """Revoke a token and redirect back to the owning agent (or /ui/tokens)."""
+    from atp.dashboard.v2.routes.token_api import revoke_token_for_user
+
+    user = await _get_ui_user(request, session)
+    if not user:
+        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+
+    token = await session.get(APIToken, token_id)
+    target_agent_id = token.agent_id if token is not None else None
+
+    try:
+        await revoke_token_for_user(session=session, user=user, token_id=token_id)
+    except HTTPException as exc:
+        if target_agent_id is not None:
+            detail = (
+                exc.detail if isinstance(exc.detail, str) else "Failed to revoke token"
+            )
+            return await _render_agent_detail(
+                request,
+                session,
+                user,
+                target_agent_id,
+                error=detail,
+                status_code=exc.status_code,
+            )
+        from urllib.parse import quote
+
+        detail = exc.detail if isinstance(exc.detail, str) else "Failed to revoke token"
+        return RedirectResponse(  # type: ignore[return-value]
+            url=f"/ui/tokens?error={quote(detail)}", status_code=303
+        )
+
+    target = (
+        f"/ui/agents/{target_agent_id}" if target_agent_id is not None else "/ui/tokens"
+    )
+    return RedirectResponse(url=target, status_code=303)  # type: ignore[return-value]
 
 
 @router.get("/tokens", response_class=HTMLResponse)

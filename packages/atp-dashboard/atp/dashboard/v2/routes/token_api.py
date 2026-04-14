@@ -4,9 +4,10 @@ from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from atp.dashboard.auth import require_user_level_token
-from atp.dashboard.models import Agent
+from atp.dashboard.models import Agent, User
 from atp.dashboard.schemas import APITokenCreate, APITokenCreated, APITokenResponse
 from atp.dashboard.tokens import APIToken, generate_api_token, hash_token
 from atp.dashboard.v2.config import get_config
@@ -20,29 +21,32 @@ router = APIRouter(
 )
 
 
-@router.post("", response_model=APITokenCreated, status_code=status.HTTP_201_CREATED)
-@limiter.limit("10/minute")
-async def create_token(
-    request: Request,
-    session: DBSession,
-    user: RequiredUser,
-    body: APITokenCreate,
-) -> APITokenCreated:
-    """Create a new API token."""
+async def create_token_for_user(
+    *,
+    session: AsyncSession,
+    user: User,
+    name: str,
+    agent_id: int | None = None,
+    expires_in_days: int | None = None,
+) -> tuple[APIToken, str]:
+    """Create an API token for `user`, enforcing quotas and expiry limits.
+
+    Returns (db_token, raw_token). The raw token is only available at creation
+    time. Raises HTTPException on quota, permission, or config violations.
+    Shared by the JSON API and the cookie-authenticated UI handler.
+    """
     config = get_config()
 
-    if body.agent_id is not None:
-        # Agent-scoped token: verify ownership
-        agent = await session.get(Agent, body.agent_id)
+    if agent_id is not None:
+        agent = await session.get(Agent, agent_id)
         if agent is None or agent.owner_id != user.id or agent.deleted_at is not None:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You don't own this agent",
             )
-        # Check per-agent token limit
         count_result = await session.execute(
             select(func.count(APIToken.id)).where(
-                APIToken.agent_id == body.agent_id,
+                APIToken.agent_id == agent_id,
                 APIToken.revoked_at.is_(None),
             )
         )
@@ -55,7 +59,6 @@ async def create_token(
                 ),
             )
     else:
-        # User-level token: check limit
         count_result = await session.execute(
             select(func.count(APIToken.id)).where(
                 APIToken.user_id == user.id,
@@ -69,14 +72,11 @@ async def create_token(
                 detail=f"Token limit reached (max {config.max_user_tokens})",
             )
 
-    # Compute expiry: None = use config default, 0 = never
-    expires_in_days = body.expires_in_days
     if expires_in_days is None:
         expires_in_days = config.default_token_days
 
     expires_at = None
     if expires_in_days == 0:
-        # "never expires" — only allowed when max_token_days == 0
         if config.max_token_days != 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -90,11 +90,11 @@ async def create_token(
             )
         expires_at = datetime.now() + timedelta(days=expires_in_days)
 
-    raw_token = generate_api_token(agent_scoped=body.agent_id is not None)
+    raw_token = generate_api_token(agent_scoped=agent_id is not None)
     db_token = APIToken(
         user_id=user.id,
-        agent_id=body.agent_id,
-        name=body.name,
+        agent_id=agent_id,
+        name=name,
         token_prefix=raw_token[:12],
         token_hash=hash_token(raw_token),
         expires_at=expires_at,
@@ -102,7 +102,52 @@ async def create_token(
     session.add(db_token)
     await session.flush()
     await session.refresh(db_token)
+    return db_token, raw_token
 
+
+async def revoke_token_for_user(
+    *,
+    session: AsyncSession,
+    user: User,
+    token_id: int,
+) -> APIToken:
+    """Revoke a token owned by `user` (admins can revoke any).
+
+    Raises 404 if not found or not authorised, 409 if already revoked.
+    """
+    token = await session.get(APIToken, token_id)
+    if token is None or (token.user_id != user.id and not user.is_admin):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Token not found",
+        )
+    if token.revoked_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Token already revoked",
+        )
+    token.revoked_at = datetime.now()
+    await session.flush()
+    await session.refresh(token)
+    return token
+
+
+@router.post("", response_model=APITokenCreated, status_code=status.HTTP_201_CREATED)
+@limiter.limit("10/minute")
+async def create_token(
+    request: Request,
+    session: DBSession,
+    user: RequiredUser,
+    body: APITokenCreate,
+) -> APITokenCreated:
+    """Create a new API token."""
+    db_token, raw_token = await create_token_for_user(
+        session=session,
+        user=user,
+        name=body.name,
+        agent_id=body.agent_id,
+        expires_in_days=body.expires_in_days,
+    )
     return APITokenCreated(
         id=db_token.id,
         name=db_token.name,
@@ -139,18 +184,5 @@ async def revoke_token(
     token_id: int,
 ) -> APITokenResponse:
     """Revoke an API token."""
-    token = await session.get(APIToken, token_id)
-    if token is None or (token.user_id != user.id and not user.is_admin):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Token not found",
-        )
-    if token.revoked_at is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Token already revoked",
-        )
-    token.revoked_at = datetime.now()
-    await session.flush()
-    await session.refresh(token)
+    token = await revoke_token_for_user(session=session, user=user, token_id=token_id)
     return APITokenResponse.model_validate(token)
