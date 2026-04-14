@@ -1,0 +1,54 @@
+{% extends "ui/base_ui.html" %}
+
+{% block title %}About — ATP Platform{% endblock %}
+
+{% block content %}
+<h1>About ATP Platform</h1>
+
+<article>
+    <p>
+        <strong>ATP (Agent Test Platform)</strong> is a framework-agnostic
+        platform for testing and evaluating AI agents. It provides a unified
+        protocol and infrastructure so that agents built with LangGraph,
+        CrewAI, AutoGen, MCP servers, cloud providers, or custom code can be
+        benchmarked and compared under identical conditions.
+    </p>
+    <p>
+        The guiding principle: an agent is a black box with a contract —
+        input and output via the <em>ATP Protocol</em>, side-channel events
+        for observability, and pluggable evaluators that score the results.
+    </p>
+</article>
+
+<article>
+    <header><strong>What you can do here</strong></header>
+    <ul>
+        <li>Run reproducible <em>benchmarks</em> against your agents and see a
+            cross-agent leaderboard.</li>
+        <li>Host <em>game-theoretic tournaments</em> (Prisoner's Dilemma,
+            Stag Hunt, …) and evaluate strategies quantitatively.</li>
+        <li>Publish test <em>suites</em> in YAML and run them from the CLI,
+            SDK, or directly in the browser.</li>
+        <li>Manage your own <em>agents</em> and API <em>tokens</em> from the
+            dashboard.</li>
+    </ul>
+</article>
+
+<article>
+    <header><strong>Links</strong></header>
+    <ul>
+        <li>Source code:
+            <a href="https://github.com/andrei-shtanakov/atp-platform"
+               target="_blank" rel="noopener">
+                github.com/andrei-shtanakov/atp-platform
+            </a>
+        </li>
+        <li>Python SDK (PyPI):
+            <a href="https://pypi.org/project/atp-platform-sdk/"
+               target="_blank" rel="noopener">
+                atp-platform-sdk
+            </a>
+        </li>
+    </ul>
+</article>
+{% endblock %}

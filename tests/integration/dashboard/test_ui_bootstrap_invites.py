@@ -88,6 +88,30 @@ async def admin_app():
 
 
 @pytest.mark.anyio
+async def test_about_page_is_public(empty_app: tuple) -> None:
+    """/ui/about must render without auth and link to the GitHub repo."""
+    app, _ = empty_app
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/ui/about")
+    assert resp.status_code == 200
+    assert "About ATP Platform" in resp.text
+    assert "github.com/andrei-shtanakov/atp-platform" in resp.text
+
+
+@pytest.mark.anyio
+async def test_login_page_has_register_and_about_links(admin_app: tuple) -> None:
+    """/ui/login must link to /ui/register and /ui/about."""
+    app, _cookies, _admin, _db = admin_app
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/ui/login")
+    assert resp.status_code == 200
+    assert 'href="/ui/register"' in resp.text
+    assert 'href="/ui/about"' in resp.text
+
+
+@pytest.mark.anyio
 async def test_login_redirects_to_setup_when_empty(empty_app: tuple) -> None:
     app, _ = empty_app
     transport = ASGITransport(app=app)

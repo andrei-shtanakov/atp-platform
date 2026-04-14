@@ -55,6 +55,18 @@ async def _needs_bootstrap(session: DBSession) -> bool:
     return (result.scalar_one() or 0) == 0
 
 
+@router.get("/about", response_class=HTMLResponse)
+@limiter.limit("120/minute")
+async def ui_about(request: Request, session: DBSession) -> HTMLResponse:
+    """Public landing page with a short platform description and repo link."""
+    user = await _get_ui_user(request, session)
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/about.html",
+        context={"active_page": "about", "user": user},
+    )
+
+
 @router.get("/login", response_class=HTMLResponse)
 @limiter.limit("120/minute")
 async def ui_login(request: Request, session: DBSession) -> HTMLResponse:

@@ -30,6 +30,7 @@
                 {% if user and user.is_admin %}
                 <li><a href="/ui/invites" class="{% if active_page == 'invites' %}active{% endif %}">Invites</a></li>
                 {% endif %}
+                <li><a href="/ui/about" class="{% if active_page == 'about' %}active{% endif %}">About</a></li>
             </ul>
             <div class="sidebar-footer">
                 {% if user %}
