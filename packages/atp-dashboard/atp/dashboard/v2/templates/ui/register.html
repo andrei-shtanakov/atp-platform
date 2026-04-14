@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
     <style>
         .register-container {
-            max-width: 400px;
+            max-width: 420px;
             margin: 10vh auto;
             padding: 2rem;
         }
@@ -28,15 +28,29 @@
         <div id="success-msg" style="display:none; color:green; margin-bottom:1rem;"></div>
 
         <article>
+            {% if registration_mode == "invite" %}
+            <p style="font-size: 0.9rem; color: #666;">
+                Registration requires an invite code from an administrator.
+            </p>
+            {% endif %}
+
             <form id="register-form">
                 <label for="username">Username</label>
-                <input type="text" id="username" name="username" required autofocus placeholder="Choose a username">
+                <input type="text" id="username" name="username" required autofocus minlength="3" maxlength="50" placeholder="Choose a username">
 
                 <label for="email">Email</label>
-                <input type="email" id="email" name="email" required placeholder="you@example.com">
+                <input type="email" id="email" name="email" required maxlength="255" placeholder="you@example.com">
 
-                <label for="password">Password</label>
-                <input type="password" id="password" name="password" required minlength="6" placeholder="Min 6 characters">
+                <label for="password">Password (min 8 characters)</label>
+                <input type="password" id="password" name="password" required minlength="8">
+
+                <label for="password_confirm">Confirm password</label>
+                <input type="password" id="password_confirm" name="password_confirm" required minlength="8">
+
+                {% if registration_mode == "invite" %}
+                <label for="invite_code">Invite code</label>
+                <input type="text" id="invite_code" name="invite_code" required placeholder="Paste the code your admin sent you">
+                {% endif %}
 
                 <button type="submit" id="register-btn">Create account</button>
             </form>
@@ -57,18 +71,31 @@
             e.preventDefault();
             errorMsg.style.display = 'none';
             successMsg.style.display = 'none';
-            registerBtn.disabled = true;
-            registerBtn.setAttribute('aria-busy', 'true');
 
             const username = document.getElementById('username').value;
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
+            const passwordConfirm = document.getElementById('password_confirm').value;
+            const inviteInput = document.getElementById('invite_code');
+            const invite_code = inviteInput ? inviteInput.value.trim() : null;
+
+            if (password !== passwordConfirm) {
+                errorMsg.textContent = 'Passwords do not match';
+                errorMsg.style.display = 'block';
+                return;
+            }
+
+            registerBtn.disabled = true;
+            registerBtn.setAttribute('aria-busy', 'true');
+
+            const body = { username, email, password };
+            if (invite_code) body.invite_code = invite_code;
 
             try {
                 const res = await fetch('/api/auth/register', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, email, password }),
+                    body: JSON.stringify(body),
                 });
 
                 if (!res.ok) {

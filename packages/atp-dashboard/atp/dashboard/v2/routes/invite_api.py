@@ -4,8 +4,10 @@ from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from atp.dashboard.auth import require_user_level_token
+from atp.dashboard.models import User
 from atp.dashboard.schemas import InviteCreate, InviteResponse
 from atp.dashboard.tokens import Invite, generate_invite_code
 from atp.dashboard.v2.dependencies import AdminUser, DBSession
@@ -18,18 +20,16 @@ router = APIRouter(
 )
 
 
-@router.post("", response_model=InviteResponse, status_code=status.HTTP_201_CREATED)
-@limiter.limit("10/minute")
-async def create_invite(
-    request: Request,
-    session: DBSession,
-    admin: AdminUser,
-    body: InviteCreate = InviteCreate(),
-) -> InviteResponse:
-    """Create a new invite code (admin only)."""
+async def create_invite_for_admin(
+    *,
+    session: AsyncSession,
+    admin: User,
+    expires_in_days: int | None = 7,
+) -> Invite:
+    """Create a single-use invite code. Shared by JSON API and UI handler."""
     expires_at = None
-    if body.expires_in_days is not None:
-        expires_at = datetime.now() + timedelta(days=body.expires_in_days)
+    if expires_in_days is not None:
+        expires_at = datetime.now() + timedelta(days=expires_in_days)
 
     invite = Invite(
         code=generate_invite_code(),
@@ -39,6 +39,38 @@ async def create_invite(
     session.add(invite)
     await session.flush()
     await session.refresh(invite)
+    return invite
+
+
+async def deactivate_invite_for_admin(
+    *,
+    session: AsyncSession,
+    invite_id: int,
+) -> Invite:
+    """Deactivate an invite (caps max_uses to current use_count)."""
+    invite = await session.get(Invite, invite_id)
+    if invite is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Invite not found"
+        )
+    invite.max_uses = invite.use_count
+    await session.flush()
+    await session.refresh(invite)
+    return invite
+
+
+@router.post("", response_model=InviteResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("10/minute")
+async def create_invite(
+    request: Request,
+    session: DBSession,
+    admin: AdminUser,
+    body: InviteCreate = InviteCreate(),
+) -> InviteResponse:
+    """Create a new invite code (admin only)."""
+    invite = await create_invite_for_admin(
+        session=session, admin=admin, expires_in_days=body.expires_in_days
+    )
     return InviteResponse.model_validate(invite)
 
 
@@ -59,12 +91,5 @@ async def deactivate_invite(
     invite_id: int,
 ) -> InviteResponse:
     """Deactivate an invite code (admin only)."""
-    invite = await session.get(Invite, invite_id)
-    if invite is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Invite not found"
-        )
-    invite.max_uses = invite.use_count
-    await session.flush()
-    await session.refresh(invite)
+    invite = await deactivate_invite_for_admin(session=session, invite_id=invite_id)
     return InviteResponse.model_validate(invite)

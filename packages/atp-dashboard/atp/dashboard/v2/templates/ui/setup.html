@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>First-time Setup — ATP Platform</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <style>
+        .setup-container {
+            max-width: 420px;
+            margin: 10vh auto;
+            padding: 2rem;
+        }
+        .setup-header {
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="setup-container">
+        <div class="setup-header">
+            <h1>ATP Platform</h1>
+            <p>Create the first admin account</p>
+        </div>
+
+        {% if error %}
+        <article style="background-color: #fde2e2; border-color: #c62828; color: #8b0000;">
+            <strong>Error:</strong> {{ error }}
+        </article>
+        {% endif %}
+
+        <article>
+            <p style="font-size: 0.9rem; color: #666;">
+                The database is empty. The account you create here becomes the
+                platform administrator. After setup, sign-in is available via
+                username/password or GitHub.
+            </p>
+            <form method="post" action="/ui/setup">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" required autofocus minlength="3" maxlength="50">
+
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" required maxlength="255">
+
+                <label for="password">Password (min 8 characters)</label>
+                <input type="password" id="password" name="password" required minlength="8">
+
+                <label for="password_confirm">Confirm password</label>
+                <input type="password" id="password_confirm" name="password_confirm" required minlength="8">
+
+                <button type="submit">Create admin account</button>
+            </form>
+        </article>
+    </div>
+</body>
+</html>

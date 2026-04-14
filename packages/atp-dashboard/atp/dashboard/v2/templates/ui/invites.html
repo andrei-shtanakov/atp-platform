@@ -5,6 +5,31 @@
 {% block content %}
 <h1>Invite Management</h1>
 
+{% if error %}
+<article style="background-color: #fde2e2; border-color: #c62828; color: #8b0000;">
+    <strong>Error:</strong> {{ error }}
+</article>
+{% endif %}
+
+{% if new_code %}
+<article style="background-color: #e8f5e9; border-color: #2e7d32;">
+    <header><strong>Invite created — share this code</strong></header>
+    <pre style="white-space: pre-wrap; word-break: break-all;"><code>{{ new_code }}</code></pre>
+    <small>Send it to the person you're inviting. They'll use it at
+    <a href="/ui/register">/ui/register</a>. Single-use; expires per your setting.</small>
+</article>
+{% endif %}
+
+<details{% if error and not new_code %} open{% endif %}>
+    <summary role="button" class="outline">New Invite</summary>
+    <form method="post" action="/ui/invites">
+        <label>Expires in days (blank = 7, 0 = never)
+            <input type="number" name="expires_in_days" min="0" placeholder="7">
+        </label>
+        <button type="submit">Create Invite</button>
+    </form>
+</details>
+
 {% if invites %}
 <figure>
 <table>
@@ -13,22 +38,41 @@
             <th>Code</th>
             <th>Created By</th>
             <th>Used By</th>
+            <th>Expires</th>
             <th>Status</th>
             <th>Created</th>
+            <th>Actions</th>
         </tr>
     </thead>
     <tbody>
         {% for inv in invites %}
-        <tr>
-            <td><code>{{ inv.code[:20] }}...</code></td>
+        {% set is_used = inv.use_count >= inv.max_uses %}
+        {% set is_expired = inv.expires_at and inv.expires_at < now %}
+        <tr{% if is_used or is_expired %} style="opacity:0.5"{% endif %}>
+            <td><code>{{ inv.code }}</code></td>
             <td>{{ inv.created_by_name or inv.created_by_id }}</td>
             <td>{{ inv.used_by_name or '—' }}</td>
+            <td>{{ inv.expires_at.strftime('%Y-%m-%d') if inv.expires_at else 'never' }}</td>
             <td>
-                {% if inv.use_count >= inv.max_uses %}used
-                {% elif inv.expires_at and inv.expires_at < now %}expired
+                {% if is_used %}used
+                {% elif is_expired %}expired
                 {% else %}active{% endif %}
             </td>
             <td>{{ inv.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+            <td>
+                {% if not is_used and not is_expired %}
+                <form method="post" action="/ui/invites/{{ inv.id }}/deactivate"
+                      onsubmit="return confirm('Deactivate this invite? It cannot be used afterwards.');"
+                      style="display:inline">
+                    <button type="submit" class="secondary outline"
+                            style="padding:0.25rem 0.5rem; font-size:0.85rem;">
+                        Deactivate
+                    </button>
+                </form>
+                {% else %}
+                —
+                {% endif %}
+            </td>
         </tr>
         {% endfor %}
     </tbody>

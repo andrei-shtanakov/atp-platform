@@ -86,8 +86,14 @@ async def register(
     try:
         config = get_config()
 
-        # Invite validation — atomic claim to prevent concurrent reuse
-        if config.registration_mode == "invite":
+        # Bootstrap: the first user ever to register becomes admin without
+        # needing an invite (there is no admin yet to issue one). After that,
+        # normal registration_mode rules apply.
+        result = await session.execute(select(func.count(User.id)))
+        user_count = result.scalar_one()
+        is_first_user = user_count == 0
+
+        if config.registration_mode == "invite" and not is_first_user:
             if not user_data.invite_code:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -112,11 +118,6 @@ async def register(
                     detail="Invalid or expired invite code",
                 )
 
-        # First user becomes admin automatically
-        result = await session.execute(select(func.count(User.id)))
-        user_count = result.scalar_one()
-        is_first_user = user_count == 0
-
         user = await create_user(
             session,
             username=user_data.username,
@@ -140,8 +141,12 @@ async def register(
         if role is not None:
             session.add(UserRole(user_id=user.id, role_id=role.id))
 
-        # Set used_by on the invite (use_count already incremented atomically)
-        if config.registration_mode == "invite" and user_data.invite_code:
+        # Set used_by on the invite (skipped for bootstrap path)
+        if (
+            config.registration_mode == "invite"
+            and user_data.invite_code
+            and not is_first_user
+        ):
             await session.execute(
                 update(Invite)
                 .where(Invite.code == user_data.invite_code)

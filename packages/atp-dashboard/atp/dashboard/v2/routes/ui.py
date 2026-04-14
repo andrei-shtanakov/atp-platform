@@ -17,6 +17,7 @@ from sqlalchemy.orm import selectinload
 
 from atp.dashboard.benchmark.models import Benchmark, Run, RunStatus, TaskResult
 from atp.dashboard.models import Agent, SuiteDefinition, User
+from atp.dashboard.rbac.models import Role, UserRole
 from atp.dashboard.tokens import APIToken, Invite
 from atp.dashboard.tournament.models import Participant
 from atp.dashboard.tournament.models import Tournament as TournamentModel
@@ -48,11 +49,20 @@ async def _get_ui_user(request: Request, session: DBSession) -> User | None:
     return user
 
 
+async def _needs_bootstrap(session: DBSession) -> bool:
+    """True when the database has no users yet — the 'first admin' path."""
+    result = await session.execute(select(func.count(User.id)))
+    return (result.scalar_one() or 0) == 0
+
+
 @router.get("/login", response_class=HTMLResponse)
 @limiter.limit("120/minute")
-async def ui_login(request: Request) -> HTMLResponse:
-    """Render login page."""
+async def ui_login(request: Request, session: DBSession) -> HTMLResponse:
+    """Render login page (redirects to /ui/setup while the DB is empty)."""
     from atp.dashboard.v2.config import get_config
+
+    if await _needs_bootstrap(session):
+        return RedirectResponse(url="/ui/setup", status_code=302)  # type: ignore[return-value]
 
     config = get_config()
     expired = request.query_params.get("expired")
@@ -79,12 +89,85 @@ async def ui_logout(request: Request) -> HTMLResponse:
 
 @router.get("/register", response_class=HTMLResponse)
 @limiter.limit("120/minute")
-async def ui_register(request: Request) -> HTMLResponse:
-    """Render registration page."""
+async def ui_register(request: Request, session: DBSession) -> HTMLResponse:
+    """Render registration page (redirects to /ui/setup while the DB is empty)."""
+    from atp.dashboard.v2.config import get_config
+
+    if await _needs_bootstrap(session):
+        return RedirectResponse(url="/ui/setup", status_code=302)  # type: ignore[return-value]
+
+    config = get_config()
     return _templates(request).TemplateResponse(
         request=request,
         name="ui/register.html",
+        context={"registration_mode": config.registration_mode},
     )
+
+
+@router.get("/setup", response_class=HTMLResponse)
+@limiter.limit("120/minute")
+async def ui_setup(
+    request: Request, session: DBSession, error: str | None = None
+) -> HTMLResponse:
+    """Bootstrap page for creating the first admin user.
+
+    Disabled (redirects to /ui/login) once any user exists.
+    """
+    if not await _needs_bootstrap(session):
+        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/setup.html",
+        context={"error": error},
+    )
+
+
+@router.post("/setup", response_class=HTMLResponse)
+@limiter.limit("5/minute")
+async def ui_setup_submit(
+    request: Request,
+    session: DBSession,
+    username: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...),
+    password_confirm: str = Form(...),
+) -> HTMLResponse:
+    """Create the first admin user from the setup form."""
+    from urllib.parse import quote
+
+    from atp.dashboard.auth import create_user
+
+    if not await _needs_bootstrap(session):
+        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+
+    def _fail(msg: str) -> HTMLResponse:
+        return RedirectResponse(  # type: ignore[return-value]
+            url=f"/ui/setup?error={quote(msg)}", status_code=303
+        )
+
+    if password != password_confirm:
+        return _fail("Passwords do not match")
+    if len(password) < 8:
+        return _fail("Password must be at least 8 characters")
+
+    try:
+        user = await create_user(
+            session,
+            username=username.strip(),
+            email=email.strip(),
+            password=password,
+            is_admin=True,
+        )
+    except ValueError as exc:
+        return _fail(str(exc))
+
+    role_result = await session.execute(select(Role).where(Role.name == "admin"))
+    role = role_result.scalar_one_or_none()
+    if role is not None:
+        session.add(UserRole(user_id=user.id, role_id=role.id))
+    await session.flush()
+
+    return RedirectResponse(url="/ui/login", status_code=303)  # type: ignore[return-value]
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -1323,5 +1406,69 @@ async def ui_invites(request: Request, session: DBSession) -> HTMLResponse:
             "user": user,
             "invites": invites,
             "now": datetime.now(),
+            "new_code": request.query_params.get("new_code"),
+            "error": request.query_params.get("error"),
         },
     )
+
+
+@router.post("/invites", response_class=HTMLResponse)
+@limiter.limit("10/minute")
+async def ui_create_invite(
+    request: Request,
+    session: DBSession,
+    expires_in_days: str = Form(""),
+) -> HTMLResponse:
+    """Create an invite code from the admin UI."""
+    from urllib.parse import quote
+
+    from atp.dashboard.v2.routes.invite_api import create_invite_for_admin
+
+    user = await _get_ui_user(request, session)
+    if not user or not user.is_admin:
+        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+
+    days: int | None = 7
+    raw = expires_in_days.strip()
+    if raw:
+        try:
+            parsed = int(raw)
+        except ValueError:
+            return RedirectResponse(  # type: ignore[return-value]
+                url="/ui/invites?error=" + quote("Expiry must be a whole number"),
+                status_code=303,
+            )
+        days = None if parsed == 0 else parsed
+
+    invite = await create_invite_for_admin(
+        session=session, admin=user, expires_in_days=days
+    )
+    return RedirectResponse(  # type: ignore[return-value]
+        url=f"/ui/invites?new_code={quote(invite.code)}", status_code=303
+    )
+
+
+@router.post("/invites/{invite_id}/deactivate", response_class=HTMLResponse)
+@limiter.limit("10/minute")
+async def ui_deactivate_invite(
+    request: Request,
+    session: DBSession,
+    invite_id: int,
+) -> HTMLResponse:
+    """Deactivate an invite from the admin UI."""
+    from urllib.parse import quote
+
+    from atp.dashboard.v2.routes.invite_api import deactivate_invite_for_admin
+
+    user = await _get_ui_user(request, session)
+    if not user or not user.is_admin:
+        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+
+    try:
+        await deactivate_invite_for_admin(session=session, invite_id=invite_id)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Failed to deactivate"
+        return RedirectResponse(  # type: ignore[return-value]
+            url=f"/ui/invites?error={quote(detail)}", status_code=303
+        )
+    return RedirectResponse(url="/ui/invites", status_code=303)  # type: ignore[return-value]
