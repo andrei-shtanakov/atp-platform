@@ -5,9 +5,15 @@
 {% block content %}
 <h1>My Agents</h1>
 
-<details id="new-agent-form">
+{% if error %}
+<article style="background-color: #fde2e2; border-color: #c62828; color: #8b0000;">
+    <strong>Error:</strong> {{ error }}
+</article>
+{% endif %}
+
+<details id="new-agent-form"{% if error %} open{% endif %}>
     <summary role="button" class="outline">New Agent</summary>
-    <form method="post" action="/api/v1/agents">
+    <form method="post" action="/ui/agents">
         <div class="grid">
             <label>Name <input type="text" name="name" required></label>
             <label>Version <input type="text" name="version" value="latest"></label>

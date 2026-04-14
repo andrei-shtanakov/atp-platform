@@ -1,12 +1,14 @@
 """Agent ownership management API endpoints."""
 
 from datetime import datetime
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from atp.dashboard.auth import require_user_level_token
-from atp.dashboard.models import Agent
+from atp.dashboard.models import Agent, User
 from atp.dashboard.schemas import AgentOwnerCreate, AgentOwnerResponse, AgentOwnerUpdate
 from atp.dashboard.tokens import APIToken
 from atp.dashboard.tournament.models import Participant, Tournament, TournamentStatus
@@ -21,6 +23,63 @@ router = APIRouter(
 )
 
 
+async def create_agent_for_user(
+    *,
+    session: AsyncSession,
+    user: User,
+    name: str,
+    version: str,
+    agent_type: str,
+    description: str | None = None,
+    config: dict[str, Any] | None = None,
+) -> Agent:
+    """Create an agent owned by `user`, enforcing quota and uniqueness.
+
+    Raises HTTPException on quota exceeded or duplicate name/version.
+    Shared by the JSON API and the cookie-authenticated UI handler.
+    """
+    cfg = get_config()
+
+    count_result = await session.execute(
+        select(func.count(Agent.id)).where(
+            Agent.owner_id == user.id,
+            Agent.deleted_at.is_(None),
+        )
+    )
+    if count_result.scalar_one() >= cfg.max_agents_per_user:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Agent limit reached (max {cfg.max_agents_per_user})",
+        )
+
+    existing = await session.execute(
+        select(Agent.id).where(
+            Agent.owner_id == user.id,
+            Agent.name == name,
+            Agent.version == version,
+            Agent.deleted_at.is_(None),
+        )
+    )
+    if existing.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Agent '{name}' version '{version}' already exists",
+        )
+
+    agent = Agent(
+        name=name,
+        version=version,
+        agent_type=agent_type,
+        config=config or {},
+        description=description,
+        owner_id=user.id,
+    )
+    session.add(agent)
+    await session.flush()
+    await session.refresh(agent)
+    return agent
+
+
 @router.post("", response_model=AgentOwnerResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("10/minute")
 async def create_agent(
@@ -30,47 +89,15 @@ async def create_agent(
     body: AgentOwnerCreate,
 ) -> AgentOwnerResponse:
     """Create a new agent owned by the current user."""
-    config = get_config()
-
-    # Check agent limit
-    count_result = await session.execute(
-        select(func.count(Agent.id)).where(
-            Agent.owner_id == user.id,
-            Agent.deleted_at.is_(None),
-        )
-    )
-    if count_result.scalar_one() >= config.max_agents_per_user:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Agent limit reached (max {config.max_agents_per_user})",
-        )
-
-    # Check uniqueness
-    existing = await session.execute(
-        select(Agent.id).where(
-            Agent.owner_id == user.id,
-            Agent.name == body.name,
-            Agent.version == body.version,
-            Agent.deleted_at.is_(None),
-        )
-    )
-    if existing.scalar_one_or_none() is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Agent '{body.name}' version '{body.version}' already exists",
-        )
-
-    agent = Agent(
+    agent = await create_agent_for_user(
+        session=session,
+        user=user,
         name=body.name,
         version=body.version,
         agent_type=body.agent_type,
-        config=body.config,
         description=body.description,
-        owner_id=user.id,
+        config=body.config,
     )
-    session.add(agent)
-    await session.flush()
-    await session.refresh(agent)
     return AgentOwnerResponse.model_validate(agent)
 
 

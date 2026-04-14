@@ -10,7 +10,7 @@ import logging
 from datetime import datetime
 from types import SimpleNamespace
 
-from fastapi import APIRouter, Request, UploadFile
+from fastapi import APIRouter, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
@@ -1002,11 +1002,59 @@ async def ui_agents(request: Request, session: DBSession) -> HTMLResponse:
         for a, tc in result.all()
     ]
 
+    error = request.query_params.get("error")
     return _templates(request).TemplateResponse(
         request=request,
         name="ui/agents.html",
-        context={"active_page": "agents", "user": user, "agents": agents},
+        context={
+            "active_page": "agents",
+            "user": user,
+            "agents": agents,
+            "error": error,
+        },
     )
+
+
+@router.post("/agents", response_class=HTMLResponse)
+@limiter.limit("10/minute")
+async def ui_create_agent(
+    request: Request,
+    session: DBSession,
+    name: str = Form(...),
+    agent_type: str = Form(...),
+    version: str = Form("latest"),
+    description: str = Form(""),
+) -> HTMLResponse:
+    """Handle the 'New Agent' form submission from /ui/agents."""
+    from atp.dashboard.v2.routes.agent_management_api import create_agent_for_user
+
+    user = await _get_ui_user(request, session)
+    if not user:
+        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+
+    clean_name = name.strip()
+    clean_version = version.strip() or "latest"
+    clean_type = agent_type.strip()
+    clean_desc = description.strip() or None
+
+    try:
+        await create_agent_for_user(
+            session=session,
+            user=user,
+            name=clean_name,
+            version=clean_version,
+            agent_type=clean_type,
+            description=clean_desc,
+        )
+    except HTTPException as exc:
+        from urllib.parse import quote
+
+        detail = exc.detail if isinstance(exc.detail, str) else "Failed to create agent"
+        return RedirectResponse(  # type: ignore[return-value]
+            url=f"/ui/agents?error={quote(detail)}", status_code=303
+        )
+
+    return RedirectResponse(url="/ui/agents", status_code=303)  # type: ignore[return-value]
 
 
 @router.get("/agents/{agent_id}", response_class=HTMLResponse)
