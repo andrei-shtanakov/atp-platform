@@ -238,6 +238,17 @@ async def _add_missing_columns(db: Database) -> None:
     existing ones.  This helper inspects every mapped table and issues
     ALTER TABLE ADD COLUMN for anything the DB is missing.  Runs once at
     startup and is idempotent.
+
+    Limitations — this helper is deliberately minimal:
+    - Does NOT alter existing columns (e.g. flipping NULL -> NOT NULL)
+    - Does NOT create new indexes declared in __table_args__
+    - Does NOT create new UniqueConstraints, CheckConstraints, or FKs
+    - Does NOT handle partial unique indexes (sqlite_where / postgresql_where)
+
+    Non-trivial schema evolution (constraint changes, index additions,
+    column alterations) MUST go through an Alembic migration. See
+    LABS-10 for the broader migration story and LABS-54 for the plan to
+    reduce reliance on this helper entirely.
     """
     import logging
 

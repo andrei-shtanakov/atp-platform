@@ -8,6 +8,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 import atp.dashboard.tokens as _tokens_models  # noqa: F401  — register token ORM models
+from atp.dashboard.migrations.url_helpers import as_sync_url
 from atp.dashboard.models import Base
 
 config = context.config
@@ -17,10 +18,16 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
-# Allow override via environment variable
-db_url = os.environ.get("ATP_DASHBOARD_DATABASE_URL")
+# Prefer ATP_DATABASE_URL (what the application reads at runtime) so
+# operators don't have to remember a separate variable for migrations.
+# ATP_DASHBOARD_DATABASE_URL remains as an explicit override for the rare
+# case of running migrations against a different DB than the app.
+db_url = os.environ.get("ATP_DATABASE_URL") or os.environ.get(
+    "ATP_DASHBOARD_DATABASE_URL"
+)
 if db_url:
-    config.set_main_option("sqlalchemy.url", db_url)
+    # Strip async driver suffix (+aiosqlite, +asyncpg) — Alembic runs sync.
+    config.set_main_option("sqlalchemy.url", as_sync_url(db_url))
 elif not config.get_main_option("sqlalchemy.url"):
     db_path = Path.home() / ".atp" / "dashboard.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)

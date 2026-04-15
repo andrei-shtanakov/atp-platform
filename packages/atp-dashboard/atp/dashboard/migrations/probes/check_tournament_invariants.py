@@ -24,6 +24,8 @@ from typing import Any
 
 from sqlalchemy import Connection, Row, create_engine, text
 
+from atp.dashboard.migrations.url_helpers import as_sync_url
+
 
 def _rows(conn: Connection, sql: str) -> Sequence[Row[Any]]:
     return conn.execute(text(sql)).all()
@@ -176,7 +178,10 @@ def _main() -> int:
         )
         return 2
 
-    engine = create_engine(db_url)
+    # Operators typically export the same ATP_DATABASE_URL the app reads,
+    # which uses an async driver. Strip the async suffix so the sync
+    # engine constructed below doesn't crash with MissingGreenlet.
+    engine = create_engine(as_sync_url(db_url))
     try:
         with engine.connect() as conn:
             violations = check_tournament_schema_ready(conn)
