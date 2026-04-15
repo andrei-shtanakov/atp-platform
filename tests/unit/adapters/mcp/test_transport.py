@@ -807,15 +807,47 @@ class TestSSETransport:
 
     @pytest.mark.anyio
     async def test_connect_success(self, sse_config: SSETransportConfig) -> None:
-        """Test successful SSE connection."""
+        """Test successful SSE connection.
+
+        The mocked stream emits a spec-compliant ``event: endpoint`` frame
+        so connect() can finalize the handshake. Without it, connect()
+        raises AdapterConnectionError (covered by test_connect_no_endpoint_frame).
+        """
         transport = SSETransport(sse_config)
 
-        async def mock_stream(*args, **kwargs):
-            return httpx.Response(
-                200,
-                headers={"Content-Type": "text/event-stream"},
-                content=b"",
-            )
+        mock_client = MagicMock()
+        mock_client.build_request = MagicMock()
+
+        async def mock_send(*args, **kwargs):
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+
+            async def mock_aiter_lines():
+                yield "event: endpoint"
+                yield "data: /messages?session_id=test-session"
+                yield ""
+
+            mock_response.aiter_lines = mock_aiter_lines
+            return mock_response
+
+        mock_client.send = mock_send
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            await transport.connect()
+
+        assert transport.state == TransportState.CONNECTED
+        assert transport.is_connected is True
+
+    @pytest.mark.anyio
+    async def test_connect_no_endpoint_frame_raises(
+        self, sse_config: SSETransportConfig
+    ) -> None:
+        """Connect must fail loudly when the server never emits the
+        spec-required ``event: endpoint`` frame. Previously the transport
+        silently fell through and subsequent POSTs to the SSE GET URL
+        returned 405 — the SC-10 e2e flake in CI was caused by this.
+        """
+        transport = SSETransport(sse_config)
 
         mock_client = MagicMock()
         mock_client.build_request = MagicMock()
@@ -834,10 +866,13 @@ class TestSSETransport:
         mock_client.send = mock_send
 
         with patch("httpx.AsyncClient", return_value=mock_client):
-            await transport.connect()
+            with pytest.raises(
+                AdapterConnectionError,
+                match="MCP SSE handshake incomplete",
+            ):
+                await transport.connect()
 
-        assert transport.state == TransportState.CONNECTED
-        assert transport.is_connected is True
+        assert transport.state == TransportState.DISCONNECTED
 
     @pytest.mark.anyio
     async def test_connect_http_error(self, sse_config: SSETransportConfig) -> None:
@@ -1318,7 +1353,11 @@ class TestSSETransport:
 
     @pytest.mark.anyio
     async def test_context_manager(self, sse_config: SSETransportConfig) -> None:
-        """Test SSE transport as async context manager."""
+        """Test SSE transport as async context manager.
+
+        Mock yields a spec-compliant ``event: endpoint`` frame so connect()
+        can complete the handshake.
+        """
         transport = SSETransport(sse_config)
 
         mock_client = MagicMock()
@@ -1331,8 +1370,9 @@ class TestSSETransport:
             mock_response.aclose = AsyncMock()
 
             async def mock_aiter_lines():
-                return
-                yield
+                yield "event: endpoint"
+                yield "data: /messages?session_id=test-session"
+                yield ""
 
             mock_response.aiter_lines = mock_aiter_lines
             return mock_response

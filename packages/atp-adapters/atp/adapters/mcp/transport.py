@@ -817,6 +817,24 @@ class SSETransport(MCPTransport):
                     break
                 await asyncio.sleep(0.01)
 
+            # If the endpoint frame never arrived, do NOT silently fall
+            # through — subsequent POSTs would target the SSE URL and
+            # the server would reject them with 405. Surface the
+            # condition explicitly so the caller can retry or fail loud.
+            if self._config.post_endpoint is None:
+                self._state = TransportState.DISCONNECTED
+                reader_failed = self._reader_task.done()
+                detail = (
+                    "SSE reader exited before emitting endpoint frame"
+                    if reader_failed
+                    else f"no endpoint frame within {self._config.connection_timeout}s"
+                )
+                raise AdapterConnectionError(
+                    f"MCP SSE handshake incomplete: {detail}",
+                    endpoint=self._config.url,
+                    adapter_type="mcp",
+                )
+
         except httpx.TimeoutException as e:
             self._state = TransportState.DISCONNECTED
             raise AdapterTimeoutError(
