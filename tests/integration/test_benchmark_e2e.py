@@ -14,7 +14,9 @@ from typing import Any
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from atp.dashboard.auth import get_current_active_user
 from atp.dashboard.database import init_database
+from atp.dashboard.models import User
 from atp.dashboard.v2.factory import create_test_app
 
 # The factory mounts api_router at "/api" and benchmark_api_router
@@ -24,17 +26,40 @@ BASE = "/api/v1"
 DB_URL = "sqlite+aiosqlite:///:memory:"
 
 
+def _mock_user() -> User:
+    """Synthetic admin user for benchmark endpoints that require auth."""
+    user = User(
+        username="benchmark_e2e",
+        email="bench@test.com",
+        hashed_password="x",
+        is_active=True,
+        is_admin=True,
+    )
+    user.id = 1
+    return user
+
+
 @pytest.fixture()
 async def client() -> Any:
-    """Create test app, initialize DB, and yield async client."""
+    """Create test app, initialize DB, and yield async client.
+
+    Benchmark endpoints (POST /benchmarks, /runs/{id}/* etc.) require an
+    authenticated user since the IDOR fix. We override get_current_active_user
+    rather than minting a real JWT — this test cares about the benchmark
+    state machine, not the auth path.
+    """
     app = create_test_app(database_url=DB_URL)
+    app.dependency_overrides[get_current_active_user] = _mock_user
     # Manually trigger database initialization (lifespan is not
     # called by httpx ASGITransport).
     await init_database(url=DB_URL, echo=False)
 
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as c:
-        yield c
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            yield c
+    finally:
+        app.dependency_overrides.clear()
 
 
 def _make_suite() -> dict[str, Any]:
