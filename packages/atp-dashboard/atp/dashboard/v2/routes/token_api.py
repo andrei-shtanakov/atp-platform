@@ -34,6 +34,12 @@ async def create_token_for_user(
     Returns (db_token, raw_token). The raw token is only available at creation
     time. Raises HTTPException on quota, permission, or config violations.
     Shared by the JSON API and the cookie-authenticated UI handler.
+
+    Quota enforcement is best-effort: we COUNT then INSERT, so concurrent
+    requests can race past the ceiling by a small margin at high request
+    rates. At current scale (tens of req/min) this is not observable. If
+    hard caps become required, promote to a DB trigger or advisory lock
+    (LABS-18).
     """
     config = get_config()
 

@@ -37,6 +37,13 @@ async def create_agent_for_user(
 
     Raises HTTPException on quota exceeded or duplicate name/version.
     Shared by the JSON API and the cookie-authenticated UI handler.
+
+    The quota check is best-effort (COUNT then INSERT): concurrent
+    requests can race past `max_agents_per_user` by a small margin at
+    high request rates. At current scale this is not observable; see
+    LABS-18 for the upgrade path if hard caps become required. The
+    name/version uniqueness check is backed by the DB unique index, so
+    duplicates cannot race past the guard.
     """
     cfg = get_config()
 
