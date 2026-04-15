@@ -38,13 +38,15 @@ async def test_cookie_auth_sets_user_id_on_request_state(
 
 @pytest.mark.anyio
 async def test_logout_clears_cookie_and_redirects(client: AsyncClient, auth_token: str):
-    """POST /ui/logout should clear atp_token cookie and redirect to /ui/."""
+    """POST /ui/logout clears the atp_token cookie and redirects to the
+    login page (commit b157996 changed the target from /ui/ to /ui/login
+    so the user lands on a page that doesn't immediately re-auth-redirect)."""
     resp = await client.post(
         "/ui/logout",
         cookies={"atp_token": auth_token},
         follow_redirects=False,
     )
     assert resp.status_code == 303
-    assert resp.headers["location"] == "/ui/"
+    assert resp.headers["location"] == "/ui/login"
     set_cookie = resp.headers.get("set-cookie", "")
     assert "atp_token" in set_cookie

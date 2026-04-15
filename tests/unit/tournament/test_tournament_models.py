@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from atp.dashboard.models import Base
+from atp.dashboard.models import Base, User
 from atp.dashboard.tournament.models import (
     Action,
     Participant,
@@ -14,6 +14,21 @@ from atp.dashboard.tournament.models import (
     Tournament,
     TournamentStatus,
 )
+
+
+def _make_user(session: Session, username: str = "u1") -> User:
+    """Helper: create a User row so Participant.user_id (NOT NULL since
+    Plan 2a IDOR fix) can be satisfied."""
+    user = User(
+        username=username,
+        email=f"{username}@test.com",
+        hashed_password="x",
+        is_active=True,
+    )
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return user
 
 
 @pytest.fixture()
@@ -101,8 +116,12 @@ class TestParticipant:
         session.commit()
         session.refresh(t)
 
+        # Plan 2a IDOR fix made Participant.user_id NOT NULL.
+        u = _make_user(session, "alice")
+
         p = Participant(
             tournament_id=t.id,
+            user_id=u.id,
             agent_name="tit-for-tat",
         )
         session.add(p)
@@ -112,7 +131,7 @@ class TestParticipant:
         assert p.id is not None
         assert p.tournament_id == t.id
         assert p.agent_name == "tit-for-tat"
-        assert p.user_id is None
+        assert p.user_id == u.id
         assert p.total_score is None
         assert isinstance(p.joined_at, datetime)
 
@@ -122,9 +141,11 @@ class TestParticipant:
         session.commit()
         session.refresh(t)
 
+        u = _make_user(session, "bob")
+
         p = Participant(
             tournament_id=t.id,
-            user_id=None,
+            user_id=u.id,
             agent_name="always-cooperate",
             total_score=42.5,
         )
@@ -177,7 +198,8 @@ class TestAction:
         session.commit()
         session.refresh(t)
 
-        p = Participant(tournament_id=t.id, agent_name="test-agent")
+        u = _make_user(session, "carol")
+        p = Participant(tournament_id=t.id, user_id=u.id, agent_name="test-agent")
         session.add(p)
         session.commit()
         session.refresh(p)

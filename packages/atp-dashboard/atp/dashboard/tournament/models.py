@@ -14,6 +14,7 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
+    func,
     text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -104,7 +105,13 @@ class Tournament(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     # Plan 2a additive columns — AD-9 pending deadline
-    pending_deadline: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    # server_default=now() so create_all()-built test DBs accept inserts
+    # that omit the column. Production code in TournamentService always
+    # sets it explicitly to creator-controlled deadline, so the default
+    # only matters for tests and for migrations that backfill stale rows.
+    pending_deadline: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now()
+    )
 
     # Plan 2a additive columns — AD-10 join token
     join_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
