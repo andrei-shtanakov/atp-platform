@@ -23,7 +23,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from atp.dashboard.models import User
+from atp.dashboard.models import Agent, User
 from atp.dashboard.tournament.errors import (
     ConflictError,
     NotFoundError,
@@ -205,11 +205,27 @@ class TournamentService:
                     f"tournament {tournament_id} requires a valid join_token"
                 )
 
+        # Resolve agent_id from an owned Agent matching agent_name, so the
+        # "agent in active tournament" check in DELETE /api/v1/agents/{id}
+        # can block soft-delete of an agent actively playing. If the user
+        # has no matching owned agent (e.g. legacy ownerless flow), agent_id
+        # stays NULL and the legacy behaviour is preserved.
+        agent_id = await self._session.scalar(
+            select(Agent.id)
+            .where(
+                Agent.owner_id == user_id,
+                Agent.name == agent_name,
+                Agent.deleted_at.is_(None),
+            )
+            .limit(1)
+        )
+
         # INSERT path
         participant = Participant(
             tournament_id=tournament_id,
             user_id=user_id,
             agent_name=agent_name,
+            agent_id=agent_id,
             released_at=None,
         )
         self._session.add(participant)
