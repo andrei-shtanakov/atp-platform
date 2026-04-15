@@ -479,7 +479,9 @@ class TournamentService:
                 f"tournament {tournament_id} has no round accepting actions"
             )
 
-        game = _GAME_INSTANCES[tournament.game_type]  # stays a dict in PR-1; PR-2 swaps in _game_for
+        game = _GAME_INSTANCES[
+            tournament.game_type
+        ]  # stays a dict in PR-1; PR-2 swaps in _game_for
         canonical = game.validate_action(action)
 
         existing = (
