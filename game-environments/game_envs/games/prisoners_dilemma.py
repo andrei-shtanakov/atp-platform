@@ -266,6 +266,25 @@ class PrisonersDilemma(Game):
             "extra": {},
         }
 
+    def validate_action(self, raw: Any) -> dict[str, str]:
+        """Validate a client-submitted action and return canonical form.
+
+        Strict path used by tournament submit. Raises ValidationError on
+        any malformed input.
+        """
+        from game_envs.core.errors import (
+            ValidationError,  # local import to avoid cycles
+        )
+
+        if not isinstance(raw, dict):
+            raise ValidationError(f"action must be a dict, got {type(raw).__name__}")
+        choice = raw.get("choice")
+        if choice not in (COOPERATE, DEFECT):
+            raise ValidationError(
+                f"choice must be {COOPERATE!r} or {DEFECT!r}, got {choice!r}"
+            )
+        return {"choice": choice}
+
     def _compute_payoffs(self, a0: str, a1: str) -> dict[str, float]:
         """Compute round payoffs from the payoff matrix."""
         c = self._pd_config

@@ -388,3 +388,36 @@ class TestPrisonersDilemmaSerialization:
         assert restored.player_id == obs.player_id
         assert restored.round_number == obs.round_number
         assert len(restored.history) == len(obs.history)
+
+
+class TestPrisonersDilemmaValidateAction:
+    """Tests for PrisonersDilemma.validate_action strict entrypoint."""
+
+    def test_validate_action_accepts_cooperate(self) -> None:
+        pd = PrisonersDilemma()
+        assert pd.validate_action({"choice": "cooperate"}) == {"choice": "cooperate"}
+
+    def test_validate_action_accepts_defect(self) -> None:
+        pd = PrisonersDilemma()
+        assert pd.validate_action({"choice": "defect"}) == {"choice": "defect"}
+
+    def test_validate_action_rejects_unknown_choice(self) -> None:
+        pd = PrisonersDilemma()
+        from game_envs.core.errors import ValidationError
+
+        with pytest.raises(ValidationError, match="choice"):
+            pd.validate_action({"choice": "betray"})
+
+    def test_validate_action_rejects_missing_choice(self) -> None:
+        pd = PrisonersDilemma()
+        from game_envs.core.errors import ValidationError
+
+        with pytest.raises(ValidationError):
+            pd.validate_action({})
+
+    def test_validate_action_rejects_non_dict(self) -> None:
+        pd = PrisonersDilemma()
+        from game_envs.core.errors import ValidationError
+
+        with pytest.raises(ValidationError):
+            pd.validate_action("cooperate")  # type: ignore[arg-type]
