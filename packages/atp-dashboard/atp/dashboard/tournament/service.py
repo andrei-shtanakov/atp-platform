@@ -382,22 +382,24 @@ class TournamentService:
             .all()
         )
 
-        action_history: list[list[str]] = []
+        action_history: list[dict[str, Any]] = []
         cumulative_scores: list[float] = [0.0] * len(participants)
         current_round_number = 1
         found_active = False
         for r in rounds:
             if r.status == RoundStatus.COMPLETED:
-                row: list[str] = [""] * len(participants)
+                actions_by_idx: dict[int, dict[str, Any]] = {}
                 for action in r.actions:
                     p_idx = next(
                         i
                         for i, p in enumerate(participants)
                         if p.id == action.participant_id
                     )
-                    row[p_idx] = action.action_data.get("choice", "")
+                    actions_by_idx[p_idx] = action.action_data
                     cumulative_scores[p_idx] += action.payoff or 0.0
-                action_history.append(row)
+                action_history.append(
+                    {"round": r.round_number, "actions": actions_by_idx}
+                )
             else:
                 current_round_number = r.round_number
                 found_active = True
