@@ -285,6 +285,10 @@ class PrisonersDilemma(Game):
             )
         return {"choice": choice}
 
+    def default_action_on_timeout(self) -> dict[str, str]:
+        """Action substituted when a participant misses the round deadline."""
+        return {"choice": DEFECT}
+
     def _compute_payoffs(self, a0: str, a1: str) -> dict[str, float]:
         """Compute round payoffs from the payoff matrix."""
         c = self._pd_config

@@ -421,3 +421,8 @@ class TestPrisonersDilemmaValidateAction:
 
         with pytest.raises(ValidationError):
             pd.validate_action("cooperate")  # type: ignore[arg-type]
+
+
+def test_default_action_on_timeout_returns_defect() -> None:
+    pd = PrisonersDilemma()
+    assert pd.default_action_on_timeout() == {"choice": "defect"}
