@@ -200,3 +200,80 @@ async def test_full_3_round_publishes_round_started_and_tournament_completed(
         "tournament_completed",
     ]
     assert [e.round_number for e in received[:3]] == [1, 2, 3]
+
+
+@pytest.mark.anyio
+async def test_force_resolve_round_computes_payoffs(
+    session: AsyncSession,
+    admin_user: User,
+    alice: User,
+    bob: User,
+    event_bus: TournamentEventBus,
+) -> None:
+    """LABS-7 regression: force_resolve_round must write Action.payoff.
+
+    Alice cooperates (submitted), Bob times out (TIMEOUT_DEFAULT → defect).
+    PD matrix: CD → alice=0, bob=5. Before the fix, timeout rounds had
+    NULL payoffs and SUM(payoff) in _complete_tournament returned 0.
+    """
+    from sqlalchemy import func, select
+
+    from atp.dashboard.tournament.models import (
+        Action,
+        ActionSource,
+        Participant,
+        Round,
+        RoundStatus,
+    )
+    from atp.dashboard.tournament.service import TournamentService
+
+    svc = TournamentService(session, event_bus)
+    t, _ = await svc.create_tournament(
+        creator=admin_user,
+        name="t",
+        game_type="prisoners_dilemma",
+        num_players=2,
+        total_rounds=3,
+        round_deadline_s=30,
+    )
+    await svc.join(t.id, alice, "alice")
+    await svc.join(t.id, bob, "bob")
+
+    # Alice submits, Bob doesn't → round still waiting_for_actions
+    await svc.submit_action(t.id, alice, action={"choice": "cooperate"})
+    round_one = (
+        await session.execute(
+            select(Round).where(Round.tournament_id == t.id, Round.round_number == 1)
+        )
+    ).scalar_one()
+    assert round_one.status == RoundStatus.WAITING_FOR_ACTIONS
+
+    await svc.force_resolve_round(round_one.id)
+    await session.flush()
+
+    await session.refresh(round_one)
+    assert round_one.status == RoundStatus.COMPLETED
+
+    actions = (
+        (await session.execute(select(Action).where(Action.round_id == round_one.id)))
+        .scalars()
+        .all()
+    )
+    assert len(actions) == 2
+    by_user: dict[int, Action] = {}
+    for a in actions:
+        p = await session.get(Participant, a.participant_id)
+        assert p is not None
+        by_user[p.user_id] = a
+
+    # Payoffs must be populated, not NULL
+    assert by_user[alice.id].payoff == 0.0
+    assert by_user[alice.id].source == ActionSource.SUBMITTED
+    assert by_user[bob.id].payoff == 5.0
+    assert by_user[bob.id].source == ActionSource.TIMEOUT_DEFAULT
+
+    # And the aggregate used by _complete_tournament is non-zero
+    total_payoff = await session.scalar(
+        select(func.sum(Action.payoff)).where(Action.round_id == round_one.id)
+    )
+    assert total_payoff == 5.0
