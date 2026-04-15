@@ -1,7 +1,7 @@
 # El Farol Tournament Support (Phase B) — Design Spec
 
 **Date:** 2026-04-15
-**Status:** v3 — revised after second architectural review (2026-04-15), ready for implementation plan
+**Status:** v4 — revised after third architectural review (2026-04-15), ready for implementation plan
 **Context:** Brainstorm session 2026-04-15
 **Follow-up phase:** C — game-agnostic tournament refactor (out of scope here)
 
@@ -78,14 +78,17 @@ This split gives bisectable history and an easier review.
 / `ActionSpace` / payoffs / `get_payoffs`:
 
 - `format_state_for_player(round_number, total_rounds, participant_idx,
-  action_history, cumulative_scores, has_submitted_this_round) -> dict`
-  — N-player-aware state formatter. Returns `your_history`,
-  `attendance_by_round` (aggregate, not per-player histories),
-  `capacity_threshold`, `your_cumulative_score`, `all_scores`,
-  `your_participant_idx`, `num_slots`, `pending_submission`
-  (`= not has_submitted_this_round`), `action_schema`. **Note:** El
-  Farol returns `pending_submission`, not `your_turn` — the latter
-  carries sequential-turn semantics that don't apply to a simultaneous
+  action_history, cumulative_scores) -> dict` — N-player-aware state
+  formatter. Returns `your_history`, `attendance_by_round` (aggregate,
+  not per-player histories), `capacity_threshold`,
+  `your_cumulative_score`, `all_scores`, `your_participant_idx`,
+  `num_slots`, `action_schema`. **Does NOT return `pending_submission`**
+  — that field is service-layer knowledge (whether this participant
+  has an Action row in the current round), injected by the tournament
+  service after calling the formatter. Keeps the game class free of
+  service-state concerns. **Note:** El Farol state uses
+  `pending_submission`, not `your_turn` — the latter carries
+  sequential-turn semantics that don't apply to a simultaneous
   N-player round (see review #3 in §13).
 - `validate_action(raw: dict) -> dict` — **strict**: raises
   `ValidationError` on malformed input (non-list, out-of-range slot,
@@ -180,7 +183,10 @@ After the §3.0 refactor lands, the El Farol-enabling delta is:
    - Unknown game_type → `ValidationError`.
 
 4. `submit_action` validation: replace PD-specific
-   `action["choice"] in options` with this sequence:
+   `action["choice"] in options` with this sequence. The Tournament
+   record is already fetched exactly once here (verified:
+   `mcp/tools.py:117–124` passes only `tournament_id`, no pre-fetch
+   in the MCP handler).
 
    ```python
    tournament = await self._session.get(Tournament, tournament_id)
@@ -193,25 +199,43 @@ After the §3.0 refactor lands, the El Farol-enabling delta is:
            f"tournament game_type {tournament.game_type!r}"
        )
    action_with_type = {**raw_action, "game_type": tournament.game_type}
-   typed = TypeAdapter(TournamentAction).validate_python(action_with_type)
+   try:
+       typed = TypeAdapter(TournamentAction).validate_python(action_with_type)
+   except PydanticValidationError as e:
+       # Review v4 #2: surface tournament context so debuggers don't
+       # have to guess why an opaque "field X required" fired.
+       expected = _action_hint_for(tournament.game_type)
+       raise ValidationError(
+           f"invalid action for tournament {tournament_id} "
+           f"(game_type={tournament.game_type!r}); "
+           f"expected fields: {expected}; "
+           f"pydantic detail: {e.errors()[:1]}"
+       ) from e
    canonical = game.validate_action(typed.model_dump(exclude={"game_type"}))
    ```
 
-   Store `canonical` in `Action.action_data` (without `game_type`, since
-   the parent `Tournament.game_type` is the source of truth). PD bots
-   continue to send `{"choice": "..."}`; El Farol bots send
-   `{"slots": [...]}`; both routes work without `game_type` on the
-   wire.
+   where `_action_hint_for(gt)` returns a short literal like
+   `"{choice: 'cooperate'|'defect'}"` or `"{slots: list[int], 0..N-1,
+   unique, max 8}"`. Store `canonical` in `Action.action_data` (without
+   `game_type`, since the parent `Tournament.game_type` is the source
+   of truth). PD bots continue to send `{"choice": "..."}`; El Farol
+   bots send `{"slots": [...]}`; both routes work without `game_type`
+   on the wire.
 
 5. Round deadline handler: replace hardcoded `{"choice": "defect"}`
    fallback with `game.default_action_on_timeout()`.
 
-6. `get_current_state`: parse the formatter's dict into the
-   discriminated union via
-   `TypeAdapter(RoundState).validate_python(formatted)`. State responses
-   **do** carry `game_type` — clients use it for `match` /
-   pattern-dispatch, which is the reason the discriminator is useful
-   server→client.
+6. `get_current_state`: service computes `pending_submission` from
+   DB state (does this participant have an Action row in the current
+   round?), calls `game.format_state_for_player(...)`, merges
+   `{"pending_submission": pending, "game_type": tournament.game_type}`
+   into the returned dict, then parses into the discriminated union via
+   `TypeAdapter(RoundState).validate_python(merged)`. PD's state is
+   shaped analogously: service injects `your_turn` (legacy name)
+   computed the same way, rather than the game class knowing about
+   submission state. State responses **do** carry `game_type` —
+   clients use it for `match` / pattern-dispatch, which is the reason
+   the discriminator is useful server→client.
 
 No database migration. `Action.action_data` is already JSON;
 `Tournament.game_type` is already `String(100)`.
@@ -374,7 +398,9 @@ Enumerated during design, to be covered by tests:
   computation, `validate_action` vs `sanitize` boundary behavior on the
   same bad input, `pending_submission` toggles correctly across rounds.
 - `tests/unit/tournament/test_schemas_discriminator.py` — explicit
-  cases:
+  cases. Schema policy: `model_config = ConfigDict(extra="forbid")`
+  on both action and state models, so extra fields surface as
+  validation errors rather than silently pass (tested via case 4).
   1. `TypeAdapter(TournamentAction)` parses
      `{"game_type": "prisoners_dilemma", "choice": "cooperate"}` →
      `PDAction`.
@@ -383,8 +409,8 @@ Enumerated during design, to be covered by tests:
   3. Missing required field per type → ValidationError listing the
      missing field.
   4. PD discriminator + El Farol fields (`{"game_type":
-     "prisoners_dilemma", "slots": [0]}`) → ValidationError on
-     missing `choice`.
+     "prisoners_dilemma", "slots": [0]}`) → ValidationError citing
+     BOTH missing `choice` AND extra `slots` (given `extra="forbid"`).
   5. Unknown discriminator → ValidationError listing the supported
      literals.
   6. Round-trip: `model.model_dump()` → `validate_python(dump)` yields
@@ -395,7 +421,16 @@ Enumerated during design, to be covered by tests:
   returns game with configured `num_players` and `capacity_threshold`
   correctly derived from the V1 ratio, `_el_farol_for(N)` is cached
   (second call returns same instance), `submit_action` mismatch case
-  (PD action sent to El Farol tournament returns ValidationError).
+  (PD action sent to El Farol tournament returns ValidationError with
+  tournament-aware hint), `submit_action` error-message quality check
+  (PD bot without `game_type` sending to El Farol tournament receives
+  message mentioning the expected slots schema — test per review v4 #2).
+
+  **Fixture hygiene:** any test that monkey-patches
+  `_EL_FAROL_V1_NUM_SLOTS`, `_EL_FAROL_V1_THRESHOLD_RATIO`, or
+  `_EL_FAROL_V1_MIN_TOTAL_HOURS` must call
+  `_el_farol_for.cache_clear()` in teardown (or autouse fixture) to
+  avoid cross-test leakage from the process-scoped `@lru_cache`.
 
 ### 7.2 Integration tests
 
@@ -413,16 +448,23 @@ Enumerated during design, to be covered by tests:
 Mirrors the PD validation that produced the first successful 30-round
 run.
 
-- **Pre-E2E load smoke (built-in bots only, no LLM):** **N=20**, R=10
+- **Pre-E2E load smoke (built-in bots only, no LLM):** **N=20, R=30**
   on a developer machine. Pass criteria: no service timeouts, no
   excessive memory growth, all rounds resolve within
-  `round_deadline_s`. This validates the **upper end** of the V1 N
-  range (was N=10 in v2 — bumped per review #2).
+  `round_deadline_s`, `get_current_state` p95 latency stays flat
+  round-over-round (catches O(R) payload bloat from
+  `attendance_by_round`). N bumped from 10 in v2 (review v3 #2);
+  R bumped from 10 in v3 (review v4 #3).
 - **Full E2E:** `demo-game/compose.el-farol.yml` with N=5 (3 LLM bots
   + 2 built-in: greedy, random), 20 rounds, `round_deadline_s=30`.
-  Pass criteria: tournament completes without service timeouts, all 5
-  bots finish, MCP event-bus logs clean, LLM mean score > random mean
-  score.
+  **Pass criteria focus on plumbing, NOT strategy quality** (review
+  v4 #1): tournament completes without service timeouts, all 5 bots
+  finish every round (no stuck participants), MCP event-bus logs
+  clean (no 5xx, no unhandled exceptions), final leaderboard populates
+  for all participants, structured logs show `game_type=el_farol` on
+  every resolution entry. Phase B does NOT assert that LLM bots
+  outperform random — see §12 for why a "LLM > random" criterion would
+  either pass trivially or fail on variance.
 
 ### 7.4 Coverage
 
@@ -530,10 +572,21 @@ real prod data exists.
   into `ElFarolConfig` to preserve this game-rule relationship.
 - **Untested service perf at N > 20.** Bound enforced at create-time;
   pre-E2E load smoke validates the boundary.
+- **Silent `min_total_hours` if raised without Phase C.** Raising
+  `_EL_FAROL_V1_MIN_TOTAL_HOURS > 0` without introducing the
+  `finalize_scores` hook (Phase C §8) makes the field decorative: the
+  game accumulates `_t_happy`/`_t_crowded` but the tournament service
+  never invokes `get_payoffs()` to apply DQ. Result: bots that
+  "violate" `min_total_hours` are not actually disqualified, creating
+  a misleading config surface. **Mitigation:** a unit test in
+  `test_service.py` asserts that raising the constant without the
+  Phase C hook raises a loud `NotImplementedError` at service startup.
+  (Implementation: simple assert in module init that
+  `_EL_FAROL_V1_MIN_TOTAL_HOURS == 0` until the hook lands.)
 
 ## 13. Review revisions log
 
-This spec went through two architectural reviews on 2026-04-15.
+This spec went through three architectural reviews on 2026-04-15.
 
 ### v1 → v2
 
@@ -587,3 +640,39 @@ This spec went through two architectural reviews on 2026-04-15.
 - **Pushed back on review #7** (`MAX_SLOTS_PER_DAY` into `ElFarolConfig`
   in Phase B): rejected for B as a game-rule constant; deferred to
   Phase C when `num_slots` becomes configurable. Recorded in §8 hooks.
+
+### v3 → v4
+
+- **Dropped strategy-quality pass-criterion from full E2E** (review
+  v4 #1). Previous "LLM mean score > random mean score" conflicted
+  with §12's documented acceptance of stay-home degeneracy: the
+  criterion would pass trivially (both at 0) or fail on variance.
+  Phase B E2E now validates plumbing only (completes, logs clean,
+  all bots finish every round, leaderboard populates). Strategic
+  quality is a Phase C concern once `finalize_scores` enables DQ.
+- **Wrapped pydantic `ValidationError` with tournament context in
+  `submit_action`** (review v4 #2). When a PD bot sends `{"choice":
+  "..."}` to an El Farol tournament, raw pydantic says "field slots
+  required"; with the wrapper, the message cites the tournament id,
+  its `game_type`, and an expected-fields hint
+  (`_action_hint_for(gt)`).
+- **Bumped pre-E2E load smoke from R=10 to R=30** (review v4 #3):
+  catches potential O(R) `attendance_by_round` payload growth that
+  R=10 would not surface. Added explicit `get_current_state` p95
+  latency flatness as a pass criterion.
+- **Moved `pending_submission` / `your_turn` computation out of
+  `format_state_for_player`** (review v4 minor): the game class no
+  longer knows about submission state. Service computes it from DB
+  Action rows and injects into the state dict before pydantic union
+  parse. Cleaner boundary between game rules and service state.
+- **Added `extra="forbid"` to discriminator test expectations**
+  (review v4 minor): schema policy is explicit, test case 4 asserts
+  the expected behavior.
+- **Added `_el_farol_for.cache_clear()` fixture hygiene note to §7.1**
+  (review v4 minor): process-scoped `@lru_cache` cross-test leakage
+  when V1 constants are monkey-patched.
+- **Verified single Tournament fetch in submit_action** (review v4
+  minor): MCP handler at `mcp/tools.py:117–124` passes only
+  `tournament_id`; no pre-fetch duplication. Noted in §3.2 step 4.
+- **Added `min_total_hours > 0 without Phase C` risk to §12** with
+  startup-assert mitigation (review v4 minor extension).
