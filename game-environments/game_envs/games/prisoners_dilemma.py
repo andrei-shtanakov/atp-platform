@@ -227,28 +227,31 @@ class PrisonersDilemma(Game):
         round_number: int,
         total_rounds: int,
         participant_idx: int,
-        action_history: list[list[str]],
+        action_history: list[dict[str, Any]],
         cumulative_scores: list[float],
     ) -> dict[str, Any]:
         """Build a player-private RoundState dict for the given player.
 
         Args:
-            round_number: The 1-indexed round about to be played.
+            round_number: 1-indexed round about to be played.
             total_rounds: Total rounds in the tournament.
-            participant_idx: Which participant we are formatting for
-                (0 or 1 in 2-player PD).
-            action_history: List per round of [player0_action, player1_action]
-                strings. Empty list = no rounds played yet.
+            participant_idx: Which participant we are formatting for (0 or 1).
+            action_history: List per resolved round of
+                ``{"round": i, "actions": {pid: action_data}}``. Empty list =
+                no rounds played yet.
             cumulative_scores: Per-participant cumulative scores so far.
 
         Returns:
-            Dict matching the RoundState shape, with this player's view
-            (your_history vs opponent_history correctly oriented). The
+            Dict matching the PDRoundState shape (see schemas.py). The
             ``tournament_id`` field is -1 and must be filled by the caller.
         """
         opponent_idx = 1 - participant_idx
-        your_history = [r[participant_idx] for r in action_history]
-        opponent_history = [r[opponent_idx] for r in action_history]
+        your_history = [
+            row["actions"][participant_idx]["choice"] for row in action_history
+        ]
+        opponent_history = [
+            row["actions"][opponent_idx]["choice"] for row in action_history
+        ]
         return {
             "tournament_id": -1,
             "round_number": round_number,
@@ -261,7 +264,7 @@ class PrisonersDilemma(Game):
                 "type": "choice",
                 "options": [COOPERATE, DEFECT],
             },
-            "your_turn": True,
+            "your_turn": True,  # service overwrites this based on DB submission state
             "total_rounds": total_rounds,
             "extra": {},
         }

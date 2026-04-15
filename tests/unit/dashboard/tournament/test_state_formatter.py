@@ -62,9 +62,18 @@ def test_pd_format_state_for_player_with_history() -> None:
 
     game = PrisonersDilemma()
     history = [
-        ["cooperate", "cooperate"],
-        ["cooperate", "defect"],
-        ["defect", "cooperate"],
+        {
+            "round": 1,
+            "actions": {0: {"choice": "cooperate"}, 1: {"choice": "cooperate"}},
+        },
+        {
+            "round": 2,
+            "actions": {0: {"choice": "cooperate"}, 1: {"choice": "defect"}},
+        },
+        {
+            "round": 3,
+            "actions": {0: {"choice": "defect"}, 1: {"choice": "cooperate"}},
+        },
     ]
     state_a = game.format_state_for_player(
         round_number=4,

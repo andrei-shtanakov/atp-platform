@@ -426,3 +426,37 @@ class TestPrisonersDilemmaValidateAction:
 def test_default_action_on_timeout_returns_defect() -> None:
     pd = PrisonersDilemma()
     assert pd.default_action_on_timeout() == {"choice": "defect"}
+
+
+def test_format_state_accepts_generic_action_history_shape() -> None:
+    pd = PrisonersDilemma()
+    history = [
+        {"round": 1, "actions": {0: {"choice": "cooperate"}, 1: {"choice": "defect"}}},
+        {"round": 2, "actions": {0: {"choice": "defect"}, 1: {"choice": "defect"}}},
+    ]
+    state = pd.format_state_for_player(
+        round_number=3,
+        total_rounds=5,
+        participant_idx=0,
+        action_history=history,
+        cumulative_scores=[1.0, 6.0],
+    )
+    assert state["your_history"] == ["cooperate", "defect"]
+    assert state["opponent_history"] == ["defect", "defect"]
+    assert state["your_cumulative_score"] == 1.0
+    assert state["opponent_cumulative_score"] == 6.0
+    assert state["game_type"] == "prisoners_dilemma"
+    assert "your_turn" in state  # preserved for back-compat (spec §3.4)
+
+
+def test_format_state_empty_history() -> None:
+    pd = PrisonersDilemma()
+    state = pd.format_state_for_player(
+        round_number=1,
+        total_rounds=5,
+        participant_idx=0,
+        action_history=[],
+        cumulative_scores=[0.0, 0.0],
+    )
+    assert state["your_history"] == []
+    assert state["opponent_history"] == []
