@@ -22,6 +22,13 @@ def frozen_now(monkeypatch):
         def utcnow(cls):
             return fixed
 
+        @classmethod
+        def now(cls, tz=None):
+            # service._utc_now() uses datetime.now(UTC).replace(tzinfo=None)
+            # after the LABS-16 migration. Return the fixed naive datetime
+            # so the .replace(tzinfo=None) call still produces `fixed`.
+            return fixed
+
     monkeypatch.setattr("atp.dashboard.tournament.service.datetime", _FakeDatetime)
     return fixed
 
