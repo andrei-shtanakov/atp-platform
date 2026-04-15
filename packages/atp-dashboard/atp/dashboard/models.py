@@ -85,7 +85,13 @@ class Agent(Base):
     owner_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id"), nullable=True
     )
-    version: Mapped[str] = mapped_column(String(50), nullable=False, default="latest")
+    # server_default mirrors the Alembic migration d7f3a2b1c4e5, so ORM
+    # create_all() and raw SQL inserts (tenancy migration tests) both see
+    # 'latest' when version is omitted. Without this, the Python-side
+    # `default` applies only through the ORM Agent(...) path.
+    version: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="latest", server_default="latest"
+    )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # Relationships
