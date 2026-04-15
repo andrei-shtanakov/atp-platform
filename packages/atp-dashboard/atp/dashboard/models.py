@@ -14,6 +14,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import (
     DeclarativeBase,
@@ -100,6 +101,20 @@ class Agent(Base):
             "name",
             "version",
             name="uq_agent_tenant_owner_name_version",
+        ),
+        # Partial unique index for ownerless (legacy) agents: SQL treats
+        # NULL != NULL in unique constraints, so the UniqueConstraint above
+        # does NOT prevent duplicates when owner_id IS NULL. This index
+        # enforces uniqueness on (tenant_id, name, version) for that slice.
+        # LABS-54 tracks the long-term fix (deprecate ownerless agents).
+        Index(
+            "uq_agent_ownerless_tenant_name_version",
+            "tenant_id",
+            "name",
+            "version",
+            unique=True,
+            sqlite_where=text("owner_id IS NULL"),
+            postgresql_where=text("owner_id IS NULL"),
         ),
         Index("idx_agent_name", "name"),
         Index("idx_agent_tenant", "tenant_id"),
