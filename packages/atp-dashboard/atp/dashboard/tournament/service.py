@@ -1021,6 +1021,7 @@ class TournamentService:
         )
         all_participant_ids = [row[0] for row in participants_result]
 
+        game = _GAME_INSTANCES[tournament.game_type]
         now = _utc_now()
         for participant_id in all_participant_ids:
             if participant_id not in submitted_ids:
@@ -1028,7 +1029,7 @@ class TournamentService:
                     Action(
                         round_id=round_id,
                         participant_id=participant_id,
-                        action_data={"choice": "defect"},
+                        action_data=game.default_action_on_timeout(),
                         submitted_at=now,
                         source=ActionSource.TIMEOUT_DEFAULT,
                     )
