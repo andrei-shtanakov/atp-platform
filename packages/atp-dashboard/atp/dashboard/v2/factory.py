@@ -164,9 +164,27 @@ def create_app(
     # middleware added last runs first on the request path. We want:
     #   CORS → JWTUserState → SlowAPI → routes
     # so that the rate-limit key function sees the authenticated user_id.
+    #
+    # SlowAPIMiddleware is BaseHTTPMiddleware-based, which buffers response
+    # bodies and crashes long-lived SSE streams ("Unexpected message:
+    # http.response.start"). Wrap it so /mcp/* bypasses rate limiting at
+    # the middleware layer — MCP request volume is self-limited by the
+    # single SSE-session-per-agent design. See LABS-74.
     limiter = create_limiter(config)
     app.state.limiter = limiter
-    app.add_middleware(SlowAPIMiddleware)
+
+    def _slowapi_except_mcp(inner_app: Any) -> Any:
+        slowapi = SlowAPIMiddleware(inner_app)
+
+        async def _asgi(scope: dict[str, Any], receive: Any, send: Any) -> None:
+            if scope.get("type") == "http" and scope.get("path", "").startswith("/mcp"):
+                await inner_app(scope, receive, send)
+                return
+            await slowapi(scope, receive, send)
+
+        return _asgi
+
+    app.add_middleware(_slowapi_except_mcp)
     app.add_middleware(JWTUserStateMiddleware)
     app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 

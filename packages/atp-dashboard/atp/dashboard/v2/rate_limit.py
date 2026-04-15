@@ -9,9 +9,8 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import jwt
 from fastapi import Request
@@ -19,8 +18,6 @@ from fastapi.responses import JSONResponse
 from jwt.exceptions import InvalidTokenError
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
 
 if TYPE_CHECKING:
     from atp.dashboard.v2.config import DashboardConfig
@@ -94,8 +91,13 @@ def create_limiter(config: DashboardConfig) -> Limiter:
 _API_TOKEN_PREFIXES = ("atp_u_", "atp_a_")
 
 
-class JWTUserStateMiddleware(BaseHTTPMiddleware):
-    """Best-effort: populate ``request.state.user_id`` from a Bearer JWT or API token.
+class JWTUserStateMiddleware:
+    """Pure ASGI middleware — populate scope.state.user_id from JWT / API token.
+
+    Must not inherit from BaseHTTPMiddleware: this middleware also wraps
+    the /mcp SSE mount, and BaseHTTPMiddleware buffers response bodies in
+    a way that crashes long-lived streaming responses with
+    ``Unexpected message: {type: http.response.start}`` (LABS-74).
 
     Runs BEFORE ``SlowAPIMiddleware`` so the rate-limit key function can
     see the authenticated identity and key per-user instead of per-IP
@@ -107,51 +109,58 @@ class JWTUserStateMiddleware(BaseHTTPMiddleware):
     ``get_current_user`` on protected routes; this middleware only
     enriches the request with an advisory user_id when trivially
     available.
-
-    For API tokens (``atp_u_``/``atp_a_`` prefix), the token hash is looked
-    up in the ``api_tokens`` table.  ``request.state.token_type`` is set to
-    ``"api"`` in that case so downstream dependencies can distinguish token
-    kinds.
     """
 
-    async def dispatch(
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(
         self,
-        request: Request,
-        call_next: Callable[[Request], Awaitable[Response]],
-    ) -> Response:
-        # Default state — always set so downstream code can safely read these.
-        request.state.user_id = None
-        request.state.agent_id = None
-        request.state.token_type = None
+        scope: dict[str, Any],
+        receive: Any,
+        send: Any,
+    ) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
 
-        token: str | None = None
+        # Starlette's Request.state reads/writes scope["state"] dict.
+        state = scope.setdefault("state", {})
+        state.setdefault("user_id", None)
+        state.setdefault("agent_id", None)
+        state.setdefault("token_type", None)
 
-        # 1. Try Authorization: Bearer header
-        header = request.headers.get("authorization", "")
-        scheme, _, header_token = header.partition(" ")
-        if scheme.lower() == "bearer" and header_token.strip():
-            token = header_token.strip()
-
-        # 2. Fallback to atp_token cookie (browser sessions)
-        if token is None:
-            token = request.cookies.get("atp_token")
-
+        token = self._extract_token(scope)
         if token:
             if token.startswith(_API_TOKEN_PREFIXES):
-                await self._resolve_api_token(request, token)
+                await self._resolve_api_token(state, token)
             else:
-                self._resolve_jwt(request, token)
+                self._resolve_jwt(state, token)
 
-        return await call_next(request)
+        await self.app(scope, receive, send)
 
     @staticmethod
-    def _resolve_jwt(request: Request, token: str) -> None:
-        """Populate request.state.user_id from a JWT token.
+    def _extract_token(scope: dict[str, Any]) -> str | None:
+        headers = {
+            k.decode("latin-1").lower(): v.decode("latin-1")
+            for k, v in scope.get("headers", [])
+        }
+        auth = headers.get("authorization", "")
+        scheme, _, header_token = auth.partition(" ")
+        if scheme.lower() == "bearer" and header_token.strip():
+            return header_token.strip()
 
-        Silently ignores invalid or expired tokens.
-        """
-        # Late import so test monkeypatching of SECRET_KEY takes effect
-        # and to avoid a circular import at module load.
+        # Fallback to atp_token cookie (browser sessions).
+        cookie_header = headers.get("cookie", "")
+        for part in cookie_header.split(";"):
+            name, _, value = part.strip().partition("=")
+            if name == "atp_token" and value:
+                return value
+        return None
+
+    @staticmethod
+    def _resolve_jwt(state: dict[str, Any], token: str) -> None:
+        """Populate state['user_id'] from a JWT token. Silently ignore errors."""
         from atp.dashboard import auth as auth_module
 
         try:
@@ -165,10 +174,10 @@ class JWTUserStateMiddleware(BaseHTTPMiddleware):
 
         user_id = payload.get("user_id")
         if user_id is not None:
-            request.state.user_id = user_id
+            state["user_id"] = user_id
 
     @staticmethod
-    async def _resolve_api_token(request: Request, token: str) -> None:
+    async def _resolve_api_token(state: dict[str, Any], token: str) -> None:
         """Populate request.state from an API token (atp_u_ / atp_a_ prefix).
 
         Looks up the token hash in the ``api_tokens`` table.  Updates
@@ -204,9 +213,9 @@ class JWTUserStateMiddleware(BaseHTTPMiddleware):
                 ):
                     return
 
-                request.state.user_id = api_token.user_id
-                request.state.agent_id = api_token.agent_id
-                request.state.token_type = "api"
+                state["user_id"] = api_token.user_id
+                state["agent_id"] = api_token.agent_id
+                state["token_type"] = "api"
 
                 # Debounced last_used_at: skip if updated within last 60s
                 now = datetime.now()

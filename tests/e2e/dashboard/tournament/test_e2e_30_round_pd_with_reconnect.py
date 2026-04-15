@@ -370,16 +370,16 @@ async def test_thirty_round_pd_with_reconnect_sc1(
         # ----------------------------------------------------------
         # 3. Both bots join the tournament.
         #
-        # NOTE: The FastMCP-registered tool is named ``_join_tournament_mcp``
+        # NOTE: The FastMCP-registered tool is named ``join_tournament``
         # (function name used as tool name by FastMCP). The plan spec called
         # it ``join_tournament``; the actual registered name is used here.
         # ----------------------------------------------------------
         await bot_a.call_tool(
-            "_join_tournament_mcp",
+            "join_tournament",
             {"tournament_id": tournament_id, "agent_name": "alice"},
         )
         await bot_b.call_tool(
-            "_join_tournament_mcp",
+            "join_tournament",
             {"tournament_id": tournament_id, "agent_name": "bob"},
         )
 
@@ -465,7 +465,7 @@ async def test_thirty_round_pd_with_reconnect_sc1(
 
                     # Idempotent re-join triggers session_sync.
                     await bot.call_tool(
-                        "_join_tournament_mcp",
+                        "join_tournament",
                         {
                             "tournament_id": tournament_id,
                             "agent_name": agent_name,
