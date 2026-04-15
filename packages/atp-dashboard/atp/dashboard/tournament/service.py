@@ -382,22 +382,24 @@ class TournamentService:
             .all()
         )
 
-        action_history: list[list[str]] = []
+        action_history: list[dict[str, Any]] = []
         cumulative_scores: list[float] = [0.0] * len(participants)
         current_round_number = 1
         found_active = False
         for r in rounds:
             if r.status == RoundStatus.COMPLETED:
-                row: list[str] = [""] * len(participants)
+                actions_by_idx: dict[int, dict[str, Any]] = {}
                 for action in r.actions:
                     p_idx = next(
                         i
                         for i, p in enumerate(participants)
                         if p.id == action.participant_id
                     )
-                    row[p_idx] = action.action_data.get("choice", "")
+                    actions_by_idx[p_idx] = action.action_data
                     cumulative_scores[p_idx] += action.payoff or 0.0
-                action_history.append(row)
+                action_history.append(
+                    {"round": r.round_number, "actions": actions_by_idx}
+                )
             else:
                 current_round_number = r.round_number
                 found_active = True
@@ -477,18 +479,10 @@ class TournamentService:
                 f"tournament {tournament_id} has no round accepting actions"
             )
 
-        game = _GAME_INSTANCES[tournament.game_type]
-        schema_probe = game.format_state_for_player(
-            round_number=1,
-            total_rounds=1,
-            participant_idx=0,
-            action_history=[],
-            cumulative_scores=[0.0, 0.0],
-        )
-        if action.get("choice") not in schema_probe["action_schema"]["options"]:
-            raise ValidationError(
-                f"invalid action {action!r} for game {tournament.game_type}"
-            )
+        game = _GAME_INSTANCES[
+            tournament.game_type
+        ]
+        canonical = game.validate_action(action)
 
         existing = (
             await self._session.execute(
@@ -507,7 +501,7 @@ class TournamentService:
         new_action = Action(
             round_id=current_round.id,
             participant_id=my_participant.id,
-            action_data={"choice": action["choice"]},
+            action_data=canonical,
         )
         self._session.add(new_action)
         await self._session.flush()
@@ -562,27 +556,17 @@ class TournamentService:
         )
         idx_by_pid = {p.id: i for i, p in enumerate(participants)}
 
-        action_vec: list[str] = [""] * len(participants)
-        actions_by_idx: dict[int, Action] = {}
+        action_by_idx: dict[int, Action] = {}
+        action_data_by_idx: dict[int, dict[str, Any]] = {}
         for a in actions:
             i = idx_by_pid[a.participant_id]
-            action_vec[i] = a.action_data["choice"]
-            actions_by_idx[i] = a
+            action_by_idx[i] = a
+            action_data_by_idx[i] = a.action_data
 
-        # PD payoff matrix (slice-local; in Plan 2 this comes from the
-        # game-environments PD class).
-        # CC = 3,3 ; CD = 0,5 ; DC = 5,0 ; DD = 1,1
-        a0, a1 = action_vec[0], action_vec[1]
-        if a0 == "cooperate" and a1 == "cooperate":
-            payoffs = [3.0, 3.0]
-        elif a0 == "cooperate" and a1 == "defect":
-            payoffs = [0.0, 5.0]
-        elif a0 == "defect" and a1 == "cooperate":
-            payoffs = [5.0, 0.0]
-        else:
-            payoffs = [1.0, 1.0]
+        game = _GAME_INSTANCES[tournament.game_type]
+        payoffs = game.compute_round_payoffs(action_data_by_idx)
 
-        for i, action in actions_by_idx.items():
+        for i, action in action_by_idx.items():
             action.payoff = payoffs[i]
 
         round_obj.status = RoundStatus.COMPLETED
@@ -1039,6 +1023,7 @@ class TournamentService:
         )
         all_participant_ids = [row[0] for row in participants_result]
 
+        game = _GAME_INSTANCES[tournament.game_type]
         now = _utc_now()
         for participant_id in all_participant_ids:
             if participant_id not in submitted_ids:
@@ -1046,7 +1031,7 @@ class TournamentService:
                     Action(
                         round_id=round_id,
                         participant_id=participant_id,
-                        action_data={"choice": "defect"},
+                        action_data=game.default_action_on_timeout(),
                         submitted_at=now,
                         source=ActionSource.TIMEOUT_DEFAULT,
                     )
