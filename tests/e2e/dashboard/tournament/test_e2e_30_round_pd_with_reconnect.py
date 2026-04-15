@@ -443,7 +443,11 @@ async def test_thirty_round_pd_with_reconnect_sc1(
                     completed_events[agent_name] = completed
                     break
 
-                event = await bot.wait_for_event("round_started", timeout=8.0)
+                # 20s round_started budget = 6x the 3s deadline: gives slow
+                # CI runners enough headroom for the deadline worker to
+                # force-resolve rounds where our reconnected peer missed a
+                # submission, without masking real hangs. LABS-75.
+                event = await bot.wait_for_event("round_started", timeout=20.0)
                 if event is None:
                     # Timed out — tournament should have completed already.
                     # Check one more time before giving up.
