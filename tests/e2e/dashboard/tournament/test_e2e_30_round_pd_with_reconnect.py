@@ -262,25 +262,40 @@ async def tournament_uvicorn(tmp_path, monkeypatch):
         await server_task
         raise RuntimeError(f"uvicorn did not come up on port {free_port}")
 
-    # Wait for MCP /mcp/sse to become reachable (FastMCP session manager
-    # mounts during inner lifespan_context — first SSE GET can race the
-    # mount in CI). See LABS-20 for the original bug.
+    # Do a FULL authenticated SSE handshake as the readiness probe —
+    # waiting for ``event: endpoint`` ensures FastMCP's session manager
+    # is fully warmed before the first test adapter connects. Without
+    # this, the first MCPAdapter.connect() can race the session-manager
+    # setup in CI and fail with "SSE reader exited before emitting
+    # endpoint frame" (LABS-20 / LABS-74).
     import httpx as _httpx_probe
 
-    mcp_deadline = loop.time() + 10.0
+    probe_jwt = _mint_jwt(0, "probe")
+    mcp_deadline = loop.time() + 15.0
     mcp_ready = False
     last_err: Exception | None = None
     while loop.time() < mcp_deadline:
         try:
-            async with _httpx_probe.AsyncClient(timeout=2.0) as probe:
-                resp = await probe.get(
+            async with _httpx_probe.AsyncClient(timeout=3.0) as probe:
+                async with probe.stream(
+                    "GET",
                     f"http://127.0.0.1:{free_port}/mcp/sse",
-                    headers={"Accept": "text/event-stream"},
-                )
-                if resp.status_code in (200, 401, 405):
-                    mcp_ready = True
-                    break
-                last_err = RuntimeError(f"/mcp/sse status={resp.status_code}")
+                    headers={
+                        "Accept": "text/event-stream",
+                        "Authorization": f"Bearer {probe_jwt}",
+                    },
+                ) as resp:
+                    if resp.status_code != 200:
+                        last_err = RuntimeError(f"/mcp/sse status={resp.status_code}")
+                        await asyncio.sleep(0.1)
+                        continue
+                    async for line in resp.aiter_lines():
+                        if line.startswith("event: endpoint"):
+                            mcp_ready = True
+                            break
+                    if mcp_ready:
+                        break
+                    last_err = RuntimeError("/mcp/sse closed without endpoint frame")
         except _httpx_probe.RequestError as e:
             last_err = e
         await asyncio.sleep(0.1)
@@ -288,7 +303,7 @@ async def tournament_uvicorn(tmp_path, monkeypatch):
         server.should_exit = True
         await server_task
         raise RuntimeError(
-            f"MCP /mcp/sse never became reachable on port {free_port}"
+            f"MCP /mcp/sse never emitted endpoint frame on port {free_port}"
             + (f": {last_err}" if last_err else "")
         )
 

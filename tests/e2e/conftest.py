@@ -424,29 +424,38 @@ async def e2e_mcp_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
     # TCP-accept readiness is necessary but not sufficient: FastMCP's SSE
     # session manager mounts during the inner lifespan_context which can
-    # race the first SSE GET in CI. Probe /mcp/sse — the MCPAuthMiddleware
-    # returns 401 only after MCP routing is active, so any HTTP response
-    # (including 401) proves the SSE handler is wired up. Without this
-    # gate, the first MCPAdapter.connect() can race the mount and fail
-    # with "SSE reader exited before emitting endpoint frame" (LABS-20).
+    # race the first SSE GET in CI. Do a FULL authenticated SSE handshake
+    # as the readiness probe — any response before ``event: endpoint``
+    # means the session manager isn't fully warmed yet. Keeps retrying
+    # until a complete endpoint frame is observed OR the deadline passes.
     import httpx as _httpx
 
-    mcp_deadline = loop.time() + 10.0
+    probe_jwt = _make_e2e_jwt(0, "probe")
+    mcp_deadline = loop.time() + 15.0
     mcp_ready = False
     last_err: Exception | None = None
     while loop.time() < mcp_deadline:
         try:
-            async with _httpx.AsyncClient(timeout=2.0) as probe:
-                resp = await probe.get(
+            async with _httpx.AsyncClient(timeout=3.0) as probe:
+                async with probe.stream(
+                    "GET",
                     f"http://127.0.0.1:{port}/mcp/sse",
-                    headers={"Accept": "text/event-stream"},
-                )
-                # Any HTTP response from the MCP route counts as "mounted"
-                # — 401 from MCPAuthMiddleware proves routing is live.
-                if resp.status_code in (200, 401, 405):
-                    mcp_ready = True
-                    break
-                last_err = RuntimeError(f"/mcp/sse status={resp.status_code}")
+                    headers={
+                        "Accept": "text/event-stream",
+                        "Authorization": f"Bearer {probe_jwt}",
+                    },
+                ) as resp:
+                    if resp.status_code != 200:
+                        last_err = RuntimeError(f"/mcp/sse status={resp.status_code}")
+                        await asyncio.sleep(0.1)
+                        continue
+                    async for line in resp.aiter_lines():
+                        if line.startswith("event: endpoint"):
+                            mcp_ready = True
+                            break
+                    if mcp_ready:
+                        break
+                    last_err = RuntimeError("/mcp/sse closed without endpoint frame")
         except _httpx.RequestError as e:
             last_err = e
         await asyncio.sleep(0.1)
@@ -454,7 +463,7 @@ async def e2e_mcp_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         server.should_exit = True
         await server_task
         raise RuntimeError(
-            f"MCP /mcp/sse never became reachable on port {port}"
+            f"MCP /mcp/sse never emitted endpoint frame on port {port}"
             + (f": {last_err}" if last_err else "")
         )
 
