@@ -449,6 +449,14 @@ def test_format_state_accepts_generic_action_history_shape() -> None:
     assert "your_turn" in state  # preserved for back-compat (spec §3.4)
 
 
+def test_compute_round_payoffs_from_action_dicts() -> None:
+    pd = PrisonersDilemma()
+    payoffs = pd.compute_round_payoffs(
+        {0: {"choice": "cooperate"}, 1: {"choice": "defect"}}
+    )
+    assert payoffs == [0.0, 5.0]  # sucker, temptation
+
+
 def test_format_state_empty_history() -> None:
     pd = PrisonersDilemma()
     state = pd.format_state_for_player(

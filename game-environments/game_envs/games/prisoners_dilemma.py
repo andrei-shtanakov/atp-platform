@@ -292,6 +292,20 @@ class PrisonersDilemma(Game):
         """Action substituted when a participant misses the round deadline."""
         return {"choice": DEFECT}
 
+    def compute_round_payoffs(self, actions: dict[int, dict[str, Any]]) -> list[float]:
+        """Generic entry point used by the tournament service.
+
+        Args:
+            actions: Mapping participant_idx -> action_data dict.
+
+        Returns:
+            List of payoffs in participant_idx order.
+        """
+        a0 = actions[0]["choice"]
+        a1 = actions[1]["choice"]
+        payoffs = self._compute_payoffs(a0, a1)
+        return [payoffs["player_0"], payoffs["player_1"]]
+
     def _compute_payoffs(self, a0: str, a1: str) -> dict[str, float]:
         """Compute round payoffs from the payoff matrix."""
         c = self._pd_config

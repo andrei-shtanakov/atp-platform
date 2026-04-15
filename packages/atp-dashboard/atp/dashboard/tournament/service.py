@@ -562,27 +562,17 @@ class TournamentService:
         )
         idx_by_pid = {p.id: i for i, p in enumerate(participants)}
 
-        action_vec: list[str] = [""] * len(participants)
-        actions_by_idx: dict[int, Action] = {}
+        action_by_idx: dict[int, Action] = {}
+        action_data_by_idx: dict[int, dict[str, Any]] = {}
         for a in actions:
             i = idx_by_pid[a.participant_id]
-            action_vec[i] = a.action_data["choice"]
-            actions_by_idx[i] = a
+            action_by_idx[i] = a
+            action_data_by_idx[i] = a.action_data
 
-        # PD payoff matrix (slice-local; in Plan 2 this comes from the
-        # game-environments PD class).
-        # CC = 3,3 ; CD = 0,5 ; DC = 5,0 ; DD = 1,1
-        a0, a1 = action_vec[0], action_vec[1]
-        if a0 == "cooperate" and a1 == "cooperate":
-            payoffs = [3.0, 3.0]
-        elif a0 == "cooperate" and a1 == "defect":
-            payoffs = [0.0, 5.0]
-        elif a0 == "defect" and a1 == "cooperate":
-            payoffs = [5.0, 0.0]
-        else:
-            payoffs = [1.0, 1.0]
+        game = _GAME_INSTANCES[tournament.game_type]
+        payoffs = game.compute_round_payoffs(action_data_by_idx)
 
-        for i, action in actions_by_idx.items():
+        for i, action in action_by_idx.items():
             action.payoff = payoffs[i]
 
         round_obj.status = RoundStatus.COMPLETED
