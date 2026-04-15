@@ -230,7 +230,8 @@ class TestRateLimitWithApp:
         )
         app = create_app(config=config)
         client = TestClient(app)
-        # Should never get 429 even with many requests
+        # Use /api/health (no DB query) to avoid coupling this rate-limit
+        # test to the DB init state of unrelated tests in the suite.
         for _ in range(20):
-            resp = client.get("/ui/login")
+            resp = client.get("/api/health")
             assert resp.status_code != 429
