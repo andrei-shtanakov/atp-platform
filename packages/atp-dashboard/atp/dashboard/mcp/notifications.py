@@ -159,13 +159,6 @@ async def forward_events_to_session(ctx: Any, tournament_id: int, user: User) ->
     # remains valid for the lifetime of the SSE connection.
     mcp_session = getattr(ctx, "session", None)
 
-    # Dedupe round_started by round_number — the event bus can publish a
-    # second round_started for the same round during reconnect windows
-    # (forwarder's new DB session reads pre-commit state and re-emits
-    # with stale round_number in the state payload). Clients shouldn't
-    # have to cope with duplicates; drop them here. LABS-74.
-    seen_rounds: set[int] = set()
-
     async def _forward() -> None:
         try:
             async with tournament_event_bus.subscribe(tournament_id) as queue:
@@ -181,12 +174,6 @@ async def forward_events_to_session(ctx: Any, tournament_id: int, user: User) ->
                         continue
                     if mcp_session is None:
                         continue
-                    data = notification["params"]["data"]
-                    if data.get("event") == "round_started":
-                        rn = data.get("round_number")
-                        if rn in seen_rounds:
-                            continue
-                        seen_rounds.add(rn)
                     params = notification["params"]
                     # ``send_log_message`` builds the proper pydantic
                     # notification model internally; we pass the raw

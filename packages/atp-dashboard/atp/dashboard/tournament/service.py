@@ -608,7 +608,13 @@ class TournamentService:
             state={},
         )
         self._session.add(next_round)
-        await self._session.flush()
+        # Commit (not just flush) BEFORE publishing round_started. The
+        # notification forwarder opens a fresh DB session to build the
+        # per-player state snapshot; if we only flushed, that fresh
+        # session reads pre-commit and the snapshot's state.round_number
+        # trails the outer event.round_number by one. Committing first
+        # guarantees subscribers see the new round. (LABS-74.)
+        await self._session.commit()
         await self._bus.publish(
             TournamentEvent(
                 event_type="round_started",
