@@ -479,18 +479,8 @@ class TournamentService:
                 f"tournament {tournament_id} has no round accepting actions"
             )
 
-        game = _GAME_INSTANCES[tournament.game_type]
-        schema_probe = game.format_state_for_player(
-            round_number=1,
-            total_rounds=1,
-            participant_idx=0,
-            action_history=[],
-            cumulative_scores=[0.0, 0.0],
-        )
-        if action.get("choice") not in schema_probe["action_schema"]["options"]:
-            raise ValidationError(
-                f"invalid action {action!r} for game {tournament.game_type}"
-            )
+        game = _GAME_INSTANCES[tournament.game_type]  # stays a dict in PR-1; PR-2 swaps in _game_for
+        canonical = game.validate_action(action)
 
         existing = (
             await self._session.execute(
@@ -509,7 +499,7 @@ class TournamentService:
         new_action = Action(
             round_id=current_round.id,
             participant_id=my_participant.id,
-            action_data={"choice": action["choice"]},
+            action_data=canonical,
         )
         self._session.add(new_action)
         await self._session.flush()
