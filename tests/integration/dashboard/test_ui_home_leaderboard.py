@@ -19,6 +19,14 @@ from atp.dashboard.v2.factory import create_app
 
 @pytest.fixture
 async def fresh_app():
+    # Save env vars so they can be restored — leaving ATP_DISABLE_AUTH=true
+    # in the process env leaks into other tests (e.g. unauth_client tests
+    # in test_api.py expect 401 from endpoints with auth disabled get 200/201).
+    saved_env = {
+        k: os.environ.get(k)
+        for k in ("ATP_SECRET_KEY", "ATP_DISABLE_AUTH", "ATP_RATE_LIMIT_ENABLED")
+    }
+
     os.environ["ATP_SECRET_KEY"] = "test-secret"
     os.environ["ATP_DISABLE_AUTH"] = "true"
     os.environ["ATP_RATE_LIMIT_ENABLED"] = "false"
@@ -42,6 +50,11 @@ async def fresh_app():
 
     await db.close()
     set_database(None)  # type: ignore[arg-type]
+    for key, old_val in saved_env.items():
+        if old_val is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = old_val
     get_config.cache_clear()
 
 
