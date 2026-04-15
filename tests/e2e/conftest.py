@@ -422,6 +422,42 @@ async def e2e_mcp_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         await server_task
         raise RuntimeError(f"uvicorn did not come up on port {port}")
 
+    # TCP-accept readiness is necessary but not sufficient: FastMCP's SSE
+    # session manager mounts during the inner lifespan_context which can
+    # race the first SSE GET in CI. Probe /mcp/sse — the MCPAuthMiddleware
+    # returns 401 only after MCP routing is active, so any HTTP response
+    # (including 401) proves the SSE handler is wired up. Without this
+    # gate, the first MCPAdapter.connect() can race the mount and fail
+    # with "SSE reader exited before emitting endpoint frame" (LABS-20).
+    import httpx as _httpx
+
+    mcp_deadline = loop.time() + 10.0
+    mcp_ready = False
+    last_err: Exception | None = None
+    while loop.time() < mcp_deadline:
+        try:
+            async with _httpx.AsyncClient(timeout=2.0) as probe:
+                resp = await probe.get(
+                    f"http://127.0.0.1:{port}/mcp/sse",
+                    headers={"Accept": "text/event-stream"},
+                )
+                # Any HTTP response from the MCP route counts as "mounted"
+                # — 401 from MCPAuthMiddleware proves routing is live.
+                if resp.status_code in (200, 401, 405):
+                    mcp_ready = True
+                    break
+                last_err = RuntimeError(f"/mcp/sse status={resp.status_code}")
+        except _httpx.RequestError as e:
+            last_err = e
+        await asyncio.sleep(0.1)
+    if not mcp_ready:
+        server.should_exit = True
+        await server_task
+        raise RuntimeError(
+            f"MCP /mcp/sse never became reachable on port {port}"
+            + (f": {last_err}" if last_err else "")
+        )
+
     try:
         yield (f"http://127.0.0.1:{port}", port)
     finally:

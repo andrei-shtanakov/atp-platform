@@ -262,6 +262,36 @@ async def tournament_uvicorn(tmp_path, monkeypatch):
         await server_task
         raise RuntimeError(f"uvicorn did not come up on port {free_port}")
 
+    # Wait for MCP /mcp/sse to become reachable (FastMCP session manager
+    # mounts during inner lifespan_context — first SSE GET can race the
+    # mount in CI). See LABS-20 for the original bug.
+    import httpx as _httpx_probe
+
+    mcp_deadline = loop.time() + 10.0
+    mcp_ready = False
+    last_err: Exception | None = None
+    while loop.time() < mcp_deadline:
+        try:
+            async with _httpx_probe.AsyncClient(timeout=2.0) as probe:
+                resp = await probe.get(
+                    f"http://127.0.0.1:{free_port}/mcp/sse",
+                    headers={"Accept": "text/event-stream"},
+                )
+                if resp.status_code in (200, 401, 405):
+                    mcp_ready = True
+                    break
+                last_err = RuntimeError(f"/mcp/sse status={resp.status_code}")
+        except _httpx_probe.RequestError as e:
+            last_err = e
+        await asyncio.sleep(0.1)
+    if not mcp_ready:
+        server.should_exit = True
+        await server_task
+        raise RuntimeError(
+            f"MCP /mcp/sse never became reachable on port {free_port}"
+            + (f": {last_err}" if last_err else "")
+        )
+
     # Seed two users so both MCP sessions and the DISABLE_AUTH fallback work.
     seed_engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}")
     try:
