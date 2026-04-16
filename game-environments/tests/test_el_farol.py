@@ -1,6 +1,7 @@
 """Tests for El Farol game-layer service-facing methods."""
 
 import pytest
+
 from game_envs.core.errors import ValidationError
 from game_envs.games.el_farol import MAX_SLOTS_PER_DAY, ElFarolBar, ElFarolConfig
 
