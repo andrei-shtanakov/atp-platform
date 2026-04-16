@@ -15,6 +15,7 @@ import functools
 import logging
 import os
 import secrets
+import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -550,6 +551,15 @@ class TournamentService:
         # game_type so clients may omit it on the wire.
         incoming_gt = action.get("game_type") if isinstance(action, dict) else None
         if incoming_gt is not None and incoming_gt != tournament.game_type:
+            logger.info(
+                "action_rejected",
+                extra={
+                    "event": "action_rejected",
+                    "game_type": tournament.game_type,
+                    "tournament_id": tournament_id,
+                    "validation_error_path": "game_type_mismatch",
+                },
+            )
             raise ValidationError(
                 f"action game_type {incoming_gt!r} does not match "
                 f"tournament {tournament_id} game_type {tournament.game_type!r}"
@@ -565,6 +575,15 @@ class TournamentService:
             expected = _action_hint_for(tournament.game_type)
             errors = e.errors()
             first_err = errors[0] if errors else {"msg": "unknown"}
+            logger.info(
+                "action_rejected",
+                extra={
+                    "event": "action_rejected",
+                    "game_type": tournament.game_type,
+                    "tournament_id": tournament_id,
+                    "validation_error_path": "client_submission",
+                },
+            )
             raise ValidationError(
                 f"invalid action for tournament {tournament_id} "
                 f"(game_type={tournament.game_type!r}); "
@@ -646,6 +665,7 @@ class TournamentService:
         round completed, and either create the next round or finish the
         tournament if this was the last.
         """
+        start = time.perf_counter()
         round_obj.status = "resolving"
         await self._session.flush()
 
@@ -693,6 +713,17 @@ class TournamentService:
         if round_obj.round_number >= tournament.total_rounds:
             await self._complete_tournament(tournament)
             await self._session.flush()
+            elapsed_ms = int((time.perf_counter() - start) * 1000)
+            logger.info(
+                "round_resolved",
+                extra={
+                    "event": "round_resolved",
+                    "game_type": tournament.game_type,
+                    "tournament_id": tournament.id,
+                    "round_number": round_obj.round_number,
+                    "round_resolution_ms": elapsed_ms,
+                },
+            )
             return {
                 "status": "round_resolved",
                 "round_number": round_obj.round_number,
@@ -727,6 +758,17 @@ class TournamentService:
             )
         )
 
+        elapsed_ms = int((time.perf_counter() - start) * 1000)
+        logger.info(
+            "round_resolved",
+            extra={
+                "event": "round_resolved",
+                "game_type": tournament.game_type,
+                "tournament_id": tournament.id,
+                "round_number": round_obj.round_number,
+                "round_resolution_ms": elapsed_ms,
+            },
+        )
         return {
             "status": "round_resolved",
             "round_number": round_obj.round_number,

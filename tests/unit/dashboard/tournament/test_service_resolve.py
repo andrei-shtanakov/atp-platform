@@ -382,3 +382,79 @@ async def test_el_farol_resolve_round_payoffs_differ_on_choice(
 
     assert alice_action.payoff == -1.0
     assert bob_action.payoff == 0.0
+
+
+@pytest.mark.anyio
+async def test_resolve_round_logs_structured_fields(
+    session: AsyncSession,
+    admin_user: User,
+    alice: User,
+    bob: User,
+    event_bus: TournamentEventBus,
+    caplog,
+) -> None:
+    import logging
+
+    from atp.dashboard.tournament.service import TournamentService
+
+    svc = TournamentService(session, event_bus)
+    t, _ = await svc.create_tournament(
+        creator=admin_user,
+        name="ef-logs",
+        game_type="el_farol",
+        num_players=2,
+        total_rounds=1,
+        round_deadline_s=30,
+    )
+    await svc.join(t.id, alice, "alice")
+    await svc.join(t.id, bob, "bob")
+
+    with caplog.at_level(logging.INFO, logger="atp.dashboard.tournament.service"):
+        await svc.submit_action(t.id, alice, action={"slots": [0]})
+        await svc.submit_action(t.id, bob, action={"slots": [0]})
+
+    rec = next(
+        r for r in caplog.records if getattr(r, "event", None) == "round_resolved"
+    )
+    assert rec.game_type == "el_farol"
+    assert rec.tournament_id == t.id
+    assert rec.round_number == 1
+    assert rec.round_resolution_ms >= 0
+
+
+@pytest.mark.anyio
+async def test_submit_action_rejected_emits_structured_log(
+    session: AsyncSession,
+    admin_user: User,
+    alice: User,
+    bob: User,
+    event_bus: TournamentEventBus,
+    caplog,
+) -> None:
+    import logging
+
+    from atp.dashboard.tournament.errors import ValidationError
+    from atp.dashboard.tournament.service import TournamentService
+
+    svc = TournamentService(session, event_bus)
+    t, _ = await svc.create_tournament(
+        creator=admin_user,
+        name="ef-rej",
+        game_type="el_farol",
+        num_players=2,
+        total_rounds=1,
+        round_deadline_s=30,
+    )
+    await svc.join(t.id, alice, "alice")
+    await svc.join(t.id, bob, "bob")
+
+    with caplog.at_level(logging.INFO, logger="atp.dashboard.tournament.service"):
+        with pytest.raises(ValidationError):
+            # wrong shape for el_farol (PD's choice)
+            await svc.submit_action(t.id, alice, action={"choice": "cooperate"})
+
+    rec = next(
+        r for r in caplog.records if getattr(r, "event", None) == "action_rejected"
+    )
+    assert rec.game_type == "el_farol"
+    assert rec.tournament_id == t.id
