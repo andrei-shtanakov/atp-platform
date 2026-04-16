@@ -1,9 +1,12 @@
 """Pydantic request/response schemas for the Tournament API."""
 
+import os
 from typing import Annotated, Any, Literal
 
 from game_envs.games.el_farol import MAX_SLOTS_PER_DAY
 from pydantic import BaseModel, ConfigDict, Field
+
+_REASONING_MAX = int(os.environ.get("ATP_TOURNAMENT_REASONING_MAX_CHARS", "8000"))
 
 
 class TournamentResponse(BaseModel):
@@ -45,6 +48,7 @@ class PDAction(BaseModel):
 
     game_type: Literal["prisoners_dilemma"]
     choice: Literal["cooperate", "defect"]
+    reasoning: str | None = Field(default=None, max_length=_REASONING_MAX)
 
 
 class ElFarolAction(BaseModel):
@@ -54,6 +58,7 @@ class ElFarolAction(BaseModel):
 
     game_type: Literal["el_farol"]
     slots: list[int] = Field(..., max_length=MAX_SLOTS_PER_DAY)
+    reasoning: str | None = Field(default=None, max_length=_REASONING_MAX)
 
 
 class SHAction(BaseModel):
@@ -63,6 +68,7 @@ class SHAction(BaseModel):
 
     game_type: Literal["stag_hunt"]
     choice: Literal["stag", "hare"]
+    reasoning: str | None = Field(default=None, max_length=_REASONING_MAX)
 
 
 class BoSAction(BaseModel):
@@ -73,6 +79,7 @@ class BoSAction(BaseModel):
 
     game_type: Literal["battle_of_sexes"]
     choice: Literal["A", "B"]
+    reasoning: str | None = Field(default=None, max_length=_REASONING_MAX)
 
 
 TournamentAction = Annotated[

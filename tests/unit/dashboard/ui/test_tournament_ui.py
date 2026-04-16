@@ -247,3 +247,161 @@ async def test_el_farol_round_history_shows_slots(client: AsyncClient):
     # Must not fall back to the PD "—" placeholder for a matched action
     assert "cooperate" not in resp.text
     assert "defect" not in resp.text
+
+
+async def _seed_pd_tournament_with_reasoning(
+    client: AsyncClient,
+    *,
+    tournament_status: TournamentStatus,
+    reasoning_alice: str = "opening move: cooperate",
+    reasoning_bob: str | None = "mirror strategy",
+) -> tuple[int, int, int]:
+    """Seed a 2-player PD tournament with reasoning on each action.
+
+    Returns (tournament_id, alice_user_id, bob_user_id).
+    """
+    import uuid
+
+    from atp.dashboard.database import get_database
+
+    uid = uuid.uuid4().hex[:8]
+    async with get_database().session_factory() as session:
+        admin = User(
+            username=f"pd_admin_{uid}",
+            email=f"pd_admin_{uid}@test.com",
+            is_admin=True,
+            hashed_password="x",
+        )
+        session.add(admin)
+        await session.flush()
+
+        alice = User(
+            username=f"pd_alice_{uid}",
+            email=f"pd_alice_{uid}@test.com",
+            hashed_password="x",
+        )
+        bob = User(
+            username=f"pd_bob_{uid}",
+            email=f"pd_bob_{uid}@test.com",
+            hashed_password="x",
+        )
+        session.add_all([alice, bob])
+        await session.flush()
+
+        now = datetime.utcnow()
+        t = Tournament(
+            game_type="prisoners_dilemma",
+            config={"name": "Test PD-R"},
+            status=tournament_status,
+            num_players=2,
+            total_rounds=1,
+            round_deadline_s=30,
+            created_by=admin.id,
+            created_at=now - timedelta(minutes=5),
+            starts_at=now - timedelta(minutes=4),
+            ends_at=now if tournament_status == TournamentStatus.COMPLETED else None,
+            pending_deadline=now,
+        )
+        session.add(t)
+        await session.flush()
+
+        p_alice = Participant(
+            tournament_id=t.id, user_id=alice.id, agent_name="alice", total_score=3.0
+        )
+        p_bob = Participant(
+            tournament_id=t.id, user_id=bob.id, agent_name="bob", total_score=3.0
+        )
+        session.add_all([p_alice, p_bob])
+        await session.flush()
+
+        r = Round(
+            tournament_id=t.id,
+            round_number=1,
+            status=RoundStatus.COMPLETED,
+            started_at=now - timedelta(minutes=3),
+        )
+        session.add(r)
+        await session.flush()
+        session.add(
+            Action(
+                round_id=r.id,
+                participant_id=p_alice.id,
+                action_data={"choice": "cooperate"},
+                submitted_at=now,
+                payoff=3.0,
+                source=ActionSource.SUBMITTED,
+                reasoning=reasoning_alice,
+            )
+        )
+        session.add(
+            Action(
+                round_id=r.id,
+                participant_id=p_bob.id,
+                action_data={"choice": "cooperate"},
+                submitted_at=now,
+                payoff=3.0,
+                source=ActionSource.SUBMITTED,
+                reasoning=reasoning_bob,
+            )
+        )
+        await session.commit()
+        return t.id, alice.id, bob.id
+
+
+@pytest.mark.anyio
+async def test_reasoning_visible_on_completed_tournament(client: AsyncClient):
+    tid, _, _ = await _seed_pd_tournament_with_reasoning(
+        client, tournament_status=TournamentStatus.COMPLETED
+    )
+    resp = await client.get(f"/ui/tournaments/{tid}")
+    assert resp.status_code == 200
+    # Both reasonings rendered — completion gate lets everyone see
+    assert "opening move: cooperate" in resp.text
+    assert "mirror strategy" in resp.text
+    assert "💭" in resp.text
+
+
+@pytest.mark.anyio
+async def test_reasoning_hidden_for_anon_on_active_tournament(client: AsyncClient):
+    tid, _, _ = await _seed_pd_tournament_with_reasoning(
+        client, tournament_status=TournamentStatus.ACTIVE
+    )
+    resp = await client.get(f"/ui/tournaments/{tid}")
+    assert resp.status_code == 200
+    # Active tournament, anonymous caller (no bearer) — reasoning must be
+    # masked
+    assert "opening move: cooperate" not in resp.text
+    assert "mirror strategy" not in resp.text
+
+
+@pytest.mark.anyio
+async def test_reasoning_xss_is_escaped(client: AsyncClient):
+    payload = "<script>alert(1)</script>{{ 7*7 }}"
+    tid, _, _ = await _seed_pd_tournament_with_reasoning(
+        client,
+        tournament_status=TournamentStatus.COMPLETED,
+        reasoning_alice=payload,
+        reasoning_bob=None,
+    )
+    resp = await client.get(f"/ui/tournaments/{tid}")
+    assert resp.status_code == 200
+    # Script tag must be escaped; Jinja template rendering (7*7) must
+    # NOT be evaluated.
+    assert "<script>alert(1)</script>" not in resp.text
+    assert "&lt;script&gt;" in resp.text
+    assert "49" not in resp.text  # 7*7 was not evaluated
+
+
+@pytest.mark.anyio
+async def test_reasoning_absent_when_field_none(client: AsyncClient):
+    """Even for a completed tournament, no 💭 icon is rendered on actions
+    that have no reasoning."""
+    tid, _, _ = await _seed_pd_tournament_with_reasoning(
+        client,
+        tournament_status=TournamentStatus.COMPLETED,
+        reasoning_alice=None,
+        reasoning_bob=None,
+    )
+    resp = await client.get(f"/ui/tournaments/{tid}")
+    assert resp.status_code == 200
+    assert "💭" not in resp.text

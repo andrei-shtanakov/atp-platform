@@ -109,6 +109,12 @@
                         {% if is_admin and action.source == "timeout_default" %}
                         <span style="font-size:0.75rem;color:#999">(timeout)</span>
                         {% endif %}
+                        {% if action.reasoning and action.id in visible_reasoning_action_ids %}
+                        <details class="reasoning-details" style="margin-top:0.25rem">
+                            <summary title="reasoning" style="cursor:pointer">💭</summary>
+                            <p style="font-size:0.8rem;color:#555;white-space:pre-wrap;margin:0.25rem 0 0 0">{{ action.reasoning }}</p>
+                        </details>
+                        {% endif %}
                     </td>
                 {% else %}
                     <td>—</td>

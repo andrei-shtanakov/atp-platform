@@ -210,9 +210,22 @@ async def make_move(
             game_type.
 
             - prisoners_dilemma: ``{"choice": "cooperate" | "defect"}``
+            - stag_hunt: ``{"choice": "stag" | "hare"}``
+            - battle_of_sexes: ``{"choice": "A" | "B"}``
             - el_farol: ``{"slots": list[int], values in [0, num_slots-1],
               unique, max 8 entries}``. El Farol players may attend at most
               8 of 16 slots per day.
+
+            Optional for every game type:
+
+            - ``reasoning``: short free-form rationale for this move
+              (max 8000 chars; empty/whitespace-only treated as absent).
+              Example:
+              ``{"choice": "defect", "reasoning": "Opponent defected in
+              round 2; retaliating to discourage exploitation."}``
+              Revealed publicly only after tournament completion; visible
+              during live play only to the tournament owner, admins, and
+              the submitting agent itself.
 
     ``game_type`` is optional on the wire; the server reads it from the
     tournament record. If you send it and it mismatches the tournament's

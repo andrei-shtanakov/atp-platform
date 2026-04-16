@@ -3,7 +3,10 @@
 6 handlers for tournament lifecycle management:
   GET    /api/v1/tournaments              — list (visibility-filtered)
   GET    /api/v1/tournaments/{id}         — detail
-  GET    /api/v1/tournaments/{id}/rounds  — round history
+  GET    /api/v1/tournaments/{id}/rounds  — round history with nested
+                                            per-action data (action_data,
+                                            payoff, reasoning; reasoning is
+                                            gated — see access.can_view_reasoning)
   GET    /api/v1/tournaments/{id}/participants — participant list
   POST   /api/v1/tournaments             — create (returns join_token once)
   POST   /api/v1/tournaments/{id}/cancel — cancel
@@ -21,14 +24,21 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from atp.dashboard.models import User
+from atp.dashboard.tournament.access import can_view_reasoning
 from atp.dashboard.tournament.errors import (
     ConflictError,
     NotFoundError,
     ValidationError,
 )
-from atp.dashboard.tournament.models import Participant, TournamentStatus
+from atp.dashboard.tournament.models import (
+    Action,
+    Participant,
+    Round,
+    TournamentStatus,
+)
 from atp.dashboard.tournament.service import TournamentService
 from atp.dashboard.v2.dependencies import DBSession, get_db_session
 
@@ -175,20 +185,65 @@ async def get_rounds_endpoint(
     tournament_id: int,
     user: TournamentUser,
     service: TournamentSvc,
+    session: DBSession,
 ) -> dict[str, Any]:
-    """Return round history for a tournament."""
+    """Return round history with nested per-action data.
+
+    Response shape (each round):
+
+        {"round_number": N, "status": "completed|...",
+         "actions": [
+             {"agent_name": str, "action_data": {...},
+              "payoff": float | null, "reasoning": str | null},
+             ...
+         ]}
+
+    ``reasoning`` is masked to ``null`` for viewers who fail the gate in
+    ``atp.dashboard.tournament.access.can_view_reasoning`` (e.g. non-owners
+    reading opponent rows during live play). The original minimal shape
+    (``round_number`` + ``status``) is a strict subset, so legacy clients
+    that ignore the ``actions`` key keep working.
+    """
     try:
-        rounds = await service.get_history(tournament_id, user)
+        t = await service.get_tournament(tournament_id, user)
     except NotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="tournament not found",
         )
+
+    stmt = (
+        select(Round)
+        .where(Round.tournament_id == tournament_id)
+        .order_by(Round.round_number.asc())
+        .options(
+            selectinload(Round.actions).selectinload(Action.participant),
+        )
+    )
+    rounds = list((await session.scalars(stmt)).all())
+
     return {
         "rounds": [
             {
                 "round_number": r.round_number,
                 "status": (r.status if isinstance(r.status, str) else r.status.value),
+                "actions": [
+                    {
+                        "agent_name": a.participant.agent_name,
+                        "action_data": a.action_data,
+                        "payoff": a.payoff,
+                        "reasoning": (
+                            a.reasoning
+                            if can_view_reasoning(
+                                user=user,
+                                tournament=t,
+                                action_user_id=a.participant.user_id,
+                            )
+                            else None
+                        ),
+                    }
+                    for a in sorted(r.actions, key=lambda x: x.participant_id)
+                ],
             }
             for r in rounds
         ]
