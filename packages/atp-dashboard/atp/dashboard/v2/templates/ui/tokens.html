@@ -5,6 +5,47 @@
 {% block content %}
 <h1>My Tokens</h1>
 
+{% if new_token %}
+<article style="background:#d4edda;border:1px solid #c3e6cb;padding:1rem;border-radius:0.5rem;margin-bottom:1.5rem;">
+    <strong>New user-level API token — copy it now</strong>
+    <pre style="white-space: pre-wrap; word-break: break-all;"><code>{{ new_token }}</code></pre>
+    <small>This is the only time the full token is shown. Once you
+    leave this page, only the prefix <code>{{ new_token[:12] }}...</code> will be visible.
+    Use as <code>Authorization: Bearer {{ new_token[:12] }}...</code>.</small>
+</article>
+{% endif %}
+
+{% if error %}
+<article style="background:#f8d7da;border:1px solid #f5c2c7;padding:0.8rem 1rem;border-radius:0.5rem;margin-bottom:1.5rem;color:#842029;">
+    {{ error }}
+</article>
+{% endif %}
+
+<details{% if error and not new_token %} open{% endif %}>
+    <summary><strong>Create user-level token</strong></summary>
+    <form method="post" action="/ui/tokens" style="margin-top:0.75rem;">
+        <label for="tok-name">Name</label>
+        <input id="tok-name" type="text" name="name" required
+               maxlength="120" placeholder="my-laptop-cli">
+        <small>Short label — shown in this list. Not part of the token value.</small>
+
+        <label for="tok-days">Expires in (days)</label>
+        <input id="tok-days" type="text" name="expires_in_days"
+               placeholder="30">
+        <small>Leave blank to use the server default (30 days). Enter 0 for no expiry, if allowed.</small>
+
+        <button type="submit">Create token</button>
+    </form>
+    <p style="margin-top:0.75rem;">
+        <small>User-level tokens (<code>atp_u_...</code>) authenticate you for
+        management APIs (create agents, invites, other tokens). For bot
+        accounts that play tournaments, prefer agent-scoped tokens
+        (<code>atp_a_...</code>) created from each agent's detail page.</small>
+    </p>
+</details>
+
+<h2 style="margin-top:2rem;">Existing tokens</h2>
+
 {% if tokens %}
 <figure>
 <table>
@@ -35,6 +76,7 @@
 </table>
 </figure>
 {% else %}
-<p>No tokens yet. Create tokens from the agent detail page.</p>
+<p>No tokens yet. Use the form above to create a user-level token, or
+create agent-scoped tokens from each agent's detail page.</p>
 {% endif %}
 {% endblock %}
