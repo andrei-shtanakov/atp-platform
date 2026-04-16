@@ -134,6 +134,9 @@ testpaths = ["tests"]
 addopts = [
     "-v",
 ]
+markers = [
+    "slow: tests that boot a real uvicorn + FastMCP SSE handshake, pull a container image, or otherwise depend on infrastructure flaky in shared CI runners (LABS-20/74). Excluded from the default ``test (3.12)`` coverage gate; run them with ``-m slow`` or in the dedicated e2e CI job.",
+]
 
 [tool.coverage.run]
 source = ["atp"]

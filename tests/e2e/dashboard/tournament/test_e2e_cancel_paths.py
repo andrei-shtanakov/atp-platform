@@ -8,7 +8,7 @@ import asyncio
 import httpx
 import pytest
 
-pytestmark = pytest.mark.anyio
+pytestmark = [pytest.mark.anyio, pytest.mark.slow]
 
 
 async def test_e2e_user_cancel_via_mcp(
