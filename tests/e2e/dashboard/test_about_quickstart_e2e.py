@@ -122,14 +122,16 @@ def _unwrap(raw: dict) -> dict:
         if isinstance(sc, dict):
             return sc
     if isinstance(raw, dict) and "content" in raw:
-        for item in raw["content"]:
-            if isinstance(item, dict) and item.get("type") == "text":
-                try:
-                    parsed = json.loads(item["text"])
-                    if isinstance(parsed, dict):
-                        return parsed
-                except json.JSONDecodeError:
-                    continue
+        content = raw["content"]
+        if isinstance(content, list):
+            for item in content:
+                if isinstance(item, dict) and item.get("type") == "text":
+                    try:
+                        parsed = json.loads(item["text"])
+                        if isinstance(parsed, dict):
+                            return parsed
+                    except json.JSONDecodeError:
+                        continue
     return raw if isinstance(raw, dict) else {}
 
 
