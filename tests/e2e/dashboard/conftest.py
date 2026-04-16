@@ -1,12 +1,24 @@
 """Shared fixtures for dashboard-level E2E tests.
 
-Re-exports the ``tournament_uvicorn`` fixture from the tournament SC-1
-e2e suite so sibling dashboard tests (About quickstart, etc.) can
-stand up a real uvicorn + FastMCP server without duplicating ~150
-lines of bring-up code.
+Exposes the tournament suite's shared bring-up fixture to sibling
+dashboard tests without directly importing fixture symbols from the
+tournament test module at conftest import time.
 """
 
-from tests.e2e.dashboard.tournament.test_e2e_30_round_pd_with_reconnect import (  # noqa: F401
-    _mint_jwt,
-    tournament_uvicorn,
-)
+from importlib import import_module
+
+import pytest
+
+pytest_plugins = [
+    "tests.e2e.dashboard.tournament.test_e2e_30_round_pd_with_reconnect",
+]
+
+
+def _mint_jwt(*args, **kwargs):
+    tournament_module = import_module(
+        "tests.e2e.dashboard.tournament.test_e2e_30_round_pd_with_reconnect"
+    )
+    return tournament_module._mint_jwt(*args, **kwargs)
+
+
+__all__ = ["_mint_jwt", "pytest_plugins"]
