@@ -458,3 +458,100 @@ async def test_submit_action_rejected_emits_structured_log(
     )
     assert rec.game_type == "el_farol"
     assert rec.tournament_id == t.id
+
+
+@pytest.mark.anyio
+async def test_tournament_completion_releases_participants(
+    session: AsyncSession,
+    admin_user: User,
+    alice: User,
+    bob: User,
+    event_bus: TournamentEventBus,
+) -> None:
+    """When a tournament transitions to COMPLETED, every participant's
+    ``released_at`` must be set so the user is no longer matched by the
+    ``uq_participant_user_active`` partial unique index and is free to
+    join another tournament. Mirrors the symmetric release done by
+    ``_cancel_impl`` step 5.
+    """
+    from sqlalchemy import select
+
+    from atp.dashboard.tournament.models import (
+        Participant,
+        TournamentStatus,
+    )
+    from atp.dashboard.tournament.service import TournamentService
+
+    svc = TournamentService(session, event_bus)
+    t, _ = await svc.create_tournament(
+        creator=admin_user,
+        name="release-on-complete",
+        game_type="prisoners_dilemma",
+        num_players=2,
+        total_rounds=1,
+        round_deadline_s=30,
+    )
+    await svc.join(t.id, alice, "alice")
+    await svc.join(t.id, bob, "bob")
+    await svc.submit_action(t.id, alice, action={"choice": "cooperate"})
+    await svc.submit_action(t.id, bob, action={"choice": "defect"})
+
+    await session.refresh(t)
+    assert t.status == TournamentStatus.COMPLETED
+
+    parts = (
+        (
+            await session.execute(
+                select(Participant).where(Participant.tournament_id == t.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(parts) == 2
+    for p in parts:
+        assert p.released_at is not None, (
+            f"participant user_id={p.user_id} still active after completion; "
+            "would block future tournament participation"
+        )
+
+
+@pytest.mark.anyio
+async def test_completed_participants_can_join_new_tournament(
+    session: AsyncSession,
+    admin_user: User,
+    alice: User,
+    bob: User,
+    event_bus: TournamentEventBus,
+) -> None:
+    """After tournament COMPLETED, same users must be able to start a
+    new tournament without hitting ``uq_participant_user_active``.
+    """
+    from atp.dashboard.tournament.service import TournamentService
+
+    svc = TournamentService(session, event_bus)
+
+    t1, _ = await svc.create_tournament(
+        creator=admin_user,
+        name="first",
+        game_type="prisoners_dilemma",
+        num_players=2,
+        total_rounds=1,
+        round_deadline_s=30,
+    )
+    await svc.join(t1.id, alice, "alice")
+    await svc.join(t1.id, bob, "bob")
+    await svc.submit_action(t1.id, alice, action={"choice": "cooperate"})
+    await svc.submit_action(t1.id, bob, action={"choice": "cooperate"})
+
+    # Must not raise IntegrityError on uq_participant_user_active.
+    t2, _ = await svc.create_tournament(
+        creator=admin_user,
+        name="second",
+        game_type="prisoners_dilemma",
+        num_players=2,
+        total_rounds=1,
+        round_deadline_s=30,
+    )
+    await svc.join(t2.id, alice, "alice")
+    await svc.join(t2.id, bob, "bob")

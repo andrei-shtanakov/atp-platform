@@ -778,9 +778,17 @@ class TournamentService:
         }
 
     async def _complete_tournament(self, tournament: Tournament) -> None:
-        """Mark tournament COMPLETED and write final per-participant scores."""
+        """Mark tournament COMPLETED and write final per-participant scores.
+
+        Also releases every participant (``released_at = now``) so their
+        ``user_id`` is no longer matched by ``uq_participant_user_active``
+        and they are free to join another tournament. Mirrors the release
+        step in ``_cancel_impl``; without it, natural completion would
+        leave users "stuck" active forever.
+        """
+        now = _utc_now()
         tournament.status = TournamentStatus.COMPLETED
-        tournament.ends_at = _utc_now()
+        tournament.ends_at = now
 
         participants = (
             (
@@ -800,6 +808,8 @@ class TournamentService:
                 )
             )
             p.total_score = float(total or 0.0)
+            if p.released_at is None:
+                p.released_at = now
         await self._session.flush()
         await self._bus.publish(
             TournamentEvent(
