@@ -19,6 +19,7 @@ import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from game_envs.games.battle_of_sexes import BattleOfSexes
 from game_envs.games.el_farol import MAX_SLOTS_PER_DAY, ElFarolBar, ElFarolConfig
 from game_envs.games.prisoners_dilemma import PrisonersDilemma
 from game_envs.games.stag_hunt import StagHunt
@@ -50,6 +51,7 @@ from atp.dashboard.tournament.models import (
 )
 from atp.dashboard.tournament.reasons import CancelReason
 from atp.dashboard.tournament.schemas import (
+    BoSRoundState,
     ElFarolRoundState,
     PDRoundState,
     SHRoundState,
@@ -75,10 +77,13 @@ TOURNAMENT_PENDING_MAX_WAIT_S: int = int(
     os.environ.get("ATP_TOURNAMENT_PENDING_MAX_WAIT_S", "300")
 )
 
-_SUPPORTED_GAMES = frozenset({"prisoners_dilemma", "el_farol", "stag_hunt"})
+_SUPPORTED_GAMES = frozenset(
+    {"prisoners_dilemma", "el_farol", "stag_hunt", "battle_of_sexes"}
+)
 
 _PD_SINGLETON: PrisonersDilemma = PrisonersDilemma()
 _SH_SINGLETON: StagHunt = StagHunt()
+_BOS_SINGLETON: BattleOfSexes = BattleOfSexes()
 
 # Hardcoded El Farol V1 preset (spec §3.2).
 _EL_FAROL_V1_NUM_SLOTS = 16
@@ -115,15 +120,17 @@ def _game_for(tournament: Any) -> Any:
         return _PD_SINGLETON
     if gt == "stag_hunt":
         return _SH_SINGLETON
+    if gt == "battle_of_sexes":
+        return _BOS_SINGLETON
     if gt == "el_farol":
         return _el_farol_for(tournament.num_players)
     raise ValidationError(f"unsupported game_type {gt!r}")
 
 
 _ACTION_ADAPTER: TypeAdapter[Any] = TypeAdapter(TournamentAction)
-_ROUND_STATE_ADAPTER: TypeAdapter[PDRoundState | SHRoundState | ElFarolRoundState] = (
-    TypeAdapter(_RS_UNION)
-)
+_ROUND_STATE_ADAPTER: TypeAdapter[
+    PDRoundState | SHRoundState | BoSRoundState | ElFarolRoundState
+] = TypeAdapter(_RS_UNION)
 
 
 def _action_hint_for(game_type: str) -> str:
@@ -132,6 +139,8 @@ def _action_hint_for(game_type: str) -> str:
         return "{choice: 'cooperate' | 'defect'}"
     if game_type == "stag_hunt":
         return "{choice: 'stag' | 'hare'}"
+    if game_type == "battle_of_sexes":
+        return "{choice: 'A' | 'B'}"
     if game_type == "el_farol":
         return (
             "{slots: list[int], values in [0, num_slots-1], "
@@ -175,6 +184,11 @@ class TournamentService:
             if num_players != 2:
                 raise ValidationError(
                     f"stag_hunt requires exactly 2 players, got {num_players}"
+                )
+        elif game_type == "battle_of_sexes":
+            if num_players != 2:
+                raise ValidationError(
+                    f"battle_of_sexes requires exactly 2 players, got {num_players}"
                 )
         elif game_type == "el_farol":
             if not (2 <= num_players <= 20):
@@ -421,7 +435,7 @@ class TournamentService:
         self,
         tournament_id: int,
         user: User,
-    ) -> PDRoundState | SHRoundState | ElFarolRoundState:
+    ) -> PDRoundState | SHRoundState | BoSRoundState | ElFarolRoundState:
         """Build a player-private RoundState for the current round.
 
         Returns a pydantic ``PDRoundState`` or ``ElFarolRoundState``
@@ -520,7 +534,11 @@ class TournamentService:
             has_submitted = True
 
         # Inject game-specific submission-state field (spec §3.2 step 6).
-        if tournament.game_type in ("prisoners_dilemma", "stag_hunt"):
+        if tournament.game_type in (
+            "prisoners_dilemma",
+            "stag_hunt",
+            "battle_of_sexes",
+        ):
             # Both are 2-player simultaneous discrete-choice games; they
             # share the "your_turn" flag semantics.
             formatted["your_turn"] = not has_submitted
