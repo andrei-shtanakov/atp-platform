@@ -68,6 +68,14 @@ def test_validate_action_rejects_non_dict():
         g.validate_action([0, 1])  # type: ignore[arg-type]
 
 
+def test_validate_action_rejects_bool_slots():
+    g = _game()
+    with pytest.raises(ValidationError, match="not an int"):
+        g.validate_action({"slots": [True, False]})
+    with pytest.raises(ValidationError, match="not an int"):
+        g.validate_action({"slots": [True, True]})
+
+
 def test_sanitize_is_permissive_where_validate_is_strict():
     """Boundary check from spec §3.1."""
     g = _game(num_slots=16)

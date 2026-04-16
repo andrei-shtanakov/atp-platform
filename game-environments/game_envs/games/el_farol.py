@@ -264,14 +264,14 @@ class ElFarolBar(Game):
             raise ValidationError(
                 f"at most {MAX_SLOTS_PER_DAY} slots per day, got {len(slots)}"
             )
-        if len(set(slots)) != len(slots):
-            raise ValidationError("slots must be unique")
         num_slots = self._ef_config.num_slots
         for s in slots:
             if not isinstance(s, int) or isinstance(s, bool):
                 raise ValidationError(f"slot {s!r} is not an int")
             if not (0 <= s < num_slots):
                 raise ValidationError(f"slot {s} out of range [0, {num_slots})")
+        if len(set(slots)) != len(slots):
+            raise ValidationError("slots must be unique")
         return {"slots": sorted(slots)}
 
     # ------------------------------------------------------------------
