@@ -7,7 +7,6 @@ coordination outcomes.
 """
 
 import pytest
-
 from game_envs.core.errors import ValidationError
 from game_envs.games.battle_of_sexes import A, B, BattleOfSexes, BoSConfig
 
