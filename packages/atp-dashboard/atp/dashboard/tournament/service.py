@@ -18,8 +18,10 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from game_envs.games.el_farol import ElFarolBar, ElFarolConfig
+from game_envs.games.el_farol import MAX_SLOTS_PER_DAY, ElFarolBar, ElFarolConfig
 from game_envs.games.prisoners_dilemma import PrisonersDilemma
+from pydantic import TypeAdapter
+from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,6 +47,7 @@ from atp.dashboard.tournament.models import (
     TournamentStatus,
 )
 from atp.dashboard.tournament.reasons import CancelReason
+from atp.dashboard.tournament.schemas import TournamentAction
 from atp.dashboard.tournament.state import RoundState
 
 logger = logging.getLogger("atp.dashboard.tournament.service")
@@ -103,6 +106,21 @@ def _game_for(tournament: Any) -> Any:
     if gt == "el_farol":
         return _el_farol_for(tournament.num_players)
     raise ValidationError(f"unsupported game_type {gt!r}")
+
+
+_ACTION_ADAPTER: TypeAdapter[Any] = TypeAdapter(TournamentAction)
+
+
+def _action_hint_for(game_type: str) -> str:
+    """Human-readable expected-shape hint for error messages (spec §4)."""
+    if game_type == "prisoners_dilemma":
+        return "{choice: 'cooperate' | 'defect'}"
+    if game_type == "el_farol":
+        return (
+            "{slots: list[int], values in [0, num_slots-1], "
+            f"unique, max {MAX_SLOTS_PER_DAY} entries}}"
+        )
+    return "{} (unknown game_type)"
 
 
 class TournamentService:
@@ -493,6 +511,33 @@ class TournamentService:
                 f"tournament {tournament_id} is {tournament.status}, not active"
             )
 
+        # Server-side game_type enforcement (spec §4).
+        # Reject cross-game payloads early; inject the server-authoritative
+        # game_type so clients may omit it on the wire.
+        incoming_gt = action.get("game_type") if isinstance(action, dict) else None
+        if incoming_gt is not None and incoming_gt != tournament.game_type:
+            raise ValidationError(
+                f"action game_type {incoming_gt!r} does not match "
+                f"tournament {tournament_id} game_type {tournament.game_type!r}"
+            )
+        if isinstance(action, dict):
+            action_with_type = {**action, "game_type": tournament.game_type}
+        else:
+            action_with_type = action
+
+        try:
+            typed = _ACTION_ADAPTER.validate_python(action_with_type)
+        except PydanticValidationError as e:
+            expected = _action_hint_for(tournament.game_type)
+            errors = e.errors()
+            first_err = errors[0] if errors else {"msg": "unknown"}
+            raise ValidationError(
+                f"invalid action for tournament {tournament_id} "
+                f"(game_type={tournament.game_type!r}); "
+                f"expected: {expected}; "
+                f"pydantic: {first_err.get('loc')}: {first_err.get('msg')}"
+            ) from e
+
         my_participant = (
             await self._session.execute(
                 select(Participant).where(
@@ -521,7 +566,7 @@ class TournamentService:
             )
 
         game = _game_for(tournament)
-        canonical = game.validate_action(action)
+        canonical = game.validate_action(typed.model_dump(exclude={"game_type"}))
 
         existing = (
             await self._session.execute(
