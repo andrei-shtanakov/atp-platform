@@ -47,12 +47,16 @@ You will receive:
 
 Respond with ONLY a valid JSON object:
 
-{"action": [4, 5, 6, 7, 8], "reasoning": "<brief explanation>"}
+{"slots": [4, 5, 6, 7, 8],
+ "action": [4, 5, 6, 7, 8],
+ "reasoning": "<brief explanation>"}
+
+The "slots" and "action" fields MUST contain the SAME list of slot indices.
 
 Rules:
-- "action" must be a list of integers (slot indices, 0-based).
-- Pick 4-8 consecutive slots that you predict will be least crowded.
-- Use attendance history to predict which slots will be quiet today.
+- "slots" must be a list of integers (slot indices, 0-based).
+- Pick 4-8 slots that you predict will be least crowded.
+- Use attendance history to predict which slots will be quiet.
 - Keep reasoning brief (1-2 sentences).
 - Do NOT add any text before or after the JSON.
 """
@@ -142,11 +146,16 @@ def extract_json(text: str) -> dict | None:
 
 
 def parse_action(parsed: dict | None, num_slots: int = 16) -> list[int]:
-    """Extract slot list from parsed JSON, with fallback."""
-    if parsed and "action" in parsed:
-        action = parsed["action"]
-        if isinstance(action, list):
-            return [s for s in action if isinstance(s, int) and 0 <= s < num_slots]
+    """Extract slot list from parsed JSON, with fallback.
+
+    Prefers ``slots`` (live MCP tournament key) over ``action`` (legacy
+    simulation key). Both are accepted for back-compat.
+    """
+    if parsed:
+        for key in ("slots", "action"):
+            value = parsed.get(key)
+            if isinstance(value, list):
+                return [s for s in value if isinstance(s, int) and 0 <= s < num_slots]
     # Fallback: middle slots
     mid = num_slots // 4
     return list(range(mid, mid + 6))
@@ -193,7 +202,11 @@ async def handle_request(request: ATPRequest) -> ATPResponse:
             status="completed",
             artifacts=[
                 StructuredArtifact(
-                    data={"action": action, "reasoning": reasoning},
+                    data={
+                        "action": action,  # back-compat (simulation pipeline)
+                        "slots": action,  # MCP wire shape
+                        "reasoning": reasoning,
+                    },
                 )
             ],
             metrics=Metrics(
