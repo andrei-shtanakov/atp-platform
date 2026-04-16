@@ -555,3 +555,108 @@ async def test_completed_participants_can_join_new_tournament(
     )
     await svc.join(t2.id, alice, "alice")
     await svc.join(t2.id, bob, "bob")
+
+
+@pytest.mark.anyio
+async def test_full_3_round_stag_hunt_tournament_completes(
+    session: AsyncSession,
+    admin_user: User,
+    alice: User,
+    bob: User,
+    event_bus: TournamentEventBus,
+) -> None:
+    """3-round Stag Hunt at the service level.
+
+    Alice always stag, Bob always hare → alice always gets sucker (0.0),
+    bob always gets hare (3.0). Over 3 rounds: alice=0, bob=9.
+    """
+    from sqlalchemy import select
+
+    from atp.dashboard.tournament.models import Participant
+    from atp.dashboard.tournament.service import TournamentService
+
+    svc = TournamentService(session, event_bus)
+    t, _ = await svc.create_tournament(
+        creator=admin_user,
+        name="sh",
+        game_type="stag_hunt",
+        num_players=2,
+        total_rounds=3,
+        round_deadline_s=30,
+    )
+    await svc.join(t.id, alice, "alice")
+    await svc.join(t.id, bob, "bob")
+
+    for round_n in range(1, 4):
+        await svc.submit_action(t.id, alice, action={"choice": "stag"})
+        result = await svc.submit_action(t.id, bob, action={"choice": "hare"})
+        assert result["round_number"] == round_n
+
+    await session.refresh(t)
+    assert t.status == "completed"
+
+    parts = (
+        (
+            await session.execute(
+                select(Participant).where(Participant.tournament_id == t.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    by_user = {p.user_id: p for p in parts}
+    assert by_user[alice.id].total_score == 0.0, "alice should be sucker 3x"
+    assert by_user[bob.id].total_score == 9.0, "bob should get hare payoff 3x3"
+    # Auto-release on COMPLETED (PR #36 invariant) still holds.
+    for p in parts:
+        assert p.released_at is not None
+
+
+@pytest.mark.anyio
+async def test_stag_hunt_mutual_stag_pays_best(
+    session: AsyncSession,
+    admin_user: User,
+    alice: User,
+    bob: User,
+    event_bus: TournamentEventBus,
+) -> None:
+    """Both choose stag → mutual_stag payoff (default 4.0 each)."""
+    from sqlalchemy import select
+
+    from atp.dashboard.tournament.models import Action, Participant
+    from atp.dashboard.tournament.service import TournamentService
+
+    svc = TournamentService(session, event_bus)
+    t, _ = await svc.create_tournament(
+        creator=admin_user,
+        name="sh-coord",
+        game_type="stag_hunt",
+        num_players=2,
+        total_rounds=1,
+        round_deadline_s=30,
+    )
+    await svc.join(t.id, alice, "alice")
+    await svc.join(t.id, bob, "bob")
+
+    await svc.submit_action(t.id, alice, action={"choice": "stag"})
+    await svc.submit_action(t.id, bob, action={"choice": "stag"})
+
+    parts = (
+        (
+            await session.execute(
+                select(Participant).where(Participant.tournament_id == t.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    alice_p = next(p for p in parts if p.user_id == alice.id)
+    bob_p = next(p for p in parts if p.user_id == bob.id)
+    a_action = (
+        await session.execute(select(Action).where(Action.participant_id == alice_p.id))
+    ).scalar_one()
+    b_action = (
+        await session.execute(select(Action).where(Action.participant_id == bob_p.id))
+    ).scalar_one()
+    assert a_action.payoff == 4.0
+    assert b_action.payoff == 4.0

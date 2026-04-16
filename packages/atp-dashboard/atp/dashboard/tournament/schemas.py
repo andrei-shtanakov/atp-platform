@@ -56,8 +56,17 @@ class ElFarolAction(BaseModel):
     slots: list[int] = Field(..., max_length=MAX_SLOTS_PER_DAY)
 
 
+class SHAction(BaseModel):
+    """Stag Hunt submit action. ``game_type`` is server-injected."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    game_type: Literal["stag_hunt"]
+    choice: Literal["stag", "hare"]
+
+
 TournamentAction = Annotated[
-    PDAction | ElFarolAction,
+    PDAction | SHAction | ElFarolAction,
     Field(discriminator="game_type"),
 ]
 
@@ -111,7 +120,34 @@ class ElFarolRoundState(BaseModel):
         return self.model_dump()
 
 
+class SHRoundState(BaseModel):
+    """Wire schema for Stag Hunt round state.
+
+    Structurally identical to PDRoundState — Stag Hunt is a 2-player
+    simultaneous discrete-choice game — but uses a distinct
+    ``game_type`` discriminator for routing clarity.
+
+    ``extra="forbid"`` — service strips internal-only keys before sending.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    game_type: Literal["stag_hunt"]
+    tournament_id: int
+    your_history: list[str]
+    opponent_history: list[str]
+    your_cumulative_score: float
+    opponent_cumulative_score: float
+    round_number: int
+    total_rounds: int
+    your_turn: bool
+    action_schema: dict
+
+    def to_dict(self) -> dict[str, Any]:
+        return self.model_dump()
+
+
 RoundState = Annotated[
-    PDRoundState | ElFarolRoundState,
+    PDRoundState | SHRoundState | ElFarolRoundState,
     Field(discriminator="game_type"),
 ]

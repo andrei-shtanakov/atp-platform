@@ -7,8 +7,6 @@ tournament test module at conftest import time.
 
 from importlib import import_module
 
-import pytest
-
 pytest_plugins = [
     "tests.e2e.dashboard.tournament.test_e2e_30_round_pd_with_reconnect",
 ]
