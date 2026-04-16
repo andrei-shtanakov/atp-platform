@@ -66,7 +66,8 @@ class SHAction(BaseModel):
 
 
 class BoSAction(BaseModel):
-    """Battle of the Sexes submit action. ``game_type`` is server-injected."""
+    """Battle of the Sexes submit action. ``game_type`` is server-injected; clients may
+    omit it on the wire (see spec §4)."""
 
     model_config = ConfigDict(extra="forbid")
 
