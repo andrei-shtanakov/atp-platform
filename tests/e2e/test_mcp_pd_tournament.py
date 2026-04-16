@@ -4,6 +4,11 @@ from __future__ import annotations
 
 import pytest
 
+# Uvicorn + FastMCP SSE handshake is flaky in the shared ``test (3.12)``
+# coverage job (LABS-20/74). Marked slow so it only runs in the dedicated
+# ``tournament-e2e`` CI job (which has its own scope).
+pytestmark = pytest.mark.slow
+
 
 @pytest.mark.anyio
 async def test_e2e_mcp_server_boots(e2e_mcp_server) -> None:

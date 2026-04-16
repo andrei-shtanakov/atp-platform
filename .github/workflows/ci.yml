@@ -43,8 +43,12 @@ jobs:
           uv run pyrefly check
 
       - name: Run tests with coverage
+        # Exclude ``slow`` tests — these need real uvicorn + FastMCP SSE or
+        # a container registry, which flake in GitHub Actions runners
+        # (LABS-20/74). They run in the dedicated ``tournament-e2e`` job
+        # below; locally, run them via ``pytest -m slow``.
         run: |
-          uv run pytest tests/ -v --cov=atp --cov-report=term-missing --cov-report=xml --cov-fail-under=80
+          uv run pytest tests/ -v -m "not slow" --cov=atp --cov-report=term-missing --cov-report=xml --cov-fail-under=80
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v6

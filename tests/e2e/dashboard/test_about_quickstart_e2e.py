@@ -39,7 +39,7 @@ from atp.adapters.mcp import MCPAdapter, MCPAdapterConfig
 # tournament_uvicorn + _mint_jwt come from the sibling conftest.py,
 # which re-exports them from the SC-1 tournament e2e module.
 
-pytestmark = pytest.mark.anyio
+pytestmark = [pytest.mark.anyio, pytest.mark.slow]
 
 
 _ABOUT_TEMPLATE = (

@@ -6,7 +6,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-pytestmark = pytest.mark.anyio
+pytestmark = [pytest.mark.anyio, pytest.mark.slow]
 
 
 async def test_e2e_rest_cancel_returns_200(
