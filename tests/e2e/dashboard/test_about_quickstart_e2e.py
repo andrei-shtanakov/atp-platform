@@ -75,8 +75,8 @@ def _extract_internal_links(html: str) -> set[str]:
 
 
 async def test_about_links_reachable(tournament_uvicorn) -> None:
-    """About page renders, references all expected tools/links, and every
-    internal href it points at is reachable (2xx or 302).
+    """About page renders, references all expected tools/links, and the
+    expected internal UI links it includes are reachable (2xx or 302).
     """
     base_url, admin_jwt, _bob_jwt = tournament_uvicorn
 
