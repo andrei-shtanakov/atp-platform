@@ -156,3 +156,27 @@ def test_compute_round_payoffs_happy_minus_crowded():
     # p1: slot 1 crowded, slot 2 happy → 1-1=0
     # p2: slot 0 happy, slot 1 crowded → 1-1=0
     assert payoffs == [0.0, 0.0, 0.0]
+
+
+def test_format_state_your_history_is_defensive_copy():
+    g = _game(n=3, num_slots=4)
+    history = [
+        {
+            "round": 1,
+            "actions": {
+                0: {"slots": [0, 1]},
+                1: {"slots": []},
+                2: {"slots": []},
+            },
+        }
+    ]
+    state = g.format_state_for_player(
+        round_number=2,
+        total_rounds=5,
+        participant_idx=0,
+        action_history=history,
+        cumulative_scores=[0.0, 0.0, 0.0],
+    )
+    state["your_history"][0].append(99)
+    # mutation must NOT leak into action_history
+    assert history[0]["actions"][0]["slots"] == [0, 1]

@@ -292,7 +292,7 @@ class ElFarolBar(Game):
         """
         num_slots = self._ef_config.num_slots
         your_history = [
-            row["actions"].get(participant_idx, {}).get("slots", [])
+            list(row["actions"].get(participant_idx, {}).get("slots", []))
             for row in action_history
         ]
         attendance_by_round: list[list[int]] = []
