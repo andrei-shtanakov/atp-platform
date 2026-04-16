@@ -11,12 +11,14 @@ worker, leave/get_history/list, AD-9/AD-10 enforcement, etc.).
 
 from __future__ import annotations
 
+import functools
 import logging
 import os
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from game_envs.games.el_farol import ElFarolBar, ElFarolConfig
 from game_envs.games.prisoners_dilemma import PrisonersDilemma
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
@@ -61,11 +63,46 @@ TOURNAMENT_PENDING_MAX_WAIT_S: int = int(
     os.environ.get("ATP_TOURNAMENT_PENDING_MAX_WAIT_S", "300")
 )
 
-_SUPPORTED_GAMES = frozenset({"prisoners_dilemma"})
+_SUPPORTED_GAMES = frozenset({"prisoners_dilemma", "el_farol"})
 
-_GAME_INSTANCES: dict[str, Any] = {
-    "prisoners_dilemma": PrisonersDilemma(),
-}
+_PD_SINGLETON: PrisonersDilemma = PrisonersDilemma()
+
+# Hardcoded El Farol V1 preset (spec §3.2).
+_EL_FAROL_V1_NUM_SLOTS = 16
+_EL_FAROL_V1_THRESHOLD_RATIO = 0.6
+_EL_FAROL_V1_MIN_TOTAL_HOURS = 0
+
+# Startup assert — spec §12 silent-min_total_hours mitigation.
+assert _EL_FAROL_V1_MIN_TOTAL_HOURS == 0, (
+    "Raising _EL_FAROL_V1_MIN_TOTAL_HOURS without a Phase C "
+    "finalize_scores hook would silently ignore DQ. See spec §12."
+)
+
+
+@functools.lru_cache(maxsize=64)
+def _el_farol_for(num_players: int) -> ElFarolBar:
+    cap = max(1, int(_EL_FAROL_V1_THRESHOLD_RATIO * num_players))
+    cfg = ElFarolConfig(
+        num_players=num_players,
+        num_slots=_EL_FAROL_V1_NUM_SLOTS,
+        capacity_threshold=cap,
+        min_total_hours=_EL_FAROL_V1_MIN_TOTAL_HOURS,
+    )
+    return ElFarolBar(cfg)
+
+
+def _game_for(tournament: Any) -> Any:
+    """Return the Game instance for a tournament.
+
+    PD uses a module-level singleton; El Farol uses a per-num_players
+    cached factory. Unknown game_type raises ValidationError.
+    """
+    gt = tournament.game_type
+    if gt == "prisoners_dilemma":
+        return _PD_SINGLETON
+    if gt == "el_farol":
+        return _el_farol_for(tournament.num_players)
+    raise ValidationError(f"unsupported game_type {gt!r}")
 
 
 class TournamentService:
@@ -94,13 +131,15 @@ class TournamentService:
                 f"unsupported game_type {game_type!r}; "
                 f"v1 slice supports: {sorted(_SUPPORTED_GAMES)}"
             )
-        required_players = _GAME_INSTANCES[game_type].config.num_players
-        if num_players != required_players:
-            _p = "player" if required_players == 1 else "players"
-            raise ValidationError(
-                f"num_players: {game_type} requires exactly {required_players} {_p}, "
-                f"got {num_players}"
-            )
+        if game_type == "prisoners_dilemma":
+            required_players = _PD_SINGLETON.config.num_players
+            if num_players != required_players:
+                _p = "player" if required_players == 1 else "players"
+                raise ValidationError(
+                    f"num_players: {game_type} requires exactly "
+                    f"{required_players} {_p}, got {num_players}"
+                )
+        # el_farol: num_players validation deferred to Task 16 (N in [2, 20])
         if total_rounds < 1:
             raise ValidationError("total_rounds must be >= 1")
         if round_deadline_s < 1:
@@ -407,7 +446,7 @@ class TournamentService:
         if not found_active and rounds:
             current_round_number = len(rounds)
 
-        game = _GAME_INSTANCES[tournament.game_type]
+        game = _game_for(tournament)
         formatted = game.format_state_for_player(
             round_number=current_round_number,
             total_rounds=tournament.total_rounds,
@@ -479,9 +518,7 @@ class TournamentService:
                 f"tournament {tournament_id} has no round accepting actions"
             )
 
-        game = _GAME_INSTANCES[
-            tournament.game_type
-        ]
+        game = _game_for(tournament)
         canonical = game.validate_action(action)
 
         existing = (
@@ -563,7 +600,7 @@ class TournamentService:
             action_by_idx[i] = a
             action_data_by_idx[i] = a.action_data
 
-        game = _GAME_INSTANCES[tournament.game_type]
+        game = _game_for(tournament)
         payoffs = game.compute_round_payoffs(action_data_by_idx)
 
         for i, action in action_by_idx.items():
@@ -1023,7 +1060,7 @@ class TournamentService:
         )
         all_participant_ids = [row[0] for row in participants_result]
 
-        game = _GAME_INSTANCES[tournament.game_type]
+        game = _game_for(tournament)
         now = _utc_now()
         for participant_id in all_participant_ids:
             if participant_id not in submitted_ids:

@@ -73,3 +73,12 @@ async def bob(session: AsyncSession) -> User:
 @pytest.fixture
 def event_bus() -> TournamentEventBus:
     return TournamentEventBus()
+
+
+@pytest.fixture(autouse=True)
+def _clear_el_farol_cache():
+    """Spec §7.1 fixture hygiene for _el_farol_for lru_cache."""
+    from atp.dashboard.tournament.service import _el_farol_for
+
+    yield
+    _el_farol_for.cache_clear()
