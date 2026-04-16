@@ -1,22 +1,22 @@
 """Shared fixtures for dashboard-level E2E tests.
 
-Exposes the tournament suite's shared bring-up fixture to sibling
-dashboard tests without directly importing fixture symbols from the
-tournament test module at conftest import time.
+Re-exports the ``tournament_uvicorn`` fixture from the tournament SC-1
+e2e suite so sibling dashboard tests (About quickstart, etc.) can
+stand up a real uvicorn + FastMCP server without duplicating ~150
+lines of bring-up code.
+
+Note on conftest shape: we deliberately import the fixture symbols
+directly rather than using ``pytest_plugins = [...]``. The
+``pytest_plugins`` mechanism is only honored in the **top-level**
+conftest (``tests/conftest.py``); declaring it in a nested conftest
+is deprecated and, as of pytest 9, a hard error
+(``Defining 'pytest_plugins' in a non-top-level conftest is no
+longer supported``). A plain ``from ... import`` works because
+pytest picks up fixtures defined in conftest modules regardless of
+where they were imported from.
 """
 
-from importlib import import_module
-
-pytest_plugins = [
-    "tests.e2e.dashboard.tournament.test_e2e_30_round_pd_with_reconnect",
-]
-
-
-def _mint_jwt(*args, **kwargs):
-    tournament_module = import_module(
-        "tests.e2e.dashboard.tournament.test_e2e_30_round_pd_with_reconnect"
-    )
-    return tournament_module._mint_jwt(*args, **kwargs)
-
-
-__all__ = ["_mint_jwt", "pytest_plugins"]
+from tests.e2e.dashboard.tournament.test_e2e_30_round_pd_with_reconnect import (  # noqa: F401
+    _mint_jwt,
+    tournament_uvicorn,
+)
