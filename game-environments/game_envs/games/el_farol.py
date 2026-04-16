@@ -241,6 +241,39 @@ class ElFarolBar(Game):
     def action_space(self, player_id: str) -> ElFarolActionSpace:
         return ElFarolActionSpace(self._ef_config.num_slots)
 
+    def validate_action(self, raw: Any) -> dict[str, list[int]]:
+        """Validate a client-submitted action and return canonical form.
+
+        Strict path. Used by tournament submit. See also
+        ``ElFarolActionSpace.sanitize`` for the permissive replay path.
+        """
+        from game_envs.core.errors import (
+            ValidationError,  # local import to avoid cycles
+        )
+
+        if not isinstance(raw, dict):
+            raise ValidationError(f"action must be a dict, got {type(raw).__name__}")
+        slots = raw.get("slots")
+        if slots is None:
+            raise ValidationError("action must have field 'slots'")
+        if not isinstance(slots, list):
+            raise ValidationError(
+                f"slots must be a list of int, got {type(slots).__name__}"
+            )
+        if len(slots) > MAX_SLOTS_PER_DAY:
+            raise ValidationError(
+                f"at most {MAX_SLOTS_PER_DAY} slots per day, got {len(slots)}"
+            )
+        if len(set(slots)) != len(slots):
+            raise ValidationError("slots must be unique")
+        num_slots = self._ef_config.num_slots
+        for s in slots:
+            if not isinstance(s, int) or isinstance(s, bool):
+                raise ValidationError(f"slot {s!r} is not an int")
+            if not (0 <= s < num_slots):
+                raise ValidationError(f"slot {s} out of range [0, {num_slots})")
+        return {"slots": sorted(slots)}
+
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
