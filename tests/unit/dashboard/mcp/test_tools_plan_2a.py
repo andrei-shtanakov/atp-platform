@@ -66,6 +66,37 @@ async def test_list_tournaments_returns_filtered():
 
 
 @pytest.mark.anyio
+async def test_list_tournaments_passes_game_type_filter():
+    """MCP list tool forwards game_type kwarg to the service."""
+    mock_tournaments = [MagicMock(id=1)]
+    svc = _make_service(list_tournaments=mock_tournaments)
+
+    result = await list_tournaments(
+        ctx=_ctx(),
+        service=svc,
+        user=_user(),
+        status=None,
+        game_type="el_farol",
+    )
+    # Service was called with game_type="el_farol"
+    svc.list_tournaments.assert_awaited_once()
+    kwargs = svc.list_tournaments.await_args.kwargs
+    assert kwargs["game_type"] == "el_farol"
+    # Output dict now includes game_type field
+    assert len(result["tournaments"]) == 1
+    assert "game_type" in result["tournaments"][0]
+
+
+@pytest.mark.anyio
+async def test_list_tournaments_defaults_game_type_to_none():
+    """No game_type kwarg → service called with game_type=None."""
+    svc = _make_service(list_tournaments=[])
+    await list_tournaments(ctx=_ctx(), service=svc, user=_user(), status=None)
+    kwargs = svc.list_tournaments.await_args.kwargs
+    assert kwargs["game_type"] is None
+
+
+@pytest.mark.anyio
 async def test_get_tournament_returns_detail():
     mock_t = MagicMock(id=1, name="t")
     svc = _make_service(get_tournament=mock_t)

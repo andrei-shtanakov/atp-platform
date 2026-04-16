@@ -894,8 +894,10 @@ class TournamentService:
         self,
         user: User,
         status: TournamentStatus | None = None,
+        game_type: str | None = None,
     ) -> list[Tournament]:
-        """Return tournaments visible to `user`, optionally filtered by status.
+        """Return tournaments visible to `user`, optionally filtered by
+        status and/or game_type.
 
         Visibility rule:
         - user.is_admin: all tournaments.
@@ -907,6 +909,8 @@ class TournamentService:
         stmt = select(Tournament)
         if status is not None:
             stmt = stmt.where(Tournament.status == status)
+        if game_type is not None:
+            stmt = stmt.where(Tournament.game_type == game_type)
 
         if not user.is_admin:
             stmt = stmt.where(

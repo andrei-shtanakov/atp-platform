@@ -202,7 +202,22 @@ async def make_move(
     tournament_id: int,
     action: dict,
 ) -> dict:
-    """Submit an action for the current round."""
+    """Submit an action for the current round.
+
+    Args:
+        tournament_id: The tournament to submit to.
+        action: Dict whose required fields depend on the tournament's
+            game_type.
+
+            - prisoners_dilemma: ``{"choice": "cooperate" | "defect"}``
+            - el_farol: ``{"slots": list[int], values in [0, num_slots-1],
+              unique, max 8 entries}``. El Farol players may attend at most
+              8 of 16 slots per day.
+
+    ``game_type`` is optional on the wire; the server reads it from the
+    tournament record. If you send it and it mismatches the tournament's
+    game_type, the call is rejected (422).
+    """
     from atp.dashboard.mcp.notifications import (
         resolve_user_from_ctx,
         with_service,
@@ -267,18 +282,27 @@ async def list_tournaments(
     service: Any,
     user: Any,
     status: str | None = None,
+    game_type: str | None = None,
 ) -> dict[str, Any]:
-    """MCP tool: list tournaments, optionally filtered by status."""
+    """MCP tool: list tournaments, optionally filtered by status and game_type.
+
+    Args:
+        status: optional filter; one of the TournamentStatus values.
+        game_type: optional filter; "prisoners_dilemma" | "el_farol".
+    """
     from atp.dashboard.tournament.models import TournamentStatus
 
     status_filter = TournamentStatus(status) if status else None
-    tournaments = await service.list_tournaments(user=user, status=status_filter)
+    tournaments = await service.list_tournaments(
+        user=user, status=status_filter, game_type=game_type
+    )
     return {
         "tournaments": [
             {
                 "id": t.id,
                 "name": (getattr(t, "config", {}) or {}).get("name", ""),
                 "status": getattr(t, "status", None),
+                "game_type": getattr(t, "game_type", None),
                 "has_join_token": bool(getattr(t, "join_token", None)),
             }
             for t in tournaments
@@ -370,8 +394,14 @@ async def mcp_get_history(
 async def mcp_list_tournaments(
     ctx: Context,
     status: str | None = None,
+    game_type: str | None = None,
 ) -> dict:
-    """List tournaments, optionally filtered by status string."""
+    """List tournaments, optionally filtered by status and/or game_type.
+
+    Args:
+        status: optional; one of the TournamentStatus values.
+        game_type: optional; "prisoners_dilemma" | "el_farol".
+    """
     from atp.dashboard.mcp.notifications import (
         resolve_user_from_ctx,
         with_service,
@@ -380,7 +410,7 @@ async def mcp_list_tournaments(
     user = await resolve_user_from_ctx(ctx)
     async with with_service(ctx, tournament_event_bus) as service:
         return await list_tournaments(
-            ctx=ctx, service=service, user=user, status=status
+            ctx=ctx, service=service, user=user, status=status, game_type=game_type
         )
 
 
