@@ -126,3 +126,34 @@ async def test_state_pd_has_your_turn_still(
     state = await svc.get_state_for(t.id, alice)
     assert state.game_type == "prisoners_dilemma"
     assert isinstance(state.your_turn, bool)
+
+
+@pytest.mark.anyio
+async def test_state_after_tournament_completes_flags_are_false(
+    session: AsyncSession,
+    admin_user: User,
+    alice: User,
+    bob: User,
+    event_bus: TournamentEventBus,
+) -> None:
+    """After the final round resolves, your_turn must NOT be True."""
+    from atp.dashboard.tournament.service import TournamentService
+
+    svc = TournamentService(session, event_bus)
+    t, _ = await svc.create_tournament(
+        creator=admin_user,
+        name="pd-done",
+        game_type="prisoners_dilemma",
+        num_players=2,
+        total_rounds=1,
+        round_deadline_s=30,
+    )
+    await svc.join(t.id, alice, "alice")
+    await svc.join(t.id, bob, "bob")
+
+    await svc.submit_action(t.id, alice, action={"choice": "cooperate"})
+    await svc.submit_action(t.id, bob, action={"choice": "defect"})
+
+    state = await svc.get_state_for(t.id, alice)
+    assert state.game_type == "prisoners_dilemma"
+    assert state.your_turn is False  # tournament over — nothing to submit

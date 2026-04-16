@@ -48,10 +48,12 @@ from atp.dashboard.tournament.models import (
 )
 from atp.dashboard.tournament.reasons import CancelReason
 from atp.dashboard.tournament.schemas import (
-    RoundState as _RS_UNION,
+    ElFarolRoundState,
+    PDRoundState,
+    TournamentAction,
 )
 from atp.dashboard.tournament.schemas import (
-    TournamentAction,
+    RoundState as _RS_UNION,
 )
 
 logger = logging.getLogger("atp.dashboard.tournament.service")
@@ -113,7 +115,9 @@ def _game_for(tournament: Any) -> Any:
 
 
 _ACTION_ADAPTER: TypeAdapter[Any] = TypeAdapter(TournamentAction)
-_ROUND_STATE_ADAPTER: TypeAdapter[Any] = TypeAdapter(_RS_UNION)
+_ROUND_STATE_ADAPTER: TypeAdapter[PDRoundState | ElFarolRoundState] = TypeAdapter(
+    _RS_UNION
+)
 
 
 def _action_hint_for(game_type: str) -> str:
@@ -404,7 +408,7 @@ class TournamentService:
         self,
         tournament_id: int,
         user: User,
-    ) -> Any:
+    ) -> PDRoundState | ElFarolRoundState:
         """Build a player-private RoundState for the current round.
 
         Returns a pydantic ``PDRoundState`` or ``ElFarolRoundState``
@@ -487,14 +491,20 @@ class TournamentService:
         # Compute submission state for the active round by inspecting
         # the already-loaded rounds+actions (no extra DB round-trip).
         my_participant_id = participants[my_idx].id
-        has_submitted = False
-        for r in rounds:
-            if r.status == RoundStatus.WAITING_FOR_ACTIONS:
-                for a in r.actions:
-                    if a.participant_id == my_participant_id:
-                        has_submitted = True
-                        break
-                break
+        if found_active:
+            has_submitted = False
+            for r in rounds:
+                if r.status == RoundStatus.WAITING_FOR_ACTIONS:
+                    for a in r.actions:
+                        if a.participant_id == my_participant_id:
+                            has_submitted = True
+                            break
+                    break
+        else:
+            # No active round (tournament completed, pending, or just
+            # created). Nothing to submit — flip flags to False by
+            # treating the player as already submitted.
+            has_submitted = True
 
         # Inject game-specific submission-state field (spec §3.2 step 6).
         if tournament.game_type == "prisoners_dilemma":
