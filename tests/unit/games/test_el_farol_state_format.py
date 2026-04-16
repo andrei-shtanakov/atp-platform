@@ -83,3 +83,8 @@ def test_sanitize_is_permissive_where_validate_is_strict():
     assert set(cleaned).issubset(range(16))
     with pytest.raises(ValidationError):
         g.validate_action({"slots": [1, 2, 2, 99, -1]})
+
+
+def test_default_action_on_timeout_returns_empty_slots():
+    g = _game()
+    assert g.default_action_on_timeout() == {"slots": []}

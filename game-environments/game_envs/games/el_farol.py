@@ -274,6 +274,10 @@ class ElFarolBar(Game):
             raise ValidationError("slots must be unique")
         return {"slots": sorted(slots)}
 
+    def default_action_on_timeout(self) -> dict[str, list[int]]:
+        """Stay home — attend zero slots (spec §3.1)."""
+        return {"slots": []}
+
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
