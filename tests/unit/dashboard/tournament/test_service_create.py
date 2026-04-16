@@ -96,3 +96,64 @@ async def test_create_sets_pending_deadline(monkeypatch):
     delta = t.pending_deadline - datetime.utcnow()
     assert timedelta(seconds=TOURNAMENT_PENDING_MAX_WAIT_S - 5) < delta
     assert delta < timedelta(seconds=TOURNAMENT_PENDING_MAX_WAIT_S + 5)
+
+
+@pytest.mark.anyio
+async def test_create_el_farol_n5_ok(monkeypatch):
+    monkeypatch.setenv("ATP_TOKEN_EXPIRE_MINUTES", "60")
+    svc = _make_service()
+    t, _ = await svc.create_tournament(
+        creator=_make_user(),
+        name="smoke",
+        game_type="el_farol",
+        num_players=5,
+        total_rounds=3,
+        round_deadline_s=30,
+    )
+    assert t.game_type == "el_farol"
+    assert t.num_players == 5
+
+
+@pytest.mark.anyio
+async def test_create_el_farol_n1_rejected(monkeypatch):
+    monkeypatch.setenv("ATP_TOKEN_EXPIRE_MINUTES", "60")
+    svc = _make_service()
+    with pytest.raises(ValidationError, match="2 <= num_players <= 20"):
+        await svc.create_tournament(
+            creator=_make_user(),
+            name="nope",
+            game_type="el_farol",
+            num_players=1,
+            total_rounds=3,
+            round_deadline_s=30,
+        )
+
+
+@pytest.mark.anyio
+async def test_create_el_farol_n21_rejected(monkeypatch):
+    monkeypatch.setenv("ATP_TOKEN_EXPIRE_MINUTES", "60")
+    svc = _make_service()
+    with pytest.raises(ValidationError, match="2 <= num_players <= 20"):
+        await svc.create_tournament(
+            creator=_make_user(),
+            name="nope",
+            game_type="el_farol",
+            num_players=21,
+            total_rounds=3,
+            round_deadline_s=30,
+        )
+
+
+@pytest.mark.anyio
+async def test_create_pd_still_requires_exactly_two(monkeypatch):
+    monkeypatch.setenv("ATP_TOKEN_EXPIRE_MINUTES", "60")
+    svc = _make_service()
+    with pytest.raises(ValidationError, match="exactly 2"):
+        await svc.create_tournament(
+            creator=_make_user(),
+            name="nope",
+            game_type="prisoners_dilemma",
+            num_players=3,
+            total_rounds=3,
+            round_deadline_s=30,
+        )

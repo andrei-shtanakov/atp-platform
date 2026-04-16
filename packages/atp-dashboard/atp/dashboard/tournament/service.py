@@ -129,17 +129,19 @@ class TournamentService:
         if game_type not in _SUPPORTED_GAMES:
             raise ValidationError(
                 f"unsupported game_type {game_type!r}; "
-                f"v1 slice supports: {sorted(_SUPPORTED_GAMES)}"
+                f"supports: {sorted(_SUPPORTED_GAMES)}"
             )
         if game_type == "prisoners_dilemma":
-            required_players = _PD_SINGLETON.config.num_players
-            if num_players != required_players:
-                _p = "player" if required_players == 1 else "players"
+            if num_players != 2:
                 raise ValidationError(
-                    f"num_players: {game_type} requires exactly "
-                    f"{required_players} {_p}, got {num_players}"
+                    f"prisoners_dilemma requires exactly 2 players, got {num_players}"
                 )
-        # el_farol: num_players validation deferred to Task 16 (N in [2, 20])
+        elif game_type == "el_farol":
+            if not (2 <= num_players <= 20):
+                raise ValidationError(
+                    f"el_farol requires 2 <= num_players <= 20 (phase B bound), "
+                    f"got {num_players}"
+                )
         if total_rounds < 1:
             raise ValidationError("total_rounds must be >= 1")
         if round_deadline_s < 1:
