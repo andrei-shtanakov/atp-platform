@@ -231,3 +231,97 @@ class StagHunt(Game):
         }
         p0, p1 = matrix[(a0, a1)]
         return {"player_0": p0, "player_1": p1}
+
+    # ------------------------------------------------------------------
+    # Service-facing methods (mirror PrisonersDilemma surface used by the
+    # tournament service — see packages/atp-dashboard/.../service.py).
+    # ------------------------------------------------------------------
+
+    def format_state_for_player(
+        self,
+        round_number: int,
+        total_rounds: int,
+        participant_idx: int,
+        action_history: list[dict[str, Any]],
+        cumulative_scores: list[float],
+    ) -> dict[str, Any]:
+        """Build a player-private RoundState dict for the given player.
+
+        Args:
+            round_number: 1-indexed round about to be played.
+            total_rounds: Total rounds in the tournament.
+            participant_idx: Which participant we are formatting for (0 or 1).
+            action_history: List per resolved round of
+                ``{"round": i, "actions": {pid: action_data}}``. Empty list
+                = no rounds played yet.
+            cumulative_scores: Per-participant cumulative scores so far.
+
+        Returns:
+            Dict matching the SHRoundState shape (see schemas.py). The
+            ``tournament_id`` field is -1 and must be filled by the caller.
+        """
+        opponent_idx = 1 - participant_idx
+        your_history = [
+            row["actions"][participant_idx]["choice"] for row in action_history
+        ]
+        opponent_history = [
+            row["actions"][opponent_idx]["choice"] for row in action_history
+        ]
+        return {
+            "tournament_id": -1,
+            "round_number": round_number,
+            "game_type": "stag_hunt",
+            "your_history": your_history,
+            "opponent_history": opponent_history,
+            "your_cumulative_score": cumulative_scores[participant_idx],
+            "opponent_cumulative_score": cumulative_scores[opponent_idx],
+            "action_schema": {
+                "type": "choice",
+                "options": [STAG, HARE],
+            },
+            "your_turn": True,  # service overwrites based on DB submission state
+            "total_rounds": total_rounds,
+            "extra": {},
+        }
+
+    def validate_action(self, raw: Any) -> dict[str, str]:
+        """Validate a client-submitted action and return canonical form.
+
+        Strict path used by tournament submit. Raises ValidationError on
+        any malformed input.
+        """
+        from game_envs.core.errors import (
+            ValidationError,  # local import to avoid cycles
+        )
+
+        if not isinstance(raw, dict):
+            raise ValidationError(f"action must be a dict, got {type(raw).__name__}")
+        choice = raw.get("choice")
+        if choice not in (STAG, HARE):
+            raise ValidationError(
+                f"choice must be {STAG!r} or {HARE!r}, got {choice!r}"
+            )
+        return {"choice": choice}
+
+    def default_action_on_timeout(self) -> dict[str, str]:
+        """Action substituted when a participant misses the round deadline.
+
+        Defaults to HARE — the risk-dominant equilibrium. A timed-out
+        player can't coordinate on stag, so choosing hare guarantees
+        ``mutual_hare`` or ``hare`` rather than the ``sucker`` payoff.
+        """
+        return {"choice": HARE}
+
+    def compute_round_payoffs(self, actions: dict[int, dict[str, Any]]) -> list[float]:
+        """Generic entry point used by the tournament service.
+
+        Args:
+            actions: Mapping participant_idx -> action_data dict.
+
+        Returns:
+            List of payoffs in participant_idx order.
+        """
+        a0 = actions[0]["choice"]
+        a1 = actions[1]["choice"]
+        payoffs = self._compute_payoffs(a0, a1)
+        return [payoffs["player_0"], payoffs["player_1"]]

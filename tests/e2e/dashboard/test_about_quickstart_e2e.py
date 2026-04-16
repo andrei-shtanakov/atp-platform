@@ -69,6 +69,11 @@ _EXPECTED_MCP_TOOLS = frozenset(
 _EXPECTED_UI_LINKS = frozenset({"/ui/login", "/ui/agents", "/ui/tokens"})
 
 
+# Games the About page lists as available (not greyed-out "coming soon").
+# Adding one requires matching server-side dispatcher support first.
+_EXPECTED_AVAILABLE_GAMES = frozenset({"prisoners_dilemma", "el_farol", "stag_hunt"})
+
+
 def _extract_internal_links(html: str) -> set[str]:
     """Pull every internal href starting with /ui/ from the rendered page."""
     return set(re.findall(r'href="(/ui/[^"#?]+)"', html))
@@ -100,6 +105,28 @@ async def test_about_links_reachable(tournament_uvicorn) -> None:
 
         # MCP endpoint path referenced in every code sample.
         assert "/mcp/sse" in body
+
+        # Every "available" game must be listed and NOT grey-boxed.
+        # The template marks disabled cards with `coming soon`, so we
+        # look for the game_id appearing outside that grey styling.
+        for game in _EXPECTED_AVAILABLE_GAMES:
+            assert game in body, f"About no longer mentions game {game!r}"
+            # Crude but effective: in the current template an available
+            # card is the only place the game_id appears without a
+            # "coming soon" span following it in the same <div>.
+            # Checking the presence of the game_id in a .game-card that
+            # is NOT styled as opacity:0.55 is enough to catch accidental
+            # grey-outs.
+            card_pattern = re.compile(
+                r'<div class="game-card"(?![^>]*opacity:0\.55)[^>]*>'
+                r'[^<]*<div class="game-id"[^>]*>' + re.escape(game),
+                re.DOTALL,
+            )
+            assert card_pattern.search(body), (
+                f"About lists {game!r} as available but the card is "
+                "styled as coming-soon (opacity:0.55). Either update "
+                "the template, or update _EXPECTED_AVAILABLE_GAMES."
+            )
 
         # Internal links from the rendered page all respond.
         found_links = _extract_internal_links(body)
