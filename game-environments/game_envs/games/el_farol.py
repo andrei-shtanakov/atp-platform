@@ -278,6 +278,86 @@ class ElFarolBar(Game):
         """Stay home — attend zero slots (spec §3.1)."""
         return {"slots": []}
 
+    def format_state_for_player(
+        self,
+        round_number: int,
+        total_rounds: int,
+        participant_idx: int,
+        action_history: list[dict[str, Any]],
+        cumulative_scores: list[float],
+    ) -> dict[str, Any]:
+        """N-player state formatter (see spec §3.1).
+
+        Does NOT include ``pending_submission`` — service-layer concern.
+        """
+        num_slots = self._ef_config.num_slots
+        your_history = [
+            row["actions"].get(participant_idx, {}).get("slots", [])
+            for row in action_history
+        ]
+        attendance_by_round: list[list[int]] = []
+        for row in action_history:
+            counts = [0] * num_slots
+            for _pid, action_data in row["actions"].items():
+                for s in action_data.get("slots", []):
+                    if 0 <= s < num_slots:
+                        counts[s] += 1
+            attendance_by_round.append(counts)
+
+        return {
+            "tournament_id": -1,
+            "game_type": "el_farol",
+            "round_number": round_number,
+            "total_rounds": total_rounds,
+            "your_history": your_history,
+            "attendance_by_round": attendance_by_round,
+            "capacity_threshold": self._ef_config.capacity_threshold,
+            "your_cumulative_score": cumulative_scores[participant_idx],
+            "all_scores": list(cumulative_scores),
+            "your_participant_idx": participant_idx,
+            "num_slots": num_slots,
+            "action_schema": {
+                "type": "list[int]",
+                "max_length": MAX_SLOTS_PER_DAY,
+                "value_range": [0, num_slots - 1],
+                "unique": True,
+            },
+            "extra": {},
+        }
+
+    def compute_round_payoffs(self, actions: dict[int, dict[str, Any]]) -> list[float]:
+        """Per-round payoff = happy slots − crowded slots (spec §3.3).
+
+        Args:
+            actions: participant_idx -> {"slots": list[int]}.
+
+        Returns:
+            List of per-round payoffs in participant_idx order.
+        """
+        n = self._ef_config.num_players
+        threshold = self._ef_config.capacity_threshold
+        num_slots = self._ef_config.num_slots
+
+        counts = [0] * num_slots
+        for p_idx in range(n):
+            for s in actions.get(p_idx, {}).get("slots", []):
+                if 0 <= s < num_slots:
+                    counts[s] += 1
+
+        crowded = {i for i, c in enumerate(counts) if c >= threshold}
+
+        payoffs: list[float] = [0.0] * n
+        for p_idx in range(n):
+            happy = 0
+            crowded_count = 0
+            for s in actions.get(p_idx, {}).get("slots", []):
+                if s in crowded:
+                    crowded_count += 1
+                else:
+                    happy += 1
+            payoffs[p_idx] = float(happy - crowded_count)
+        return payoffs
+
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
