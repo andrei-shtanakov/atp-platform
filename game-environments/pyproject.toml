@@ -19,7 +19,7 @@ dependencies = [
     # (SSSE3/SSE4.1/SSE4.2/POPCNT), which Namecheap's QEMU Virtual CPU 2.5+
     # (default qemu64 model, pre-Nehalem) does not expose. Numpy 1.x has
     # no such baseline requirement.
-    "numpy>=1.26,<2.0",
+    "numpy>=1.26,<3.0",
     "pydantic>=2.0",
 ]
 
