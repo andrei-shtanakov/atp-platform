@@ -199,6 +199,7 @@ class TestNewSuiteScreenIntegration:
             # Should still be on NewSuiteScreen (validation failed)
             assert isinstance(pilot.app.screen, NewSuiteScreen)
 
+    @pytest.mark.slow
     async def test_ctrl_s_submits_form(self) -> None:
         """Test that Ctrl+S submits the form."""
         app = ATPTUI()
