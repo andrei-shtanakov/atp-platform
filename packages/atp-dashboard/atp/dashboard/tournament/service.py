@@ -47,8 +47,12 @@ from atp.dashboard.tournament.models import (
     TournamentStatus,
 )
 from atp.dashboard.tournament.reasons import CancelReason
-from atp.dashboard.tournament.schemas import TournamentAction
-from atp.dashboard.tournament.state import RoundState
+from atp.dashboard.tournament.schemas import (
+    RoundState as _RS_UNION,
+)
+from atp.dashboard.tournament.schemas import (
+    TournamentAction,
+)
 
 logger = logging.getLogger("atp.dashboard.tournament.service")
 
@@ -109,6 +113,7 @@ def _game_for(tournament: Any) -> Any:
 
 
 _ACTION_ADAPTER: TypeAdapter[Any] = TypeAdapter(TournamentAction)
+_ROUND_STATE_ADAPTER: TypeAdapter[Any] = TypeAdapter(_RS_UNION)
 
 
 def _action_hint_for(game_type: str) -> str:
@@ -399,8 +404,12 @@ class TournamentService:
         self,
         tournament_id: int,
         user: User,
-    ) -> RoundState:
+    ) -> Any:
         """Build a player-private RoundState for the current round.
+
+        Returns a pydantic ``PDRoundState`` or ``ElFarolRoundState``
+        (see ``atp.dashboard.tournament.schemas``), chosen by the
+        tournament's game_type discriminator.
 
         v1 slice raises NotFoundError if the user is not a participant
         of the tournament (enumeration-guard: indistinguishable from
@@ -474,19 +483,34 @@ class TournamentService:
             action_history=action_history,
             cumulative_scores=cumulative_scores,
         )
-        return RoundState(
-            tournament_id=tournament_id,
-            round_number=formatted["round_number"],
-            game_type=formatted["game_type"],
-            your_history=formatted["your_history"],
-            opponent_history=formatted["opponent_history"],
-            your_cumulative_score=formatted["your_cumulative_score"],
-            opponent_cumulative_score=formatted["opponent_cumulative_score"],
-            action_schema=formatted["action_schema"],
-            your_turn=formatted["your_turn"],
-            total_rounds=formatted["total_rounds"],
-            extra=formatted.get("extra", {}),
-        )
+
+        # Compute submission state for the active round by inspecting
+        # the already-loaded rounds+actions (no extra DB round-trip).
+        my_participant_id = participants[my_idx].id
+        has_submitted = False
+        for r in rounds:
+            if r.status == RoundStatus.WAITING_FOR_ACTIONS:
+                for a in r.actions:
+                    if a.participant_id == my_participant_id:
+                        has_submitted = True
+                        break
+                break
+
+        # Inject game-specific submission-state field (spec §3.2 step 6).
+        if tournament.game_type == "prisoners_dilemma":
+            formatted["your_turn"] = not has_submitted
+        elif tournament.game_type == "el_farol":
+            formatted["pending_submission"] = not has_submitted
+        else:
+            raise ValidationError(f"unsupported game_type {tournament.game_type!r}")
+
+        # Strip internal-only keys that the wire schemas forbid
+        # (extra="forbid"), then set authoritative server-side fields.
+        formatted.pop("extra", None)
+        formatted["tournament_id"] = tournament_id
+        formatted["game_type"] = tournament.game_type
+
+        return _ROUND_STATE_ADAPTER.validate_python(formatted)
 
     async def submit_action(
         self,

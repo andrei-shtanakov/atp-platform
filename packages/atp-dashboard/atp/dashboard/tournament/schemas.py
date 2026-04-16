@@ -71,6 +71,7 @@ class PDRoundState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     game_type: Literal["prisoners_dilemma"]
+    tournament_id: int
     your_history: list[str]
     opponent_history: list[str]
     your_cumulative_score: float
@@ -79,6 +80,9 @@ class PDRoundState(BaseModel):
     total_rounds: int
     your_turn: bool
     action_schema: dict
+
+    def to_dict(self) -> dict[str, Any]:
+        return self.model_dump()
 
 
 class ElFarolRoundState(BaseModel):
@@ -90,6 +94,7 @@ class ElFarolRoundState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     game_type: Literal["el_farol"]
+    tournament_id: int
     your_history: list[list[int]]
     attendance_by_round: list[list[int]]
     capacity_threshold: int
@@ -101,6 +106,9 @@ class ElFarolRoundState(BaseModel):
     total_rounds: int
     pending_submission: bool
     action_schema: dict
+
+    def to_dict(self) -> dict[str, Any]:
+        return self.model_dump()
 
 
 RoundState = Annotated[

@@ -65,6 +65,7 @@ def test_parses_pd_round_state():
     s = STATE_ADAPTER.validate_python(
         {
             "game_type": "prisoners_dilemma",
+            "tournament_id": 42,
             "your_history": ["cooperate"],
             "opponent_history": ["defect"],
             "your_cumulative_score": 0.0,
@@ -79,12 +80,14 @@ def test_parses_pd_round_state():
         }
     )
     assert isinstance(s, PDRoundState)
+    assert s.tournament_id == 42
 
 
 def test_parses_el_farol_round_state():
     s = STATE_ADAPTER.validate_python(
         {
             "game_type": "el_farol",
+            "tournament_id": 42,
             "your_history": [[0, 3]],
             "attendance_by_round": [[1, 0, 0, 1]],
             "capacity_threshold": 3,
@@ -105,6 +108,7 @@ def test_parses_el_farol_round_state():
     )
     assert isinstance(s, ElFarolRoundState)
     assert s.pending_submission is False
+    assert s.tournament_id == 42
 
 
 def test_pd_roundstate_missing_your_turn_rejected():
@@ -112,6 +116,7 @@ def test_pd_roundstate_missing_your_turn_rejected():
         STATE_ADAPTER.validate_python(
             {
                 "game_type": "prisoners_dilemma",
+                "tournament_id": 1,
                 "your_history": [],
                 "opponent_history": [],
                 "your_cumulative_score": 0.0,
