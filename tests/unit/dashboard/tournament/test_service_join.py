@@ -68,7 +68,7 @@ async def test_create_tournament_rejects_invalid_num_players(
     from atp.dashboard.tournament.service import TournamentService
 
     svc = TournamentService(session, event_bus)
-    with pytest.raises(ValidationError, match="num_players"):
+    with pytest.raises(ValidationError, match="exactly 2 players"):
         await svc.create_tournament(
             creator=admin_user,
             name="single-player-pd",

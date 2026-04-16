@@ -11,13 +11,18 @@ worker, leave/get_history/list, AD-9/AD-10 enforcement, etc.).
 
 from __future__ import annotations
 
+import functools
 import logging
 import os
 import secrets
+import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from game_envs.games.el_farol import MAX_SLOTS_PER_DAY, ElFarolBar, ElFarolConfig
 from game_envs.games.prisoners_dilemma import PrisonersDilemma
+from pydantic import TypeAdapter
+from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,7 +48,14 @@ from atp.dashboard.tournament.models import (
     TournamentStatus,
 )
 from atp.dashboard.tournament.reasons import CancelReason
-from atp.dashboard.tournament.state import RoundState
+from atp.dashboard.tournament.schemas import (
+    ElFarolRoundState,
+    PDRoundState,
+    TournamentAction,
+)
+from atp.dashboard.tournament.schemas import (
+    RoundState as _RS_UNION,
+)
 
 logger = logging.getLogger("atp.dashboard.tournament.service")
 
@@ -61,11 +73,64 @@ TOURNAMENT_PENDING_MAX_WAIT_S: int = int(
     os.environ.get("ATP_TOURNAMENT_PENDING_MAX_WAIT_S", "300")
 )
 
-_SUPPORTED_GAMES = frozenset({"prisoners_dilemma"})
+_SUPPORTED_GAMES = frozenset({"prisoners_dilemma", "el_farol"})
 
-_GAME_INSTANCES: dict[str, Any] = {
-    "prisoners_dilemma": PrisonersDilemma(),
-}
+_PD_SINGLETON: PrisonersDilemma = PrisonersDilemma()
+
+# Hardcoded El Farol V1 preset (spec §3.2).
+_EL_FAROL_V1_NUM_SLOTS = 16
+_EL_FAROL_V1_THRESHOLD_RATIO = 0.6
+_EL_FAROL_V1_MIN_TOTAL_HOURS = 0
+
+# Startup assert — spec §12 silent-min_total_hours mitigation.
+assert _EL_FAROL_V1_MIN_TOTAL_HOURS == 0, (
+    "Raising _EL_FAROL_V1_MIN_TOTAL_HOURS without a Phase C "
+    "finalize_scores hook would silently ignore DQ. See spec §12."
+)
+
+
+@functools.lru_cache(maxsize=64)
+def _el_farol_for(num_players: int) -> ElFarolBar:
+    cap = max(1, int(_EL_FAROL_V1_THRESHOLD_RATIO * num_players))
+    cfg = ElFarolConfig(
+        num_players=num_players,
+        num_slots=_EL_FAROL_V1_NUM_SLOTS,
+        capacity_threshold=cap,
+        min_total_hours=_EL_FAROL_V1_MIN_TOTAL_HOURS,
+    )
+    return ElFarolBar(cfg)
+
+
+def _game_for(tournament: Any) -> Any:
+    """Return the Game instance for a tournament.
+
+    PD uses a module-level singleton; El Farol uses a per-num_players
+    cached factory. Unknown game_type raises ValidationError.
+    """
+    gt = tournament.game_type
+    if gt == "prisoners_dilemma":
+        return _PD_SINGLETON
+    if gt == "el_farol":
+        return _el_farol_for(tournament.num_players)
+    raise ValidationError(f"unsupported game_type {gt!r}")
+
+
+_ACTION_ADAPTER: TypeAdapter[Any] = TypeAdapter(TournamentAction)
+_ROUND_STATE_ADAPTER: TypeAdapter[PDRoundState | ElFarolRoundState] = TypeAdapter(
+    _RS_UNION
+)
+
+
+def _action_hint_for(game_type: str) -> str:
+    """Human-readable expected-shape hint for error messages (spec §4)."""
+    if game_type == "prisoners_dilemma":
+        return "{choice: 'cooperate' | 'defect'}"
+    if game_type == "el_farol":
+        return (
+            "{slots: list[int], values in [0, num_slots-1], "
+            f"unique, max {MAX_SLOTS_PER_DAY} entries}}"
+        )
+    return "{} (unknown game_type)"
 
 
 class TournamentService:
@@ -92,15 +157,19 @@ class TournamentService:
         if game_type not in _SUPPORTED_GAMES:
             raise ValidationError(
                 f"unsupported game_type {game_type!r}; "
-                f"v1 slice supports: {sorted(_SUPPORTED_GAMES)}"
+                f"supports: {sorted(_SUPPORTED_GAMES)}"
             )
-        required_players = _GAME_INSTANCES[game_type].config.num_players
-        if num_players != required_players:
-            _p = "player" if required_players == 1 else "players"
-            raise ValidationError(
-                f"num_players: {game_type} requires exactly {required_players} {_p}, "
-                f"got {num_players}"
-            )
+        if game_type == "prisoners_dilemma":
+            if num_players != 2:
+                raise ValidationError(
+                    f"prisoners_dilemma requires exactly 2 players, got {num_players}"
+                )
+        elif game_type == "el_farol":
+            if not (2 <= num_players <= 20):
+                raise ValidationError(
+                    f"el_farol requires 2 <= num_players <= 20 (phase B bound), "
+                    f"got {num_players}"
+                )
         if total_rounds < 1:
             raise ValidationError("total_rounds must be >= 1")
         if round_deadline_s < 1:
@@ -340,8 +409,12 @@ class TournamentService:
         self,
         tournament_id: int,
         user: User,
-    ) -> RoundState:
+    ) -> PDRoundState | ElFarolRoundState:
         """Build a player-private RoundState for the current round.
+
+        Returns a pydantic ``PDRoundState`` or ``ElFarolRoundState``
+        (see ``atp.dashboard.tournament.schemas``), chosen by the
+        tournament's game_type discriminator.
 
         v1 slice raises NotFoundError if the user is not a participant
         of the tournament (enumeration-guard: indistinguishable from
@@ -407,7 +480,7 @@ class TournamentService:
         if not found_active and rounds:
             current_round_number = len(rounds)
 
-        game = _GAME_INSTANCES[tournament.game_type]
+        game = _game_for(tournament)
         formatted = game.format_state_for_player(
             round_number=current_round_number,
             total_rounds=tournament.total_rounds,
@@ -415,19 +488,40 @@ class TournamentService:
             action_history=action_history,
             cumulative_scores=cumulative_scores,
         )
-        return RoundState(
-            tournament_id=tournament_id,
-            round_number=formatted["round_number"],
-            game_type=formatted["game_type"],
-            your_history=formatted["your_history"],
-            opponent_history=formatted["opponent_history"],
-            your_cumulative_score=formatted["your_cumulative_score"],
-            opponent_cumulative_score=formatted["opponent_cumulative_score"],
-            action_schema=formatted["action_schema"],
-            your_turn=formatted["your_turn"],
-            total_rounds=formatted["total_rounds"],
-            extra=formatted.get("extra", {}),
-        )
+
+        # Compute submission state for the active round by inspecting
+        # the already-loaded rounds+actions (no extra DB round-trip).
+        my_participant_id = participants[my_idx].id
+        if found_active:
+            has_submitted = False
+            for r in rounds:
+                if r.status == RoundStatus.WAITING_FOR_ACTIONS:
+                    for a in r.actions:
+                        if a.participant_id == my_participant_id:
+                            has_submitted = True
+                            break
+                    break
+        else:
+            # No active round (tournament completed, pending, or just
+            # created). Nothing to submit — flip flags to False by
+            # treating the player as already submitted.
+            has_submitted = True
+
+        # Inject game-specific submission-state field (spec §3.2 step 6).
+        if tournament.game_type == "prisoners_dilemma":
+            formatted["your_turn"] = not has_submitted
+        elif tournament.game_type == "el_farol":
+            formatted["pending_submission"] = not has_submitted
+        else:
+            raise ValidationError(f"unsupported game_type {tournament.game_type!r}")
+
+        # Strip internal-only keys that the wire schemas forbid
+        # (extra="forbid"), then set authoritative server-side fields.
+        formatted.pop("extra", None)
+        formatted["tournament_id"] = tournament_id
+        formatted["game_type"] = tournament.game_type
+
+        return _ROUND_STATE_ADAPTER.validate_python(formatted)
 
     async def submit_action(
         self,
@@ -451,6 +545,51 @@ class TournamentService:
             raise ConflictError(
                 f"tournament {tournament_id} is {tournament.status}, not active"
             )
+
+        # Server-side game_type enforcement (spec §4).
+        # Reject cross-game payloads early; inject the server-authoritative
+        # game_type so clients may omit it on the wire.
+        incoming_gt = action.get("game_type") if isinstance(action, dict) else None
+        if incoming_gt is not None and incoming_gt != tournament.game_type:
+            logger.info(
+                "action_rejected",
+                extra={
+                    "event": "action_rejected",
+                    "game_type": tournament.game_type,
+                    "tournament_id": tournament_id,
+                    "validation_error_path": "game_type_mismatch",
+                },
+            )
+            raise ValidationError(
+                f"action game_type {incoming_gt!r} does not match "
+                f"tournament {tournament_id} game_type {tournament.game_type!r}"
+            )
+        if isinstance(action, dict):
+            action_with_type = {**action, "game_type": tournament.game_type}
+        else:
+            action_with_type = action
+
+        try:
+            typed = _ACTION_ADAPTER.validate_python(action_with_type)
+        except PydanticValidationError as e:
+            expected = _action_hint_for(tournament.game_type)
+            errors = e.errors()
+            first_err = errors[0] if errors else {"msg": "unknown"}
+            logger.info(
+                "action_rejected",
+                extra={
+                    "event": "action_rejected",
+                    "game_type": tournament.game_type,
+                    "tournament_id": tournament_id,
+                    "validation_error_path": "client_submission",
+                },
+            )
+            raise ValidationError(
+                f"invalid action for tournament {tournament_id} "
+                f"(game_type={tournament.game_type!r}); "
+                f"expected: {expected}; "
+                f"pydantic: {first_err.get('loc')}: {first_err.get('msg')}"
+            ) from e
 
         my_participant = (
             await self._session.execute(
@@ -479,10 +618,8 @@ class TournamentService:
                 f"tournament {tournament_id} has no round accepting actions"
             )
 
-        game = _GAME_INSTANCES[
-            tournament.game_type
-        ]
-        canonical = game.validate_action(action)
+        game = _game_for(tournament)
+        canonical = game.validate_action(typed.model_dump(exclude={"game_type"}))
 
         existing = (
             await self._session.execute(
@@ -528,6 +665,7 @@ class TournamentService:
         round completed, and either create the next round or finish the
         tournament if this was the last.
         """
+        start = time.perf_counter()
         round_obj.status = "resolving"
         await self._session.flush()
 
@@ -563,7 +701,7 @@ class TournamentService:
             action_by_idx[i] = a
             action_data_by_idx[i] = a.action_data
 
-        game = _GAME_INSTANCES[tournament.game_type]
+        game = _game_for(tournament)
         payoffs = game.compute_round_payoffs(action_data_by_idx)
 
         for i, action in action_by_idx.items():
@@ -575,6 +713,17 @@ class TournamentService:
         if round_obj.round_number >= tournament.total_rounds:
             await self._complete_tournament(tournament)
             await self._session.flush()
+            elapsed_ms = int((time.perf_counter() - start) * 1000)
+            logger.info(
+                "round_resolved",
+                extra={
+                    "event": "round_resolved",
+                    "game_type": tournament.game_type,
+                    "tournament_id": tournament.id,
+                    "round_number": round_obj.round_number,
+                    "round_resolution_ms": elapsed_ms,
+                },
+            )
             return {
                 "status": "round_resolved",
                 "round_number": round_obj.round_number,
@@ -609,6 +758,17 @@ class TournamentService:
             )
         )
 
+        elapsed_ms = int((time.perf_counter() - start) * 1000)
+        logger.info(
+            "round_resolved",
+            extra={
+                "event": "round_resolved",
+                "game_type": tournament.game_type,
+                "tournament_id": tournament.id,
+                "round_number": round_obj.round_number,
+                "round_resolution_ms": elapsed_ms,
+            },
+        )
         return {
             "status": "round_resolved",
             "round_number": round_obj.round_number,
@@ -776,8 +936,10 @@ class TournamentService:
         self,
         user: User,
         status: TournamentStatus | None = None,
+        game_type: str | None = None,
     ) -> list[Tournament]:
-        """Return tournaments visible to `user`, optionally filtered by status.
+        """Return tournaments visible to `user`, optionally filtered by
+        status and/or game_type.
 
         Visibility rule:
         - user.is_admin: all tournaments.
@@ -789,6 +951,8 @@ class TournamentService:
         stmt = select(Tournament)
         if status is not None:
             stmt = stmt.where(Tournament.status == status)
+        if game_type is not None:
+            stmt = stmt.where(Tournament.game_type == game_type)
 
         if not user.is_admin:
             stmt = stmt.where(
@@ -1023,7 +1187,7 @@ class TournamentService:
         )
         all_participant_ids = [row[0] for row in participants_result]
 
-        game = _GAME_INSTANCES[tournament.game_type]
+        game = _game_for(tournament)
         now = _utc_now()
         for participant_id in all_participant_ids:
             if participant_id not in submitted_ids:

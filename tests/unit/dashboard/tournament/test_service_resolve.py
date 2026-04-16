@@ -277,3 +277,184 @@ async def test_force_resolve_round_computes_payoffs(
         select(func.sum(Action.payoff)).where(Action.round_id == round_one.id)
     )
     assert total_payoff == 5.0
+
+
+@pytest.mark.anyio
+async def test_el_farol_resolve_round_writes_payoffs(
+    session: AsyncSession,
+    admin_user: User,
+    alice: User,
+    bob: User,
+    event_bus: TournamentEventBus,
+) -> None:
+    """El Farol round resolves synchronously on last submit; payoffs are written."""
+    from sqlalchemy import select
+
+    from atp.dashboard.tournament.models import Action
+    from atp.dashboard.tournament.service import TournamentService
+
+    svc = TournamentService(session, event_bus)
+    t, _ = await svc.create_tournament(
+        creator=admin_user,
+        name="ef",
+        game_type="el_farol",
+        num_players=2,
+        total_rounds=3,
+        round_deadline_s=30,
+    )
+    await svc.join(t.id, alice, "alice")
+    await svc.join(t.id, bob, "bob")
+
+    # Both players attend slot 0 — with capacity_threshold = max(1, int(0.6*2)) = 1,
+    # slot 0 will be crowded (count >= threshold) → each gets 0 happy - 1 crowded = -1.
+    await svc.submit_action(t.id, alice, action={"slots": [0]})
+    result = await svc.submit_action(t.id, bob, action={"slots": [0]})
+
+    assert result["status"] == "round_resolved"
+    assert result["round_number"] == 1
+
+    actions = (await session.execute(select(Action))).scalars().all()
+    assert len(actions) >= 2
+    for a in actions:
+        assert a.payoff is not None, f"action {a.id} has None payoff"
+        # Both attended the same crowded slot → payoff should be -1.0 each
+        assert a.payoff == -1.0
+
+
+@pytest.mark.anyio
+async def test_el_farol_resolve_round_payoffs_differ_on_choice(
+    session: AsyncSession,
+    admin_user: User,
+    alice: User,
+    bob: User,
+    event_bus: TournamentEventBus,
+) -> None:
+    """Alice attends crowded slot, Bob stays home → different payoffs."""
+    from sqlalchemy import select
+
+    from atp.dashboard.tournament.models import Action, Participant
+    from atp.dashboard.tournament.service import TournamentService
+
+    svc = TournamentService(session, event_bus)
+    t, _ = await svc.create_tournament(
+        creator=admin_user,
+        name="ef",
+        game_type="el_farol",
+        num_players=2,
+        total_rounds=1,
+        round_deadline_s=30,
+    )
+    await svc.join(t.id, alice, "alice")
+    await svc.join(t.id, bob, "bob")
+
+    # Alice picks slot 0 alone (count=1, threshold=1 → CROWDED → -1 payoff)
+    # Bob stays home (slots=[] → 0 payoff)
+    await svc.submit_action(t.id, alice, action={"slots": [0]})
+    await svc.submit_action(t.id, bob, action={"slots": []})
+
+    # Look up participant → action mapping
+    participants = (
+        (
+            await session.execute(
+                select(Participant).where(Participant.tournament_id == t.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    alice_p = next(p for p in participants if p.user_id == alice.id)
+    bob_p = next(p for p in participants if p.user_id == bob.id)
+
+    alice_action = (
+        (
+            await session.execute(
+                select(Action).where(Action.participant_id == alice_p.id)
+            )
+        )
+        .scalars()
+        .first()
+    )
+    bob_action = (
+        (await session.execute(select(Action).where(Action.participant_id == bob_p.id)))
+        .scalars()
+        .first()
+    )
+
+    assert alice_action.payoff == -1.0
+    assert bob_action.payoff == 0.0
+
+
+@pytest.mark.anyio
+async def test_resolve_round_logs_structured_fields(
+    session: AsyncSession,
+    admin_user: User,
+    alice: User,
+    bob: User,
+    event_bus: TournamentEventBus,
+    caplog,
+) -> None:
+    import logging
+
+    from atp.dashboard.tournament.service import TournamentService
+
+    svc = TournamentService(session, event_bus)
+    t, _ = await svc.create_tournament(
+        creator=admin_user,
+        name="ef-logs",
+        game_type="el_farol",
+        num_players=2,
+        total_rounds=1,
+        round_deadline_s=30,
+    )
+    await svc.join(t.id, alice, "alice")
+    await svc.join(t.id, bob, "bob")
+
+    with caplog.at_level(logging.INFO, logger="atp.dashboard.tournament.service"):
+        await svc.submit_action(t.id, alice, action={"slots": [0]})
+        await svc.submit_action(t.id, bob, action={"slots": [0]})
+
+    rec = next(
+        r for r in caplog.records if getattr(r, "event", None) == "round_resolved"
+    )
+    assert rec.game_type == "el_farol"
+    assert rec.tournament_id == t.id
+    assert rec.round_number == 1
+    assert rec.round_resolution_ms >= 0
+
+
+@pytest.mark.anyio
+async def test_submit_action_rejected_emits_structured_log(
+    session: AsyncSession,
+    admin_user: User,
+    alice: User,
+    bob: User,
+    event_bus: TournamentEventBus,
+    caplog,
+) -> None:
+    import logging
+
+    from atp.dashboard.tournament.errors import ValidationError
+    from atp.dashboard.tournament.service import TournamentService
+
+    svc = TournamentService(session, event_bus)
+    t, _ = await svc.create_tournament(
+        creator=admin_user,
+        name="ef-rej",
+        game_type="el_farol",
+        num_players=2,
+        total_rounds=1,
+        round_deadline_s=30,
+    )
+    await svc.join(t.id, alice, "alice")
+    await svc.join(t.id, bob, "bob")
+
+    with caplog.at_level(logging.INFO, logger="atp.dashboard.tournament.service"):
+        with pytest.raises(ValidationError):
+            # wrong shape for el_farol (PD's choice)
+            await svc.submit_action(t.id, alice, action={"choice": "cooperate"})
+
+    rec = next(
+        r for r in caplog.records if getattr(r, "event", None) == "action_rejected"
+    )
+    assert rec.game_type == "el_farol"
+    assert rec.tournament_id == t.id
