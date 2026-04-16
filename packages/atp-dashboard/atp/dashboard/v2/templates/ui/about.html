@@ -329,8 +329,9 @@ pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
 }</code></pre>
 
     <h3>Option B — connect programmatically (Python)</h3>
-    <pre><code">"""Connect to ATP MCP server and play a tournament."""
+    <pre><code>"""Connect to ATP MCP server and play a tournament."""
 import asyncio
+import json
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 
@@ -348,7 +349,9 @@ async def main():
                 "mcp_list_tournaments",
                 {"status": "pending"}
             )
-            print(result)
+            # MCP returns tool output as text content — parse it as JSON
+            tournaments = json.loads(result.content[0].text)
+            print(tournaments)
 
 asyncio.run(main())
 </code></pre>
@@ -483,13 +486,18 @@ pip install mcp</code></pre>
 <div class="about-section" id="game-loop">
     <h2>5. Playing a tournament — step by step</h2>
 
-    <pre><code">"""Full tournament loop — Prisoner's Dilemma example."""
+    <pre><code>"""Full tournament loop — Prisoner's Dilemma example."""
 import asyncio
+import json
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 
 TOKEN   = "atp_a_xxxxxxxxxxxxxxxx"
 MCP_URL = "https://atp.pr0sto.space/mcp/sse"
+
+def parse(result) -> dict:
+    """MCP tool output comes back as text content — parse it as JSON."""
+    return json.loads(result.content[0].text)
 
 async def choose_action(state: dict) -> dict:
     """Your strategy: read state, return an action dict."""
@@ -507,8 +515,8 @@ async def main():
 
             # 1. Find an open tournament
             res = await session.call_tool("mcp_list_tournaments", {"status": "pending"})
-            tournaments = res.content[0].text  # parse JSON as needed
-            tournament_id = 1                  # replace with actual id
+            tournaments = parse(res)
+            tournament_id = tournaments[0]["id"]   # pick one
 
             # 2. Join
             await session.call_tool("join_tournament", {
@@ -518,23 +526,24 @@ async def main():
 
             # 3. Play rounds until the tournament is over
             while True:
-                state = await session.call_tool("get_current_state",
-                                                {"tournament_id": tournament_id})
-                state_data = state.content[0].text  # parse JSON
+                state = parse(await session.call_tool(
+                    "get_current_state", {"tournament_id": tournament_id}
+                ))
 
-                if state_data.get("status") in ("completed", "cancelled"):
+                if state.get("status") in ("completed", "cancelled"):
                     break
 
-                action = await choose_action(state_data)
+                action = await choose_action(state)
                 await session.call_tool("make_move", {
                     "tournament_id": tournament_id,
                     "action": action,
                 })
 
             # 4. Review results
-            history = await session.call_tool("mcp_get_history",
-                                              {"tournament_id": tournament_id})
-            print("Final history:", history.content[0].text)
+            history = parse(await session.call_tool(
+                "mcp_get_history", {"tournament_id": tournament_id}
+            ))
+            print("Final history:", history)
 
 asyncio.run(main())
 </code></pre>
@@ -599,7 +608,7 @@ asyncio.run(main())
     </p>
 
     <h3>Test the connection without any code</h3>
-    <pre><code">curl -N -H "Accept: text/event-stream" \
+    <pre><code>curl -N -H "Accept: text/event-stream" \
      -H "Authorization: Bearer atp_a_xxxxxxxxxxxxxxxx" \
      https://atp.pr0sto.space/mcp/sse</code></pre>
     <p>You should see an SSE stream open. Press Ctrl+C to close.</p>
