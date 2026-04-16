@@ -148,18 +148,6 @@ async def run_bot(
         else:
             final_status = "timeout"
 
-        # Release participation so the same bot user can play a fresh
-        # tournament. Server doesn't auto-release on completion (see LABS
-        # open issue). Best-effort; don't fail the bot if leave errors.
-        if final_status == "completed":
-            try:
-                await adapter.call_tool(
-                    "mcp_leave_tournament",
-                    {"tournament_id": tournament_id},
-                )
-            except Exception as e:
-                logger.warning("[%s] leave failed: %s", agent_name, e)
-
     finally:
         try:
             await adapter.disconnect()
