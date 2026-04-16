@@ -1444,15 +1444,21 @@ async def ui_revoke_token(
     return RedirectResponse(url=target, status_code=303)  # type: ignore[return-value]
 
 
-@router.get("/tokens", response_class=HTMLResponse)
-@limiter.limit("120/minute")
-async def ui_tokens(request: Request, session: DBSession) -> HTMLResponse:
-    """My Tokens page."""
-    user = await _get_ui_user(request, session)
-    if not user:
-        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+async def _render_tokens_page(
+    request: Request,
+    session: DBSession,
+    user: User,
+    *,
+    new_token: str | None = None,
+    error: str | None = None,
+    status_code: int = 200,
+) -> HTMLResponse:
+    """Shared renderer for the /ui/tokens page.
 
-    # Single query: tokens + agent name via LEFT JOIN
+    Used by both the GET (list) and POST (create) handlers so the
+    newly-minted raw token can be shown inline on submit without a
+    second redirect.
+    """
     token_result = await session.execute(
         select(APIToken, Agent.name.label("agent_name"))
         .outerjoin(Agent, APIToken.agent_id == Agent.id)
@@ -1482,7 +1488,79 @@ async def ui_tokens(request: Request, session: DBSession) -> HTMLResponse:
             "user": user,
             "tokens": tokens,
             "now": datetime.now(),
+            "new_token": new_token,
+            "error": error,
         },
+        status_code=status_code,
+    )
+
+
+@router.get("/tokens", response_class=HTMLResponse)
+@limiter.limit("120/minute")
+async def ui_tokens(request: Request, session: DBSession) -> HTMLResponse:
+    """My Tokens page."""
+    user = await _get_ui_user(request, session)
+    if not user:
+        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+
+    return await _render_tokens_page(request, session, user)
+
+
+@router.post("/tokens", response_class=HTMLResponse)
+@limiter.limit("10/minute")
+async def ui_create_user_token(
+    request: Request,
+    session: DBSession,
+    name: str = Form(...),
+    expires_in_days: str = Form(""),
+) -> HTMLResponse:
+    """Create a user-level API token (``atp_u_...``) via the UI form.
+
+    Companion of ``POST /ui/agents/{id}/tokens`` which creates
+    agent-scoped tokens. Without this handler, user-level tokens could
+    only be minted via ``POST /api/v1/tokens`` with curl — a friction
+    point visible from the public About quickstart (PR #34).
+    """
+    from atp.dashboard.v2.routes.token_api import create_token_for_user
+
+    user = await _get_ui_user(request, session)
+    if not user:
+        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+
+    days: int | None = None
+    raw_days = expires_in_days.strip()
+    if raw_days:
+        try:
+            days = int(raw_days)
+        except ValueError:
+            return await _render_tokens_page(
+                request,
+                session,
+                user,
+                error="Expiry must be a whole number of days (or blank)",
+                status_code=400,
+            )
+
+    try:
+        _, raw = await create_token_for_user(
+            session=session,
+            user=user,
+            name=name.strip(),
+            agent_id=None,
+            expires_in_days=days,
+        )
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Failed to create token"
+        return await _render_tokens_page(
+            request,
+            session,
+            user,
+            error=detail,
+            status_code=exc.status_code,
+        )
+
+    return await _render_tokens_page(
+        request, session, user, new_token=raw, status_code=201
     )
 
 
