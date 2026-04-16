@@ -1,0 +1,58 @@
+# N=5 El Farol tournament compose harness.
+#
+# Status: deployment template for Phase B E2E validation (spec §7.3).
+#         Assumes an MCP-driver image `el-farol-driver` that connects
+#         to ATP's /mcp endpoint, joins the tournament named by
+#         TOURNAMENT_ID, and plays it to completion via `make_move`.
+#         The driver is tracked separately (follow-up to PR-2).
+#
+# Spin up (once the driver image exists):
+#   export TOURNAMENT_ID=<id from POST /api/v1/tournaments>
+#   export ATP_MCP_URL=https://atp.pr0sto.space/mcp
+#   export ATP_TOKEN_LLM_0=atp_a_...
+#   export ATP_TOKEN_LLM_1=atp_a_...
+#   export ATP_TOKEN_LLM_2=atp_a_...
+#   export ATP_TOKEN_GREEDY=atp_a_...
+#   export ATP_TOKEN_RANDOM=atp_a_...
+#   export OPENAI_API_KEY=sk-...
+#   podman-compose -f demo-game/compose.el-farol.yml up
+#
+# Bot roster: 3 LLM bots + 2 built-in deterministic strategies.
+
+services:
+  llm-bot-0:
+    build:
+      context: ..
+      dockerfile: demo-game/Containerfile.el-farol
+    environment:
+      ATP_MCP_URL: ${ATP_MCP_URL:-http://host.docker.internal:8080/mcp}
+      ATP_TOKEN: ${ATP_TOKEN_LLM_0}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      BOT_STRATEGY: llm
+      TOURNAMENT_ID: ${TOURNAMENT_ID}
+
+  llm-bot-1:
+    extends:
+      service: llm-bot-0
+    environment:
+      ATP_TOKEN: ${ATP_TOKEN_LLM_1}
+
+  llm-bot-2:
+    extends:
+      service: llm-bot-0
+    environment:
+      ATP_TOKEN: ${ATP_TOKEN_LLM_2}
+
+  greedy-bot:
+    extends:
+      service: llm-bot-0
+    environment:
+      ATP_TOKEN: ${ATP_TOKEN_GREEDY}
+      BOT_STRATEGY: greedy
+
+  random-bot:
+    extends:
+      service: llm-bot-0
+    environment:
+      ATP_TOKEN: ${ATP_TOKEN_RANDOM}
+      BOT_STRATEGY: random
