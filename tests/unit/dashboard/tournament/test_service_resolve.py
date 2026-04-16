@@ -660,3 +660,133 @@ async def test_stag_hunt_mutual_stag_pays_best(
     ).scalar_one()
     assert a_action.payoff == 4.0
     assert b_action.payoff == 4.0
+
+
+@pytest.mark.anyio
+async def test_full_3_round_battle_of_sexes_tournament_completes(
+    session: AsyncSession,
+    admin_user: User,
+    alice: User,
+    bob: User,
+    event_bus: TournamentEventBus,
+) -> None:
+    """3-round BoS at the service level.
+
+    Alice (p0) and Bob (p1) both pick A every round → alice gets
+    preferred_a=3.0, bob gets other_a=2.0. Over 3 rounds: 9.0 vs 6.0.
+    """
+    from sqlalchemy import select
+
+    from atp.dashboard.tournament.models import Participant
+    from atp.dashboard.tournament.service import TournamentService
+
+    svc = TournamentService(session, event_bus)
+    t, _ = await svc.create_tournament(
+        creator=admin_user,
+        name="bos",
+        game_type="battle_of_sexes",
+        num_players=2,
+        total_rounds=3,
+        round_deadline_s=30,
+    )
+    await svc.join(t.id, alice, "alice")
+    await svc.join(t.id, bob, "bob")
+
+    for round_n in range(1, 4):
+        await svc.submit_action(t.id, alice, action={"choice": "A"})
+        result = await svc.submit_action(t.id, bob, action={"choice": "A"})
+        assert result["round_number"] == round_n
+
+    await session.refresh(t)
+    assert t.status == "completed"
+
+    parts = (
+        (
+            await session.execute(
+                select(Participant).where(Participant.tournament_id == t.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    by_user = {p.user_id: p for p in parts}
+    assert by_user[alice.id].total_score == 9.0  # preferred × 3
+    assert by_user[bob.id].total_score == 6.0  # other × 3
+    for p in parts:
+        assert p.released_at is not None
+
+
+@pytest.mark.anyio
+async def test_battle_of_sexes_mismatch_pays_zero(
+    session: AsyncSession,
+    admin_user: User,
+    alice: User,
+    bob: User,
+    event_bus: TournamentEventBus,
+) -> None:
+    """Alice picks A, Bob picks B → both get mismatch (0.0)."""
+    from sqlalchemy import select
+
+    from atp.dashboard.tournament.models import Action, Participant
+    from atp.dashboard.tournament.service import TournamentService
+
+    svc = TournamentService(session, event_bus)
+    t, _ = await svc.create_tournament(
+        creator=admin_user,
+        name="bos-mismatch",
+        game_type="battle_of_sexes",
+        num_players=2,
+        total_rounds=1,
+        round_deadline_s=30,
+    )
+    await svc.join(t.id, alice, "alice")
+    await svc.join(t.id, bob, "bob")
+
+    await svc.submit_action(t.id, alice, action={"choice": "A"})
+    await svc.submit_action(t.id, bob, action={"choice": "B"})
+
+    parts = (
+        (
+            await session.execute(
+                select(Participant).where(Participant.tournament_id == t.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    alice_p = next(p for p in parts if p.user_id == alice.id)
+    bob_p = next(p for p in parts if p.user_id == bob.id)
+    for p_id in (alice_p.id, bob_p.id):
+        a = (
+            await session.execute(select(Action).where(Action.participant_id == p_id))
+        ).scalar_one()
+        assert a.payoff == 0.0
+
+
+@pytest.mark.anyio
+async def test_battle_of_sexes_state_exposes_your_preferred(
+    session: AsyncSession,
+    admin_user: User,
+    alice: User,
+    bob: User,
+    event_bus: TournamentEventBus,
+) -> None:
+    """RoundState.your_preferred differs per participant_idx."""
+    from atp.dashboard.tournament.service import TournamentService
+
+    svc = TournamentService(session, event_bus)
+    t, _ = await svc.create_tournament(
+        creator=admin_user,
+        name="bos-preferred",
+        game_type="battle_of_sexes",
+        num_players=2,
+        total_rounds=1,
+        round_deadline_s=30,
+    )
+    await svc.join(t.id, alice, "alice")
+    await svc.join(t.id, bob, "bob")
+
+    alice_state = await svc.get_state_for(t.id, alice)
+    bob_state = await svc.get_state_for(t.id, bob)
+    assert alice_state.your_preferred == "A"
+    assert bob_state.your_preferred == "B"

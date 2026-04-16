@@ -65,8 +65,18 @@ class SHAction(BaseModel):
     choice: Literal["stag", "hare"]
 
 
+class BoSAction(BaseModel):
+    """Battle of the Sexes submit action. ``game_type`` is server-injected; clients may
+    omit it on the wire (see spec §4)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    game_type: Literal["battle_of_sexes"]
+    choice: Literal["A", "B"]
+
+
 TournamentAction = Annotated[
-    PDAction | SHAction | ElFarolAction,
+    PDAction | SHAction | BoSAction | ElFarolAction,
     Field(discriminator="game_type"),
 ]
 
@@ -147,7 +157,36 @@ class SHRoundState(BaseModel):
         return self.model_dump()
 
 
+class BoSRoundState(BaseModel):
+    """Wire schema for Battle of the Sexes round state.
+
+    Asymmetric cousin of ``SHRoundState``: adds ``your_preferred``
+    (``"A"`` for participant 0, ``"B"`` for participant 1) so a client
+    can reason about its own focal point without tracking participant
+    indices itself.
+
+    ``extra="forbid"`` — service strips internal-only keys before sending.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    game_type: Literal["battle_of_sexes"]
+    tournament_id: int
+    your_history: list[str]
+    opponent_history: list[str]
+    your_cumulative_score: float
+    opponent_cumulative_score: float
+    your_preferred: Literal["A", "B"]
+    round_number: int
+    total_rounds: int
+    your_turn: bool
+    action_schema: dict
+
+    def to_dict(self) -> dict[str, Any]:
+        return self.model_dump()
+
+
 RoundState = Annotated[
-    PDRoundState | SHRoundState | ElFarolRoundState,
+    PDRoundState | SHRoundState | BoSRoundState | ElFarolRoundState,
     Field(discriminator="game_type"),
 ]

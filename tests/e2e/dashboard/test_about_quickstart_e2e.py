@@ -71,7 +71,9 @@ _EXPECTED_UI_LINKS = frozenset({"/ui/login", "/ui/agents", "/ui/tokens"})
 
 # Games the About page lists as available (not greyed-out "coming soon").
 # Adding one requires matching server-side dispatcher support first.
-_EXPECTED_AVAILABLE_GAMES = frozenset({"prisoners_dilemma", "el_farol", "stag_hunt"})
+_EXPECTED_AVAILABLE_GAMES = frozenset(
+    {"prisoners_dilemma", "el_farol", "stag_hunt", "battle_of_sexes"}
+)
 
 
 def _extract_internal_links(html: str) -> set[str]:

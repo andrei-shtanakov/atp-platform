@@ -230,3 +230,98 @@ class BattleOfSexes(Game):
         }
         p0, p1 = matrix[(a0, a1)]
         return {"player_0": p0, "player_1": p1}
+
+    # ------------------------------------------------------------------
+    # Service-facing methods (mirror PrisonersDilemma / StagHunt surface
+    # used by the tournament service — see packages/atp-dashboard/.../
+    # tournament/service.py).
+    # ------------------------------------------------------------------
+
+    def format_state_for_player(
+        self,
+        round_number: int,
+        total_rounds: int,
+        participant_idx: int,
+        action_history: list[dict[str, Any]],
+        cumulative_scores: list[float],
+    ) -> dict[str, Any]:
+        """Build a player-private RoundState dict for the given player.
+
+        Unlike PD and Stag Hunt, BoS is asymmetric — player 0 prefers A,
+        player 1 prefers B. The dict exposes which role the caller plays
+        via ``your_preferred`` so a client can reason about whose focal
+        point matters for this round.
+        """
+        opponent_idx = 1 - participant_idx
+        your_history = [
+            row["actions"][participant_idx]["choice"] for row in action_history
+        ]
+        opponent_history = [
+            row["actions"][opponent_idx]["choice"] for row in action_history
+        ]
+        return {
+            "tournament_id": -1,
+            "round_number": round_number,
+            "game_type": "battle_of_sexes",
+            "your_history": your_history,
+            "opponent_history": opponent_history,
+            "your_cumulative_score": cumulative_scores[participant_idx],
+            "opponent_cumulative_score": cumulative_scores[opponent_idx],
+            "your_preferred": A if participant_idx == 0 else B,
+            "action_schema": {
+                "type": "choice",
+                "options": [A, B],
+            },
+            "your_turn": True,  # service overwrites based on DB submission state
+            "total_rounds": total_rounds,
+            "extra": {},
+        }
+
+    def validate_action(self, raw: Any) -> dict[str, str]:
+        """Validate a client-submitted action and return canonical form.
+
+        Strict path used by tournament submit. Raises ValidationError on
+        any malformed input.
+        """
+        from game_envs.core.errors import (
+            ValidationError,  # local import to avoid cycles
+        )
+
+        if not isinstance(raw, dict):
+            raise ValidationError(f"action must be a dict, got {type(raw).__name__}")
+        choice = raw.get("choice")
+        if choice not in (A, B):
+            raise ValidationError(f"choice must be {A!r} or {B!r}, got {choice!r}")
+        return {"choice": choice}
+
+    def default_action_on_timeout(self) -> dict[str, str]:
+        """Action substituted when a participant misses the round deadline.
+
+        Defaults to ``A`` — the conventional Schelling focal point for
+        BoS write-ups (most English-language game-theory texts order the
+        two options with A first and use A-A as the "expected" focal
+        coordination). Both timed-out players defaulting to A gives them
+        the mutual-coordination payoff.
+
+        Note: the ``Game.default_action_on_timeout()`` signature is
+        ``() -> action``, not ``(participant_idx) -> action``, so the
+        asymmetric game cannot pick per-player defaults without a
+        signature change across all 3 existing games (PD, SH, EF). That
+        refactor is deferred. For now, both players timing out on BoS
+        both default to A, producing the (preferred_a, other_a) payoff.
+        """
+        return {"choice": A}
+
+    def compute_round_payoffs(self, actions: dict[int, dict[str, Any]]) -> list[float]:
+        """Generic entry point used by the tournament service.
+
+        Args:
+            actions: Mapping participant_idx -> action_data dict.
+
+        Returns:
+            List of payoffs in participant_idx order.
+        """
+        a0 = actions[0]["choice"]
+        a1 = actions[1]["choice"]
+        payoffs = self._compute_payoffs(a0, a1)
+        return [payoffs["player_0"], payoffs["player_1"]]
