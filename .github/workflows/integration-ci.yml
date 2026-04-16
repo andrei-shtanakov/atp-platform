@@ -61,8 +61,12 @@ jobs:
         run: uv sync --all-extras --dev
 
       - name: Run atp-platform tests
+        # Exclude ``slow`` tests — uvicorn+FastMCP SSE flakes (LABS-20/74)
+        # and container-registry-less tests run in the dedicated
+        # ``tournament-e2e`` job in ci.yml, not here. Keeps integration
+        # CI green and fast.
         run: |
-          uv run pytest tests/ -v \
+          uv run pytest tests/ -v -m "not slow" \
             --cov=atp \
             --cov-report=term-missing \
             --cov-fail-under=80
