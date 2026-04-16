@@ -7,6 +7,7 @@ compute_round_payoffs.
 """
 
 import pytest
+
 from game_envs.core.errors import ValidationError
 from game_envs.games.stag_hunt import HARE, STAG, SHConfig, StagHunt
 
