@@ -106,6 +106,67 @@ async def test_el_farol_submit_happy(
     assert result["status"] == "waiting"
 
 
+async def _make_public_goods(
+    svc: TournamentService, admin: User, a: User, b: User
+) -> object:
+    t, _ = await svc.create_tournament(
+        creator=admin,
+        name="pg",
+        game_type="public_goods",
+        num_players=2,
+        total_rounds=3,
+        round_deadline_s=30,
+    )
+    await svc.join(t.id, a, "alice")
+    await svc.join(t.id, b, "bob")
+    return t
+
+
+@pytest.mark.anyio
+async def test_public_goods_submit_happy(
+    session: AsyncSession,
+    admin_user: User,
+    alice: User,
+    bob: User,
+    event_bus: TournamentEventBus,
+) -> None:
+    svc = TournamentService(session, event_bus)
+    t = await _make_public_goods(svc, admin_user, alice, bob)
+    result = await svc.submit_action(t.id, alice, action={"contribution": 7.5})
+    assert result["status"] == "waiting"
+
+
+@pytest.mark.anyio
+async def test_public_goods_submit_rejects_negative(
+    session: AsyncSession,
+    admin_user: User,
+    alice: User,
+    bob: User,
+    event_bus: TournamentEventBus,
+) -> None:
+    svc = TournamentService(session, event_bus)
+    t = await _make_public_goods(svc, admin_user, alice, bob)
+    with pytest.raises(ValidationError):
+        await svc.submit_action(t.id, alice, action={"contribution": -1.0})
+
+
+@pytest.mark.anyio
+async def test_public_goods_hint_in_error_message(
+    session: AsyncSession,
+    admin_user: User,
+    alice: User,
+    bob: User,
+    event_bus: TournamentEventBus,
+) -> None:
+    svc = TournamentService(session, event_bus)
+    t = await _make_public_goods(svc, admin_user, alice, bob)
+    with pytest.raises(ValidationError) as exc:
+        await svc.submit_action(t.id, alice, action={"choice": "cooperate"})
+    text = str(exc.value)
+    assert "public_goods" in text
+    assert "contribution" in text
+
+
 async def _alice_action(session: AsyncSession, alice_user_id: int) -> Action:
     stmt = (
         select(Action)

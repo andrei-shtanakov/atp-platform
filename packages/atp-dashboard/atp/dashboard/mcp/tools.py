@@ -215,6 +215,9 @@ async def make_move(
             - el_farol: ``{"slots": list[int], values in [0, num_slots-1],
               unique, max 8 entries}``. El Farol players may attend at most
               8 of 16 slots per day.
+            - public_goods: ``{"contribution": float in [0, endowment]}``.
+              Endowment defaults to 20; your contribution is pooled,
+              multiplied by 1.6, and split equally among all N players.
 
             Optional for every game type:
 
@@ -301,7 +304,8 @@ async def list_tournaments(
 
     Args:
         status: optional filter; one of the TournamentStatus values.
-        game_type: optional filter; "prisoners_dilemma" | "el_farol".
+        game_type: optional filter; one of "prisoners_dilemma" |
+            "stag_hunt" | "battle_of_sexes" | "el_farol" | "public_goods".
     """
     from atp.dashboard.tournament.models import TournamentStatus
 
@@ -413,7 +417,8 @@ async def mcp_list_tournaments(
 
     Args:
         status: optional; one of the TournamentStatus values.
-        game_type: optional; "prisoners_dilemma" | "el_farol".
+        game_type: optional; one of "prisoners_dilemma" | "stag_hunt" |
+            "battle_of_sexes" | "el_farol" | "public_goods".
     """
     from atp.dashboard.mcp.notifications import (
         resolve_user_from_ctx,

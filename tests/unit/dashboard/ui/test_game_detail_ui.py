@@ -78,8 +78,10 @@ async def test_bos_detail_mentions_asymmetry(client: AsyncClient):
 @pytest.mark.anyio
 async def test_coming_soon_game_shows_disclaimer(client: AsyncClient):
     """Games with available=False render the 'tournaments coming soon' CTA."""
-    # public_goods is available=False in GAME_COPY
-    resp = await client.get("/ui/games/public_goods")
+    # auction is one of the still-coming-soon games (along with
+    # colonel_blotto and congestion). public_goods used to live here
+    # but shipped as a live game in the public-goods tournament rollout.
+    resp = await client.get("/ui/games/auction")
     assert resp.status_code == 200
     assert "coming soon" in resp.text.lower()
     # Full rules still shown

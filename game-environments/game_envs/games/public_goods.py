@@ -407,3 +407,128 @@ class PublicGoodsGame(Game):
                     f"Future payoffs are discounted by {c.discount_factor} per round."
                 )
         return "\n".join(lines)
+
+    # ------------------------------------------------------------------
+    # Tournament-facing protocol methods
+    #
+    # These are the strict, server-side entry points used by the ATP
+    # tournament engine; they sit alongside the simulation API above
+    # (``step``, ``observe``, ``get_payoffs``) and are deliberately
+    # non-stateful — each is a pure function of its inputs and the
+    # frozen config. The tournament always runs the basic (no-punishment)
+    # variant, so these methods assume ``PGStage.CONTRIBUTE`` semantics
+    # and ignore ``_stage`` / ``_round_contributions``.
+    # ------------------------------------------------------------------
+
+    def validate_action(self, raw: Any) -> dict[str, float]:
+        """Validate a client-submitted contribution and return canonical form.
+
+        Strict path — used by ``TournamentService.submit_action``. Accepts
+        only ``{"contribution": <number>}`` with the value in
+        ``[0, endowment]``. Numeric values are normalized to ``float``.
+        """
+        from game_envs.core.errors import (
+            ValidationError,
+        )
+
+        if not isinstance(raw, dict):
+            raise ValidationError(f"action must be a dict, got {type(raw).__name__}")
+        value = raw.get("contribution")
+        if value is None:
+            raise ValidationError("action must have field 'contribution'")
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            raise ValidationError(
+                f"contribution must be a number, got {type(value).__name__}"
+            )
+        endowment = self._pg_config.endowment
+        contribution = float(value)
+        if contribution < 0 or contribution > endowment:
+            raise ValidationError(
+                f"contribution must be in [0, {endowment}], got {contribution}"
+            )
+        return {"contribution": contribution}
+
+    def default_action_on_timeout(self) -> dict[str, float]:
+        """Free-ride on timeout — contribute zero.
+
+        Contributing nothing is individually rational and matches the
+        unique Nash equilibrium of the one-shot game, so it's the safest
+        default when a player fails to submit in time.
+        """
+        return {"contribution": 0.0}
+
+    def format_state_for_player(
+        self,
+        round_number: int,
+        total_rounds: int,
+        participant_idx: int,
+        action_history: list[dict[str, Any]],
+        cumulative_scores: list[float],
+    ) -> dict[str, Any]:
+        """Per-player round state for the MCP ``get_current_state`` tool.
+
+        Public Goods is fully observable after each round — the server
+        publishes every player's contribution. We surface both your own
+        history (``your_history``) and the full per-round vector
+        (``all_contributions_by_round``) so bots can react to specific
+        free-riders.
+
+        Does NOT include ``pending_submission`` — that's a service-level
+        concern injected by ``TournamentService.get_state_for``.
+        """
+        c = self._pg_config
+        your_history: list[float] = []
+        all_contributions_by_round: list[list[float]] = []
+        n = c.num_players
+        for row in action_history:
+            round_actions = row.get("actions", {})
+            per_player: list[float] = []
+            for idx in range(n):
+                raw = round_actions.get(idx, {}) or {}
+                per_player.append(float(raw.get("contribution", 0.0)))
+            all_contributions_by_round.append(per_player)
+            your_history.append(per_player[participant_idx])
+
+        return {
+            "tournament_id": -1,
+            "game_type": "public_goods",
+            "round_number": round_number,
+            "total_rounds": total_rounds,
+            "your_history": your_history,
+            "all_contributions_by_round": all_contributions_by_round,
+            "your_cumulative_score": cumulative_scores[participant_idx],
+            "all_scores": list(cumulative_scores),
+            "your_participant_idx": participant_idx,
+            "num_players": n,
+            "endowment": c.endowment,
+            "multiplier": c.multiplier,
+            "action_schema": {
+                "type": "float",
+                "value_range": [0.0, c.endowment],
+            },
+            "extra": {},
+        }
+
+    def compute_round_payoffs(self, actions: dict[int, dict[str, Any]]) -> list[float]:
+        """Per-round payoff in participant-idx order (no discounting).
+
+        Mirrors ``_step_basic`` but expressed over integer indices that
+        the tournament service uses. Clamps missing / malformed entries
+        to 0 contribution so timeout-default actions flow through
+        cleanly.
+
+        Args:
+            actions: ``participant_idx -> {"contribution": float}``.
+
+        Returns:
+            List of per-round payoffs indexed by participant_idx.
+        """
+        c = self._pg_config
+        n = c.num_players
+        contributions: list[float] = []
+        for idx in range(n):
+            raw = actions.get(idx, {}) or {}
+            contributions.append(float(raw.get("contribution", 0.0)))
+        total_pool = sum(contributions)
+        share = c.multiplier * total_pool / n
+        return [c.endowment - contributions[i] + share for i in range(n)]
