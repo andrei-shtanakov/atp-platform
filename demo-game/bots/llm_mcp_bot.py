@@ -48,20 +48,41 @@ can swap OpenAI/Anthropic factories without touching the MCP loop.
 """
 
 
+LLM_CALL_TIMEOUT_S = 15.0
+"""Hard ceiling on a single LLM completion call.
+
+Independent of the MCP ``timeout_seconds`` and the tournament's
+``round_deadline_s``. Set well below a typical 60s round deadline so
+that even a slow LLM leaves room to submit a fallback move in time.
+"""
+
+
 async def llm_decide_action(
     state: dict[str, Any],
     *,
     completion_fn: CompletionFn,
     rng: random.Random,
+    call_timeout_s: float = LLM_CALL_TIMEOUT_S,
 ) -> dict[str, Any]:
     """Return an action dict ready for ``make_move``.
 
-    Calls ``completion_fn`` exactly once. Any exception, any malformed
-    JSON, and any out-of-range action all degrade to a random valid
-    fallback — the bot must never crash the tournament over an LLM hiccup.
+    Calls ``completion_fn`` exactly once, under an ``asyncio.wait_for``
+    ceiling. Any timeout, exception, malformed JSON, or out-of-range
+    action degrades to a random valid fallback — the bot must never
+    crash the tournament over an LLM hiccup, and must never block
+    longer than one round on an unresponsive provider.
     """
     try:
-        raw = await completion_fn(SYSTEM_PROMPT, build_user_prompt(state))
+        raw = await asyncio.wait_for(
+            completion_fn(SYSTEM_PROMPT, build_user_prompt(state)),
+            timeout=call_timeout_s,
+        )
+    except TimeoutError:
+        logger.warning(
+            "llm completion timed out after %.1fs; using random fallback",
+            call_timeout_s,
+        )
+        return random_action(state, rng)
     except Exception as exc:
         logger.warning("llm completion failed: %s; using random fallback", exc)
         return random_action(state, rng)
@@ -83,7 +104,9 @@ def build_openai_completion_fn(*, model: str, api_key: str) -> CompletionFn:
     """Return a ``CompletionFn`` backed by OpenAI Chat Completions."""
     from openai import AsyncOpenAI
 
-    client = AsyncOpenAI(api_key=api_key)
+    # Explicit client-level timeout so a stuck connection surfaces quickly.
+    # The outer asyncio.wait_for in llm_decide_action is the hard cap.
+    client = AsyncOpenAI(api_key=api_key, timeout=LLM_CALL_TIMEOUT_S)
 
     async def _call(system: str, user: str) -> str:
         resp = await client.chat.completions.create(
@@ -104,7 +127,7 @@ def build_anthropic_completion_fn(*, model: str, api_key: str) -> CompletionFn:
     """Return a ``CompletionFn`` backed by Anthropic Messages."""
     from anthropic import AsyncAnthropic
 
-    client = AsyncAnthropic(api_key=api_key)
+    client = AsyncAnthropic(api_key=api_key, timeout=LLM_CALL_TIMEOUT_S)
 
     async def _call(system: str, user: str) -> str:
         resp = await client.messages.create(
@@ -215,7 +238,13 @@ async def run_bot(
             )
             state = _unwrap_tool_result(state_raw)
 
+            # Wire schemas differ by game: PDRoundState / SHRoundState /
+            # BoSRoundState expose ``your_turn`` (bool), while
+            # ElFarolRoundState exposes ``pending_submission`` (bool).
+            # Accept either so this bot plays every supported game.
             pending = state.get("pending_submission")
+            if pending is None:
+                pending = state.get("your_turn")
             round_number = int(state.get("round_number") or 0)
             total_rounds = int(state.get("total_rounds") or 0)
 

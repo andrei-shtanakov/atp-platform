@@ -19,8 +19,10 @@ def _pd_state() -> dict:
         "game_type": "prisoners_dilemma",
         "round_number": 3,
         "total_rounds": 10,
-        "history": [{"my": "cooperate", "opp": "defect"}],
+        "your_history": ["cooperate"],
+        "opponent_history": ["defect"],
         "your_cumulative_score": 1.0,
+        "your_turn": True,
     }
 
 
@@ -29,7 +31,9 @@ def _sh_state() -> dict:
         "game_type": "stag_hunt",
         "round_number": 1,
         "total_rounds": 5,
-        "history": [],
+        "your_history": [],
+        "opponent_history": [],
+        "your_turn": True,
     }
 
 
@@ -38,8 +42,10 @@ def _bos_state(preferred: str = "B") -> dict:
         "game_type": "battle_of_sexes",
         "round_number": 1,
         "total_rounds": 5,
-        "history": [],
+        "your_history": [],
+        "opponent_history": [],
         "your_preferred": preferred,
+        "your_turn": True,
     }
 
 
@@ -48,13 +54,27 @@ def _el_farol_state(num_slots: int = 16, max_per_day: int = 8) -> dict:
         "game_type": "el_farol",
         "round_number": 1,
         "total_rounds": 5,
-        "history": [],
+        "your_history": [],
         "num_slots": num_slots,
         "action_schema": {"max_length": max_per_day},
+        "pending_submission": True,
     }
 
 
 # ---- build_user_prompt ----
+
+
+def test_prompt_pd_includes_history_from_wire_fields():
+    from bots.llm_prompts import build_user_prompt
+
+    state = _pd_state()
+    state["your_history"] = ["cooperate", "defect"]
+    state["opponent_history"] = ["defect", "defect"]
+    prompt = build_user_prompt(state)
+    # Wire schema uses parallel your_history + opponent_history lists;
+    # the summary must surface them so the LLM has match context.
+    assert "you=cooperate opp=defect" in prompt
+    assert "you=defect opp=defect" in prompt
 
 
 def test_prompt_pd_mentions_cooperate_and_defect():
@@ -252,6 +272,25 @@ async def test_llm_decide_uses_parsed_response_when_valid():
     rng = random.Random(0)
     out = await llm_decide_action(_pd_state(), completion_fn=_ok, rng=rng)
     assert out == {"choice": "defect", "reasoning": "tit for tat"}
+
+
+@pytest.mark.anyio
+async def test_llm_decide_falls_back_on_timeout():
+    import asyncio
+
+    from bots.llm_mcp_bot import llm_decide_action
+
+    async def _slow(system: str, user: str) -> str:
+        await asyncio.sleep(5)
+        return '{"action": "cooperate"}'  # would be valid if it ever returned
+
+    rng = random.Random(0)
+    out = await llm_decide_action(
+        _pd_state(), completion_fn=_slow, rng=rng, call_timeout_s=0.05
+    )
+    # Hung LLM → random fallback so the round can still be played in time
+    assert out["choice"] in {"cooperate", "defect"}
+    assert "reasoning" not in out
 
 
 @pytest.mark.anyio

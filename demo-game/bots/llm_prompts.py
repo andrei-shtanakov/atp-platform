@@ -47,21 +47,39 @@ _SH_CHOICES = {"stag", "hare"}
 _BOS_CHOICES = {"A", "B"}
 
 
-def _history_summary(history: list[dict[str, Any]] | None) -> str:
-    """One-line compact summary of prior rounds, newest last."""
-    if not history:
+def _pair_history_summary(
+    your_history: list[Any] | None,
+    opponent_history: list[Any] | None,
+) -> str:
+    """Summarize a 2-player game's parallel move histories.
+
+    Wire schema for PD / SH / BoS uses ``your_history`` + ``opponent_history``
+    as parallel lists (same length, aligned by round). We present them as
+    ``r1: you=C opp=D; r2: ...`` so the LLM can read the match's arc.
+    """
+    your = your_history or []
+    theirs = opponent_history or []
+    if not your and not theirs:
         return "no prior rounds"
-    entries = []
-    for i, h in enumerate(history[-10:], start=1):
-        mine = h.get("my") or h.get("mine") or h.get("you")
-        theirs = h.get("opp") or h.get("opponent") or h.get("other")
-        entries.append(f"r{i}: you={mine} opp={theirs}")
+    pairs = list(zip(your[-10:], theirs[-10:], strict=False))
+    entries = [f"r{i}: you={m} opp={o}" for i, (m, o) in enumerate(pairs, start=1)]
+    return "; ".join(entries) if entries else "no prior rounds"
+
+
+def _el_farol_history_summary(your_history: list[list[int]] | None) -> str:
+    """Summarize a player's own El Farol attendance history."""
+    hist = your_history or []
+    if not hist:
+        return "no prior rounds"
+    entries = [f"r{i}: slots={slots}" for i, slots in enumerate(hist[-10:], start=1)]
     return "; ".join(entries)
 
 
 def build_user_prompt(state: dict[str, Any]) -> str:
     """Render a game-specific user prompt from current MCP state."""
     game_type = state.get("game_type")
+    your_hist = state.get("your_history")
+    opp_hist = state.get("opponent_history")
     if game_type == "prisoners_dilemma":
         return (
             "Game: Prisoner's Dilemma (2 players).\n"
@@ -70,7 +88,7 @@ def build_user_prompt(state: dict[str, Any]) -> str:
             "you D opp C -> (5,0); both D -> (1,1).\n"
             f"Round {state.get('round_number')} of {state.get('total_rounds')}.\n"
             f"Your cumulative score: {state.get('your_cumulative_score')}.\n"
-            f"History: {_history_summary(state.get('history'))}.\n"
+            f"History: {_pair_history_summary(your_hist, opp_hist)}.\n"
             "Pick an action."
         )
     if game_type == "stag_hunt":
@@ -81,7 +99,7 @@ def build_user_prompt(state: dict[str, Any]) -> str:
             "you stag opp hare -> (0,3); you hare opp stag -> (3,0); "
             "both hare -> (2,2) (safe).\n"
             f"Round {state.get('round_number')} of {state.get('total_rounds')}.\n"
-            f"History: {_history_summary(state.get('history'))}.\n"
+            f"History: {_pair_history_summary(your_hist, opp_hist)}.\n"
             "Pick an action."
         )
     if game_type == "battle_of_sexes":
@@ -94,7 +112,7 @@ def build_user_prompt(state: dict[str, Any]) -> str:
             "If both pick B: you get 2 if your preferred is B else 1. "
             "If choices mismatch: both get 0.\n"
             f"Round {state.get('round_number')} of {state.get('total_rounds')}.\n"
-            f"History: {_history_summary(state.get('history'))}.\n"
+            f"History: {_pair_history_summary(your_hist, opp_hist)}.\n"
             "Pick an action."
         )
     if game_type == "el_farol":
@@ -106,7 +124,7 @@ def build_user_prompt(state: dict[str, Any]) -> str:
             f"[0, {num_slots - 1}], unique. Empty list is valid.\n"
             "Payoff per slot: +1 if attendance <= capacity, -1 if over.\n"
             f"Round {state.get('round_number')} of {state.get('total_rounds')}.\n"
-            f"History: {_history_summary(state.get('history'))}.\n"
+            f"History: {_el_farol_history_summary(your_hist)}.\n"
             f"Respond with a JSON object: "
             f'{{"slots": [ints], "reasoning": "..."}}'
         )
