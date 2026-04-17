@@ -112,7 +112,7 @@ class TestService:
         recent_summaries = []
         for exec in recent_execs:
             summary = SuiteExecutionSummary.model_validate(exec)
-            summary.agent_name = exec.agent.name if exec.agent else None
+            summary.agent_name = exec.agent_name
             recent_summaries.append(summary)
 
         return DashboardSummary(
@@ -162,7 +162,7 @@ class TestService:
         items = []
         for exec in executions:
             summary = SuiteExecutionSummary.model_validate(exec)
-            summary.agent_name = exec.agent.name if exec.agent else None
+            summary.agent_name = exec.agent_name
             items.append(summary)
 
         return SuiteExecutionList(
@@ -213,7 +213,7 @@ class TestService:
             return None
 
         detail = SuiteExecutionDetail.model_validate(execution)
-        detail.agent_name = execution.agent.name if execution.agent else None
+        detail.agent_name = execution.agent_name
         detail.tests = [
             TestExecutionSummary.model_validate(t) for t in execution.test_executions
         ]
@@ -326,14 +326,12 @@ class TestService:
         # Build query
         stmt = (
             select(SuiteExecution)
-            .join(Agent)
             .where(SuiteExecution.suite_name == suite_name)
-            .options(selectinload(SuiteExecution.agent))
             .order_by(SuiteExecution.started_at.desc())
             .limit(limit)
         )
         if agent_name:
-            stmt = stmt.where(Agent.name == agent_name)
+            stmt = stmt.where(SuiteExecution.agent_name == agent_name)
 
         result = await self._session.execute(stmt)
         executions = list(result.scalars().all())
@@ -341,11 +339,10 @@ class TestService:
         # Group by agent
         agent_data: dict[str, list[SuiteExecution]] = {}
         for exec in executions:
-            if exec.agent:
-                name = exec.agent.name
-                if name not in agent_data:
-                    agent_data[name] = []
-                agent_data[name].append(exec)
+            name = exec.agent_name
+            if name not in agent_data:
+                agent_data[name] = []
+            agent_data[name].append(exec)
 
         # Build trends
         suite_trends: list[SuiteTrend] = []
@@ -397,21 +394,16 @@ class TestService:
         stmt = (
             select(TestExecution)
             .join(SuiteExecution)
-            .join(Agent)
             .where(
                 SuiteExecution.suite_name == suite_name,
                 TestExecution.test_id == test_id,
             )
-            .options(
-                selectinload(TestExecution.suite_execution).selectinload(
-                    SuiteExecution.agent
-                )
-            )
+            .options(selectinload(TestExecution.suite_execution))
             .order_by(TestExecution.started_at.desc())
             .limit(limit * 10)  # Get more to account for multiple agents
         )
         if agent_name:
-            stmt = stmt.where(Agent.name == agent_name)
+            stmt = stmt.where(SuiteExecution.agent_name == agent_name)
 
         result = await self._session.execute(stmt)
         executions = list(result.scalars().all())
@@ -419,8 +411,8 @@ class TestService:
         # Group by agent
         agent_data: dict[str, list[TestExecution]] = {}
         for exec in executions:
-            if exec.suite_execution and exec.suite_execution.agent:
-                name = exec.suite_execution.agent.name
+            if exec.suite_execution:
+                name = exec.suite_execution.agent_name
                 if name not in agent_data:
                     agent_data[name] = []
                 if len(agent_data[name]) < limit:

@@ -201,7 +201,7 @@ class ExportService:
 
         # Write data
         for exec in executions:
-            agent_name = exec.agent.name if exec.agent else ""
+            agent_name = exec.agent_name
             writer.writerow(
                 [
                     exec.suite_name,
@@ -336,12 +336,10 @@ class ExportService:
                 "id": exec.id,
                 "suite_name": exec.suite_name,
                 "agent": {
-                    "id": exec.agent.id,
-                    "name": exec.agent.name,
-                    "type": exec.agent.agent_type,
-                }
-                if exec.agent
-                else None,
+                    "id": exec.agent.id if exec.agent else None,
+                    "name": exec.agent_name,
+                    "type": exec.agent.agent_type if exec.agent else None,
+                },
                 "started_at": exec.started_at.isoformat() if exec.started_at else None,
                 "completed_at": (
                     exec.completed_at.isoformat() if exec.completed_at else None
