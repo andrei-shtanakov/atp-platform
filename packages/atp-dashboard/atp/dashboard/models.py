@@ -146,7 +146,13 @@ class SuiteExecution(Base):
     agent_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("agents.id"), nullable=True
     )
-    agent_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    # server_default="" so _add_missing_columns can add the column as NOT NULL
+    # on pre-migration SQLite DBs without a downgrade-to-nullable fallback.
+    # The Alembic migration a7b8c9d0e1f2 still owns the real backfill from
+    # agents.name before enforcing NOT NULL on existing rows.
+    agent_name: Mapped[str] = mapped_column(
+        String(100), nullable=False, server_default=""
+    )
 
     # Execution metadata
     started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)

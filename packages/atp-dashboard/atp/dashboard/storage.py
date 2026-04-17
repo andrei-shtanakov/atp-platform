@@ -523,7 +523,6 @@ class ResultStorage:
     async def persist_suite_result(  # pragma: no cover
         self,
         result: SuiteResult,
-        agent_type: str = "unknown",
         eval_results: dict[str, list[EvalResult]] | None = None,
         scored_results: dict[str, ScoredTestResult] | None = None,
         statistics: dict[str, TestRunStatistics] | None = None,
@@ -534,7 +533,6 @@ class ResultStorage:
 
         Args:
             result: Suite result from test execution.
-            agent_type: Type of agent.
             eval_results: Mapping of test_id to evaluation results.
             scored_results: Mapping of test_id to scored results.
             statistics: Mapping of test_id to statistics.
@@ -658,7 +656,6 @@ class ResultStorage:
     async def persist_suite_report(
         self,
         report: SuiteReport,
-        agent_type: str = "unknown",
     ) -> SuiteExecution:
         """Persist a suite report to the database.
 
@@ -666,7 +663,6 @@ class ResultStorage:
 
         Args:
             report: Suite report to persist.
-            agent_type: Type of agent.
 
         Returns:
             Stored SuiteExecution instance.
@@ -769,7 +765,7 @@ class ResultStorage:
             .limit(limit)
         )
         if agent_name:
-            stmt = stmt.join(Agent).where(Agent.name == agent_name)
+            stmt = stmt.where(SuiteExecution.agent_name == agent_name)
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
@@ -802,7 +798,7 @@ class ResultStorage:
             .limit(limit)
         )
         if agent_name:
-            stmt = stmt.join(Agent).where(Agent.name == agent_name)
+            stmt = stmt.where(SuiteExecution.agent_name == agent_name)
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
@@ -827,10 +823,9 @@ class ResultStorage:
         for agent_name in agent_names:
             stmt = (
                 select(SuiteExecution)
-                .join(Agent)
                 .where(
                     SuiteExecution.suite_name == suite_name,
-                    Agent.name == agent_name,
+                    SuiteExecution.agent_name == agent_name,
                 )
                 .order_by(SuiteExecution.started_at.desc())
                 .limit(limit_per_agent)

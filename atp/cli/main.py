@@ -889,8 +889,6 @@ async def _run_suite(
             result=result,
             suite_name=suite.test_suite,
             agent_name=agent_name,
-            adapter_type=adapter_type,
-            adapter_config=adapter_config,
             runs_per_test=runs_per_test,
             scored_results=all_scored_results,
         )
@@ -933,8 +931,6 @@ async def _save_results_to_db(
     result: Any,
     suite_name: str,
     agent_name: str,
-    adapter_type: str,
-    adapter_config: dict[str, Any],
     runs_per_test: int,
     scored_results: dict[str, Any] | None = None,
 ) -> None:
@@ -944,8 +940,6 @@ async def _save_results_to_db(
         result: SuiteResult from test execution
         suite_name: Name of the test suite
         agent_name: Name of the agent
-        adapter_type: Type of adapter used
-        adapter_config: Adapter configuration
         runs_per_test: Number of runs per test
         scored_results: Per-test scored results (test_id → ScoredTestResult)
     """
@@ -967,17 +961,12 @@ async def _save_results_to_db(
         async with db.session() as session:
             storage = ResultStorage(session)
 
-            # Get or create agent
-            agent = await storage.get_or_create_agent(
-                name=agent_name,
-                agent_type=adapter_type,
-                config=adapter_config,
-            )
-
-            # Create suite execution
-            suite_exec = await storage.create_suite_execution(
+            # Create suite execution directly by agent_name (LABS-54).
+            # No Agent row is created here; SuiteExecution stores agent_name
+            # denormalized and agent_id is left NULL.
+            suite_exec = await storage.create_suite_execution_by_name(
                 suite_name=suite_name,
-                agent=agent,
+                agent_name=agent_name,
                 runs_per_test=runs_per_test,
                 started_at=result.start_time,
             )
