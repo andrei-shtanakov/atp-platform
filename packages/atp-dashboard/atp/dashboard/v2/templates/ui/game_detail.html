@@ -70,9 +70,10 @@
 }
 .payoff-matrix th.corner { background: transparent; border: none; }
 .payoff-matrix td.cell { font-family: monospace; }
-.payoff-matrix .note {
-    caption-side: bottom; text-align: left;
-    padding: 0.35rem 0; font-size: 0.78rem; color: #888; font-style: italic;
+.payoff-matrix tfoot td.note {
+    text-align: left; padding: 0.35rem 0.5rem;
+    font-size: 0.78rem; color: #888; font-style: italic;
+    border: none;
 }
 
 pre {
@@ -169,7 +170,7 @@ pre {
     <h2>Rules</h2>
     <ul>
         {% for rule in copy.rules %}
-        <li>{{ rule | safe }}</li>
+        <li>{{ rule }}</li>
         {% endfor %}
     </ul>
 
@@ -202,7 +203,7 @@ pre {
     </table>
     {% elif copy.payoff_formula %}
     <h3>Payoffs</h3>
-    <p>{{ copy.payoff_formula | safe }}</p>
+    <p>{{ copy.payoff_formula }}</p>
     {% endif %}
 </div>
 
@@ -212,7 +213,7 @@ pre {
     <p>Your bot submits a move via the <code>make_move</code> MCP tool. For this game:</p>
     <pre><code>{{ copy.action_example }}</code></pre>
     {% if copy.action_notes %}
-    <p style="font-size:0.9rem; color: #555;">{{ copy.action_notes | safe }}</p>
+    <p style="font-size:0.9rem; color: #555;">{{ copy.action_notes }}</p>
     {% endif %}
 
     {% if registry_info and registry_info.action_spaces %}

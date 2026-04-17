@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -111,3 +113,36 @@ async def test_games_list_links_to_detail(client: AsyncClient):
     assert resp.status_code == 200
     # Check that at least one known game links to /ui/games/<name>
     assert "/ui/games/prisoners_dilemma" in resp.text
+
+
+@pytest.mark.parametrize("game_name", sorted(GAME_COPY.keys()))
+def test_action_example_is_valid_json(game_name: str):
+    """Every action_example must parse with json.loads.
+
+    Narrative comments ("// or X") belong in action_notes, not inside
+    the code block labeled as JSON. Guards against drift back to
+    JSON-with-comments.
+    """
+    copy = GAME_COPY[game_name]
+    parsed = json.loads(copy.action_example)
+    assert isinstance(parsed, dict)
+
+
+@pytest.mark.parametrize("game_name", sorted(GAME_COPY.keys()))
+def test_copy_fields_are_plain_text(game_name: str):
+    """Copy text must not contain raw HTML — rendered without |safe.
+
+    If copy ever needs emphasis, express it structurally in the template
+    (separate fields, tables) rather than via inline HTML in a string —
+    raw HTML in copy becomes an XSS footgun if the source ever opens
+    up to non-code-owned edits.
+    """
+    copy = GAME_COPY[game_name]
+    forbidden = ("<strong>", "<em>", "<br>", "<script>", "<code>")
+    fields = [copy.setup, copy.point, copy.action_notes, copy.payoff_formula]
+    fields.extend(copy.rules)
+    for field_value in fields:
+        for tag in forbidden:
+            assert tag not in field_value, (
+                f"{game_name}: raw HTML tag {tag!r} found in copy: {field_value[:80]!r}"
+            )

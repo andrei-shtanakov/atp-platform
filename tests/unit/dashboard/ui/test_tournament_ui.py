@@ -389,7 +389,11 @@ async def test_reasoning_xss_is_escaped(client: AsyncClient):
     # NOT be evaluated.
     assert "<script>alert(1)</script>" not in resp.text
     assert "&lt;script&gt;" in resp.text
-    assert "49" not in resp.text  # 7*7 was not evaluated
+    # Jinja template tags inside user content must render as literal text
+    # rather than be evaluated server-side. Check the raw substring directly;
+    # searching for the evaluated value ("49") is too loose — it can
+    # appear incidentally in a UUID hex fragment or a CSS color value.
+    assert "{{ 7*7 }}" in resp.text
 
 
 @pytest.mark.anyio

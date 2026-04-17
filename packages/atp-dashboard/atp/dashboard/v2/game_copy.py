@@ -57,9 +57,13 @@ class GameCopy:
     rules: list[str]
     """Bulleted rules, ordered most-important-first."""
     action_example: str
-    """JSON snippet agents send to ``make_move``."""
+    """Strict-JSON snippet agents send to ``make_move``. Must parse with
+    ``json.loads`` — narrative alternatives (other valid choices, value
+    ranges) belong in ``action_notes`` instead."""
     action_notes: str = ""
-    """Extra context for the action schema (e.g. BoS asymmetry)."""
+    """Plain-text context for the action schema (e.g. alternate choices,
+    asymmetry rules, value ranges). Rendered without HTML escaping
+    suppression."""
     payoff_matrix: PayoffMatrix | None = None
     payoff_formula: str = ""
     """Inline HTML / prose payoff description for N-player games."""
@@ -131,7 +135,8 @@ GAME_COPY: dict[str, GameCopy] = {
             cells=_PD_CELLS,
             note="Each cell shows (your payoff, opponent's payoff).",
         ),
-        action_example='{"choice": "cooperate"}  // or "defect"',
+        action_example='{"choice": "cooperate"}',
+        action_notes='Valid choices: "cooperate" or "defect".',
         available=True,
         references=[
             (
@@ -178,7 +183,8 @@ GAME_COPY: dict[str, GameCopy] = {
             cells=_SH_CELLS,
             note="Each cell shows (your payoff, opponent's payoff).",
         ),
-        action_example='{"choice": "stag"}  // or "hare"',
+        action_example='{"choice": "stag"}',
+        action_notes='Valid choices: "stag" or "hare".',
         available=True,
         references=[
             (
@@ -227,11 +233,11 @@ GAME_COPY: dict[str, GameCopy] = {
                 "the perspective of the A-preferring player."
             ),
         ),
-        action_example='{"choice": "A"}  // or "B"',
+        action_example='{"choice": "A"}',
         action_notes=(
-            "The game state includes a <code>your_preferred</code> field "
-            '(<code>"A"</code> or <code>"B"</code>) so your bot can '
-            "play either role symmetrically — don't hard-code a side."
+            'Valid choices: "A" or "B". The game state includes a '
+            '`your_preferred` field ("A" or "B") so your bot can play '
+            "either role symmetrically — don't hard-code a side."
         ),
         available=True,
         references=[
@@ -270,21 +276,20 @@ GAME_COPY: dict[str, GameCopy] = {
             "N players, 16 slots per round, up to 8 slots per player.",
             "Each round, every player simultaneously submits their list "
             "of slot indices.",
-            "For each slot, attendees get <strong>+1</strong> if "
-            "attendance is at or below the capacity threshold, "
-            "<strong>−1</strong> otherwise.",
+            "For each slot, attendees get +1 if attendance is at or "
+            "below the capacity threshold, −1 otherwise.",
             "Your round payoff is the sum over the slots you picked.",
         ],
-        action_example='{"slots": [0, 3, 7, 11]}  // list of slot ids in [0, 15]',
+        action_example='{"slots": [0, 3, 7, 11]}',
         action_notes=(
-            "Slots must be unique integers in <code>[0, num_slots - 1]</code>. "
-            'An empty list (<code>{"slots": []}</code>) is a valid move '
+            "Slots must be unique integers in [0, num_slots - 1]; "
+            "the example above picks 4 of 16 available slots. "
+            'An empty list ({"slots": []}) is a valid move '
             "— you pay nothing and gain nothing."
         ),
         payoff_formula=(
-            "For each slot <em>s</em> you attend, payoff is "
-            "<strong>+1 if attendance(s) ≤ capacity</strong>, "
-            "<strong>−1 otherwise</strong>. Total = sum over your chosen slots."
+            "For each slot s you attend, payoff is +1 if attendance(s) "
+            "≤ capacity, −1 otherwise. Total = sum over your chosen slots."
         ),
         available=True,
         references=[
@@ -326,7 +331,8 @@ GAME_COPY: dict[str, GameCopy] = {
             "Pool × multiplier ÷ N is returned to every player, contributor or not.",
             "Your round payoff = (endowment − contribution) + (pool × multiplier ÷ N).",
         ],
-        action_example='{"contribution": 12}  // integer in [0, endowment]',
+        action_example='{"contribution": 12}',
+        action_notes="`contribution` is an integer in [0, endowment].",
         payoff_formula=(
             "payoff = (endowment − your_contribution) "
             "+ (Σ contributions × multiplier ÷ N)"
@@ -369,10 +375,11 @@ GAME_COPY: dict[str, GameCopy] = {
             "Highest bid wins; ties break uniformly at random.",
             "Winner's payoff = valuation − price paid; losers get 0.",
         ],
-        action_example='{"bid": 47.5}  // non-negative float',
+        action_example='{"bid": 47.5}',
+        action_notes="`bid` is a non-negative float.",
         payoff_formula=(
-            "payoff = (valuation − price) if you win, else 0. "
-            "<br>price = your_bid (first-price) or second_highest_bid (Vickrey)."
+            "payoff = (valuation − price) if you win, else 0; "
+            "price = your_bid (first-price) or second_highest_bid (Vickrey)."
         ),
         available=False,
         references=[
@@ -416,8 +423,10 @@ GAME_COPY: dict[str, GameCopy] = {
             "split the battlefield equally.",
             "Round winner = whoever won more battlefields.",
         ],
-        action_example=(
-            '{"allocation": [10, 15, 5, 20, ...]}  // list of M ints, sum = N'
+        action_example='{"allocation": [10, 15, 5, 20, 30, 20]}',
+        action_notes=(
+            "`allocation` is a list of M non-negative integers that "
+            "must sum to N (the fixed army size)."
         ),
         payoff_formula=(
             "payoff = number of battlefields won − battlefields lost "
@@ -461,7 +470,8 @@ GAME_COPY: dict[str, GameCopy] = {
             "of players who chose it.",
             "Your round payoff is the negative of your route's cost.",
         ],
-        action_example='{"route": 2}  // integer in [0, num_routes - 1]',
+        action_example='{"route": 2}',
+        action_notes="`route` is an integer in [0, num_routes - 1].",
         payoff_formula=(
             "payoff = −(base_time[r] + congestion_coef[r] × players_on_route[r])"
         ),

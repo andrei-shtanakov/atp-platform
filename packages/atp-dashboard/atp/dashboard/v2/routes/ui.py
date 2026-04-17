@@ -6,6 +6,7 @@ All UI routes are under /ui/ prefix.
 
 from __future__ import annotations
 
+import functools
 import logging
 from collections.abc import Sequence
 from datetime import datetime
@@ -55,6 +56,43 @@ async def _needs_bootstrap(session: DBSession) -> bool:
     """True when the database has no users yet — the 'first admin' path."""
     result = await session.execute(select(func.count(User.id)))
     return (result.scalar_one() or 0) == 0
+
+
+@functools.lru_cache(maxsize=1)
+def _game_registry() -> Any:
+    """Return the populated ``GameRegistry`` class, or ``None`` if unavailable.
+
+    Imports every bundled game module once per process so the registry
+    decorators fire. Cached via ``lru_cache`` so /ui/games and
+    /ui/games/{name} don't pay the import cost on each request.
+    """
+    try:
+        from game_envs.games import (  # noqa: PLC0415
+            auction,
+            battle_of_sexes,
+            colonel_blotto,
+            congestion,
+            el_farol,
+            prisoners_dilemma,
+            public_goods,
+            stag_hunt,
+        )
+        from game_envs.games.registry import GameRegistry  # noqa: PLC0415
+
+        _ = (
+            auction,
+            battle_of_sexes,
+            colonel_blotto,
+            congestion,
+            el_farol,
+            prisoners_dilemma,
+            public_goods,
+            stag_hunt,
+        )
+        return GameRegistry
+    except Exception:
+        logger.exception("game_envs not importable; game registry disabled")
+        return None
 
 
 @router.get("/about", response_class=HTMLResponse)
@@ -389,37 +427,12 @@ async def ui_games(request: Request, session: DBSession) -> HTMLResponse:
     """Render games page with game registry and tournaments."""
     user = await _get_ui_user(request, session)
     games: list[dict] = []
-    try:
-        from game_envs.games import (  # noqa: PLC0415
-            auction,
-            battle_of_sexes,
-            colonel_blotto,
-            congestion,
-            el_farol,
-            prisoners_dilemma,
-            public_goods,
-            stag_hunt,
-        )
-        from game_envs.games.registry import GameRegistry  # noqa: PLC0415
-
-        _ = (
-            auction,
-            battle_of_sexes,
-            colonel_blotto,
-            congestion,
-            el_farol,
-            prisoners_dilemma,
-            public_goods,
-            stag_hunt,
-        )
-        games = GameRegistry.list_games(with_metadata=True)  # type: ignore[assignment]
-    except Exception:
-        logger.debug("game_envs not available; showing empty games list")
-
-    from atp.dashboard.tournament.models import Tournament  # noqa: PLC0415
+    registry = _game_registry()
+    if registry is not None:
+        games = registry.list_games(with_metadata=True)
 
     result = await session.execute(
-        select(Tournament).order_by(Tournament.id.desc()).limit(50)
+        select(TournamentModel).order_by(TournamentModel.id.desc()).limit(50)
     )
     tournaments = result.scalars().all()
 
@@ -462,38 +475,19 @@ async def ui_game_detail(
     user = await _get_ui_user(request, session)
 
     # Pull live registry metadata (action spaces, num_players, etc.).
+    # Cached module-level helper; first call imports game_envs, subsequent
+    # calls are a dict lookup.
     registry_info: dict[str, Any] | None = None
-    try:
-        from game_envs.games import (  # noqa: PLC0415
-            auction,
-            battle_of_sexes,
-            colonel_blotto,
-            congestion,
-            el_farol,
-            prisoners_dilemma,
-            public_goods,
-            stag_hunt,
-        )
-        from game_envs.games.registry import GameRegistry  # noqa: PLC0415
-
-        _ = (
-            auction,
-            battle_of_sexes,
-            colonel_blotto,
-            congestion,
-            el_farol,
-            prisoners_dilemma,
-            public_goods,
-            stag_hunt,
-        )
-        registry_info = GameRegistry.game_info(game_name)
-    except KeyError:
-        # Engine doesn't know this game — copy exists but registry doesn't.
-        # Render page without technical metadata; users still get the rules.
-        registry_info = None
-    except Exception:
-        logger.debug("game_envs metadata unavailable for %s", game_name)
-        registry_info = None
+    registry = _game_registry()
+    if registry is not None:
+        try:
+            registry_info = registry.game_info(game_name)
+        except KeyError:
+            # Copy exists but engine doesn't know this game yet — still render.
+            registry_info = None
+        except Exception:
+            logger.exception("game_envs metadata unavailable for %s", game_name)
+            registry_info = None
 
     # Latest tournaments of this game_type for social proof.
     tournaments_stmt = (
