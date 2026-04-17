@@ -529,7 +529,9 @@ async def ui_tournament_detail(
     session: DBSession,
 ) -> HTMLResponse:
     """Render tournament detail page or HTMX live partial."""
+    from atp.dashboard.tournament.access import can_view_reasoning
     from atp.dashboard.tournament.models import (
+        Action,
         Round,
         Tournament,
     )
@@ -539,7 +541,9 @@ async def ui_tournament_detail(
         .where(Tournament.id == tournament_id)
         .options(
             selectinload(Tournament.participants),
-            selectinload(Tournament.rounds).selectinload(Round.actions),
+            selectinload(Tournament.rounds)
+            .selectinload(Round.actions)
+            .selectinload(Action.participant),
         )
     )
     tournament = result.scalar_one_or_none()
@@ -647,6 +651,20 @@ async def ui_tournament_detail(
         # Newest first
         timeline.sort(key=lambda e: e[1], reverse=True)
 
+    # Precompute which Action.id values the current viewer may read the
+    # reasoning of. Template-side gate is a simple membership test, keeping
+    # ACL logic out of Jinja.
+    visible_reasoning_action_ids = {
+        a.id
+        for r in sorted_rounds
+        for a in r.actions
+        if can_view_reasoning(
+            user=user,
+            tournament=tournament,
+            action_user_id=(a.participant.user_id if a.participant else None),
+        )
+    }
+
     context = {
         "active_page": "tournaments",
         "tournament": tournament,
@@ -659,6 +677,7 @@ async def ui_tournament_detail(
         "completed_rounds": completed_rounds,
         "timeline": timeline,
         "user": user,
+        "visible_reasoning_action_ids": visible_reasoning_action_ids,
     }
 
     partial = request.query_params.get("partial")

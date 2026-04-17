@@ -13,6 +13,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     func,
     text,
@@ -317,6 +318,8 @@ class Action(Base):
         nullable=False,
         server_default="submitted",
     )
+
+    reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Relationships
     round: Mapped["Round"] = relationship(

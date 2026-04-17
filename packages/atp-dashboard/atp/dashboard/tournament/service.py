@@ -650,8 +650,14 @@ class TournamentService:
                 f"tournament {tournament_id} has no round accepting actions"
             )
 
+        raw_reasoning = getattr(typed, "reasoning", None)
+        reasoning = raw_reasoning.strip() if raw_reasoning else None
+        reasoning = reasoning or None  # "" / whitespace-only → None
+
         game = _game_for(tournament)
-        canonical = game.validate_action(typed.model_dump(exclude={"game_type"}))
+        canonical = game.validate_action(
+            typed.model_dump(exclude={"game_type", "reasoning"})
+        )
 
         existing = (
             await self._session.execute(
@@ -671,6 +677,7 @@ class TournamentService:
             round_id=current_round.id,
             participant_id=my_participant.id,
             action_data=canonical,
+            reasoning=reasoning,
         )
         self._session.add(new_action)
         await self._session.flush()
