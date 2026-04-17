@@ -72,10 +72,22 @@ def downgrade() -> None:
     # WARNING: Safe only if no suite_executions rows have agent_id IS NULL.
     # After the migration has been live for any CLI run, those rows exist.
     # SQLite silently coerces NULLs to 0 on the NOT NULL flip; Postgres
-    # raises NotNullViolation. Run
-    #   SELECT COUNT(*) FROM suite_executions WHERE agent_id IS NULL;
-    # first and either delete those rows or assign owner agents before
-    # downgrading in a real environment.
+    # raises NotNullViolation. The preflight below blocks the downgrade
+    # when any such rows are present so the operator chooses the fix
+    # (delete the rows or assign owner agents) instead of silently
+    # corrupting them.
+    bind = op.get_bind()
+    null_count = bind.execute(
+        sa.text("SELECT COUNT(*) FROM suite_executions WHERE agent_id IS NULL")
+    ).scalar_one()
+    if null_count:
+        raise RuntimeError(
+            f"Cannot downgrade: {null_count} suite_executions rows have "
+            "agent_id IS NULL (from CLI-produced executions). These rows "
+            "cannot be backfilled automatically. Options: delete the rows "
+            "or assign them to real agent_ids first."
+        )
+
     with op.batch_alter_table("suite_executions") as batch_op:
         batch_op.drop_index("idx_suite_agent_name")
         batch_op.alter_column(

@@ -116,3 +116,57 @@ def test_migration_downgrade_removes_agent_name(db_at_pre_migration):
     agent_id_col = next(c for c in columns if c["name"] == "agent_id")
     assert agent_id_col["nullable"] is False
     engine.dispose()
+
+
+def test_migration_downgrade_blocks_when_null_agent_id_rows_exist(
+    db_at_pre_migration,
+):
+    """Downgrade refuses to run while CLI-produced rows (agent_id IS NULL) exist.
+
+    Running the downgrade naively on Postgres raises NotNullViolation; on
+    SQLite it silently coerces NULLs to 0 and corrupts the agent_id FK.
+    The preflight in `downgrade()` must raise RuntimeError before touching
+    the schema so the operator resolves the data first.
+    """
+    url, env = db_at_pre_migration
+    _alembic(env, "upgrade", "a7b8c9d0e1f2")
+
+    # Write a CLI-produced row.
+    engine = create_engine(url)
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO suite_executions "
+                "(tenant_id, suite_name, agent_id, agent_name, started_at, "
+                "runs_per_test, total_tests, passed_tests, failed_tests, "
+                "success_rate, status) VALUES "
+                "('default', 'cli-run', NULL, 'cli-agent', :started, "
+                "1, 0, 0, 0, 0.0, 'running')"
+            ),
+            {"started": datetime(2026, 1, 1)},
+        )
+    engine.dispose()
+
+    # Attempt downgrade; should fail with a non-zero exit code and a
+    # RuntimeError about NULL agent_id rows.
+    result = subprocess.run(
+        ["uv", "run", "alembic", "-n", "dashboard", "downgrade", "f1a2b3c4d5e6"],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0, (
+        "downgrade should fail when rows have agent_id IS NULL"
+    )
+    combined = result.stdout + result.stderr
+    assert "agent_id IS NULL" in combined
+    assert "Cannot downgrade" in combined
+
+    # Schema must be unchanged: agent_name still present, agent_id still nullable.
+    engine = create_engine(url)
+    columns = inspect(engine).get_columns("suite_executions")
+    names_set = {c["name"] for c in columns}
+    assert "agent_name" in names_set
+    agent_id_col = next(c for c in columns if c["name"] == "agent_id")
+    assert agent_id_col["nullable"] is True
+    engine.dispose()
