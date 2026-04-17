@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from atp.dashboard.models import Agent, RunResult, SuiteExecution, TestExecution
+from atp.dashboard.models import RunResult, SuiteExecution, TestExecution
 from atp.dashboard.rbac import Permission, require_permission
 from atp.dashboard.schemas import (
     AgentComparisonMetrics,
@@ -140,10 +140,9 @@ async def compare_agents(
         # Get agent's executions
         stmt = (
             select(SuiteExecution)
-            .join(Agent)
             .where(
                 SuiteExecution.suite_name == suite_name,
-                Agent.name == agent_name,
+                SuiteExecution.agent_name == agent_name,
             )
             .options(selectinload(SuiteExecution.test_executions))
             .order_by(SuiteExecution.started_at.desc())
@@ -289,11 +288,10 @@ async def get_side_by_side_comparison(
         stmt = (
             select(TestExecution)
             .join(SuiteExecution)
-            .join(Agent)
             .where(
                 SuiteExecution.suite_name == suite_name,
                 TestExecution.test_id == test_id,
-                Agent.name == agent_name,
+                SuiteExecution.agent_name == agent_name,
             )
             .options(selectinload(TestExecution.run_results))
             .order_by(TestExecution.started_at.desc())
