@@ -1,7 +1,29 @@
-"""Pre-evaluation guardrails inspired by arbiter's invariant rules.
+"""Post-execution, pre-evaluation guardrails.
 
-Run checks before each evaluator to skip wasteful evaluations early
-(e.g. don't call LLM-judge on an empty response).
+Runs after an agent produces a response but before ATP dispatches any
+evaluator, so that empty, timed-out, or over-budget responses can
+short-circuit the expensive evaluator pipeline (LLM-judge, container
+execution, etc.).
+
+Relationship to arbiter
+-----------------------
+The short-circuit *pattern* — list of independent predicates, each
+returning a (name, passed, reason) tuple — is borrowed from
+arbiter-core's invariant rules. The *rule set* is NOT borrowed:
+
+- arbiter's invariants gate agent *assignment* (pre-dispatch, operating
+  on TaskInput + AgentContext + SystemContext).
+- These guardrails gate *evaluation* (post-dispatch, operating on an
+  ATPResponse after the agent has already run).
+
+Of the three rules here, two (``within_budget``, ``timeout_not_exceeded``)
+share a concept — budget and time — with arbiter counterparts
+(``budget_remaining``, ``sla_feasible``), but use inverted predicates
+(measurement vs. estimate). ``response_not_empty`` has no arbiter
+analogue, and eight arbiter invariants have no analogue here.
+
+Semantic mapping: ``arbiter/docs/guardrails-atp-mapping.md`` in the
+sibling repo.
 """
 
 import logging
