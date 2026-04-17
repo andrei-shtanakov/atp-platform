@@ -293,6 +293,22 @@ async def test_llm_decide_falls_back_on_timeout():
     assert "reasoning" not in out
 
 
+def test_extract_error_text_pulls_first_text_block():
+    from bots.llm_mcp_bot import _extract_error_text
+
+    raw = {
+        "content": [{"type": "text", "text": "user already has an active tournament"}],
+        "isError": True,
+    }
+    assert _extract_error_text(raw) == "user already has an active tournament"
+
+
+def test_extract_error_text_fallback_when_no_content():
+    from bots.llm_mcp_bot import _extract_error_text
+
+    assert _extract_error_text({"isError": True}) == "unknown error"
+
+
 @pytest.mark.anyio
 async def test_llm_decide_falls_back_on_garbage():
     from bots.llm_mcp_bot import llm_decide_action

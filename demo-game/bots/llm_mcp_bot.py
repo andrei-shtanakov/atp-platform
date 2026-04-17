@@ -230,6 +230,12 @@ async def run_bot(
             "join_tournament",
             {"tournament_id": tournament_id, "agent_name": agent_name},
         )
+        # Fail fast on server-side join errors (e.g. "user already has an
+        # active tournament", bad token, tournament not found) rather than
+        # silently polling state until the watchdog times us out.
+        if isinstance(join_result, dict) and join_result.get("isError"):
+            msg = _extract_error_text(join_result)
+            raise RuntimeError(f"[{agent_name}] join_tournament failed: {msg}")
         logger.info("[%s] joined: %s", agent_name, join_result)
 
         while loop.time() < deadline:
@@ -303,6 +309,23 @@ def _summarize_action(action: dict[str, Any]) -> str:
         reason = action["reasoning"]
         return f"{base} reason={reason[:60]!r}"
     return base
+
+
+def _extract_error_text(raw: dict[str, Any]) -> str:
+    """Pull the human-readable server message out of an isError tool result.
+
+    FastMCP returns ``{"content": [{"type": "text", "text": "..."}], "isError": True}``
+    when a tool raises; no structured error payload. Grab the first text
+    block so callers can surface a helpful message.
+    """
+    content = raw.get("content")
+    if isinstance(content, list):
+        for item in content:
+            if isinstance(item, dict) and item.get("type") == "text":
+                text = item.get("text")
+                if isinstance(text, str):
+                    return text
+    return "unknown error"
 
 
 def _unwrap_tool_result(raw: dict[str, Any]) -> dict[str, Any]:
