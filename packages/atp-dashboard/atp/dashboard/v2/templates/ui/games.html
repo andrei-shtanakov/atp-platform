@@ -3,13 +3,26 @@
 {% block title %}Games - ATP Platform{% endblock %}
 
 {% block content %}
+<style>
+.games-table tr.clickable { cursor: pointer; }
+.games-table tr.clickable:hover { background: #faf8ff; }
+.games-table a.game-link {
+    color: #7c3aed; font-family: monospace;
+    text-decoration: none; font-weight: 600;
+}
+.games-table a.game-link:hover { text-decoration: underline; }
+</style>
+
 <h2>Games</h2>
 
 <section>
     <h3>Available Game Environments</h3>
     {% if games %}
-    <p>{{ games | length }} game{{ "s" if games | length != 1 else "" }} registered</p>
-    <table>
+    <p>
+        {{ games | length }} game{{ "s" if games | length != 1 else "" }} registered.
+        Click a game name to read its rules and learn how to participate.
+    </p>
+    <table class="games-table">
         <thead>
             <tr>
                 <th>Name</th>
@@ -21,8 +34,8 @@
         </thead>
         <tbody>
             {% for game in games %}
-            <tr>
-                <td><code>{{ game.name }}</code></td>
+            <tr class="clickable" onclick="if(event.target.tagName!=='A'){window.location='/ui/games/{{ game.name }}'}">
+                <td><a class="game-link" href="/ui/games/{{ game.name }}">{{ game.name }}</a></td>
                 <td>{{ game.description }}</td>
                 <td>{{ game.game_type }}</td>
                 <td>{{ game.move_order }}</td>

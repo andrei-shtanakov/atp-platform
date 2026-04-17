@@ -10,8 +10,9 @@ import logging
 from collections.abc import Sequence
 from datetime import datetime
 from types import SimpleNamespace
+from typing import Any
 
-from fastapi import APIRouter, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
@@ -429,6 +430,89 @@ async def ui_games(request: Request, session: DBSession) -> HTMLResponse:
             "active_page": "games",
             "games": games,
             "tournaments": tournaments,
+            "user": user,
+        },
+    )
+
+
+@router.get("/games/{game_name}", response_class=HTMLResponse)
+@limiter.limit("120/minute")
+async def ui_game_detail(
+    request: Request,
+    game_name: str,
+    session: DBSession,
+) -> HTMLResponse:
+    """Public per-game detail page: rules, payoffs, how to participate.
+
+    Content comes from ``atp.dashboard.v2.game_copy.GAME_COPY`` (narrative
+    prose authored separately from the game-environments engine package)
+    and from ``GameRegistry.game_info()`` (technical metadata — action
+    spaces, config schema, player count). The page is intentionally
+    public: anonymous visitors see the same thing as authenticated users.
+    """
+    from atp.dashboard.v2.game_copy import get_copy  # noqa: PLC0415
+
+    copy = get_copy(game_name)
+    if copy is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"unknown game: {game_name}",
+        )
+
+    user = await _get_ui_user(request, session)
+
+    # Pull live registry metadata (action spaces, num_players, etc.).
+    registry_info: dict[str, Any] | None = None
+    try:
+        from game_envs.games import (  # noqa: PLC0415
+            auction,
+            battle_of_sexes,
+            colonel_blotto,
+            congestion,
+            el_farol,
+            prisoners_dilemma,
+            public_goods,
+            stag_hunt,
+        )
+        from game_envs.games.registry import GameRegistry  # noqa: PLC0415
+
+        _ = (
+            auction,
+            battle_of_sexes,
+            colonel_blotto,
+            congestion,
+            el_farol,
+            prisoners_dilemma,
+            public_goods,
+            stag_hunt,
+        )
+        registry_info = GameRegistry.game_info(game_name)
+    except KeyError:
+        # Engine doesn't know this game — copy exists but registry doesn't.
+        # Render page without technical metadata; users still get the rules.
+        registry_info = None
+    except Exception:
+        logger.debug("game_envs metadata unavailable for %s", game_name)
+        registry_info = None
+
+    # Latest tournaments of this game_type for social proof.
+    tournaments_stmt = (
+        select(TournamentModel)
+        .where(TournamentModel.game_type == game_name)
+        .order_by(TournamentModel.id.desc())
+        .limit(5)
+    )
+    recent_tournaments = list((await session.execute(tournaments_stmt)).scalars().all())
+
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/game_detail.html",
+        context={
+            "active_page": "games",
+            "game_name": game_name,
+            "copy": copy,
+            "registry_info": registry_info,
+            "recent_tournaments": recent_tournaments,
             "user": user,
         },
     )

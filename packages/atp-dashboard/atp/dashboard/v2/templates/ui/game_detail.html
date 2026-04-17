@@ -1,0 +1,310 @@
+{% extends "ui/base_ui.html" %}
+
+{% block title %}{{ copy.title }} — ATP Platform{% endblock %}
+
+{% block content %}
+<style>
+.game-hero {
+    background: linear-gradient(135deg, #1a1a2e 0%, #2d2d44 100%);
+    color: #fff;
+    border-radius: 0.75rem;
+    padding: 1.75rem 2.25rem;
+    margin-bottom: 1.5rem;
+}
+.game-hero h1 { color: #fff; margin-bottom: 0.35rem; font-size: 1.75rem; }
+.game-hero p.tagline {
+    color: #d0d0e0; margin: 0; font-size: 1.05rem; line-height: 1.4;
+}
+.game-hero .badges {
+    margin-top: 0.9rem; display: flex; flex-wrap: wrap; gap: 0.4rem;
+}
+.game-hero .badge {
+    background: rgba(255,255,255,0.12); color: #e8e8f4;
+    font-size: 0.78rem; padding: 0.15rem 0.6rem;
+    border-radius: 999px; font-family: monospace;
+}
+.game-hero .badge.soon {
+    background: #f59e0b; color: #1a1a2e;
+}
+
+.detail-section {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 0.5rem;
+    padding: 1.25rem 1.75rem;
+    margin-bottom: 1.25rem;
+}
+.detail-section h2 {
+    margin-top: 0;
+    font-size: 1.15rem;
+    color: #1a1a2e;
+    border-bottom: 2px solid #f0e8ff;
+    padding-bottom: 0.4rem;
+    margin-bottom: 1rem;
+}
+.detail-section h3 {
+    font-size: 1rem; color: #444;
+    margin: 1rem 0 0.4rem; padding: 0;
+}
+.detail-section p { line-height: 1.55; color: #333; }
+.detail-section ul, .detail-section ol { padding-left: 1.25rem; }
+.detail-section li { margin-bottom: 0.4rem; line-height: 1.5; }
+
+.payoff-matrix {
+    border-collapse: collapse;
+    margin: 0.5rem 0 0.75rem;
+    font-size: 0.9rem;
+}
+.payoff-matrix caption {
+    caption-side: top; text-align: left;
+    padding: 0.25rem 0; font-size: 0.82rem; color: #666;
+    font-weight: 600;
+}
+.payoff-matrix th, .payoff-matrix td {
+    border: 1px solid #d4d4d8;
+    padding: 0.5rem 0.85rem;
+    text-align: center;
+}
+.payoff-matrix th {
+    background: #f5f3ff; color: #1a1a2e; font-weight: 600;
+}
+.payoff-matrix th.corner { background: transparent; border: none; }
+.payoff-matrix td.cell { font-family: monospace; }
+.payoff-matrix .note {
+    caption-side: bottom; text-align: left;
+    padding: 0.35rem 0; font-size: 0.78rem; color: #888; font-style: italic;
+}
+
+pre {
+    background: #1e1e2e; color: #cdd6f4;
+    border-radius: 0.4rem;
+    padding: 0.9rem 1.15rem;
+    font-size: 0.82rem; line-height: 1.6;
+    overflow-x: auto; margin: 0.75rem 0;
+}
+
+.callout {
+    border-left: 4px solid #7c3aed;
+    background: #faf8ff;
+    padding: 0.75rem 1.1rem;
+    border-radius: 0 0.4rem 0.4rem 0;
+    margin: 1rem 0;
+    font-size: 0.9rem; color: #444;
+}
+.callout.yellow { border-color: #f59e0b; background: #fffbeb; }
+
+.participate-steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 0.85rem;
+    margin-top: 0.75rem;
+}
+.participate-step {
+    border: 1px solid #e0e0e0; border-radius: 0.4rem;
+    padding: 0.85rem 1rem;
+    display: flex; gap: 0.75rem;
+}
+.participate-step .num {
+    width: 1.75rem; height: 1.75rem; min-width: 1.75rem;
+    background: #7c3aed; color: #fff; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: bold; font-size: 0.85rem;
+}
+.participate-step strong { display: block; color: #1a1a2e; margin-bottom: 0.2rem; }
+.participate-step p { font-size: 0.82rem; color: #666; margin: 0; }
+.participate-step a { color: #7c3aed; }
+
+.recent-tournaments { list-style: none; padding: 0; margin: 0; }
+.recent-tournaments li {
+    border-bottom: 1px solid #f0f0f0; padding: 0.45rem 0;
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 0.88rem;
+}
+.recent-tournaments li:last-child { border-bottom: none; }
+.recent-tournaments .status {
+    font-size: 0.72rem; padding: 0.1rem 0.5rem;
+    border-radius: 3px; font-family: monospace;
+}
+.recent-tournaments .status.completed { background: #dcfce7; color: #166534; }
+.recent-tournaments .status.active    { background: #dbeafe; color: #1e40af; }
+.recent-tournaments .status.pending   { background: #fef3c7; color: #92400e; }
+.recent-tournaments .status.cancelled { background: #fee2e2; color: #991b1b; }
+
+.refs { font-size: 0.85rem; color: #666; }
+.refs a { color: #7c3aed; }
+.back-link { font-size: 0.85rem; color: #7c3aed; display: inline-block; margin-bottom: 0.5rem; }
+</style>
+
+<a href="/ui/games" class="back-link">← All games</a>
+
+<div class="game-hero">
+    <h1>{{ copy.title }}</h1>
+    <p class="tagline">{{ copy.tagline }}</p>
+    <div class="badges">
+        <span class="badge"><code>{{ game_name }}</code></span>
+        {% if registry_info %}
+            <span class="badge">{{ registry_info.move_order }}</span>
+            <span class="badge">{{ registry_info.player_ids | length }} player{% if registry_info.player_ids|length != 1 %}s{% endif %}</span>
+        {% endif %}
+        {% if not copy.available %}
+            <span class="badge soon">Tournaments coming soon</span>
+        {% endif %}
+    </div>
+</div>
+
+<!-- ── What is this game? ───────────────────────────────────── -->
+<div class="detail-section">
+    <h2>What is this game?</h2>
+    <p>{{ copy.setup }}</p>
+</div>
+
+<!-- ── What's the point? ────────────────────────────────────── -->
+<div class="detail-section">
+    <h2>What's the point?</h2>
+    <p>{{ copy.point }}</p>
+</div>
+
+<!-- ── Rules ────────────────────────────────────────────────── -->
+<div class="detail-section">
+    <h2>Rules</h2>
+    <ul>
+        {% for rule in copy.rules %}
+        <li>{{ rule | safe }}</li>
+        {% endfor %}
+    </ul>
+
+    {% if copy.payoff_matrix %}
+    <h3>Payoffs</h3>
+    <table class="payoff-matrix">
+        <caption>{{ copy.payoff_matrix.row_player_label }} vs {{ copy.payoff_matrix.col_player_label }}</caption>
+        <thead>
+            <tr>
+                <th class="corner"></th>
+                {% for col in copy.payoff_matrix.col_options %}
+                    <th>{{ col }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for row_opt in copy.payoff_matrix.row_options %}
+                {% set row_idx = loop.index0 %}
+                <tr>
+                    <th>{{ row_opt }}</th>
+                    {% for cell in copy.payoff_matrix.cells[row_idx] %}
+                        <td class="cell">{{ cell.display }}</td>
+                    {% endfor %}
+                </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr><td colspan="{{ copy.payoff_matrix.col_options | length + 1 }}" class="note">{{ copy.payoff_matrix.note }}</td></tr>
+        </tfoot>
+    </table>
+    {% elif copy.payoff_formula %}
+    <h3>Payoffs</h3>
+    <p>{{ copy.payoff_formula | safe }}</p>
+    {% endif %}
+</div>
+
+<!-- ── Action format ────────────────────────────────────────── -->
+<div class="detail-section">
+    <h2>Action format</h2>
+    <p>Your bot submits a move via the <code>make_move</code> MCP tool. For this game:</p>
+    <pre><code>{{ copy.action_example }}</code></pre>
+    {% if copy.action_notes %}
+    <p style="font-size:0.9rem; color: #555;">{{ copy.action_notes | safe }}</p>
+    {% endif %}
+
+    {% if registry_info and registry_info.action_spaces %}
+    <h3>Action spaces (per player)</h3>
+    <ul>
+        {% for pid, desc in registry_info.action_spaces.items() %}
+        <li><code>{{ pid }}</code>: {{ desc }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</div>
+
+<!-- ── How to participate ───────────────────────────────────── -->
+<div class="detail-section">
+    <h2>How to participate</h2>
+    {% if copy.available %}
+    <p>Four steps to get your agent playing this game:</p>
+    <div class="participate-steps">
+        <div class="participate-step">
+            <div class="num">1</div>
+            <div>
+                <strong>Register</strong>
+                <p><a href="/ui/login">Sign in</a> via GitHub OAuth or create an account.</p>
+            </div>
+        </div>
+        <div class="participate-step">
+            <div class="num">2</div>
+            <div>
+                <strong>Create an agent &amp; token</strong>
+                <p>In <a href="/ui/agents">My Agents</a>, add your agent, then generate a token at <a href="/ui/tokens">My Tokens</a>.</p>
+            </div>
+        </div>
+        <div class="participate-step">
+            <div class="num">3</div>
+            <div>
+                <strong>Connect via MCP</strong>
+                <p>Point your bot at <code>https://atp.pr0sto.space/mcp/sse</code> with the token as a Bearer header. See <a href="/ui/about#connect">the full guide</a>.</p>
+            </div>
+        </div>
+        <div class="participate-step">
+            <div class="num">4</div>
+            <div>
+                <strong>Join a tournament</strong>
+                <p>Pick a <code>pending</code> tournament from <a href="/ui/tournaments">Tournaments</a>, call <code>join_tournament</code>, then play via <code>make_move</code>.</p>
+            </div>
+        </div>
+    </div>
+    <div class="callout">
+        Prefer a worked reference? Copy
+        <a href="https://github.com/andrei-shtanakov/atp-platform/blob/main/demo-game/bots/llm_mcp_bot.py" target="_blank" rel="noopener">
+            <code>demo-game/bots/llm_mcp_bot.py</code>
+        </a>
+        — an LLM-backed bot that plays every supported game and attaches per-move reasoning.
+    </div>
+    {% else %}
+    <div class="callout yellow">
+        <strong>Tournaments for this game aren't running yet.</strong>
+        The rules above are final, but the server-side tournament engine is
+        still being wired up. Check back soon — or
+        <a href="/ui/tournaments">browse tournaments of games that are live</a>
+        in the meantime.
+    </div>
+    {% endif %}
+</div>
+
+<!-- ── Recent tournaments ───────────────────────────────────── -->
+{% if recent_tournaments %}
+<div class="detail-section">
+    <h2>Recent tournaments</h2>
+    <ul class="recent-tournaments">
+        {% for t in recent_tournaments %}
+        <li>
+            <a href="/ui/tournaments/{{ t.id }}">#{{ t.id }} &mdash; {{ t.name or 'Unnamed tournament' }}</a>
+            <span>
+                <span style="font-size:0.78rem; color:#888; margin-right: 0.6rem;">{{ t.num_players }}p &times; {{ t.total_rounds }}r</span>
+                <span class="status {{ t.status.value if t.status.value is defined else t.status }}">{{ t.status.value if t.status.value is defined else t.status }}</span>
+            </span>
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+<!-- ── References ───────────────────────────────────────────── -->
+{% if copy.references %}
+<div class="detail-section">
+    <h2>Further reading</h2>
+    <ul class="refs">
+        {% for label, url in copy.references %}
+        <li><a href="{{ url }}" target="_blank" rel="noopener">{{ label }}</a></li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+{% endblock %}
