@@ -546,16 +546,10 @@ class ResultStorage:
         scored_results = scored_results or {}
         statistics = statistics or {}
 
-        # Get or create agent
-        agent = await self.get_or_create_agent(
-            name=result.agent_name,
-            agent_type=agent_type,
-        )
-
-        # Create suite execution
-        suite_exec = await self.create_suite_execution(
+        # Create suite execution (decoupled from Agent row - LABS-54)
+        suite_exec = await self.create_suite_execution_by_name(
             suite_name=result.suite_name,
-            agent=agent,
+            agent_name=result.agent_name,
             runs_per_test=result.runs_per_test,
             started_at=result.start_time,
         )
@@ -677,16 +671,10 @@ class ResultStorage:
         Returns:
             Stored SuiteExecution instance.
         """
-        # Get or create agent
-        agent = await self.get_or_create_agent(
-            name=report.agent_name,
-            agent_type=agent_type,
-        )
-
-        # Create suite execution
-        suite_exec = await self.create_suite_execution(
+        # Create suite execution (decoupled from Agent row - LABS-54)
+        suite_exec = await self.create_suite_execution_by_name(
             suite_name=report.suite_name,
-            agent=agent,
+            agent_name=report.agent_name,
             runs_per_test=report.runs_per_test,
             started_at=datetime.now(tz=UTC),  # Report doesn't have start_time
         )
