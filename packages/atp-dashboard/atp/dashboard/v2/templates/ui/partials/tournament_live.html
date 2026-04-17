@@ -111,7 +111,7 @@
                         {% endif %}
                         {% if action.reasoning and action.id in visible_reasoning_action_ids %}
                         <details class="reasoning-details" style="margin-top:0.25rem">
-                            <summary title="reasoning" style="cursor:pointer">💭</summary>
+                            <summary title="reasoning" aria-label="Reasoning" style="cursor:pointer">💭</summary>
                             <p style="font-size:0.8rem;color:#555;white-space:pre-wrap;margin:0.25rem 0 0 0">{{ action.reasoning }}</p>
                         </details>
                         {% endif %}

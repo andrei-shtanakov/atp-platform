@@ -212,15 +212,22 @@ async def get_rounds_endpoint(
             detail="tournament not found",
         )
 
+    # Mirror service.get_history() cap: latest 100 rounds, returned in
+    # ascending order. Prevents unbounded response growth now that nested
+    # actions (with action_data + reasoning) inflate per-round payload.
     stmt = (
         select(Round)
         .where(Round.tournament_id == tournament_id)
-        .order_by(Round.round_number.asc())
+        .order_by(Round.round_number.desc())
+        .limit(100)
         .options(
             selectinload(Round.actions).selectinload(Action.participant),
         )
     )
-    rounds = list((await session.scalars(stmt)).all())
+    rounds = sorted(
+        (await session.scalars(stmt)).all(),
+        key=lambda r: r.round_number,
+    )
 
     return {
         "rounds": [
