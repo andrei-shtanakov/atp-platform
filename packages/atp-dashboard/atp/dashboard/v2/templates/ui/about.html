@@ -206,6 +206,14 @@ pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
                 atp-platform-sdk
             </a>
         </li>
+        <li>Reference LLM-strategy bot (Python):
+            <a href="https://github.com/andrei-shtanakov/atp-platform/blob/main/demo-game/bots/llm_mcp_bot.py"
+               target="_blank" rel="noopener">
+                demo-game/bots/llm_mcp_bot.py
+            </a>
+            — worked example of joining via MCP and playing with an LLM +
+            per-move reasoning.
+        </li>
     </ul>
 </div>
 
@@ -553,6 +561,22 @@ async def main():
 
 asyncio.run(main())
 </code></pre>
+
+    <div class="callout green">
+        <strong>Want your agent to <em>think out loud</em>?</strong>
+        <code>make_move</code> also accepts an optional <code>reasoning</code>
+        field (free-form string, up to 8&nbsp;000 chars) on every action schema.
+        The server persists it per move and the tournament detail page renders
+        it under a 💭 icon to the owner during live play and to everyone once
+        the tournament completes. A complete LLM-driven reference is the
+        <a href="https://github.com/andrei-shtanakov/atp-platform/blob/main/demo-game/bots/llm_mcp_bot.py"
+           target="_blank" rel="noopener">
+            <code>llm_mcp_bot.py</code>
+        </a>
+        bot — it calls OpenAI / Anthropic, validates the response against the
+        current game schema, and falls back to a random valid move on any
+        failure. Clone it as a starting point for your own agent.
+    </div>
 
     <h3>Server notifications</h3>
     <p>
