@@ -141,9 +141,12 @@ class SuiteExecution(Base):
         String(100), nullable=False, default=DEFAULT_TENANT_ID, index=True
     )
     suite_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    agent_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("agents.id"), nullable=False
+    # Nullable: CLI-produced executions write only agent_name; ownership is
+    # out of scope here (LABS-54 Phase 1).
+    agent_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("agents.id"), nullable=True
     )
+    agent_name: Mapped[str] = mapped_column(String(100), nullable=False)
 
     # Execution metadata
     started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
@@ -166,7 +169,7 @@ class SuiteExecution(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Relationships
-    agent: Mapped["Agent"] = relationship(back_populates="suite_executions")
+    agent: Mapped["Agent | None"] = relationship(back_populates="suite_executions")
     test_executions: Mapped[list["TestExecution"]] = relationship(
         back_populates="suite_execution", cascade="all, delete-orphan"
     )
@@ -177,12 +180,13 @@ class SuiteExecution(Base):
         Index("idx_suite_started", "suite_name", "started_at"),
         Index("idx_agent_started", "agent_id", "started_at"),
         Index("idx_suite_tenant", "tenant_id"),
+        Index("idx_suite_agent_name", "agent_name"),
     )
 
     def __repr__(self) -> str:
         return (
             f"SuiteExecution(id={self.id}, suite={self.suite_name!r}, "
-            f"agent_id={self.agent_id})"
+            f"agent={self.agent_name!r})"
         )
 
 
