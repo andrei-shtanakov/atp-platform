@@ -139,8 +139,17 @@ class TestNewSuiteScreenIntegration:
             # Should be back on main screen
             assert isinstance(pilot.app.screen, MainScreen)
 
+    @pytest.mark.slow
     async def test_escape_key_dismisses_screen(self) -> None:
-        """Test that Escape key dismisses the screen."""
+        """Test that Escape key dismisses the screen.
+
+        Flaky on shared CI runners: Textual's Pilot.press sometimes races
+        the screen transition and the assertion fires before the
+        escape-key action has been consumed. Marked slow to match the
+        precedent set by test_ctrl_s_submits_form (756e70a), which
+        excludes it from the fast-path CI step but still runs in the
+        Integration CI matrix.
+        """
         app = ATPTUI()
         async with app.run_test() as pilot:
             await pilot.press("m")
