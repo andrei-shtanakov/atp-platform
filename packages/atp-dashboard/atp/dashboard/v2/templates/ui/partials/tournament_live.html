@@ -103,6 +103,13 @@
                             {% else %}
                                 <span style="color:#999">stay home</span>
                             {% endif %}
+                        {% elif t.game_type == "public_goods" %}
+                            {% set contrib = (action.action_data or {}).get("contribution") %}
+                            {% if contrib is not none %}
+                                <span class="score-pair">{{ "%.2f"|format(contrib) }}</span>
+                            {% else %}
+                                <span style="color:#999">—</span>
+                            {% endif %}
                         {% else %}
                             <span class="score-pair">{{ action.action_data | tojson }}</span>
                         {% endif %}

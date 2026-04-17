@@ -82,8 +82,19 @@ class BoSAction(BaseModel):
     reasoning: str | None = Field(default=None, max_length=_REASONING_MAX)
 
 
+class PGAction(BaseModel):
+    """Public Goods submit action. ``game_type`` is server-injected; clients may
+    omit it on the wire (see spec §4)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    game_type: Literal["public_goods"]
+    contribution: float = Field(..., ge=0.0)
+    reasoning: str | None = Field(default=None, max_length=_REASONING_MAX)
+
+
 TournamentAction = Annotated[
-    PDAction | SHAction | BoSAction | ElFarolAction,
+    PDAction | SHAction | BoSAction | ElFarolAction | PGAction,
     Field(discriminator="game_type"),
 ]
 
@@ -193,7 +204,57 @@ class BoSRoundState(BaseModel):
         return self.model_dump()
 
 
+class PGRoundState(BaseModel):
+    """Wire schema for Public Goods round state.
+
+    N-player simultaneous game; like ``ElFarolRoundState`` it exposes
+    ``pending_submission`` instead of ``your_turn`` and publishes the
+    full per-round contribution vector for public observability. The
+    social-dilemma parameters (``endowment``, ``multiplier``) are
+    included so bots can reason about the break-even threshold.
+
+    ``extra="forbid"`` — service strips internal-only keys before sending.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    game_type: Literal["public_goods"]
+    tournament_id: int
+    your_history: list[float]
+    all_contributions_by_round: list[list[float]]
+    your_cumulative_score: float
+    all_scores: list[float]
+    your_participant_idx: int
+    num_players: int
+    endowment: float
+    multiplier: float
+    round_number: int
+    total_rounds: int
+    pending_submission: bool
+    action_schema: dict
+
+    def to_dict(self) -> dict[str, Any]:
+        return self.model_dump()
+
+
 RoundState = Annotated[
-    PDRoundState | SHRoundState | BoSRoundState | ElFarolRoundState,
+    PDRoundState | SHRoundState | BoSRoundState | ElFarolRoundState | PGRoundState,
     Field(discriminator="game_type"),
+]
+
+
+__all__ = [
+    "BoSAction",
+    "BoSRoundState",
+    "ElFarolAction",
+    "ElFarolRoundState",
+    "PDAction",
+    "PDRoundState",
+    "PGAction",
+    "PGRoundState",
+    "RoundState",
+    "SHAction",
+    "SHRoundState",
+    "TournamentAction",
+    "TournamentResponse",
 ]

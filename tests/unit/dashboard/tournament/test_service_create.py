@@ -157,3 +157,49 @@ async def test_create_pd_still_requires_exactly_two(monkeypatch):
             total_rounds=3,
             round_deadline_s=30,
         )
+
+
+@pytest.mark.anyio
+async def test_create_public_goods_n4_ok(monkeypatch):
+    monkeypatch.setenv("ATP_TOKEN_EXPIRE_MINUTES", "60")
+    svc = _make_service()
+    t, _ = await svc.create_tournament(
+        creator=_make_user(),
+        name="pg-smoke",
+        game_type="public_goods",
+        num_players=4,
+        total_rounds=3,
+        round_deadline_s=30,
+    )
+    assert t.game_type == "public_goods"
+    assert t.num_players == 4
+
+
+@pytest.mark.anyio
+async def test_create_public_goods_n1_rejected(monkeypatch):
+    monkeypatch.setenv("ATP_TOKEN_EXPIRE_MINUTES", "60")
+    svc = _make_service()
+    with pytest.raises(ValidationError, match="2 <= num_players <= 20"):
+        await svc.create_tournament(
+            creator=_make_user(),
+            name="nope",
+            game_type="public_goods",
+            num_players=1,
+            total_rounds=3,
+            round_deadline_s=30,
+        )
+
+
+@pytest.mark.anyio
+async def test_create_public_goods_n21_rejected(monkeypatch):
+    monkeypatch.setenv("ATP_TOKEN_EXPIRE_MINUTES", "60")
+    svc = _make_service()
+    with pytest.raises(ValidationError, match="2 <= num_players <= 20"):
+        await svc.create_tournament(
+            creator=_make_user(),
+            name="nope",
+            game_type="public_goods",
+            num_players=21,
+            total_rounds=3,
+            round_deadline_s=30,
+        )

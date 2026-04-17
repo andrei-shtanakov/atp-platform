@@ -337,7 +337,7 @@ GAME_COPY: dict[str, GameCopy] = {
             "payoff = (endowment − your_contribution) "
             "+ (Σ contributions × multiplier ÷ N)"
         ),
-        available=False,
+        available=True,
         references=[
             (
                 "Fehr & Gächter, Cooperation and Punishment in Public Goods "

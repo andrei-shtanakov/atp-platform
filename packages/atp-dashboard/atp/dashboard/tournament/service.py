@@ -22,6 +22,7 @@ from typing import Any
 from game_envs.games.battle_of_sexes import BattleOfSexes
 from game_envs.games.el_farol import MAX_SLOTS_PER_DAY, ElFarolBar, ElFarolConfig
 from game_envs.games.prisoners_dilemma import PrisonersDilemma
+from game_envs.games.public_goods import PGConfig, PublicGoodsGame
 from game_envs.games.stag_hunt import StagHunt
 from pydantic import TypeAdapter
 from pydantic import ValidationError as PydanticValidationError
@@ -54,6 +55,7 @@ from atp.dashboard.tournament.schemas import (
     BoSRoundState,
     ElFarolRoundState,
     PDRoundState,
+    PGRoundState,
     SHRoundState,
     TournamentAction,
 )
@@ -78,7 +80,13 @@ TOURNAMENT_PENDING_MAX_WAIT_S: int = int(
 )
 
 _SUPPORTED_GAMES = frozenset(
-    {"prisoners_dilemma", "el_farol", "stag_hunt", "battle_of_sexes"}
+    {
+        "prisoners_dilemma",
+        "el_farol",
+        "stag_hunt",
+        "battle_of_sexes",
+        "public_goods",
+    }
 )
 
 _PD_SINGLETON: PrisonersDilemma = PrisonersDilemma()
@@ -109,11 +117,25 @@ def _el_farol_for(num_players: int) -> ElFarolBar:
     return ElFarolBar(cfg)
 
 
+@functools.lru_cache(maxsize=64)
+def _pg_for(num_players: int) -> PublicGoodsGame:
+    """Cached Public Goods engine for a given player count.
+
+    Deliberately uses ``PGConfig`` defaults — endowment=20, multiplier=1.6,
+    punishment_cost=0 and punishment_effect=0 — so the tournament runs
+    the simple single-step variant (``_step_basic``). Per-tournament
+    config (custom endowment/multiplier) is a future extension; matches
+    the El Farol pattern above where threshold is hardcoded v1-style.
+    """
+    return PublicGoodsGame(PGConfig(num_players=num_players))
+
+
 def _game_for(tournament: Any) -> Any:
     """Return the Game instance for a tournament.
 
-    PD uses a module-level singleton; El Farol uses a per-num_players
-    cached factory. Unknown game_type raises ValidationError.
+    PD/SH/BoS use module-level singletons; N-player games (El Farol,
+    Public Goods) use per-num_players cached factories. Unknown
+    game_type raises ValidationError.
     """
     gt = tournament.game_type
     if gt == "prisoners_dilemma":
@@ -124,12 +146,14 @@ def _game_for(tournament: Any) -> Any:
         return _BOS_SINGLETON
     if gt == "el_farol":
         return _el_farol_for(tournament.num_players)
+    if gt == "public_goods":
+        return _pg_for(tournament.num_players)
     raise ValidationError(f"unsupported game_type {gt!r}")
 
 
 _ACTION_ADAPTER: TypeAdapter[Any] = TypeAdapter(TournamentAction)
 _ROUND_STATE_ADAPTER: TypeAdapter[
-    PDRoundState | SHRoundState | BoSRoundState | ElFarolRoundState
+    PDRoundState | SHRoundState | BoSRoundState | ElFarolRoundState | PGRoundState
 ] = TypeAdapter(_RS_UNION)
 
 
@@ -146,6 +170,8 @@ def _action_hint_for(game_type: str) -> str:
             "{slots: list[int], values in [0, num_slots-1], "
             f"unique, max {MAX_SLOTS_PER_DAY} entries}}"
         )
+    if game_type == "public_goods":
+        return "{contribution: float in [0, endowment]}"
     return "{} (unknown game_type)"
 
 
@@ -195,6 +221,14 @@ class TournamentService:
                 raise ValidationError(
                     f"el_farol requires 2 <= num_players <= 20 (phase B bound), "
                     f"got {num_players}"
+                )
+        elif game_type == "public_goods":
+            # Engine itself enforces 2..20 in PGConfig.__post_init__, but
+            # fail here first for a nicer error message and to avoid a
+            # half-constructed cache entry.
+            if not (2 <= num_players <= 20):
+                raise ValidationError(
+                    f"public_goods requires 2 <= num_players <= 20, got {num_players}"
                 )
         if total_rounds < 1:
             raise ValidationError("total_rounds must be >= 1")
@@ -435,7 +469,7 @@ class TournamentService:
         self,
         tournament_id: int,
         user: User,
-    ) -> PDRoundState | SHRoundState | BoSRoundState | ElFarolRoundState:
+    ) -> PDRoundState | SHRoundState | BoSRoundState | ElFarolRoundState | PGRoundState:
         """Build a player-private RoundState for the current round.
 
         Returns a pydantic ``PDRoundState`` or ``ElFarolRoundState``
@@ -542,7 +576,10 @@ class TournamentService:
             # Both are 2-player simultaneous discrete-choice games; they
             # share the "your_turn" flag semantics.
             formatted["your_turn"] = not has_submitted
-        elif tournament.game_type == "el_farol":
+        elif tournament.game_type in ("el_farol", "public_goods"):
+            # Both are N-player simultaneous games; client polls via
+            # ``pending_submission`` rather than the 2-player
+            # ``your_turn`` flag.
             formatted["pending_submission"] = not has_submitted
         else:
             raise ValidationError(f"unsupported game_type {tournament.game_type!r}")
