@@ -79,6 +79,7 @@ async def test_data(async_session: AsyncSession) -> dict:
             suite = SuiteExecution(
                 suite_name="benchmark-suite",
                 agent_id=agent.id,
+                agent_name=agent.name,
                 started_at=now - timedelta(hours=exec_num + 1),
                 completed_at=now - timedelta(hours=exec_num),
                 duration_seconds=3600.0,

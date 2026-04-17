@@ -61,6 +61,7 @@ async def test_data(test_database: Database) -> dict:
         suite1 = SuiteExecution(
             suite_name="test-suite",
             agent_id=agent1.id,
+            agent_name=agent1.name,
             started_at=now - timedelta(hours=2),
             completed_at=now - timedelta(hours=1),
             duration_seconds=3600.0,
@@ -74,6 +75,7 @@ async def test_data(test_database: Database) -> dict:
         suite2 = SuiteExecution(
             suite_name="test-suite",
             agent_id=agent2.id,
+            agent_name=agent2.name,
             started_at=now - timedelta(hours=1),
             completed_at=now,
             duration_seconds=3000.0,

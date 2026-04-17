@@ -105,6 +105,22 @@ class TestResultStorageAgent:
         assert len(result) == 2
         assert result[0].name == "agent-1"
 
+    @pytest.mark.anyio
+    async def test_create_suite_execution_by_name_no_agent_row(self) -> None:
+        """CLI flow: create SuiteExecution with agent_name, no Agent row."""
+        mock_session = AsyncMock()
+        storage = ResultStorage(mock_session)
+
+        execution = await storage.create_suite_execution_by_name(
+            suite_name="test-suite",
+            agent_name="cli-http-agent",
+            runs_per_test=1,
+        )
+
+        assert execution.agent_name == "cli-http-agent"
+        assert execution.agent_id is None
+        mock_session.add.assert_called_once()
+
 
 class TestResultStorageSuiteExecution:
     """Tests for suite execution operations."""

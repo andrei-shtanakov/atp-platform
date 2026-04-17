@@ -102,6 +102,7 @@ async def leaderboard_test_data(async_session: AsyncSession) -> dict:
     suite_alpha = SuiteExecution(
         suite_name="benchmark-suite",
         agent_id=agent_alpha.id,
+        agent_name=agent_alpha.name,
         started_at=now - timedelta(hours=3),
         completed_at=now - timedelta(hours=2),
         duration_seconds=3600.0,
@@ -115,6 +116,7 @@ async def leaderboard_test_data(async_session: AsyncSession) -> dict:
     suite_beta = SuiteExecution(
         suite_name="benchmark-suite",
         agent_id=agent_beta.id,
+        agent_name=agent_beta.name,
         started_at=now - timedelta(hours=2),
         completed_at=now - timedelta(hours=1),
         duration_seconds=3600.0,
@@ -128,6 +130,7 @@ async def leaderboard_test_data(async_session: AsyncSession) -> dict:
     suite_gamma = SuiteExecution(
         suite_name="benchmark-suite",
         agent_id=agent_gamma.id,
+        agent_name=agent_gamma.name,
         started_at=now - timedelta(hours=1),
         completed_at=now,
         duration_seconds=3600.0,

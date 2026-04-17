@@ -118,6 +118,42 @@ class ResultStorage:
         execution = SuiteExecution(
             suite_name=suite_name,
             agent_id=agent.id,
+            agent_name=agent.name,
+            runs_per_test=runs_per_test,
+            started_at=started_at or datetime.now(tz=UTC),
+            status="running",
+        )
+        self._session.add(execution)
+        await self._session.flush()
+        return execution
+
+    async def create_suite_execution_by_name(
+        self,
+        suite_name: str,
+        agent_name: str,
+        runs_per_test: int = 1,
+        started_at: datetime | None = None,
+    ) -> SuiteExecution:
+        """Create a SuiteExecution with only agent_name (no Agent row).
+
+        Used by the CLI upload path to record test executions without
+        touching the agents table. This is the decoupled contract: a
+        suite execution is a log of what ran, not a side effect of
+        registering an agent (LABS-54).
+
+        Args:
+            suite_name: Name of the test suite.
+            agent_name: Name of the agent that ran the suite (denormalized string).
+            runs_per_test: Number of runs per test.
+            started_at: Execution start time.
+
+        Returns:
+            SuiteExecution instance, flushed but not committed.
+        """
+        execution = SuiteExecution(
+            suite_name=suite_name,
+            agent_id=None,
+            agent_name=agent_name,
             runs_per_test=runs_per_test,
             started_at=started_at or datetime.now(tz=UTC),
             status="running",
