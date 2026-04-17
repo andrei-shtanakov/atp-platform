@@ -282,7 +282,7 @@ class AdvancedAnalyticsService:
         Returns:
             ScoreTrendResponse with trend analysis results.
         """
-        from atp.dashboard.models import Agent, SuiteExecution, TestExecution
+        from atp.dashboard.models import SuiteExecution, TestExecution
 
         if end_date is None:
             end_date = datetime.now()
@@ -304,7 +304,7 @@ class AdvancedAnalyticsService:
         if suite_name:
             stmt = stmt.where(SuiteExecution.suite_name == suite_name)
         if agent_name:
-            stmt = stmt.join(Agent).where(Agent.name == agent_name)
+            stmt = stmt.where(SuiteExecution.agent_name == agent_name)
         if test_id:
             stmt = stmt.where(TestExecution.test_id == test_id)
 
@@ -459,7 +459,7 @@ class AdvancedAnalyticsService:
         Returns:
             AnomalyDetectionResponse with detected anomalies.
         """
-        from atp.dashboard.models import Agent, SuiteExecution, TestExecution
+        from atp.dashboard.models import SuiteExecution, TestExecution
 
         if end_date is None:
             end_date = datetime.now()
@@ -489,7 +489,7 @@ class AdvancedAnalyticsService:
         if suite_name:
             stmt = stmt.where(SuiteExecution.suite_name == suite_name)
         if agent_name:
-            stmt = stmt.join(Agent).where(Agent.name == agent_name)
+            stmt = stmt.where(SuiteExecution.agent_name == agent_name)
 
         result = await self._session.execute(stmt)
         executions = list(result.scalars().all())
@@ -627,7 +627,6 @@ class AdvancedAnalyticsService:
             CorrelationAnalysisResponse with correlation results.
         """
         from atp.dashboard.models import (
-            Agent,
             SuiteExecution,
             TestExecution,
         )
@@ -652,7 +651,7 @@ class AdvancedAnalyticsService:
         if suite_name:
             stmt = stmt.where(SuiteExecution.suite_name == suite_name)
         if agent_name:
-            stmt = stmt.join(Agent).where(Agent.name == agent_name)
+            stmt = stmt.where(SuiteExecution.agent_name == agent_name)
 
         result = await self._session.execute(stmt)
         executions = list(result.scalars().all())
@@ -807,7 +806,6 @@ class AdvancedAnalyticsService:
             CSV content as string.
         """
         from atp.dashboard.models import (
-            Agent,
             SuiteExecution,
             TestExecution,
         )
@@ -822,9 +820,7 @@ class AdvancedAnalyticsService:
             select(TestExecution)
             .join(SuiteExecution)
             .options(
-                selectinload(TestExecution.suite_execution).selectinload(
-                    SuiteExecution.agent
-                ),
+                selectinload(TestExecution.suite_execution),
                 selectinload(TestExecution.run_results),
             )
             .where(TestExecution.started_at >= start_date)
@@ -835,7 +831,7 @@ class AdvancedAnalyticsService:
         if suite_name:
             stmt = stmt.where(SuiteExecution.suite_name == suite_name)
         if agent_name:
-            stmt = stmt.join(Agent).where(Agent.name == agent_name)
+            stmt = stmt.where(SuiteExecution.agent_name == agent_name)
 
         result = await self._session.execute(stmt)
         executions = list(result.scalars().all())
@@ -878,12 +874,11 @@ class AdvancedAnalyticsService:
         # Write data
         for exec in executions:
             suite = exec.suite_execution
-            agent = suite.agent if suite else None
 
             base_row = [
                 exec.started_at.isoformat() if exec.started_at else "",
                 suite.suite_name if suite else "",
-                agent.name if agent else "",
+                suite.agent_name if suite else "",
                 exec.test_id,
                 exec.test_name,
                 exec.success,
