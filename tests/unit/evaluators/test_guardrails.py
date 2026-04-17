@@ -1,7 +1,7 @@
 """Tests for pre-evaluation guardrails."""
 
 from atp.evaluators.guardrails import (
-    check_response_not_empty,
+    check_not_silently_failed,
     check_timeout_not_exceeded,
     check_within_budget,
     run_guardrails,
@@ -41,21 +41,28 @@ def _make_test(
     )
 
 
-class TestResponseNotEmpty:
+class TestNotSilentlyFailed:
     def test_completed_passes(self) -> None:
         r = _make_response(status="completed")
-        assert check_response_not_empty(r).passed is True
+        assert check_not_silently_failed(r).passed is True
 
     def test_failed_no_artifacts_fails(self) -> None:
         r = _make_response(status="failed")
-        result = check_response_not_empty(r)
+        result = check_not_silently_failed(r)
         assert result.passed is False
         assert "empty" in result.reason
+        assert result.name == "not_silently_failed"
 
     def test_failed_with_artifacts_passes(self) -> None:
         artifact = ArtifactFile(type="file", path="out.txt")
         r = _make_response(status="failed", artifacts=[artifact])
-        assert check_response_not_empty(r).passed is True
+        assert check_not_silently_failed(r).passed is True
+
+    def test_completed_with_empty_artifacts_still_passes(self) -> None:
+        """Completed but empty-artifacts is a valid shape (e.g. event-scored
+        tests); guardrail must not short-circuit it."""
+        r = _make_response(status="completed", artifacts=[])
+        assert check_not_silently_failed(r).passed is True
 
 
 class TestTimeoutNotExceeded:
