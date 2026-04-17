@@ -79,7 +79,6 @@ class TestService:
         # Get recent executions
         stmt = (
             select(SuiteExecution)
-            .options(selectinload(SuiteExecution.agent))
             .order_by(SuiteExecution.started_at.desc())
             .limit(recent_limit)
         )
@@ -142,7 +141,7 @@ class TestService:
         Returns:
             Paginated list of suite executions.
         """
-        stmt = select(SuiteExecution).options(selectinload(SuiteExecution.agent))
+        stmt = select(SuiteExecution)
         if suite_name:
             stmt = stmt.where(SuiteExecution.suite_name == suite_name)
         if agent_id:
@@ -201,10 +200,7 @@ class TestService:
         stmt = (
             select(SuiteExecution)
             .where(SuiteExecution.id == execution_id)
-            .options(
-                selectinload(SuiteExecution.agent),
-                selectinload(SuiteExecution.test_executions),
-            )
+            .options(selectinload(SuiteExecution.test_executions))
         )
         result = await self._session.execute(stmt)
         execution = result.scalar_one_or_none()
