@@ -59,5 +59,9 @@ async def test_legacy_post_api_agents_returns_410(v2_app) -> None:
     assert response.status_code == 410
     assert response.headers.get("Deprecation") == "true"
     assert "Sunset" in response.headers
+    link_header = response.headers.get("Link")
+    assert link_header is not None
+    assert "/api/v1/agents" in link_header
+    assert 'rel="successor-version"' in link_header
     body = response.json()
     assert "/api/v1/agents" in body["detail"]

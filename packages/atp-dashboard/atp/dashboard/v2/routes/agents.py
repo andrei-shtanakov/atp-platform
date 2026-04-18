@@ -47,7 +47,38 @@ async def list_agents(
     return [AgentResponse.model_validate(a) for a in agents]
 
 
-@router.post("")
+@router.post(
+    "",
+    status_code=status.HTTP_410_GONE,
+    deprecated=True,
+    responses={
+        status.HTTP_410_GONE: {
+            "description": ("Deprecated endpoint. Use POST /api/v1/agents instead."),
+            "headers": {
+                "Deprecation": {
+                    "description": "Indicates that this endpoint is deprecated.",
+                    "schema": {"type": "string", "example": "true"},
+                },
+                "Sunset": {
+                    "description": (
+                        "HTTP-date after which clients should stop using this endpoint."
+                    ),
+                    "schema": {
+                        "type": "string",
+                        "example": "Fri, 17 Apr 2026 12:00:00 GMT",
+                    },
+                },
+                "Link": {
+                    "description": "Link to the successor endpoint (RFC 8288).",
+                    "schema": {
+                        "type": "string",
+                        "example": '</api/v1/agents>; rel="successor-version"',
+                    },
+                },
+            },
+        }
+    },
+)
 async def create_agent() -> None:
     """Deprecated. Use POST /api/v1/agents instead.
 
@@ -63,7 +94,7 @@ async def create_agent() -> None:
         ),
         headers={
             "Deprecation": "true",
-            "Sunset": "Wed, 17 Apr 2026 12:00:00 GMT",
+            "Sunset": "Fri, 17 Apr 2026 12:00:00 GMT",
             "Link": '</api/v1/agents>; rel="successor-version"',
         },
     )
