@@ -103,8 +103,8 @@ class TestMigration:
             await session.execute(
                 text(
                     "INSERT INTO agents (name, agent_type, config, tenant_id, "
-                    "created_at, updated_at) "
-                    "VALUES ('test-agent', 'http', '{}', '', "
+                    "owner_id, created_at, updated_at) "
+                    "VALUES ('test-agent', 'http', '{}', '', 1, "
                     "datetime('now'), datetime('now'))"
                 )
             )
@@ -150,16 +150,16 @@ class TestMigration:
             await session.execute(
                 text(
                     "INSERT INTO agents (name, agent_type, config, tenant_id, "
-                    "created_at, updated_at) "
-                    f"VALUES ('agent1', 'http', '{{}}', '{DEFAULT_TENANT_ID}', "
+                    "owner_id, created_at, updated_at) "
+                    f"VALUES ('agent1', 'http', '{{}}', '{DEFAULT_TENANT_ID}', 1, "
                     "datetime('now'), datetime('now'))"
                 )
             )
             await session.execute(
                 text(
                     "INSERT INTO agents (name, agent_type, config, tenant_id, "
-                    "created_at, updated_at) "
-                    "VALUES ('agent2', 'http', '{}', 'other-tenant', "
+                    "owner_id, created_at, updated_at) "
+                    "VALUES ('agent2', 'http', '{}', 'other-tenant', 1, "
                     "datetime('now'), datetime('now'))"
                 )
             )
@@ -212,8 +212,8 @@ class TestMigrationEdgeCases:
             await session.execute(
                 text(
                     "INSERT INTO agents (name, agent_type, config, tenant_id, "
-                    "created_at, updated_at) "
-                    "VALUES ('empty-tenant-agent', 'http', '{}', '', "
+                    "owner_id, created_at, updated_at) "
+                    "VALUES ('empty-tenant-agent', 'http', '{}', '', 1, "
                     "datetime('now'), datetime('now'))"
                 )
             )
@@ -245,8 +245,9 @@ class TestMigrationEdgeCases:
             await session.execute(
                 text(
                     "INSERT INTO agents (name, agent_type, config, tenant_id, "
-                    "created_at, updated_at) "
-                    f"VALUES ('migrated-agent', 'http', '{{}}', '{DEFAULT_TENANT_ID}', "
+                    "owner_id, created_at, updated_at) "
+                    "VALUES ('migrated-agent', 'http', '{}', "
+                    f"'{DEFAULT_TENANT_ID}', 1, "
                     "datetime('now'), datetime('now'))"
                 )
             )
