@@ -108,6 +108,7 @@ async def large_test_data(async_session: AsyncSession) -> dict:
             suite = SuiteExecution(
                 suite_name="perf-benchmark-suite",
                 agent_id=agent.id,
+                agent_name=agent.name,
                 started_at=now - timedelta(hours=(exec_num + 1) * 2),
                 completed_at=now - timedelta(hours=exec_num * 2),
                 duration_seconds=7200.0,

@@ -67,10 +67,7 @@ async def get_dashboard_summary(
     # Get recent executions (last 10)
     stmt = (
         select(SuiteExecution)
-        .options(
-            selectinload(SuiteExecution.agent),
-            selectinload(SuiteExecution.test_executions),
-        )
+        .options(selectinload(SuiteExecution.test_executions))
         .order_by(SuiteExecution.started_at.desc())
         .limit(10)
     )
@@ -98,7 +95,7 @@ async def get_dashboard_summary(
     recent_summaries = []
     for exec in recent_execs:
         summary = SuiteExecutionSummary.model_validate(exec)
-        summary.agent_name = exec.agent.name if exec.agent else None
+        summary.agent_name = exec.agent_name
         recent_summaries.append(summary)
 
     return DashboardSummary(

@@ -102,6 +102,7 @@ async def multi_agent_data(async_session: AsyncSession) -> dict:
         suite = SuiteExecution(
             suite_name="benchmark-suite",
             agent_id=agent.id,
+            agent_name=agent.name,
             started_at=now - start_offset,
             completed_at=now - start_offset + timedelta(hours=1),
             duration_seconds=3600.0,
@@ -501,6 +502,7 @@ class TestMultiTimelineEdgeCases:
             suite = SuiteExecution(
                 suite_name="empty-test-suite",
                 agent_id=agent.id,
+                agent_name=agent.name,
                 started_at=now,
                 completed_at=now,
                 duration_seconds=100.0,

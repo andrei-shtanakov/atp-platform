@@ -79,6 +79,7 @@ async def test_data(async_session: AsyncSession) -> dict:
             suite = SuiteExecution(
                 suite_name="benchmark-suite",
                 agent_id=agent.id,
+                agent_name=agent.name,
                 started_at=now - timedelta(hours=exec_num + 1),
                 completed_at=now - timedelta(hours=exec_num),
                 duration_seconds=3600.0,
@@ -194,9 +195,9 @@ class TestGetSuiteExecutionsForAgents:
         self, async_session: AsyncSession, test_data: dict
     ) -> None:
         """Test getting suite executions for multiple agents."""
-        agent_ids = [a.id for a in test_data["agents"]]
+        agent_names = [a.name for a in test_data["agents"]]
         executions = await get_suite_executions_for_agents(
-            async_session, "benchmark-suite", agent_ids, limit_per_agent=5
+            async_session, "benchmark-suite", agent_names, limit_per_agent=5
         )
         # 3 agents x 2 executions each = 6 total
         assert len(executions) == 6
@@ -206,9 +207,9 @@ class TestGetSuiteExecutionsForAgents:
         self, async_session: AsyncSession, test_data: dict
     ) -> None:
         """Test limiting executions per agent."""
-        agent_ids = [a.id for a in test_data["agents"]]
+        agent_names = [a.name for a in test_data["agents"]]
         executions = await get_suite_executions_for_agents(
-            async_session, "benchmark-suite", agent_ids, limit_per_agent=1
+            async_session, "benchmark-suite", agent_names, limit_per_agent=1
         )
         # 3 agents x 1 execution each = 3 total
         assert len(executions) == 3
@@ -228,9 +229,9 @@ class TestGetSuiteExecutionsForAgents:
         self, async_session: AsyncSession, test_data: dict
     ) -> None:
         """Test with nonexistent suite."""
-        agent_ids = [a.id for a in test_data["agents"]]
+        agent_names = [a.name for a in test_data["agents"]]
         executions = await get_suite_executions_for_agents(
-            async_session, "nonexistent-suite", agent_ids, limit_per_agent=5
+            async_session, "nonexistent-suite", agent_names, limit_per_agent=5
         )
         assert len(executions) == 0
 
@@ -337,3 +338,93 @@ class TestBuildLeaderboardData:
         for name in agent_names:
             assert name in agent_metrics
             assert len(agent_metrics[name]["scores"]) == 0
+
+    @pytest.mark.anyio
+    async def test_build_leaderboard_data_includes_cli_rows(
+        self, async_session: AsyncSession
+    ) -> None:
+        """CLI-produced rows (agent_id IS NULL) must surface on the leaderboard.
+
+        Regression guard for LABS-54: the old code filtered SuiteExecution
+        by agent_id resolved from the agents table, so rows written by the
+        CLI (which no longer creates an Agent) were invisible to the
+        leaderboard matrix. The refactor pivots the filter to agent_name.
+        """
+        from atp.dashboard.storage import ResultStorage
+
+        storage = ResultStorage(async_session)
+
+        now = datetime.now()
+        suite = await storage.create_suite_execution_by_name(
+            suite_name="benchmark-suite",
+            agent_name="cli-agent",
+            runs_per_test=1,
+            started_at=now,
+        )
+        suite.completed_at = now + timedelta(hours=1)
+        suite.duration_seconds = 3600.0
+        suite.total_tests = 2
+        suite.passed_tests = 1
+        suite.failed_tests = 1
+        suite.success_rate = 0.5
+        suite.status = "completed"
+
+        test_exec = TestExecution(
+            suite_execution_id=suite.id,
+            test_id="test-001",
+            test_name="Test One",
+            tags=["test"],
+            started_at=now,
+            completed_at=now + timedelta(minutes=10),
+            duration_seconds=600.0,
+            total_runs=1,
+            successful_runs=1,
+            success=True,
+            score=72.0,
+            status="completed",
+        )
+        async_session.add(test_exec)
+        await async_session.flush()
+
+        async_session.add(
+            RunResult(
+                test_execution_id=test_exec.id,
+                run_number=1,
+                started_at=test_exec.started_at,
+                completed_at=test_exec.completed_at,
+                duration_seconds=test_exec.duration_seconds,
+                response_status="completed",
+                success=True,
+                total_tokens=500,
+                input_tokens=300,
+                output_tokens=200,
+                cost_usd=0.005,
+                events_json=[],
+            )
+        )
+        await async_session.commit()
+
+        # Sanity: the row really has agent_id=None
+        assert suite.agent_id is None
+        assert suite.agent_name == "cli-agent"
+
+        (
+            test_data_result,
+            test_names,
+            _test_tags,
+            agent_metrics,
+        ) = await build_leaderboard_data(
+            async_session,
+            "benchmark-suite",
+            ["cli-agent"],
+            limit_executions=5,
+        )
+
+        # The CLI agent must appear in the matrix with real data.
+        assert "cli-agent" in agent_metrics
+        assert agent_metrics["cli-agent"]["scores"] == [72.0]
+        assert agent_metrics["cli-agent"]["successes"] == [1.0]
+        assert agent_metrics["cli-agent"]["tokens"] == 500
+        assert agent_metrics["cli-agent"]["cost"] == pytest.approx(0.005)
+        assert "test-001" in test_data_result
+        assert "cli-agent" in test_data_result["test-001"]

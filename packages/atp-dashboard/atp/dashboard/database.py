@@ -275,14 +275,35 @@ async def _add_missing_columns(db: Database) -> None:
                     continue
 
                 col_type = column.type.compile(db.engine.dialect)
-                nullable = "NULL" if column.nullable else "NOT NULL"
                 default = ""
                 if column.server_default is not None:
                     default = f" DEFAULT {column.server_default.arg}"  # type: ignore[union-attr]
 
+                # SQLite (and some other DBs) reject ALTER TABLE ADD COLUMN
+                # ... NOT NULL without a default when the table has rows.
+                # In that case, add the column as nullable and log — the
+                # proper Alembic migration is responsible for the backfill
+                # and NOT NULL flip.
+                nullable_sql = "NULL" if column.nullable else "NOT NULL"
+                if not column.nullable and column.server_default is None:
+                    row_count = (
+                        await conn.execute(text(f"SELECT COUNT(*) FROM {table.name}"))
+                    ).scalar_one()
+                    if row_count:
+                        logger.warning(
+                            "Auto-adding %s.%s as NULLABLE because the table "
+                            "has %d existing rows and the column is NOT NULL "
+                            "without a server_default. Run Alembic migrations "
+                            "to backfill and enforce NOT NULL.",
+                            table.name,
+                            column.name,
+                            row_count,
+                        )
+                        nullable_sql = "NULL"
+
                 stmt = (
                     f"ALTER TABLE {table.name} "
-                    f"ADD COLUMN {column.name} {col_type} {nullable}{default}"
+                    f"ADD COLUMN {column.name} {col_type} {nullable_sql}{default}"
                 )
                 logger.info("Auto-adding column: %s.%s", table.name, column.name)
                 await conn.execute(text(stmt))

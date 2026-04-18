@@ -97,6 +97,7 @@ class SuiteExecutionFactory:
         cls,
         suite_name: str | None = None,
         agent_id: int = 1,
+        agent_name: str = "test-agent",
         started_at: datetime | None = None,
         completed_at: datetime | None = None,
         duration_seconds: float | None = None,
@@ -112,6 +113,7 @@ class SuiteExecutionFactory:
         Args:
             suite_name: Name of the test suite.
             agent_id: Foreign key to agent.
+            agent_name: Denormalized agent name (NOT NULL in the schema).
             started_at: Start timestamp.
             completed_at: Completion timestamp.
             duration_seconds: Total duration.
@@ -140,6 +142,7 @@ class SuiteExecutionFactory:
         return SuiteExecution(
             suite_name=suite_name,
             agent_id=agent_id,
+            agent_name=agent_name,
             started_at=started_at,
             completed_at=completed_at,
             duration_seconds=duration_seconds,
