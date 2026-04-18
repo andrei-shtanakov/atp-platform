@@ -5,7 +5,7 @@ in the ATP Dashboard.
 
 Permissions:
     - GET /agents: AGENTS_READ
-    - POST /agents: AGENTS_WRITE
+    - POST /agents: deprecated, returns 410 — use POST /api/v1/agents
     - GET /agents/{id}: AGENTS_READ
     - PATCH /agents/{id}: AGENTS_WRITE
     - DELETE /agents/{id}: AGENTS_DELETE
@@ -18,7 +18,7 @@ from sqlalchemy import select
 
 from atp.dashboard.models import Agent
 from atp.dashboard.rbac import Permission, require_permission
-from atp.dashboard.schemas import AgentCreate, AgentResponse, AgentUpdate
+from atp.dashboard.schemas import AgentResponse, AgentUpdate
 from atp.dashboard.v2.dependencies import (
     DBSession,
 )
@@ -47,48 +47,26 @@ async def list_agents(
     return [AgentResponse.model_validate(a) for a in agents]
 
 
-@router.post(
-    "",
-    response_model=AgentResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-async def create_agent(
-    session: DBSession,
-    agent_data: AgentCreate,
-    _: Annotated[None, Depends(require_permission(Permission.AGENTS_WRITE))],
-) -> AgentResponse:
-    """Create a new agent.
+@router.post("")
+async def create_agent() -> None:
+    """Deprecated. Use POST /api/v1/agents instead.
 
-    Requires AGENTS_WRITE permission.
-
-    Args:
-        session: Database session.
-        agent_data: Agent creation data.
-
-    Returns:
-        The created agent.
-
-    Raises:
-        HTTPException: If an agent with the same name already exists.
+    Removed in LABS-54 Phase 2 because this endpoint created ownerless
+    Agent rows. The replacement at /api/v1/agents resolves the owner
+    from the authenticated user's JWT and enforces per-user quotas.
     """
-    # Check for existing agent
-    stmt = select(Agent).where(Agent.name == agent_data.name)
-    result = await session.execute(stmt)
-    if result.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Agent '{agent_data.name}' already exists",
-        )
-
-    agent = Agent(
-        name=agent_data.name,
-        agent_type=agent_data.agent_type,
-        config=agent_data.config,
-        description=agent_data.description,
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail=(
+            "POST /api/agents is deprecated. Use POST /api/v1/agents "
+            "(resolves owner from your JWT)."
+        ),
+        headers={
+            "Deprecation": "true",
+            "Sunset": "Wed, 17 Apr 2026 12:00:00 GMT",
+            "Link": '</api/v1/agents>; rel="successor-version"',
+        },
     )
-    session.add(agent)
-    await session.commit()
-    return AgentResponse.model_validate(agent)
 
 
 @router.get("/{agent_id}", response_model=AgentResponse)
