@@ -94,6 +94,7 @@ async def test_data(test_database: Database) -> dict:
             name="test-agent",
             agent_type="cli",
             config={},
+            owner_id=1,
         )
         session.add(agent)
         await session.flush()

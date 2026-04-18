@@ -81,12 +81,14 @@ async def test_data(async_session: AsyncSession) -> dict:
         agent_type="http",
         config={"endpoint": "http://localhost:8001"},
         description="Alpha agent for testing",
+        owner_id=1,
     )
     agent_beta = Agent(
         name="agent-beta",
         agent_type="http",
         config={"endpoint": "http://localhost:8002"},
         description="Beta agent for testing",
+        owner_id=1,
     )
     async_session.add_all([agent_alpha, agent_beta])
     await async_session.flush()
@@ -474,6 +476,7 @@ class TestSideBySideEndpointIntegration:
             name="agent-gamma",
             agent_type="cli",
             config={},
+            owner_id=1,
         )
         async_session.add(agent_gamma)
         await async_session.flush()

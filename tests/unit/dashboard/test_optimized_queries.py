@@ -62,9 +62,9 @@ async def test_data(async_session: AsyncSession) -> dict:
 
     # Create agents
     agents = [
-        Agent(name="agent-alpha", agent_type="http", config={}),
-        Agent(name="agent-beta", agent_type="http", config={}),
-        Agent(name="agent-gamma", agent_type="cli", config={}),
+        Agent(name="agent-alpha", agent_type="http", config={}, owner_id=1),
+        Agent(name="agent-beta", agent_type="http", config={}, owner_id=1),
+        Agent(name="agent-gamma", agent_type="cli", config={}, owner_id=1),
     ]
     async_session.add_all(agents)
     await async_session.flush()

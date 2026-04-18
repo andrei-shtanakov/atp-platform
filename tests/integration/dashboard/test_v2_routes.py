@@ -46,12 +46,14 @@ async def test_data(test_database: Database) -> dict:
             agent_type="http",
             config={"endpoint": "http://localhost:8001"},
             description="First test agent",
+            owner_id=1,
         )
         agent2 = Agent(
             name="agent-two",
             agent_type="docker",
             config={"image": "test:latest"},
             description="Second test agent",
+            owner_id=1,
         )
         session.add_all([agent1, agent2])
         await session.flush()

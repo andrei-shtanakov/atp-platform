@@ -77,6 +77,7 @@ class TestTenantAwareSession:
                     name="test-agent",
                     agent_type="http",
                     config={},
+                    owner_id=1,
                 )
                 session.add(agent)
                 raise ValueError("Test error")
@@ -100,6 +101,7 @@ class TestTenantAwareSession:
                 name="autocommit-agent",
                 agent_type="http",
                 config={},
+                owner_id=1,
             )
             session.add(agent)
 
@@ -169,6 +171,7 @@ class TestTenantSessionFactory:
                 name="factory-agent",
                 agent_type="http",
                 config={},
+                owner_id=1,
             )
             session.add(agent)
 
@@ -191,6 +194,7 @@ class TestTenantSessionFactory:
                     name="rollback-agent",
                     agent_type="http",
                     config={},
+                    owner_id=1,
                 )
                 session.add(agent)
                 raise ValueError("Test error")

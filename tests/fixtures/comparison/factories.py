@@ -54,6 +54,7 @@ class AgentFactory:
             agent_type=agent_type,
             config=config,
             description=description,
+            owner_id=1,
         )
 
     @classmethod
