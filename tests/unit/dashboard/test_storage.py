@@ -51,6 +51,7 @@ class TestResultStorageAgent:
             name="existing-agent",
             agent_type="http",
             config={},
+            owner_id=1,
         )
 
         mock_session = AsyncMock()
@@ -75,6 +76,7 @@ class TestResultStorageAgent:
             name="test-agent",
             agent_type="http",
             config={},
+            owner_id=1,
         )
 
         mock_session = AsyncMock()
@@ -92,8 +94,8 @@ class TestResultStorageAgent:
     async def test_list_agents(self) -> None:
         """Test listing all agents."""
         agents = [
-            Agent(id=1, name="agent-1", agent_type="http", config={}),
-            Agent(id=2, name="agent-2", agent_type="cli", config={}),
+            Agent(id=1, name="agent-1", agent_type="http", config={}, owner_id=1),
+            Agent(id=2, name="agent-2", agent_type="cli", config={}, owner_id=1),
         ]
 
         mock_session = AsyncMock()
@@ -132,7 +134,7 @@ class TestResultStorageSuiteExecution:
     @pytest.mark.anyio
     async def test_create_suite_execution(self) -> None:
         """Test creating a suite execution."""
-        agent = Agent(id=1, name="test-agent", agent_type="http", config={})
+        agent = Agent(id=1, name="test-agent", agent_type="http", config={}, owner_id=1)
         now = datetime.now()
 
         mock_session = AsyncMock()

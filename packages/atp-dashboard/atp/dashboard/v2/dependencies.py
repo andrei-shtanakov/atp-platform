@@ -18,7 +18,6 @@ from atp.dashboard.auth import (
 from atp.dashboard.database import Database, get_database
 from atp.dashboard.models import User
 from atp.dashboard.v2.config import DashboardConfig, get_config
-from atp.dashboard.v2.services.agent_service import AgentService
 from atp.dashboard.v2.services.comparison_service import ComparisonService
 from atp.dashboard.v2.services.export_service import ExportService
 from atp.dashboard.v2.services.test_service import TestService
@@ -145,23 +144,6 @@ async def get_test_service(session: DBSession) -> TestService:
     return TestService(session)
 
 
-async def get_agent_service(session: DBSession) -> AgentService:
-    """Get an AgentService instance for dependency injection.
-
-    Args:
-        session: Database session.
-
-    Returns:
-        AgentService instance.
-
-    Example:
-        @app.get("/agents")
-        async def list_agents(service: AgentServiceDep):
-            return await service.list_agents()
-    """
-    return AgentService(session)
-
-
 async def get_comparison_service(session: DBSession) -> ComparisonService:
     """Get a ComparisonService instance for dependency injection.
 
@@ -198,6 +180,5 @@ async def get_export_service(session: DBSession) -> ExportService:
 
 # Service type aliases for cleaner route signatures
 TestServiceDep = Annotated[TestService, Depends(get_test_service)]
-AgentServiceDep = Annotated[AgentService, Depends(get_agent_service)]
 ComparisonServiceDep = Annotated[ComparisonService, Depends(get_comparison_service)]
 ExportServiceDep = Annotated[ExportService, Depends(get_export_service)]

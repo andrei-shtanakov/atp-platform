@@ -92,6 +92,7 @@ async def large_test_data(async_session: AsyncSession) -> dict:
             agent_type="http",
             config={"endpoint": f"http://localhost:800{i}"},
             description=f"Performance test agent {chr(65 + i)}",
+            owner_id=1,
         )
         agents.append(agent)
 

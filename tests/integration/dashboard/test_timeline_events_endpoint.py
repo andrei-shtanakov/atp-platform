@@ -81,6 +81,7 @@ async def test_data(async_session: AsyncSession) -> dict:
         agent_type="http",
         config={"endpoint": "http://localhost:8001"},
         description="Alpha agent for testing",
+        owner_id=1,
     )
     async_session.add(agent)
     await async_session.flush()
@@ -513,6 +514,7 @@ class TestTimelineEventsEdgeCases:
             name="agent-empty",
             agent_type="http",
             config={},
+            owner_id=1,
         )
         async_session.add(agent)
         await async_session.flush()
@@ -604,6 +606,7 @@ class TestTimelineEventsEdgeCases:
             name="agent-no-run",
             agent_type="http",
             config={},
+            owner_id=1,
         )
         async_session.add(agent)
         await async_session.flush()
@@ -681,6 +684,7 @@ class TestTimelineEventsEdgeCases:
             name="agent-duration",
             agent_type="http",
             config={},
+            owner_id=1,
         )
         async_session.add(agent)
         await async_session.flush()

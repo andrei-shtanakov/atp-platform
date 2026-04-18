@@ -80,18 +80,21 @@ async def leaderboard_test_data(async_session: AsyncSession) -> dict:
         agent_type="http",
         config={"endpoint": "http://localhost:8001"},
         description="Alpha agent - best performer",
+        owner_id=1,
     )
     agent_beta = Agent(
         name="agent-beta",
         agent_type="http",
         config={"endpoint": "http://localhost:8002"},
         description="Beta agent - medium performer",
+        owner_id=1,
     )
     agent_gamma = Agent(
         name="agent-gamma",
         agent_type="cli",
         config={},
         description="Gamma agent - low performer",
+        owner_id=1,
     )
     async_session.add_all([agent_alpha, agent_beta, agent_gamma])
     await async_session.flush()
