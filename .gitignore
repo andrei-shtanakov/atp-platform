@@ -50,8 +50,25 @@ Thumbs.db
 
 # Misc
 *.log
+log*.txt
 .env
 .env.local
+
+# Cross-project ecosystem analysis (kept in parent dir, not this repo)
+COWORK_CONTEXT.md
+_cowork_output/
+
+# Agent tooling caches / local state
+.codemie/
+.superpowers/
+.claude/scheduled_tasks.lock
+
+# Local working notes
+atp-issues.md
+platform_comparison.md
+
+# atp sync local state
+**/.atp-sync.json
 
 # Generated artifacts
 art/
