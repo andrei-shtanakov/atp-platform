@@ -481,6 +481,72 @@ async def test_admin_activity_fragment_renders_table_and_heatmap(admin_ui_ctx):
     assert "activity-deadline" in resp.text
 
 
+async def _get_participant_id(ctx: dict, tournament_id: int, agent_name: str) -> int:
+    """Look up a participant id by agent_name in the given tournament."""
+    db: Database = ctx["db"]
+    from sqlalchemy import select
+
+    async with db.session() as session:
+        stmt = select(Participant).where(
+            Participant.tournament_id == tournament_id,
+            Participant.agent_name == agent_name,
+        )
+        p = (await session.execute(stmt)).scalars().first()
+        assert p is not None, f"seed bug: {agent_name} not found"
+        return p.id
+
+
+@pytest.mark.anyio
+async def test_kick_endpoint_rejects_non_admin(admin_ui_ctx):
+    client = admin_ui_ctx["client"]
+    tid = await _seed_live_el_farol_in_ctx(admin_ui_ctx)
+    pid = await _get_participant_id(admin_ui_ctx, tid, "alpha")
+    resp = await client.delete(
+        f"/api/v1/tournaments/{tid}/participants/{pid}",
+        headers=admin_ui_ctx["regular_headers"],
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.anyio
+async def test_kick_endpoint_returns_204_on_first_kick(admin_ui_ctx):
+    client = admin_ui_ctx["client"]
+    tid = await _seed_live_el_farol_in_ctx(admin_ui_ctx)
+    pid = await _get_participant_id(admin_ui_ctx, tid, "beta")
+    resp = await client.delete(
+        f"/api/v1/tournaments/{tid}/participants/{pid}",
+        headers=admin_ui_ctx["admin_headers"],
+    )
+    assert resp.status_code == 204
+
+
+@pytest.mark.anyio
+async def test_kick_endpoint_returns_409_on_double_kick(admin_ui_ctx):
+    client = admin_ui_ctx["client"]
+    tid = await _seed_live_el_farol_in_ctx(admin_ui_ctx)
+    pid = await _get_participant_id(admin_ui_ctx, tid, "beta")
+    await client.delete(
+        f"/api/v1/tournaments/{tid}/participants/{pid}",
+        headers=admin_ui_ctx["admin_headers"],
+    )
+    resp = await client.delete(
+        f"/api/v1/tournaments/{tid}/participants/{pid}",
+        headers=admin_ui_ctx["admin_headers"],
+    )
+    assert resp.status_code == 409
+
+
+@pytest.mark.anyio
+async def test_kick_endpoint_returns_404_for_unknown_participant(admin_ui_ctx):
+    client = admin_ui_ctx["client"]
+    tid = await _seed_live_el_farol_in_ctx(admin_ui_ctx)
+    resp = await client.delete(
+        f"/api/v1/tournaments/{tid}/participants/9999999",
+        headers=admin_ui_ctx["admin_headers"],
+    )
+    assert resp.status_code == 404
+
+
 @pytest.mark.anyio
 async def test_admin_activity_fragment_404_for_unknown_id(admin_ui_ctx):
     client = admin_ui_ctx["client"]
