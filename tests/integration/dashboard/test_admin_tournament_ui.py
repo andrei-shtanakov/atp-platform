@@ -131,3 +131,61 @@ async def test_admin_tournaments_list_renders_for_admin(admin_ui_ctx):
     assert "Tournaments (admin)" in resp.text
     assert "New tournament" in resp.text
     assert "No tournaments yet" in resp.text
+
+
+@pytest.mark.anyio
+async def test_admin_new_tournament_form_renders(admin_ui_ctx):
+    client = admin_ui_ctx["client"]
+    resp = await client.get(
+        "/ui/admin/tournaments/new", headers=admin_ui_ctx["admin_headers"]
+    )
+    assert resp.status_code == 200
+    assert 'name="name"' in resp.text
+    assert 'name="game_type"' in resp.text
+    assert 'name="num_players"' in resp.text
+    assert 'name="total_rounds"' in resp.text
+    assert 'name="round_deadline_s"' in resp.text
+    assert "el_farol" in resp.text
+
+
+@pytest.mark.anyio
+async def test_admin_create_tournament_redirects_to_detail(admin_ui_ctx):
+    client = admin_ui_ctx["client"]
+    resp = await client.post(
+        "/ui/admin/tournaments/new",
+        data={
+            "name": "El Farol smoke A",
+            "game_type": "el_farol",
+            "num_players": "6",
+            "total_rounds": "10",
+            "round_deadline_s": "30",
+        },
+        headers=admin_ui_ctx["admin_headers"],
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"].startswith("/ui/admin/tournaments/")
+
+
+@pytest.mark.anyio
+async def test_admin_create_tournament_rejects_invalid_input(admin_ui_ctx):
+    """El Farol requires 2 <= num_players <= 20; 100 must 400."""
+    client = admin_ui_ctx["client"]
+    resp = await client.post(
+        "/ui/admin/tournaments/new",
+        data={
+            "name": "El Farol too big",
+            "game_type": "el_farol",
+            "num_players": "100",
+            "total_rounds": "10",
+            "round_deadline_s": "30",
+        },
+        headers=admin_ui_ctx["admin_headers"],
+        follow_redirects=False,
+    )
+    assert resp.status_code == 400
+    assert (
+        "Could not create" in resp.text
+        or "Validation" in resp.text
+        or "el_farol" in resp.text
+    )
