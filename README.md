@@ -325,6 +325,7 @@ uv run atp sync                                               # Sync local suite
 
 - [game-environments README](game-environments/README.md) - Game library: API, game dev guide, strategies, analysis tools
 - [atp-games README](atp-games/README.md) - ATP plugin: quick start, YAML reference, evaluators, tournaments
+- [Game rules (human-readable)](docs/games/rules/) - Per-game rule sheets derived from the implementation (currently El Farol in EN/RU)
 
 ### Examples
 
@@ -372,6 +373,10 @@ python task.py next                # Show ready tasks
 - Test coverage ≥80%
 
 See [CLAUDE.md](CLAUDE.md) for detailed development guidelines.
+
+### macOS launchers
+
+For Mac users who prefer double-clicking over the CLI, see [`scripts/macos/`](scripts/macos/) — double-clickable `.command` files that install dependencies and run bundled game suites (Prisoner's Dilemma, Auction, El Farol).
 
 ## Contributing
 
