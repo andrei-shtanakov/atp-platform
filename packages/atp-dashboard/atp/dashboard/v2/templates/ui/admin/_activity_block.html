@@ -1,0 +1,91 @@
+{#
+  Admin activity block for a tournament.
+  Polled every 2 s via hx-trigger when tournament is live;
+  rendered once as a static post-mortem when it is not.
+  Context: snap (dict) — see TournamentService.get_admin_activity(),
+           is_live (bool).
+#}
+<style>
+  .activity-grid { display: grid; grid-template-columns: 3fr 2fr; gap: 1rem; }
+  .activity-table { font-size: 0.9rem; }
+  .activity-table table { width: 100%; }
+  .activity-heatmap { font-family: monospace; font-size: 0.75rem; overflow-x: auto; }
+  .activity-heatmap .row { display: flex; align-items: center; gap: 3px; white-space: nowrap; margin-bottom: 2px; }
+  .activity-heatmap .label { min-width: 10ch; overflow: hidden; text-overflow: ellipsis; }
+  .activity-heatmap .cell { width: 14px; height: 14px; display: inline-block; border: 1px solid #bbb; }
+  .activity-heatmap .cell.submitted { background: #2a8; }
+  .activity-heatmap .cell.timeout   { background: #c44; }
+  .activity-heatmap .cell.waiting   { background: #fff; }
+  .activity-deadline { font-size: 2rem; font-weight: 600; text-align: center; color: #c80; margin: 0.5rem 0; }
+  .status-cell-submitted { color: #2a8; }
+  .status-cell-timeout   { color: #c44; }
+  .status-cell-waiting   { color: #c80; }
+  .status-cell-released  { color: #999; }
+  @media (max-width: 640px) {
+    .activity-grid { grid-template-columns: 1fr; }
+  }
+</style>
+
+<div class="activity-grid">
+  <section class="activity-table">
+    <h3>
+      Round {{ snap.current_round or 0 }} / {{ snap.total_rounds }}
+      · {{ snap.submitted_this_round }}/{{ snap.total_this_round }} submitted
+    </h3>
+    <table id="admin-activity-table">
+      <thead>
+        <tr><th>Agent</th><th>Status</th><th>Last action</th><th>Score</th></tr>
+      </thead>
+      <tbody>
+        {% for p in snap.participants %}
+        <tr>
+          <td>{{ p.agent_name }}</td>
+          <td class="status-cell-{{ p.current_round_status }}">
+            {% if p.current_round_status == "submitted" %}✓ submitted
+            {% elif p.current_round_status == "waiting" %}⏳ waiting
+            {% elif p.current_round_status == "timeout" %}⚠ timeout
+            {% else %}◻ released
+            {% endif %}
+          </td>
+          <td>
+            {% if p.current_round_submitted_at %}
+              {{ p.current_round_submitted_at.strftime("%H:%M:%S") }}
+            {% else %}—{% endif %}
+          </td>
+          <td>{{ "%.1f"|format(p.total_score or 0) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <aside>
+    <section class="activity-heatmap" id="admin-activity-heatmap">
+      <h3>Activity by round</h3>
+      {% for p in snap.participants %}
+      <div class="row">
+        <span class="label" title="{{ p.agent_name }}">{{ p.agent_name[:10] }}</span>
+        {% for cell in p.row_per_round %}
+          <span class="cell {{ cell }}"
+                title="round {{ loop.index }}: {{ cell }}"></span>
+        {% endfor %}
+      </div>
+      {% endfor %}
+      <p><small>
+        <span class="cell submitted" style="display:inline-block;width:10px;height:10px;"></span> submitted
+        · <span class="cell timeout" style="display:inline-block;width:10px;height:10px;"></span> timeout
+        · <span class="cell waiting" style="display:inline-block;width:10px;height:10px;border:1px solid #bbb;"></span> waiting
+      </small></p>
+    </section>
+
+    {% if is_live and snap.deadline_remaining_s is not none %}
+    <section>
+      <h3>Round deadline</h3>
+      <div class="activity-deadline">
+        {{ "%02d"|format(snap.deadline_remaining_s // 60) }}:{{ "%02d"|format(snap.deadline_remaining_s % 60) }}
+      </div>
+      <p style="text-align:center;"><small>until round {{ snap.current_round }} deadline</small></p>
+    </section>
+    {% endif %}
+  </aside>
+</div>

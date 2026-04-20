@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import AsyncGenerator
+from datetime import datetime, timedelta
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -16,6 +17,15 @@ from httpx import ASGITransport, AsyncClient
 from atp.dashboard.auth import create_access_token, get_password_hash
 from atp.dashboard.database import Database, set_database
 from atp.dashboard.models import Base, User
+from atp.dashboard.tournament.models import (
+    Action,
+    ActionSource,
+    Participant,
+    Round,
+    RoundStatus,
+    Tournament,
+    TournamentStatus,
+)
 from atp.dashboard.v2.config import DashboardConfig, get_config
 from atp.dashboard.v2.factory import create_app
 
@@ -226,6 +236,145 @@ async def test_admin_tournament_detail_rejects_non_admin(admin_ui_ctx):
     detail_url = create_resp.headers["location"]
     resp = await client.get(detail_url, headers=admin_ui_ctx["regular_headers"])
     assert resp.status_code == 403
+
+
+async def _seed_live_el_farol_in_ctx(ctx: dict) -> int:
+    """Seed an ACTIVE El Farol with 1 completed round + 1 in-progress round.
+
+    Returns the tournament id. Uses the same DB as the app in ``ctx``.
+    """
+    db: Database = ctx["db"]
+    admin_id: int = ctx["admin_id"]
+    now = datetime.now().replace(microsecond=0)
+
+    async with db.session() as session:
+        t = Tournament(
+            game_type="el_farol",
+            status=TournamentStatus.ACTIVE.value,
+            num_players=2,
+            total_rounds=3,
+            round_deadline_s=30,
+            created_by=admin_id,
+            created_at=now - timedelta(minutes=2),
+            starts_at=now - timedelta(minutes=1),
+            pending_deadline=now - timedelta(minutes=1),
+        )
+        session.add(t)
+        await session.flush()
+
+        uid = t.id
+        u_alpha = User(
+            username=f"bot_alpha_{uid}",
+            email=f"alpha_{uid}@t.com",
+            hashed_password="x",
+            is_active=True,
+        )
+        u_beta = User(
+            username=f"bot_beta_{uid}",
+            email=f"beta_{uid}@t.com",
+            hashed_password="x",
+            is_active=True,
+        )
+        session.add_all([u_alpha, u_beta])
+        await session.flush()
+
+        p_alpha = Participant(
+            tournament_id=t.id,
+            user_id=u_alpha.id,
+            agent_name="alpha",
+            total_score=1.0,
+        )
+        p_beta = Participant(
+            tournament_id=t.id,
+            user_id=u_beta.id,
+            agent_name="beta",
+            total_score=0.0,
+        )
+        session.add_all([p_alpha, p_beta])
+        await session.flush()
+
+        r1 = Round(
+            tournament_id=t.id,
+            round_number=1,
+            status=RoundStatus.COMPLETED.value,
+            started_at=now - timedelta(minutes=1),
+            deadline=now - timedelta(seconds=30),
+        )
+        session.add(r1)
+        await session.flush()
+        session.add(
+            Action(
+                round_id=r1.id,
+                participant_id=p_alpha.id,
+                action_data={"slots": [0]},
+                submitted_at=now - timedelta(seconds=45),
+                source=ActionSource.SUBMITTED.value,
+                payoff=1.0,
+            )
+        )
+        session.add(
+            Action(
+                round_id=r1.id,
+                participant_id=p_beta.id,
+                action_data={"slots": []},
+                submitted_at=now - timedelta(seconds=29),
+                source=ActionSource.TIMEOUT_DEFAULT.value,
+                payoff=0.0,
+            )
+        )
+
+        r2 = Round(
+            tournament_id=t.id,
+            round_number=2,
+            status=RoundStatus.IN_PROGRESS.value,
+            started_at=now,
+            deadline=now + timedelta(seconds=25),
+        )
+        session.add(r2)
+        await session.commit()
+        return t.id
+
+
+@pytest.mark.anyio
+async def test_admin_activity_fragment_rejects_non_admin(admin_ui_ctx):
+    client = admin_ui_ctx["client"]
+    tid = await _seed_live_el_farol_in_ctx(admin_ui_ctx)
+    resp = await client.get(
+        f"/ui/admin/tournaments/{tid}/activity",
+        headers=admin_ui_ctx["regular_headers"],
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.anyio
+async def test_admin_activity_fragment_renders_table_and_heatmap(admin_ui_ctx):
+    client = admin_ui_ctx["client"]
+    tid = await _seed_live_el_farol_in_ctx(admin_ui_ctx)
+    resp = await client.get(
+        f"/ui/admin/tournaments/{tid}/activity",
+        headers=admin_ui_ctx["admin_headers"],
+    )
+    assert resp.status_code == 200
+    # Table present with both agents.
+    assert "admin-activity-table" in resp.text
+    assert "alpha" in resp.text
+    assert "beta" in resp.text
+    # Heatmap with at least one submitted and one timeout cell class.
+    assert "admin-activity-heatmap" in resp.text
+    assert 'class="cell submitted"' in resp.text
+    assert 'class="cell timeout"' in resp.text
+    # Deadline countdown visible for live tournaments.
+    assert "activity-deadline" in resp.text
+
+
+@pytest.mark.anyio
+async def test_admin_activity_fragment_404_for_unknown_id(admin_ui_ctx):
+    client = admin_ui_ctx["client"]
+    resp = await client.get(
+        "/ui/admin/tournaments/9999999/activity",
+        headers=admin_ui_ctx["admin_headers"],
+    )
+    assert resp.status_code == 404
 
 
 @pytest.mark.anyio

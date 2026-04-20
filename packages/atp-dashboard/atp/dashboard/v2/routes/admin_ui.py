@@ -184,3 +184,27 @@ async def admin_tournament_detail(
             "is_live": tournament.status in _LIVE_STATUSES,
         },
     )
+
+
+@router.get("/tournaments/{tournament_id}/activity")
+async def admin_tournament_activity(
+    tournament_id: int,
+    request: Request,
+    session: DBSession,
+    service: TournamentService = Depends(get_tournament_service),
+):
+    """HTMX activity fragment (polled every 2 s by the detail page)."""
+    user = await _require_admin_ui_user(request, session)
+    try:
+        snap = await service.get_admin_activity(tournament_id)
+    except LookupError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/admin/_activity_block.html",
+        context={
+            "user": user,
+            "snap": snap,
+            "is_live": snap["status"] in _LIVE_STATUSES,
+        },
+    )
