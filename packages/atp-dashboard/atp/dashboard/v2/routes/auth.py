@@ -4,7 +4,7 @@ This module provides authentication endpoints for login, registration,
 and user information retrieval.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -12,7 +12,6 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import func, select, update
 
 from atp.dashboard.auth import (
-    ACCESS_TOKEN_EXPIRE_MINUTES,
     authenticate_user,
     create_access_token,
     create_user,
@@ -54,10 +53,9 @@ async def login(
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user.username, "user_id": user.id},
-        expires_delta=access_token_expires,
+        is_admin=user.is_admin,
     )
     return Token(access_token=access_token)
 
