@@ -1294,6 +1294,80 @@ class TournamentService:
         await self._resolve_round(round_obj, tournament)
 
     # ------------------------------------------------------------------
+    # Admin: kick participant
+    # ------------------------------------------------------------------
+
+    async def kick_participant(self, tournament_id: int, participant_id: int) -> None:
+        """Release a participant from a live tournament.
+
+        Sets ``Participant.released_at = now``. If there is no Action
+        yet for the current in-progress round, inserts a
+        ``TIMEOUT_DEFAULT`` action with the game's
+        ``default_action_on_timeout()`` payload so round resolution is
+        not blocked by the freed slot.
+
+        Raises:
+            LookupError: participant does not exist in this tournament.
+            ValueError: participant is already released.
+        """
+        stmt = (
+            select(Participant)
+            .where(
+                Participant.tournament_id == tournament_id,
+                Participant.id == participant_id,
+            )
+            .options(selectinload(Participant.tournament))
+        )
+        participant = (await self._session.execute(stmt)).scalars().first()
+        if participant is None:
+            raise LookupError(
+                f"participant {participant_id} not found in tournament {tournament_id}"
+            )
+        if participant.released_at is not None:
+            raise ValueError("participant already released")
+
+        participant.released_at = _utc_now()
+        tournament = participant.tournament
+
+        if tournament.status == TournamentStatus.ACTIVE.value:
+            round_stmt = (
+                select(Round)
+                .where(
+                    Round.tournament_id == tournament_id,
+                    Round.status.in_(
+                        (
+                            RoundStatus.WAITING_FOR_ACTIONS.value,
+                            RoundStatus.IN_PROGRESS.value,
+                        )
+                    ),
+                )
+                .order_by(Round.round_number.desc())
+            )
+            current_round = (await self._session.execute(round_stmt)).scalars().first()
+            if current_round is not None:
+                existing_stmt = select(Action).where(
+                    Action.round_id == current_round.id,
+                    Action.participant_id == participant.id,
+                )
+                existing = (
+                    (await self._session.execute(existing_stmt)).scalars().first()
+                )
+                if existing is None:
+                    game = _game_for(tournament)
+                    default_action = game.default_action_on_timeout()
+                    self._session.add(
+                        Action(
+                            round_id=current_round.id,
+                            participant_id=participant.id,
+                            action_data=default_action,
+                            submitted_at=_utc_now(),
+                            source=ActionSource.TIMEOUT_DEFAULT.value,
+                        )
+                    )
+
+        await self._session.commit()
+
+    # ------------------------------------------------------------------
     # Admin activity snapshot
     # ------------------------------------------------------------------
 
