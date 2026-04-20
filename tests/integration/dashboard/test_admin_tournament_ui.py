@@ -335,6 +335,120 @@ async def _seed_live_el_farol_in_ctx(ctx: dict) -> int:
         return t.id
 
 
+async def _seed_completed_el_farol_in_ctx(ctx: dict) -> int:
+    """Seed a COMPLETED El Farol with 2 rounds, 2 participants."""
+    db: Database = ctx["db"]
+    admin_id: int = ctx["admin_id"]
+    now = datetime.now().replace(microsecond=0)
+
+    async with db.session() as session:
+        t = Tournament(
+            game_type="el_farol",
+            status=TournamentStatus.COMPLETED.value,
+            num_players=2,
+            total_rounds=2,
+            round_deadline_s=30,
+            created_by=admin_id,
+            created_at=now - timedelta(minutes=10),
+            starts_at=now - timedelta(minutes=9),
+            ends_at=now - timedelta(minutes=1),
+            pending_deadline=now - timedelta(minutes=9),
+        )
+        session.add(t)
+        await session.flush()
+
+        uid = t.id
+        u_a = User(
+            username=f"bot_done_a_{uid}",
+            email=f"done_a_{uid}@t.com",
+            hashed_password="x",
+            is_active=True,
+        )
+        u_b = User(
+            username=f"bot_done_b_{uid}",
+            email=f"done_b_{uid}@t.com",
+            hashed_password="x",
+            is_active=True,
+        )
+        session.add_all([u_a, u_b])
+        await session.flush()
+
+        p_a = Participant(
+            tournament_id=t.id,
+            user_id=u_a.id,
+            agent_name="alpha_done",
+            total_score=3.0,
+            released_at=now - timedelta(minutes=1),
+        )
+        p_b = Participant(
+            tournament_id=t.id,
+            user_id=u_b.id,
+            agent_name="beta_done",
+            total_score=1.0,
+            released_at=now - timedelta(minutes=1),
+        )
+        session.add_all([p_a, p_b])
+        await session.flush()
+
+        for rn in (1, 2):
+            r = Round(
+                tournament_id=t.id,
+                round_number=rn,
+                status=RoundStatus.COMPLETED.value,
+                started_at=now - timedelta(minutes=5 - rn),
+                deadline=now - timedelta(minutes=5 - rn, seconds=-30),
+            )
+            session.add(r)
+            await session.flush()
+            for p in (p_a, p_b):
+                session.add(
+                    Action(
+                        round_id=r.id,
+                        participant_id=p.id,
+                        action_data={"slots": [0, 1]},
+                        submitted_at=now - timedelta(minutes=5 - rn),
+                        source=ActionSource.SUBMITTED.value,
+                        payoff=1.0,
+                    )
+                )
+        await session.commit()
+        return t.id
+
+
+@pytest.mark.anyio
+async def test_admin_detail_has_htmx_polling_attributes_for_live(admin_ui_ctx):
+    client = admin_ui_ctx["client"]
+    tid = await _seed_live_el_farol_in_ctx(admin_ui_ctx)
+    resp = await client.get(
+        f"/ui/admin/tournaments/{tid}",
+        headers=admin_ui_ctx["admin_headers"],
+    )
+    assert resp.status_code == 200
+    assert f'hx-get="/ui/admin/tournaments/{tid}/activity"' in resp.text
+    assert 'hx-trigger="load, every 2s"' in resp.text
+
+
+@pytest.mark.anyio
+async def test_admin_detail_post_mortem_has_no_polling_no_cancel(admin_ui_ctx):
+    client = admin_ui_ctx["client"]
+    tid = await _seed_completed_el_farol_in_ctx(admin_ui_ctx)
+    resp = await client.get(
+        f"/ui/admin/tournaments/{tid}",
+        headers=admin_ui_ctx["admin_headers"],
+    )
+    assert resp.status_code == 200
+    # Polling must be absent.
+    assert "hx-trigger" not in resp.text
+    # Cancel button must be absent.
+    assert "Cancel tournament" not in resp.text
+    # Post-mortem marker must be present.
+    assert "Post-mortem" in resp.text
+    # Activity block is server-rendered inline; table/heatmap ids must
+    # be in the HTML.
+    assert "admin-activity-table" in resp.text
+    assert "admin-activity-heatmap" in resp.text
+
+
 @pytest.mark.anyio
 async def test_admin_activity_fragment_rejects_non_admin(admin_ui_ctx):
     client = admin_ui_ctx["client"]

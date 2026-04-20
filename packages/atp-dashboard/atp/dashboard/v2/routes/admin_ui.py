@@ -145,13 +145,16 @@ _LIVE_STATUSES = ("pending", "active")
 
 @router.get("/tournaments/{tournament_id}")
 async def admin_tournament_detail(
-    tournament_id: int, request: Request, session: DBSession
+    tournament_id: int,
+    request: Request,
+    session: DBSession,
+    service: TournamentService = Depends(get_tournament_service),
 ):
     """Render the admin detail page for a single tournament.
 
     Live (``pending`` / ``active``) tournaments get the Cancel button
-    and, in later tasks, an HTMX-polled activity block. Post-mortem
-    tournaments drop the Cancel button.
+    plus an HTMX-polled activity block. Post-mortem tournaments drop
+    Cancel and server-render the activity block once.
     """
     user = await _require_admin_ui_user(request, session)
     stmt = (
@@ -163,9 +166,7 @@ async def admin_tournament_detail(
     if tournament is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
-    # Derive the current round number from the Round rows: the highest
-    # round with status in_progress/waiting_for_actions is "current",
-    # else the max round number overall.
+    # Derive the current round number from the Round rows.
     round_stmt = (
         select(Round)
         .where(Round.tournament_id == tournament_id)
@@ -173,6 +174,17 @@ async def admin_tournament_detail(
     )
     rounds = (await session.execute(round_stmt)).scalars().all()
     current_round = rounds[0].round_number if rounds else 0
+    is_live = tournament.status in _LIVE_STATUSES
+
+    # For post-mortem we server-render the activity block once so the
+    # page is self-contained; live pages instead hit the fragment route
+    # every 2 s.
+    snap: dict | None = None
+    if not is_live:
+        try:
+            snap = await service.get_admin_activity(tournament_id)
+        except LookupError:
+            snap = None
 
     return _templates(request).TemplateResponse(
         request=request,
@@ -181,7 +193,8 @@ async def admin_tournament_detail(
             "user": user,
             "tournament": tournament,
             "current_round": current_round,
-            "is_live": tournament.status in _LIVE_STATUSES,
+            "is_live": is_live,
+            "snap": snap,
         },
     )
 

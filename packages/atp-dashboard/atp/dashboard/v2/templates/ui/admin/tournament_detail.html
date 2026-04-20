@@ -35,7 +35,17 @@
   </div>
 </header>
 
-<article id="activity-block">
-  <p><em>Live activity view lands in the next implementation task.</em></p>
+{% if is_live %}
+<article
+  id="activity-block"
+  hx-get="/ui/admin/tournaments/{{ tournament.id }}/activity"
+  hx-trigger="load, every 2s"
+  hx-swap="innerHTML">
+  <p><em>Loading activity…</em></p>
 </article>
+{% else %}
+<article id="activity-block">
+  {% include "ui/admin/_activity_block.html" %}
+</article>
+{% endif %}
 {% endblock %}
