@@ -497,6 +497,34 @@ async def _get_participant_id(ctx: dict, tournament_id: int, agent_name: str) ->
 
 
 @pytest.mark.anyio
+async def test_activity_fragment_renders_kick_button_for_live(admin_ui_ctx):
+    client = admin_ui_ctx["client"]
+    tid = await _seed_live_el_farol_in_ctx(admin_ui_ctx)
+    pid = await _get_participant_id(admin_ui_ctx, tid, "alpha")
+    resp = await client.get(
+        f"/ui/admin/tournaments/{tid}/activity",
+        headers=admin_ui_ctx["admin_headers"],
+    )
+    assert resp.status_code == 200
+    assert f'hx-delete="/api/v1/tournaments/{tid}/participants/{pid}"' in resp.text
+
+
+@pytest.mark.anyio
+async def test_activity_fragment_no_kick_button_for_completed_tournament(
+    admin_ui_ctx,
+):
+    client = admin_ui_ctx["client"]
+    tid = await _seed_completed_el_farol_in_ctx(admin_ui_ctx)
+    resp = await client.get(
+        f"/ui/admin/tournaments/{tid}/activity",
+        headers=admin_ui_ctx["admin_headers"],
+    )
+    assert resp.status_code == 200
+    # Completed tournaments must not expose Kick buttons.
+    assert "hx-delete=" not in resp.text
+
+
+@pytest.mark.anyio
 async def test_kick_endpoint_rejects_non_admin(admin_ui_ctx):
     client = admin_ui_ctx["client"]
     tid = await _seed_live_el_farol_in_ctx(admin_ui_ctx)

@@ -34,7 +34,10 @@
     </h3>
     <table id="admin-activity-table">
       <thead>
-        <tr><th>Agent</th><th>Status</th><th>Last action</th><th>Score</th></tr>
+        <tr>
+          <th>Agent</th><th>Status</th><th>Last action</th><th>Score</th>
+          {% if is_live %}<th></th>{% endif %}
+        </tr>
       </thead>
       <tbody>
         {% for p in snap.participants %}
@@ -53,6 +56,20 @@
             {% else %}—{% endif %}
           </td>
           <td>{{ "%.1f"|format(p.total_score or 0) }}</td>
+          {% if is_live %}
+          <td>
+            {% if p.current_round_status != "released" %}
+            <button
+              hx-delete="/api/v1/tournaments/{{ snap.tournament_id }}/participants/{{ p.id }}"
+              hx-confirm="Kick {{ p.agent_name }}? This sets released_at and inserts a timeout action if mid-round."
+              hx-swap="none"
+              class="outline contrast"
+              style="font-size:0.8rem;padding:0.2rem 0.5rem;">
+              Kick
+            </button>
+            {% endif %}
+          </td>
+          {% endif %}
         </tr>
         {% endfor %}
       </tbody>
