@@ -187,7 +187,8 @@ Key environment variables for the dashboard and SDK:
 - `ATP_DISABLE_AUTH` - Disable authentication (default: false, dev only!)
 - `ATP_GITHUB_CLIENT_ID` - GitHub OAuth App client ID (required for GitHub login)
 - `ATP_GITHUB_CLIENT_SECRET` - GitHub OAuth App client secret (required for GitHub login)
-- `ATP_TOKEN_EXPIRE_MINUTES` - JWT token expiration in minutes (default: 60)
+- `ATP_TOKEN_EXPIRE_MINUTES` - JWT token expiration in minutes for regular users (default: 60)
+- `ATP_ADMIN_TOKEN_EXPIRE_MINUTES` - JWT expiration in minutes for admin users (default: 720 = 12 h). Applied at token issuance when `User.is_admin=True`; non-admins keep `ATP_TOKEN_EXPIRE_MINUTES`. Set higher so admins can monitor multi-hour tournaments without re-authenticating.
 - `ATP_CORS_ORIGINS` - Comma-separated CORS origins (default: empty)
 - `ATP_RATE_LIMIT_ENABLED` - Enable HTTP rate limiting (default: true)
 - `ATP_RATE_LIMIT_DEFAULT` - Default rate limit (default: "60/minute")

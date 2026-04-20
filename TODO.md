@@ -141,3 +141,14 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
 - [ ] **Chart.js in Analytics**: status pie chart, score histogram, per-agent line chart (templates/ui/analytics.html).
 - [ ] **Fix UI routes test isolation**: `.value` bug in analytics/home templates, UNIQUE constraint collision.
 - [ ] **Benchmark API scoring**: wire up evaluators instead of the naive score (100 if completed else 0).
+
+## Admin tournament GUI follow-ups (deferred from 2026-04-20 spec)
+
+Spec: `docs/superpowers/specs/2026-04-20-admin-tournament-gui-design.md`
+Plan: `docs/superpowers/plans/2026-04-20-admin-tournament-gui.md`
+
+- [ ] **h · Live MCP SSE connection status** per participant in admin detail — needs a new in-memory connection registry bound to the FastMCP server plus a `/ui/admin/tournaments/{id}/connections` fragment. Scope: ~2 days.
+- [ ] **f · Force-advance round** (admin button + REST endpoint wrapping existing `TournamentService.force_resolve_round`) — currently only the deadline worker can trigger it. Safety: needs a confirmation step and audit log entry.
+- [ ] **g · Extend round deadline mid-round** — requires adding a service method and a new audit row since mutating `Round.deadline` after creation is currently disallowed.
+- [ ] **Generalize admin create form to all 8 games** — currently hardcoded to `el_farol` dropdown. Add per-game config fieldsets keyed off the game registry.
+- [ ] **Long-lived bot MCP sessions (spec C)** — separate design and plan; the admin TTL change in this PR does not address bot-side session budget (still capped at `(ATP_TOKEN_EXPIRE_MINUTES − 10) × 60` in `TournamentService.create_tournament`).
