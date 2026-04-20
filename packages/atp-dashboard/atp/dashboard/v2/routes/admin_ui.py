@@ -20,10 +20,11 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from atp.dashboard.models import User
 from atp.dashboard.tournament.errors import ValidationError as TournamentValidationError
-from atp.dashboard.tournament.models import Tournament
+from atp.dashboard.tournament.models import Round, Tournament
 from atp.dashboard.tournament.service import TournamentService
 from atp.dashboard.v2.dependencies import DBSession
 from atp.dashboard.v2.routes.tournament_api import get_tournament_service
@@ -136,4 +137,50 @@ async def admin_tournament_new_submit(
     return RedirectResponse(
         url=f"/ui/admin/tournaments/{tournament.id}",
         status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+_LIVE_STATUSES = ("pending", "active")
+
+
+@router.get("/tournaments/{tournament_id}")
+async def admin_tournament_detail(
+    tournament_id: int, request: Request, session: DBSession
+):
+    """Render the admin detail page for a single tournament.
+
+    Live (``pending`` / ``active``) tournaments get the Cancel button
+    and, in later tasks, an HTMX-polled activity block. Post-mortem
+    tournaments drop the Cancel button.
+    """
+    user = await _require_admin_ui_user(request, session)
+    stmt = (
+        select(Tournament)
+        .where(Tournament.id == tournament_id)
+        .options(selectinload(Tournament.participants))
+    )
+    tournament = (await session.execute(stmt)).scalars().first()
+    if tournament is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+    # Derive the current round number from the Round rows: the highest
+    # round with status in_progress/waiting_for_actions is "current",
+    # else the max round number overall.
+    round_stmt = (
+        select(Round)
+        .where(Round.tournament_id == tournament_id)
+        .order_by(Round.round_number.desc())
+    )
+    rounds = (await session.execute(round_stmt)).scalars().all()
+    current_round = rounds[0].round_number if rounds else 0
+
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/admin/tournament_detail.html",
+        context={
+            "user": user,
+            "tournament": tournament,
+            "current_round": current_round,
+            "is_live": tournament.status in _LIVE_STATUSES,
+        },
     )

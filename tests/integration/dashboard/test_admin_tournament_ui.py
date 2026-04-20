@@ -168,6 +168,67 @@ async def test_admin_create_tournament_redirects_to_detail(admin_ui_ctx):
 
 
 @pytest.mark.anyio
+async def test_admin_tournament_detail_404_for_unknown_id(admin_ui_ctx):
+    client = admin_ui_ctx["client"]
+    resp = await client.get(
+        "/ui/admin/tournaments/9999999",
+        headers=admin_ui_ctx["admin_headers"],
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_admin_tournament_detail_renders_live_tournament_with_cancel(
+    admin_ui_ctx,
+):
+    """Fresh-created tournament is in ``pending`` status — Cancel must show."""
+    client = admin_ui_ctx["client"]
+    create_resp = await client.post(
+        "/ui/admin/tournaments/new",
+        data={
+            "name": "El Farol detail test",
+            "game_type": "el_farol",
+            "num_players": "6",
+            "total_rounds": "10",
+            "round_deadline_s": "30",
+        },
+        headers=admin_ui_ctx["admin_headers"],
+        follow_redirects=False,
+    )
+    assert create_resp.status_code == 303
+    detail_url = create_resp.headers["location"]
+
+    resp = await client.get(detail_url, headers=admin_ui_ctx["admin_headers"])
+    assert resp.status_code == 200
+    assert "Tournament #" in resp.text
+    assert "el_farol" in resp.text
+    assert "Cancel tournament" in resp.text
+    # Post-mortem label must NOT appear on a live tournament.
+    assert "Post-mortem" not in resp.text
+
+
+@pytest.mark.anyio
+async def test_admin_tournament_detail_rejects_non_admin(admin_ui_ctx):
+    client = admin_ui_ctx["client"]
+    # Create first as admin so we have a tournament to visit.
+    create_resp = await client.post(
+        "/ui/admin/tournaments/new",
+        data={
+            "name": "El Farol authz test",
+            "game_type": "el_farol",
+            "num_players": "6",
+            "total_rounds": "10",
+            "round_deadline_s": "30",
+        },
+        headers=admin_ui_ctx["admin_headers"],
+        follow_redirects=False,
+    )
+    detail_url = create_resp.headers["location"]
+    resp = await client.get(detail_url, headers=admin_ui_ctx["regular_headers"])
+    assert resp.status_code == 403
+
+
+@pytest.mark.anyio
 async def test_admin_create_tournament_rejects_invalid_input(admin_ui_ctx):
     """El Farol requires 2 <= num_players <= 20; 100 must 400."""
     client = admin_ui_ctx["client"]
