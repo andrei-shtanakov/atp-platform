@@ -68,13 +68,22 @@
 
 ## Информация у игрока (наблюдение)
 
-В `game_state` игрок видит в том числе:
+Игра отдаёт две разные схемы состояния в зависимости от того, где исполняется агент:
 
-- историю посещаемости по прошлым дням (`attendance_history`) — **публичная** информация;
-- `capacity_threshold`, `num_slots`, `slot_duration`, `min_total_hours`;
+**1. Прямой вызов `observe(player_id)` (in-process, используется game runner'ом):**
+
+- история посещаемости по прошлым дням (`attendance_history`) — **публичная** информация;
+- `capacity_threshold`, `num_slots`, `slot_duration_hours`, `min_total_hours`;
 - свои накопленные `your_t_happy_slots`, `your_t_crowded_slots`, `your_total_hours`.
 
-Текущие планы других в этот день **не** раскрываются (как в docstring / промпте: видна только прошлая посещаемость).
+**2. Tournament state через `format_state_for_player` (используется MCP / сервером турниров):**
+
+- `your_history` — списки слотов, которые игрок выбирал в каждый прошлый день;
+- `attendance_by_round` — посуточная посещаемость по слотам;
+- `capacity_threshold`, `num_slots`, `action_schema`;
+- `your_cumulative_score`, `all_scores`, `your_participant_idx`.
+
+В обоих случаях текущие планы других игроков на сегодняшний день **не** раскрываются — видна только прошлая посещаемость (как в docstring класса и в промпте).
 
 ---
 

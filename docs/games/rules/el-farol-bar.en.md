@@ -68,13 +68,22 @@ Default `min_total_hours = 0.0` — hour-based disqualification is off unless yo
 
 ## Player information (observation)
 
-In `game_state` the player sees among other things:
+The game exposes two different state schemas to players depending on where the agent runs:
+
+**1. Direct `observe(player_id)` call (in-process, used by game runner):**
 
 - past-day attendance (`attendance_history`) — **public** information;
-- `capacity_threshold`, `num_slots`, `slot_duration`, `min_total_hours`;
+- `capacity_threshold`, `num_slots`, `slot_duration_hours`, `min_total_hours`;
 - their own running totals `your_t_happy_slots`, `your_t_crowded_slots`, `your_total_hours`.
 
-Other players’ plans for **today** are **not** revealed (as in the class docstring / prompt: only past attendance is visible).
+**2. Tournament state via `format_state_for_player` (used by the MCP / tournament server):**
+
+- `your_history` — list of slot lists the player chose on each past day;
+- `attendance_by_round` — per-day occupancy counts per slot;
+- `capacity_threshold`, `num_slots`, `action_schema`;
+- `your_cumulative_score`, `all_scores`, `your_participant_idx`.
+
+In either case other players’ plans for **today** are **not** revealed — only past attendance is visible (as stated in the class docstring / prompt).
 
 ---
 
