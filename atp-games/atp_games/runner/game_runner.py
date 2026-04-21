@@ -14,7 +14,14 @@ from game_envs.core.game import Game, MoveOrder
 
 from atp_games.mapping.action_mapper import ActionMapper
 from atp_games.mapping.observation_mapper import ObservationMapper
-from atp_games.models import EpisodeResult, GameResult, GameRunConfig
+from atp_games.models import (
+    ActionRecord,
+    AgentRecord,
+    EpisodeResult,
+    GameResult,
+    GameRunConfig,
+    IntervalPair,
+)
 from atp_games.runner.action_validator import ActionValidator
 from atp_games.runner.builtin_adapter import BuiltinAdapter
 
@@ -61,6 +68,58 @@ class ProgressReporter:
     def elapsed(self) -> float:
         """Total elapsed time in seconds."""
         return time.monotonic() - self._start_time
+
+
+def _is_slot_list(action: Any) -> bool:
+    """True if ``action`` is a (possibly empty) list of non-negative ints."""
+    if not isinstance(action, list):
+        return False
+    return all(isinstance(s, int) and s >= 0 for s in action)
+
+
+def _slots_to_interval_pair(
+    slots: list[int],
+    *,
+    num_slots: int,
+) -> IntervalPair | None:
+    """Convert a sorted-or-unsorted list of slot indices to an IntervalPair.
+
+    Groups contiguous slot indices into runs. Returns None when the picks
+    decompose into more than two runs (not representable as a pair of
+    contiguous intervals) or when IntervalPair construction rejects the
+    result for any other invariant (out-of-range, total slots exceeded).
+    """
+    if not slots:
+        return IntervalPair(first=(), second=(), num_slots=num_slots)
+
+    sorted_slots = sorted(set(slots))
+    runs: list[tuple[int, int]] = []
+    run_start = sorted_slots[0]
+    prev = sorted_slots[0]
+    for s in sorted_slots[1:]:
+        if s == prev + 1:
+            prev = s
+            continue
+        runs.append((run_start, prev))
+        run_start = s
+        prev = s
+    runs.append((run_start, prev))
+
+    if len(runs) > 2:
+        return None
+
+    first: tuple[int, int] | tuple[()] = runs[0]
+    second: tuple[int, int] | tuple[()] = runs[1] if len(runs) == 2 else ()
+    max_total = max(len(sorted_slots), 8)
+    try:
+        return IntervalPair(
+            first=first,
+            second=second,
+            num_slots=num_slots,
+            max_total_slots=max_total,
+        )
+    except ValueError:
+        return None
 
 
 def _make_game_for_episode(
@@ -138,6 +197,10 @@ class GameRunner:
         agent_names = {
             pid: self._get_agent_name(pid, adapter) for pid, adapter in agents.items()
         }
+        agent_records = [
+            AgentRecord.from_legacy(agent_id=pid, display_name=name)
+            for pid, name in agent_names.items()
+        ]
 
         progress = ProgressReporter(config.episodes)
 
@@ -158,6 +221,7 @@ class GameRunner:
             config=config,
             episodes=episodes,
             agent_names=agent_names,
+            agents=agent_records,
         )
 
     async def _run_sequential(
@@ -255,6 +319,11 @@ class GameRunner:
         game.reset()
         history: list[dict[str, Any]] = []
         actions_log: list[dict[str, Any]] = []
+        action_records: list[ActionRecord] = []
+        round_payoffs: list[dict[str, float]] = []
+
+        match_id = f"{game.name}#ep{episode}"
+        day = 0
 
         while not game.is_terminal:
             observations = {pid: game.observe(pid) for pid in game.player_ids}
@@ -279,14 +348,111 @@ class GameRunner:
             step_result = game.step(actions)
             history.append(step_result.to_dict())
             actions_log.append(dict(actions))
+            round_payoffs.append(
+                {pid: float(v) for pid, v in step_result.payoffs.items()}
+            )
+
+            day += 1
+            self._append_action_records(
+                records=action_records,
+                match_id=match_id,
+                day=day,
+                actions=actions,
+                step_result=step_result,
+                game=game,
+            )
 
         return EpisodeResult(
             episode=episode,
             payoffs=game.get_payoffs(),
             history=history,
             actions_log=actions_log,
+            actions=action_records,
+            round_payoffs=round_payoffs,
             seed=seed,
         )
+
+    def _append_action_records(
+        self,
+        *,
+        records: list[ActionRecord],
+        match_id: str,
+        day: int,
+        actions: dict[str, Any],
+        step_result: Any,
+        game: Game,
+    ) -> None:
+        """Build per-agent ActionRecord for this day when possible.
+
+        ActionRecords are built only for games whose player actions are
+        ``list[int]`` of slot indices (El Farol style). For any other
+        action shape, the list is left untouched — non-interval games
+        simply produce an empty ``EpisodeResult.actions``.
+        """
+        num_slots = self._infer_num_slots(game, actions)
+        crowded_slots = self._extract_crowded_slots(step_result)
+
+        for pid, action in actions.items():
+            if not _is_slot_list(action):
+                return  # bail out entirely — mixed shapes not supported
+            intervals = _slots_to_interval_pair(action, num_slots=num_slots)
+            if intervals is None:
+                continue  # action not representable as IntervalPair (>2 runs)
+
+            picks = intervals.covered_slots()
+            payoff = float(step_result.payoffs.get(pid, 0.0))
+            if crowded_slots is not None:
+                num_over = sum(1 for s in picks if s in crowded_slots)
+                num_under = len(picks) - num_over
+            else:
+                num_under = len(picks)
+                num_over = 0
+
+            records.append(
+                ActionRecord(
+                    match_id=match_id,
+                    day=day,
+                    agent_id=pid,
+                    intervals=intervals,
+                    picks=picks,
+                    num_visits=intervals.num_visits(),
+                    total_slots=intervals.total_slots(),
+                    payoff=payoff,
+                    num_under=num_under,
+                    num_over=num_over,
+                )
+            )
+
+    @staticmethod
+    def _infer_num_slots(game: Game, actions: dict[str, Any]) -> int:
+        """Best-effort extraction of num_slots from game config or actions."""
+        cfg = getattr(game, "config", None)
+        num_slots = getattr(cfg, "num_slots", None)
+        if isinstance(num_slots, int) and num_slots > 0:
+            return num_slots
+        # Fallback: infer from the largest slot index observed.
+        max_slot = -1
+        for action in actions.values():
+            if _is_slot_list(action):
+                for s in action:
+                    if isinstance(s, int) and s > max_slot:
+                        max_slot = s
+        return max_slot + 1 if max_slot >= 0 else 16
+
+    @staticmethod
+    def _extract_crowded_slots(step_result: Any) -> set[int] | None:
+        """Pull ``crowded_slots_today`` from the step-result public state."""
+        state = getattr(step_result, "state", None)
+        public = getattr(state, "public_state", None)
+        if not isinstance(public, dict):
+            return None
+        crowded = public.get("crowded_slots_today")
+        if crowded is None:
+            return None
+        try:
+            return {int(s) for s in crowded}
+        except (TypeError, ValueError):
+            return None
 
     async def _parallel_moves(
         self,

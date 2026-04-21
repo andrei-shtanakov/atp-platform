@@ -24,6 +24,7 @@ Final payoffs (get_payoffs):
 
 from __future__ import annotations
 
+import math
 import random
 from dataclasses import dataclass
 from typing import Any
@@ -128,6 +129,14 @@ class ElFarolConfig(GameConfig):
         num_rounds: Number of days to simulate (default 30).
         num_slots: Time slots per day — default 16 (30-min each, 8 hours).
         capacity_threshold: Bar is crowded when attendance >= this value.
+            A value of 0 is a sentinel meaning "derive from
+            ``floor(capacity_ratio * num_players)``" at construction time.
+        max_intervals: Maximum number of contiguous visit intervals per day.
+        max_total_slots: Maximum total number of slots covered per day
+            (across both intervals).
+        capacity_ratio: Fraction of ``num_players`` used to derive
+            ``capacity_threshold`` when it is not set explicitly. Must be
+            strictly in ``(0, 1]``.
         min_total_hours: Minimum hours required to avoid disqualification.
         slot_duration: Duration of each slot in hours (default 0.5 h).
     """
@@ -135,7 +144,10 @@ class ElFarolConfig(GameConfig):
     num_players: int = 100
     num_rounds: int = 30
     num_slots: int = 16
-    capacity_threshold: int = 60
+    capacity_threshold: int = 0
+    max_intervals: int = 2
+    max_total_slots: int = 8
+    capacity_ratio: float = 0.6
     min_total_hours: float = 0.0
     slot_duration: float = 0.5  # hours
 
@@ -143,6 +155,23 @@ class ElFarolConfig(GameConfig):
         super().__post_init__()
         if self.num_slots < 1:
             raise ValueError(f"num_slots must be >= 1, got {self.num_slots}")
+        if not 0.0 < self.capacity_ratio <= 1.0:
+            raise ValueError(
+                f"capacity_ratio must be in (0, 1], got {self.capacity_ratio}"
+            )
+        if self.max_total_slots > self.num_slots:
+            raise ValueError(
+                f"max_total_slots ({self.max_total_slots}) must be <= "
+                f"num_slots ({self.num_slots})"
+            )
+        if self.max_intervals > self.max_total_slots:
+            raise ValueError(
+                f"max_intervals ({self.max_intervals}) must be <= "
+                f"max_total_slots ({self.max_total_slots})"
+            )
+        if self.capacity_threshold == 0:
+            derived = math.floor(self.capacity_ratio * self.num_players)
+            object.__setattr__(self, "capacity_threshold", derived)
         if self.capacity_threshold < 1:
             raise ValueError(
                 f"capacity_threshold must be >= 1, got {self.capacity_threshold}"

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 
@@ -59,6 +60,8 @@ class EpisodeResult:
         payoffs: Final cumulative payoffs per player.
         history: List of step result dicts from each round.
         actions_log: Per-round actions taken by each player.
+        actions: Typed per-day per-agent ActionRecord list (interval
+            games only; empty for games whose actions are not list[int]).
         seed: Random seed used for this episode (if any).
     """
 
@@ -66,6 +69,8 @@ class EpisodeResult:
     payoffs: dict[str, float]
     history: list[dict[str, Any]] = field(default_factory=list)
     actions_log: list[dict[str, Any]] = field(default_factory=list)
+    actions: list[ActionRecord] = field(default_factory=list)
+    round_payoffs: list[dict[str, float]] = field(default_factory=list)
     seed: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -76,6 +81,12 @@ class EpisodeResult:
             "history": list(self.history),
             "actions_log": list(self.actions_log),
         }
+        if self.actions:
+            from dataclasses import asdict as _asdict
+
+            result["actions"] = [_asdict(a) for a in self.actions]
+        if self.round_payoffs:
+            result["round_payoffs"] = [dict(rp) for rp in self.round_payoffs]
         if self.seed is not None:
             result["seed"] = self.seed
         return result
@@ -431,6 +442,7 @@ class GameResult:
     config: GameRunConfig
     episodes: list[EpisodeResult] = field(default_factory=list)
     agent_names: dict[str, str] = field(default_factory=dict)
+    agents: list[AgentRecord] = field(default_factory=list)
 
     @property
     def num_episodes(self) -> int:
@@ -501,6 +513,10 @@ class GameResult:
             result["player_statistics"] = {
                 pid: stats.to_dict() for pid, stats in self.player_statistics().items()
             }
+        if self.agents:
+            from dataclasses import asdict as _asdict
+
+            result["agents"] = [_asdict(a) for a in self.agents]
         return result
 
     @classmethod
@@ -518,4 +534,257 @@ class GameResult:
             ),
             episodes=[EpisodeResult.from_dict(e) for e in data.get("episodes", [])],
             agent_names=data.get("agent_names", {}),
+        )
+
+
+# ---------------------------------------------------------------------------
+# El Farol dashboard data-model (Phase 1)
+# ---------------------------------------------------------------------------
+
+
+Interval = tuple[int, int] | tuple[()]
+
+
+@dataclass(frozen=True)
+class IntervalPair:
+    """Up to 2 contiguous slot intervals submitted for a day.
+
+    Either or both intervals may be empty (``()``) to represent "no visit".
+    The pair enforces these invariants at construction time:
+      * each non-empty interval has ``start <= end`` in ``[0, num_slots - 1]``
+      * the two non-empty intervals are non-overlapping, non-adjacent, and
+        canonically ordered (``first`` precedes ``second``)
+      * the total number of covered slots does not exceed ``max_total_slots``
+
+    ``num_slots`` and ``max_total_slots`` are stored on the instance so the
+    invariants remain introspectable for the match that produced them.
+    """
+
+    first: Interval
+    second: Interval
+    num_slots: int = 16
+    max_total_slots: int = 8
+
+    def __post_init__(self) -> None:
+        first = self._as_bounds(self.first, "first")
+        second = self._as_bounds(self.second, "second")
+
+        first_len = 0 if first is None else first[1] - first[0] + 1
+        second_len = 0 if second is None else second[1] - second[0] + 1
+        total = first_len + second_len
+        if total > self.max_total_slots:
+            raise ValueError(
+                f"total covered slots {total} exceeds "
+                f"max_total_slots={self.max_total_slots}"
+            )
+
+        if first is not None and second is not None:
+            f_start, f_end = first
+            s_start, _s_end = second
+            if s_start <= f_start:
+                raise ValueError(
+                    f"second interval must start after first "
+                    f"(got first={first}, second={second})"
+                )
+            if s_start <= f_end:
+                raise ValueError(f"intervals overlap: first={first}, second={second}")
+            if s_start == f_end + 1:
+                raise ValueError(
+                    f"intervals are adjacent (no gap): first={first}, second={second}"
+                )
+
+    def _as_bounds(
+        self, interval: Interval, label: str
+    ) -> tuple[int, int] | None:
+        """Validate an interval and return (start, end) or None if empty."""
+        if len(interval) == 0:
+            return None
+        if len(interval) != 2:
+            raise ValueError(
+                f"{label} must be empty tuple () or (start, end) pair, got {interval!r}"
+            )
+        start, end = interval[0], interval[1]
+        if not isinstance(start, int) or not isinstance(end, int):
+            raise ValueError(f"{label} bounds must be ints, got {interval!r}")
+        if start > end:
+            raise ValueError(
+                f"{label} has start > end: {interval!r} (reversed interval)"
+            )
+        if start < 0 or end >= self.num_slots:
+            raise ValueError(
+                f"{label} {interval!r} out of range [0, {self.num_slots - 1}]"
+            )
+        return (start, end)
+
+    def covered_slots(self) -> tuple[int, ...]:
+        """Sorted unique slot indices covered by both intervals."""
+        slots: list[int] = []
+        for interval in (self.first, self.second):
+            if len(interval) == 0:
+                continue
+            start, end = interval[0], interval[1]
+            slots.extend(range(start, end + 1))
+        return tuple(sorted(set(slots)))
+
+    def num_visits(self) -> int:
+        """Count of non-empty intervals (0, 1, or 2)."""
+        return int(len(self.first) > 0) + int(len(self.second) > 0)
+
+    def total_slots(self) -> int:
+        """Total number of slots covered across both intervals."""
+        return sum(
+            (interval[1] - interval[0] + 1) if len(interval) == 2 else 0
+            for interval in (self.first, self.second)
+        )
+
+
+@dataclass
+class ActionRecord:
+    """One agent's action on one day, with outcome and optional metadata.
+
+    Required fields describe identity, the submitted intervals, derived
+    caches, and the resolved outcome. Optional fields carry Tier-1 agent
+    self-report (``intent``), Tier-2 OTel-sourced resource usage, retry
+    metadata, and observability trace linkage.
+    """
+
+    # identity
+    match_id: str
+    day: int
+    agent_id: str
+
+    # action
+    intervals: IntervalPair
+
+    # derived (cached from intervals at write time)
+    picks: tuple[int, ...]
+    num_visits: int
+    total_slots: int
+
+    # outcome
+    payoff: float
+    num_under: int
+    num_over: int
+
+    # optional Tier-1 agent self-report
+    intent: str | None = None
+
+    # optional Tier-2 OTel-sourced resource usage
+    tokens_in: int | None = None
+    tokens_out: int | None = None
+    decide_ms: int | None = None
+    cost_usd: float | None = None
+    model_id: str | None = None
+
+    # validation / retry — populated by runner
+    retry_count: int = 0
+    validation_error: str | None = None
+
+    # observability linkage (W3C traceparent)
+    trace_id: str | None = None
+    span_id: str | None = None
+
+    submitted_at: datetime | None = None
+
+
+@dataclass
+class DayAggregate:
+    """Precomputed per-day per-slot attendance, cached with the match.
+
+    ``over_slots`` and ``total_attendances`` are caller-computed (the runner
+    evaluates ``slot_attendance`` against the resolved ``capacity_threshold``
+    for the match). This dataclass only stores the resolved values.
+    """
+
+    match_id: str
+    day: int
+    slot_attendance: tuple[int, ...]
+    over_slots: int
+    total_attendances: int
+
+
+@dataclass
+class AgentRecord:
+    """Public agent roster entry used by the dashboard.
+
+    ``user_id`` is required; use :meth:`from_legacy` to synthesise an
+    ``AgentRecord`` for a legacy ``GameResult`` whose ``agent_names`` dict
+    has no owner attribution (``user_id`` defaults to ``"unknown"``).
+    """
+
+    agent_id: str
+    display_name: str
+    user_id: str
+    user_display: str | None = None
+    family: str | None = None
+    adapter_type: str = "unknown"
+    model_id: str | None = None
+    color: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.agent_id:
+            raise ValueError("agent_id must be a non-empty string")
+        if not self.display_name:
+            raise ValueError("display_name must be a non-empty string")
+        if not self.user_id:
+            raise ValueError("user_id must be a non-empty string")
+
+    @classmethod
+    def from_legacy(cls, *, agent_id: str, display_name: str) -> AgentRecord:
+        """Build an AgentRecord for an unattributed legacy agent."""
+        return cls(
+            agent_id=agent_id,
+            display_name=display_name,
+            user_id="unknown",
+        )
+
+
+@dataclass(frozen=True)
+class MatchConfig:
+    """Game-level configuration, persisted with every match.
+
+    ``capacity_threshold`` is the resolved integer threshold used by the
+    step-resolution logic. When constructing directly, callers may pass
+    ``capacity_threshold`` explicitly; to derive it from ``capacity_ratio``
+    and a player count at match-creation time, use :meth:`resolve`.
+    """
+
+    game_id: str
+    game_version: str
+    num_days: int
+    num_slots: int = 16
+    max_intervals: int = 2
+    max_total_slots: int = 8
+    capacity_ratio: float = 0.6
+    capacity_threshold: int = 0
+    seed: int | None = None
+
+    @classmethod
+    def resolve(
+        cls,
+        *,
+        num_agents: int,
+        game_id: str,
+        game_version: str,
+        num_days: int,
+        num_slots: int = 16,
+        max_intervals: int = 2,
+        max_total_slots: int = 8,
+        capacity_ratio: float = 0.6,
+        seed: int | None = None,
+    ) -> MatchConfig:
+        """Construct a ``MatchConfig`` with ``capacity_threshold`` derived
+        from ``floor(capacity_ratio * num_agents)``.
+        """
+        threshold = math.floor(capacity_ratio * num_agents)
+        return cls(
+            game_id=game_id,
+            game_version=game_version,
+            num_days=num_days,
+            num_slots=num_slots,
+            max_intervals=max_intervals,
+            max_total_slots=max_total_slots,
+            capacity_ratio=capacity_ratio,
+            capacity_threshold=threshold,
+            seed=seed,
         )
