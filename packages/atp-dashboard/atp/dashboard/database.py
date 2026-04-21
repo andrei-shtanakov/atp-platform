@@ -254,6 +254,7 @@ async def _add_missing_columns(db: Database) -> None:
 
     from sqlalchemy import inspect as sa_inspect
     from sqlalchemy import text
+    from sqlalchemy.schema import CreateColumn
 
     logger = logging.getLogger("atp.dashboard")
 
@@ -274,36 +275,38 @@ async def _add_missing_columns(db: Database) -> None:
                 if column.name in existing:
                     continue
 
-                col_type = column.type.compile(db.engine.dialect)
-                default = ""
-                if column.server_default is not None:
-                    arg = column.server_default.arg  # type: ignore[union-attr]
-                    # String server_defaults must be quoted as SQL string
-                    # literals. A bare ``DEFAULT ""`` (empty str) was
-                    # previously emitted as ``DEFAULT `` which SQLite
-                    # rejects as "incomplete input", crashing startup
-                    # (see LABS-XXX: agent_name column with
-                    # server_default="").
-                    if isinstance(arg, str):
-                        escaped = arg.replace("'", "''")
-                        default = f" DEFAULT '{escaped}'"
-                    elif hasattr(arg, "text"):
-                        # SQLAlchemy TextClause — render the raw SQL fragment.
-                        default = f" DEFAULT {arg.text}"
-                    else:
-                        default = f" DEFAULT {arg}"
+                # Render the full column fragment via SQLAlchemy's own DDL
+                # compiler. This gives us correct quoting for string
+                # server_defaults, proper translation of server_default=
+                # func.now() to the dialect's CURRENT_TIMESTAMP, and type
+                # rendering consistent with create_all(). Doing it by hand
+                # (str-concat + naive quoting) previously broke on
+                # server_default="" (LABS-96).
+                column_ddl = str(
+                    CreateColumn(column).compile(dialect=db.engine.dialect)
+                )
 
-                # SQLite (and some other DBs) reject ALTER TABLE ADD COLUMN
-                # ... NOT NULL without a default when the table has rows.
-                # In that case, add the column as nullable and log — the
-                # proper Alembic migration is responsible for the backfill
-                # and NOT NULL flip.
-                nullable_sql = "NULL" if column.nullable else "NOT NULL"
+                # Non-constant server_defaults (e.g. func.now()) cannot be
+                # added via SQLite's ALTER TABLE ADD COLUMN — the engine
+                # rejects "Cannot add a column with non-constant default".
+                # Strip the default and fall back to NULL with a loud
+                # warning; the ORM model still says NOT NULL so the proper
+                # Alembic migration is responsible for backfill + flip.
+                is_nonconstant_default = (
+                    column.server_default is not None
+                    and not isinstance(getattr(column.server_default, "arg", None), str)
+                )
+
+                # SQLite (and most other engines) also reject ALTER TABLE
+                # ADD COLUMN ... NOT NULL without a default when the table
+                # already has rows.
+                force_nullable = False
                 if not column.nullable and column.server_default is None:
                     row_count = (
                         await conn.execute(text(f"SELECT COUNT(*) FROM {table.name}"))
                     ).scalar_one()
                     if row_count:
+                        force_nullable = True
                         logger.warning(
                             "Auto-adding %s.%s as NULLABLE because the table "
                             "has %d existing rows and the column is NOT NULL "
@@ -313,12 +316,29 @@ async def _add_missing_columns(db: Database) -> None:
                             column.name,
                             row_count,
                         )
-                        nullable_sql = "NULL"
 
-                stmt = (
-                    f"ALTER TABLE {table.name} "
-                    f"ADD COLUMN {column.name} {col_type} {nullable_sql}{default}"
-                )
+                if is_nonconstant_default:
+                    logger.warning(
+                        "Auto-adding %s.%s as NULLABLE without its "
+                        "server_default because SQLite rejects non-constant "
+                        "defaults on ALTER TABLE ADD COLUMN. Run Alembic "
+                        "migrations for the proper add+backfill.",
+                        table.name,
+                        column.name,
+                    )
+                    # Drop both the DEFAULT clause and any NOT NULL so the
+                    # ALTER is constant and the populated table accepts it.
+                    column_ddl = (
+                        str(column.name)
+                        + " "
+                        + column.type.compile(dialect=db.engine.dialect)
+                    )
+                elif force_nullable:
+                    # Drop a trailing NOT NULL; DDL compiler emits it after
+                    # the type / default clauses.
+                    column_ddl = column_ddl.replace(" NOT NULL", "")
+
+                stmt = f"ALTER TABLE {table.name} ADD COLUMN {column_ddl}"
                 logger.info("Auto-adding column: %s.%s", table.name, column.name)
                 await conn.execute(text(stmt))
 
