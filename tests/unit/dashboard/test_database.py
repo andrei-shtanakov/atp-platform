@@ -166,3 +166,73 @@ class TestDatabaseWithPostgres:
         engine = db.engine
         # Engine should be created with SQLite-specific settings
         assert engine is not None
+
+
+class TestAddMissingColumnsStringDefault:
+    """Regression: a NOT NULL column with ``server_default=""`` used to
+    emit ``ALTER TABLE ... DEFAULT `` (empty, unterminated) and crash
+    startup with ``sqlite3.OperationalError: incomplete input``.
+
+    Production incident 2026-04-21 (prod 502 after PR #58 rebuild)
+    surfaced the latent bug introduced when ``suite_executions.agent_name``
+    was added in LABS-54 Phase 1. Fix quotes string server_defaults.
+    """
+
+    @pytest.mark.anyio
+    async def test_empty_string_server_default_is_quoted(self, tmp_path: Path) -> None:
+        import sqlalchemy as sa
+        from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+        from atp.dashboard.database import Database
+        from atp.dashboard.database import (
+            _add_missing_columns as add_missing_columns,
+        )
+
+        class _Base(DeclarativeBase):
+            pass
+
+        # Pre-existing table without the new column.
+        class _Pre(_Base):
+            __tablename__ = "_rt_empty_default"
+            id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
+
+        url = f"sqlite+aiosqlite:///{tmp_path / 'rt.db'}"
+        db = Database(url=url)
+        async with db.engine.begin() as conn:
+            await conn.run_sync(_Base.metadata.create_all)
+
+        async with db.session() as s:
+            await s.execute(sa.text("INSERT INTO _rt_empty_default (id) VALUES (1)"))
+            await s.commit()
+
+        # Evolve the model: add agent_name NOT NULL DEFAULT "".
+        _Base.metadata.clear()
+
+        class _Post(_Base):
+            __tablename__ = "_rt_empty_default"
+            id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
+            agent_name: Mapped[str] = mapped_column(
+                sa.String(100), nullable=False, server_default=""
+            )
+
+        import atp.dashboard.database as db_mod
+
+        original_base = db_mod.Base
+        db_mod.Base = _Base  # type: ignore[assignment]
+        try:
+            # Must NOT raise; previously crashed with
+            # "sqlite3.OperationalError: incomplete input".
+            await add_missing_columns(db)
+        finally:
+            db_mod.Base = original_base  # type: ignore[assignment]
+
+        async with db.session() as s:
+            row = (
+                await s.execute(
+                    sa.text("SELECT agent_name FROM _rt_empty_default WHERE id=1")
+                )
+            ).first()
+            assert row is not None
+            assert row[0] == ""
+
+        await db.close()

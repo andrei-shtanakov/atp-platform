@@ -277,7 +277,21 @@ async def _add_missing_columns(db: Database) -> None:
                 col_type = column.type.compile(db.engine.dialect)
                 default = ""
                 if column.server_default is not None:
-                    default = f" DEFAULT {column.server_default.arg}"  # type: ignore[union-attr]
+                    arg = column.server_default.arg  # type: ignore[union-attr]
+                    # String server_defaults must be quoted as SQL string
+                    # literals. A bare ``DEFAULT ""`` (empty str) was
+                    # previously emitted as ``DEFAULT `` which SQLite
+                    # rejects as "incomplete input", crashing startup
+                    # (see LABS-XXX: agent_name column with
+                    # server_default="").
+                    if isinstance(arg, str):
+                        escaped = arg.replace("'", "''")
+                        default = f" DEFAULT '{escaped}'"
+                    elif hasattr(arg, "text"):
+                        # SQLAlchemy TextClause — render the raw SQL fragment.
+                        default = f" DEFAULT {arg.text}"
+                    else:
+                        default = f" DEFAULT {arg}"
 
                 # SQLite (and some other DBs) reject ALTER TABLE ADD COLUMN
                 # ... NOT NULL without a default when the table has rows.
