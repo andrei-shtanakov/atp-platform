@@ -384,18 +384,21 @@ class GameRunner:
     ) -> None:
         """Build per-agent ActionRecord for this day when possible.
 
-        ActionRecords are built only for games whose player actions are
-        ``list[int]`` of slot indices (El Farol style). For any other
-        action shape, the list is left untouched — non-interval games
-        simply produce an empty ``EpisodeResult.actions``.
+        ActionRecords are built for games whose player actions are
+        convertible to a slot list via the per-player action space
+        (El Farol accepts flat lists, list-of-pairs and
+        ``{"intervals": [...]}`` shapes). For any other action shape,
+        the list is left untouched — non-interval games simply produce
+        an empty ``EpisodeResult.actions``.
         """
         num_slots = self._infer_num_slots(game, actions)
         crowded_slots = self._extract_crowded_slots(step_result)
 
         for pid, action in actions.items():
-            if not _is_slot_list(action):
-                return  # bail out entirely — mixed shapes not supported
-            intervals = _slots_to_interval_pair(action, num_slots=num_slots)
+            slot_list = self._normalise_to_slot_list(game, pid, action)
+            if slot_list is None:
+                return  # bail out entirely — non-slot games (PD etc.)
+            intervals = _slots_to_interval_pair(slot_list, num_slots=num_slots)
             if intervals is None:
                 continue  # action not representable as IntervalPair (>2 runs)
 
@@ -422,6 +425,47 @@ class GameRunner:
                     num_over=num_over,
                 )
             )
+
+    @staticmethod
+    def _normalise_to_slot_list(
+        game: Game, player_id: str, action: Any
+    ) -> list[int] | None:
+        """Normalise an agent action to a flat slot list.
+
+        Returns the slot list for El Farol-style actions (flat list,
+        list of ``[start, end]`` pairs, or ``{"intervals": [...]}``),
+        or ``None`` when the game's action space cannot produce a slot
+        list (e.g. PD whose actions are strings). The action space's
+        ``sanitize`` method does the shape normalisation.
+        """
+        if _is_slot_list(action):
+            return list(action)
+        # Interval-shaped input — only meaningful for slot-based games.
+        try:
+            aspace = game.action_space(player_id)
+        except Exception:
+            return None
+        # Only games whose action space exposes ``sanitize`` returning a
+        # list[int] can produce records here. We detect this by checking
+        # that the space accepts an empty list as a valid slot action.
+        sanitize = getattr(aspace, "sanitize", None)
+        if sanitize is None:
+            return None
+        try:
+            result = sanitize(action)
+        except Exception:
+            return None
+        if not isinstance(result, list):
+            return None
+        if not all(isinstance(s, int) and not isinstance(s, bool) for s in result):
+            return None
+        # Confirm this is a slot-based space (empty is a valid action).
+        try:
+            if not aspace.contains([]):
+                return None
+        except Exception:
+            return None
+        return result
 
     @staticmethod
     def _infer_num_slots(game: Game, actions: dict[str, Any]) -> int:
