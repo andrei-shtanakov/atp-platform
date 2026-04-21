@@ -94,12 +94,33 @@ class EpisodeResult:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> EpisodeResult:
-        """Deserialize from dictionary."""
+        """Deserialize from dictionary.
+
+        Preserves the Tier-1 dashboard fields ``actions`` and
+        ``round_payoffs`` so a round-trip through
+        :py:meth:`to_dict` / :py:meth:`from_dict` keeps per-day
+        ``ActionRecord`` and per-round payoff data intact.
+        """
+        raw_actions = data.get("actions") or []
+        actions: list[ActionRecord] = []
+        for raw in raw_actions:
+            if isinstance(raw, ActionRecord):
+                actions.append(raw)
+            else:
+                actions.append(ActionRecord.from_dict(raw))
+
+        raw_round_payoffs = data.get("round_payoffs") or []
+        round_payoffs: list[dict[str, float]] = [
+            {pid: float(v) for pid, v in rp.items()} for rp in raw_round_payoffs
+        ]
+
         return cls(
             episode=data["episode"],
             payoffs=data["payoffs"],
             history=data.get("history", []),
             actions_log=data.get("actions_log", []),
+            actions=actions,
+            round_payoffs=round_payoffs,
             seed=data.get("seed"),
         )
 
@@ -528,8 +549,24 @@ class GameResult:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GameResult:
-        """Deserialize from dictionary."""
+        """Deserialize from dictionary.
+
+        Preserves all Tier-1 dashboard fields emitted by
+        :py:meth:`to_dict`: per-episode ``actions`` / ``round_payoffs``
+        (via :py:meth:`EpisodeResult.from_dict`), the top-level
+        ``agents`` roster, and the ``run_id``. Unknown or missing
+        fields fall back to empty defaults so legacy payloads keep
+        deserialising cleanly.
+        """
         config_data = data.get("config", {})
+        raw_agents = data.get("agents") or []
+        agents: list[AgentRecord] = []
+        for raw in raw_agents:
+            if isinstance(raw, AgentRecord):
+                agents.append(raw)
+            else:
+                agents.append(AgentRecord.from_dict(raw))
+
         kwargs: dict[str, Any] = {
             "game_name": data["game_name"],
             "config": GameRunConfig(
@@ -541,6 +578,7 @@ class GameResult:
             ),
             "episodes": [EpisodeResult.from_dict(e) for e in data.get("episodes", [])],
             "agent_names": data.get("agent_names", {}),
+            "agents": agents,
         }
         if "run_id" in data:
             kwargs["run_id"] = data["run_id"]
@@ -647,6 +685,30 @@ class IntervalPair:
             for interval in (self.first, self.second)
         )
 
+    @staticmethod
+    def _coerce_interval(value: Any) -> Interval:
+        """Accept tuple/list/None serialisation forms and normalise."""
+        if value is None:
+            return ()
+        if isinstance(value, (list, tuple)):
+            if len(value) == 0:
+                return ()
+            if len(value) == 2:
+                return (int(value[0]), int(value[1]))
+        raise ValueError(
+            f"interval must be empty, a 2-element list/tuple, or None; got {value!r}"
+        )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> IntervalPair:
+        """Rebuild an IntervalPair from the ``asdict``/JSON form."""
+        return cls(
+            first=cls._coerce_interval(data.get("first", ())),
+            second=cls._coerce_interval(data.get("second", ())),
+            num_slots=int(data.get("num_slots", 16)),
+            max_total_slots=int(data.get("max_total_slots", 8)),
+        )
+
 
 @dataclass
 class ActionRecord:
@@ -695,6 +757,57 @@ class ActionRecord:
     span_id: str | None = None
 
     submitted_at: datetime | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ActionRecord:
+        """Rebuild an ActionRecord from the ``asdict``/JSON form.
+
+        ``intervals`` may be a dict (from ``asdict``) or an already-built
+        :class:`IntervalPair`. ``picks`` may be a list or tuple.
+        ``submitted_at`` may be an ISO 8601 string or ``datetime`` (or
+        missing / ``None``).
+        """
+        raw_intervals = data["intervals"]
+        if isinstance(raw_intervals, IntervalPair):
+            intervals = raw_intervals
+        else:
+            intervals = IntervalPair.from_dict(raw_intervals)
+
+        picks_raw = data.get("picks", ())
+        picks: tuple[int, ...] = tuple(int(s) for s in picks_raw)
+
+        submitted_at_raw = data.get("submitted_at")
+        submitted_at: datetime | None
+        if submitted_at_raw is None:
+            submitted_at = None
+        elif isinstance(submitted_at_raw, datetime):
+            submitted_at = submitted_at_raw
+        else:
+            submitted_at = datetime.fromisoformat(str(submitted_at_raw))
+
+        return cls(
+            match_id=data["match_id"],
+            day=int(data["day"]),
+            agent_id=data["agent_id"],
+            intervals=intervals,
+            picks=picks,
+            num_visits=int(data["num_visits"]),
+            total_slots=int(data["total_slots"]),
+            payoff=float(data["payoff"]),
+            num_under=int(data["num_under"]),
+            num_over=int(data["num_over"]),
+            intent=data.get("intent"),
+            tokens_in=data.get("tokens_in"),
+            tokens_out=data.get("tokens_out"),
+            decide_ms=data.get("decide_ms"),
+            cost_usd=data.get("cost_usd"),
+            model_id=data.get("model_id"),
+            retry_count=int(data.get("retry_count", 0)),
+            validation_error=data.get("validation_error"),
+            trace_id=data.get("trace_id"),
+            span_id=data.get("span_id"),
+            submitted_at=submitted_at,
+        )
 
 
 @dataclass
@@ -746,6 +859,20 @@ class AgentRecord:
             agent_id=agent_id,
             display_name=display_name,
             user_id="unknown",
+        )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> AgentRecord:
+        """Rebuild an AgentRecord from the ``asdict``/JSON form."""
+        return cls(
+            agent_id=data["agent_id"],
+            display_name=data["display_name"],
+            user_id=data.get("user_id", "unknown") or "unknown",
+            user_display=data.get("user_display"),
+            family=data.get("family"),
+            adapter_type=data.get("adapter_type", "unknown"),
+            model_id=data.get("model_id"),
+            color=data.get("color"),
         )
 
 

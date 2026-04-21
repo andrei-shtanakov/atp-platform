@@ -1,12 +1,53 @@
 """Tests for data models."""
 
+import json
+from datetime import datetime
+
 import pytest
 
 from atp_games.models import (
+    ActionRecord,
+    AgentRecord,
     EpisodeResult,
     GameResult,
     GameRunConfig,
+    IntervalPair,
 )
+
+
+def _make_action_record(
+    *,
+    match_id: str = "match-1",
+    day: int = 0,
+    agent_id: str = "p0",
+    intervals: IntervalPair | None = None,
+    picks: tuple[int, ...] = (0, 1, 2),
+    payoff: float = 1.5,
+    num_under: int = 1,
+    num_over: int = 0,
+    intent: str | None = None,
+) -> ActionRecord:
+    """Build an ActionRecord with sane defaults for tests."""
+    if intervals is None:
+        intervals = IntervalPair(
+            first=(0, 2),
+            second=(),
+            num_slots=16,
+            max_total_slots=8,
+        )
+    return ActionRecord(
+        match_id=match_id,
+        day=day,
+        agent_id=agent_id,
+        intervals=intervals,
+        picks=picks,
+        num_visits=intervals.num_visits(),
+        total_slots=intervals.total_slots(),
+        payoff=payoff,
+        num_under=num_under,
+        num_over=num_over,
+        intent=intent,
+    )
 
 
 class TestGameRunConfig:
@@ -159,3 +200,284 @@ class TestGameResult:
         # THEN a fresh non-empty run_id is generated
         assert isinstance(restored.run_id, str)
         assert restored.run_id, "expected a non-empty run_id to be generated"
+
+
+class TestDashboardRoundtrip:
+    """Regression tests for Tier-1 dashboard field preservation."""
+
+    def test_episode_result_roundtrip_preserves_actions(self) -> None:
+        # GIVEN an EpisodeResult with 2 ActionRecord entries
+        intervals_a = IntervalPair(
+            first=(0, 2),
+            second=(5, 6),
+            num_slots=16,
+            max_total_slots=8,
+        )
+        intervals_b = IntervalPair(
+            first=(1, 3),
+            second=(),
+            num_slots=16,
+            max_total_slots=8,
+        )
+        action_a = _make_action_record(
+            match_id="match-xyz",
+            day=0,
+            agent_id="p0",
+            intervals=intervals_a,
+            picks=(0, 1, 2, 5, 6),
+            payoff=2.5,
+            num_under=1,
+            num_over=1,
+            intent="foo",
+        )
+        action_b = _make_action_record(
+            match_id="match-xyz",
+            day=0,
+            agent_id="p1",
+            intervals=intervals_b,
+            picks=(1, 2, 3),
+            payoff=-0.5,
+            num_under=0,
+            num_over=2,
+            intent="bar",
+        )
+        ep = EpisodeResult(
+            episode=0,
+            payoffs={"p0": 2.5, "p1": -0.5},
+            actions=[action_a, action_b],
+        )
+
+        # WHEN roundtripping through to_dict/from_dict
+        restored = EpisodeResult.from_dict(ep.to_dict())
+
+        # THEN both action records are preserved verbatim
+        assert len(restored.actions) == 2
+        first = restored.actions[0]
+        assert first.match_id == "match-xyz"
+        assert first.day == 0
+        assert first.agent_id == "p0"
+        assert first.intervals.first == (0, 2)
+        assert first.intervals.second == (5, 6)
+        assert first.picks == (0, 1, 2, 5, 6)
+        assert first.payoff == 2.5
+        assert first.intent == "foo"
+
+    def test_episode_result_roundtrip_preserves_round_payoffs(self) -> None:
+        # GIVEN an EpisodeResult with per-round payoffs
+        ep = EpisodeResult(
+            episode=2,
+            payoffs={"p0": 1.5, "p1": -0.5},
+            round_payoffs=[
+                {"p0": 1.0, "p1": -1.0},
+                {"p0": 0.5, "p1": 0.5},
+            ],
+        )
+
+        # WHEN roundtripping
+        restored = EpisodeResult.from_dict(ep.to_dict())
+
+        # THEN round_payoffs match exactly
+        assert restored.round_payoffs == [
+            {"p0": 1.0, "p1": -1.0},
+            {"p0": 0.5, "p1": 0.5},
+        ]
+
+    def test_game_result_roundtrip_preserves_agents(self) -> None:
+        # GIVEN a GameResult with 2 AgentRecord entries
+        agent_a = AgentRecord(
+            agent_id="p0",
+            display_name="Alpha",
+            user_id="user-1",
+            user_display="Alice",
+            family="gpt",
+            adapter_type="openai",
+            model_id="gpt-4o-mini",
+            color="#ff0000",
+        )
+        agent_b = AgentRecord(
+            agent_id="p1",
+            display_name="Beta",
+            user_id="user-2",
+        )
+        result = GameResult(
+            game_name="El Farol",
+            config=GameRunConfig(),
+            agents=[agent_a, agent_b],
+        )
+
+        # WHEN roundtripping
+        restored = GameResult.from_dict(result.to_dict())
+
+        # THEN both agents are preserved with all fields
+        assert len(restored.agents) == 2
+        first = restored.agents[0]
+        assert first.agent_id == "p0"
+        assert first.display_name == "Alpha"
+        assert first.user_id == "user-1"
+        assert first.user_display == "Alice"
+        assert first.family == "gpt"
+        assert first.adapter_type == "openai"
+        assert first.model_id == "gpt-4o-mini"
+        assert first.color == "#ff0000"
+
+    def test_game_result_roundtrip_full_fidelity(self) -> None:
+        # GIVEN a fully-populated GameResult
+        action = _make_action_record(
+            match_id="match-full",
+            day=0,
+            agent_id="p0",
+            intent="visit-early",
+        )
+        episode = EpisodeResult(
+            episode=0,
+            payoffs={"p0": 1.5, "p1": -0.5},
+            actions=[action],
+            round_payoffs=[{"p0": 1.5, "p1": -0.5}],
+        )
+        agents = [
+            AgentRecord(
+                agent_id="p0",
+                display_name="Alpha",
+                user_id="user-1",
+            ),
+            AgentRecord(
+                agent_id="p1",
+                display_name="Beta",
+                user_id="user-2",
+            ),
+        ]
+        result = GameResult(
+            game_name="El Farol",
+            config=GameRunConfig(),
+            episodes=[episode],
+            agents=agents,
+            run_id="run-abc",
+        )
+
+        # WHEN roundtripping
+        restored = GameResult.from_dict(result.to_dict())
+
+        # THEN nothing is dropped
+        assert restored.run_id == "run-abc"
+        assert restored.game_name == "El Farol"
+        assert len(restored.agents) == 2
+        assert len(restored.episodes) == 1
+        assert len(restored.episodes[0].actions) == 1
+        assert restored.episodes[0].actions[0].intent == "visit-early"
+        assert restored.episodes[0].round_payoffs == [{"p0": 1.5, "p1": -0.5}]
+
+    def test_interval_pair_from_dict_accepts_list_form(self) -> None:
+        # GIVEN the asdict/JSON form where tuples become lists
+        data = {
+            "first": [0, 2],
+            "second": [],
+            "num_slots": 16,
+            "max_total_slots": 8,
+        }
+
+        # WHEN rebuilding via from_dict
+        pair = IntervalPair.from_dict(data)
+
+        # THEN tuples are restored and values match
+        assert pair == IntervalPair(
+            first=(0, 2),
+            second=(),
+            num_slots=16,
+            max_total_slots=8,
+        )
+        assert pair.first == (0, 2)
+        assert pair.second == ()
+
+    def test_action_record_from_dict_handles_iso_submitted_at(self) -> None:
+        # GIVEN an ActionRecord dict with an ISO-8601 submitted_at string
+        data = {
+            "match_id": "match-1",
+            "day": 0,
+            "agent_id": "p0",
+            "intervals": {
+                "first": [0, 1],
+                "second": [],
+                "num_slots": 16,
+                "max_total_slots": 8,
+            },
+            "picks": [0, 1],
+            "num_visits": 1,
+            "total_slots": 2,
+            "payoff": 1.0,
+            "num_under": 0,
+            "num_over": 0,
+            "submitted_at": "2026-04-22T10:30:00",
+        }
+
+        # WHEN rebuilding
+        record = ActionRecord.from_dict(data)
+
+        # THEN submitted_at is parsed to a datetime with matching components
+        assert isinstance(record.submitted_at, datetime)
+        assert record.submitted_at.year == 2026
+        assert record.submitted_at.month == 4
+        assert record.submitted_at.day == 22
+        assert record.submitted_at.hour == 10
+        assert record.submitted_at.minute == 30
+        assert record.submitted_at.second == 0
+
+    def test_game_result_roundtrip_via_json(self) -> None:
+        # GIVEN a GameResult with actions, agents, and round_payoffs
+        action = _make_action_record(
+            match_id="match-json",
+            day=0,
+            agent_id="p0",
+            intent="probe",
+        )
+        episode = EpisodeResult(
+            episode=0,
+            payoffs={"p0": 1.5, "p1": -0.5},
+            actions=[action],
+            round_payoffs=[{"p0": 1.5, "p1": -0.5}],
+        )
+        agents = [
+            AgentRecord(
+                agent_id="p0",
+                display_name="Alpha",
+                user_id="user-1",
+            ),
+        ]
+        result = GameResult(
+            game_name="El Farol",
+            config=GameRunConfig(),
+            episodes=[episode],
+            agents=agents,
+            run_id="run-json",
+        )
+
+        # WHEN serializing via json.dumps and parsing back
+        payload = json.loads(json.dumps(result.to_dict()))
+        restored = GameResult.from_dict(payload)
+
+        # THEN the JSON roundtrip preserves dashboard fields
+        assert restored.run_id == "run-json"
+        assert len(restored.agents) == 1
+        assert restored.agents[0].agent_id == "p0"
+        assert len(restored.episodes) == 1
+        assert len(restored.episodes[0].actions) == 1
+        assert restored.episodes[0].actions[0].intent == "probe"
+        assert restored.episodes[0].actions[0].intervals.first == (0, 2)
+        assert restored.episodes[0].round_payoffs == [{"p0": 1.5, "p1": -0.5}]
+
+    def test_game_result_from_dict_legacy_no_new_fields(self) -> None:
+        # GIVEN a minimal legacy payload with no agents/run_id
+        data = {
+            "game_name": "Legacy",
+            "config": {},
+            "episodes": [],
+        }
+
+        # WHEN deserializing
+        restored = GameResult.from_dict(data)
+
+        # THEN the result has an empty agents list and a generated run_id
+        assert restored.game_name == "Legacy"
+        assert restored.agents == []
+        assert restored.episodes == []
+        assert isinstance(restored.run_id, str)
+        assert restored.run_id, "expected a non-empty generated run_id"
