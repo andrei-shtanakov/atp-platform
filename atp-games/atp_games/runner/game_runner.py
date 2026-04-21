@@ -329,7 +329,7 @@ class GameRunner:
             observations = {pid: game.observe(pid) for pid in game.player_ids}
 
             if game.move_order == MoveOrder.SIMULTANEOUS:
-                actions = await self._parallel_moves(
+                actions, intents = await self._parallel_moves(
                     observations,
                     agents,
                     game,
@@ -337,7 +337,7 @@ class GameRunner:
                     config,
                 )
             else:
-                actions = await self._sequential_moves(
+                actions, intents = await self._sequential_moves(
                     observations,
                     agents,
                     game,
@@ -358,6 +358,7 @@ class GameRunner:
                 match_id=match_id,
                 day=day,
                 actions=actions,
+                intents=intents,
                 step_result=step_result,
                 game=game,
             )
@@ -379,6 +380,7 @@ class GameRunner:
         match_id: str,
         day: int,
         actions: dict[str, Any],
+        intents: dict[str, str | None],
         step_result: Any,
         game: Game,
     ) -> None:
@@ -423,6 +425,7 @@ class GameRunner:
                     payoff=payoff,
                     num_under=num_under,
                     num_over=num_over,
+                    intent=intents.get(pid),
                 )
             )
 
@@ -505,11 +508,12 @@ class GameRunner:
         game: Game,
         episode: int,
         config: GameRunConfig,
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], dict[str, str | None]]:
         """Send requests to all agents in parallel.
 
         For simultaneous-move games, all agents are queried
-        concurrently.
+        concurrently. Returns both the resolved actions and
+        the per-agent Tier-1 intent strings (``None`` when absent).
         """
         tasks = {
             pid: self._get_validated_action(
@@ -524,7 +528,12 @@ class GameRunner:
         }
 
         results = await asyncio.gather(*tasks.values())
-        return dict(zip(tasks.keys(), results))
+        actions: dict[str, Any] = {}
+        intents: dict[str, str | None] = {}
+        for pid, (action, intent) in zip(tasks.keys(), results):
+            actions[pid] = action
+            intents[pid] = intent
+        return actions, intents
 
     async def _sequential_moves(
         self,
@@ -533,16 +542,19 @@ class GameRunner:
         game: Game,
         episode: int,
         config: GameRunConfig,
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], dict[str, str | None]]:
         """Query agents sequentially in player order.
 
         For sequential-move games, each agent is queried
-        one at a time in the order of player_ids.
+        one at a time in the order of player_ids. Returns both
+        the resolved actions and the per-agent Tier-1 intent
+        strings (``None`` when absent).
         """
         actions: dict[str, Any] = {}
+        intents: dict[str, str | None] = {}
         for pid in game.player_ids:
             if pid in observations:
-                action = await self._get_validated_action(
+                action, intent = await self._get_validated_action(
                     pid,
                     agents[pid],
                     observations[pid],
@@ -551,7 +563,8 @@ class GameRunner:
                     config,
                 )
                 actions[pid] = action
-        return actions
+                intents[pid] = intent
+        return actions, intents
 
     async def _get_validated_action(
         self,
@@ -561,13 +574,16 @@ class GameRunner:
         game: Game,
         episode: int,
         config: GameRunConfig,
-    ) -> Any:
+    ) -> tuple[Any, str | None]:
         """Get a validated action from an agent.
 
         Sends the observation to the agent, validates the
         response, and retries on invalid actions up to
         max_retries times. Falls back to a default action
-        if all retries fail.
+        if all retries fail. Returns the resolved action
+        alongside the agent's Tier-1 ``intent`` self-report
+        (``None`` when absent or when the fallback path is
+        taken).
         """
         action_space = game.action_space(player_id)
         request = self.observation_mapper.to_atp_request(
@@ -581,7 +597,7 @@ class GameRunner:
                 result = self.action_validator.validate(game_action, action_space)
 
                 if result.valid:
-                    return game_action.action
+                    return game_action.action, game_action.intent
 
                 if attempt < config.max_retries:
                     error_msg = result.errors[0]
@@ -613,7 +629,7 @@ class GameRunner:
             player_id,
             default.action,
         )
-        return default.action
+        return default.action, None
 
     def _add_error_context(
         self,

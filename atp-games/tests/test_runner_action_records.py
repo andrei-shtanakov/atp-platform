@@ -21,8 +21,11 @@ Expected failure modes before Phase 2 implementation:
 from __future__ import annotations
 
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
+from atp.adapters.base import AgentAdapter
+from atp.protocol.models import ArtifactStructured, ATPResponse, ResponseStatus
 from game_envs.core.state import Observation
 from game_envs.core.strategy import Strategy
 from game_envs.games.el_farol import ElFarolBar, ElFarolConfig
@@ -214,3 +217,130 @@ class TestRunnerSkipsActionRecordsForNonIntervalGames:
 
         # THEN no ActionRecords are built (PD actions aren't list-of-ints)
         assert ep.actions == []
+
+
+# ---------------------------------------------------------------------------
+# Intent plumbing tests
+# ---------------------------------------------------------------------------
+
+
+def _make_mock_el_farol_adapter(
+    *,
+    action: Any,
+    intent: str | None = None,
+) -> AgentAdapter:
+    """Create an AsyncMock adapter returning a structured El Farol action.
+
+    When ``intent`` is ``None`` the ``intent`` key is omitted from the
+    response payload entirely (rather than sent as an explicit ``None``),
+    so the ActionMapper sees no ``intent`` field at all.
+    """
+    mock_agent = AsyncMock(spec=AgentAdapter)
+    mock_agent.adapter_type = "mock"
+
+    data: dict[str, Any] = {"action": action}
+    if intent is not None:
+        data["intent"] = intent
+
+    mock_agent.execute.return_value = ATPResponse(
+        task_id="test",
+        status=ResponseStatus.COMPLETED,
+        artifacts=[
+            ArtifactStructured(
+                name="game_action",
+                data=data,
+            ),
+        ],
+    )
+    return mock_agent
+
+
+async def _run_minimal_el_farol_with_mock(
+    *,
+    player_0: AgentAdapter,
+    player_1: AgentAdapter,
+    max_retries: int = 2,
+) -> EpisodeResult:
+    """Run a 2-player, 1-round El Farol match with mock adapters."""
+    config = ElFarolConfig(
+        num_players=2,
+        num_rounds=1,
+        capacity_threshold=2,
+    )
+    game = ElFarolBar(config)
+    agents = {"player_0": player_0, "player_1": player_1}
+    runner = GameRunner()
+    result = await runner.run_game(
+        game,
+        agents,
+        GameRunConfig(episodes=1, max_retries=max_retries),
+    )
+    return result.episodes[0]
+
+
+class TestActionRecordIntentPlumbing:
+    """GameAction.intent is plumbed through to ActionRecord.intent."""
+
+    @pytest.mark.anyio
+    async def test_action_record_preserves_intent_from_agent_response(
+        self,
+    ) -> None:
+        # GIVEN a 1-day 2-player El Farol match where player_0's mock
+        #       adapter returns both a valid action and an intent string
+        mock_agent = _make_mock_el_farol_adapter(
+            action=[0, 1, 2],
+            intent="avoid the crowd",
+        )
+        ep = await _run_minimal_el_farol_with_mock(
+            player_0=mock_agent,
+            player_1=BuiltinAdapter(EveningAttendee()),
+        )
+
+        # THEN at least one ActionRecord carries the exact intent string
+        assert ep.actions, "expected ActionRecords to be produced"
+        intents = [r.intent for r in ep.actions if r.agent_id == "player_0"]
+        assert "avoid the crowd" in intents, (
+            f"expected 'avoid the crowd' in player_0 intents, got {intents}"
+        )
+
+    @pytest.mark.anyio
+    async def test_action_record_intent_none_when_response_omits_intent(
+        self,
+    ) -> None:
+        # GIVEN both players return valid actions without any intent field
+        ep = await _run_minimal_el_farol_with_mock(
+            player_0=_make_mock_el_farol_adapter(action=[0, 1, 2]),
+            player_1=_make_mock_el_farol_adapter(action=[13, 14, 15]),
+        )
+
+        # THEN every ActionRecord has intent is None
+        assert ep.actions, "expected ActionRecords to be produced"
+        for record in ep.actions:
+            assert record.intent is None, (
+                f"expected intent=None for {record.agent_id} day "
+                f"{record.day}, got {record.intent!r}"
+            )
+
+    @pytest.mark.anyio
+    async def test_action_record_intent_is_none_on_fallback_path(self) -> None:
+        # GIVEN player_0 always returns an invalid action (wrong type) so
+        #       the runner exhausts retries and falls back to the default
+        invalid_agent = _make_mock_el_farol_adapter(
+            action="not-a-slot-list",
+            intent="this intent should be discarded",
+        )
+        ep = await _run_minimal_el_farol_with_mock(
+            player_0=invalid_agent,
+            player_1=BuiltinAdapter(EveningAttendee()),
+            max_retries=1,
+        )
+
+        # THEN player_0's fallback ActionRecord(s) must not carry any intent,
+        #      even though the agent's response contained one on every attempt
+        assert ep.actions, "expected ActionRecords to be produced"
+        player_0_records = [r for r in ep.actions if r.agent_id == "player_0"]
+        assert player_0_records, "expected at least one record for player_0"
+        for record in player_0_records:
+            assert record.intent is None, (
+                f"expected fallback path to drop intent, got {record.intent!r}"
+            )
