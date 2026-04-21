@@ -259,9 +259,9 @@ GAME_COPY: dict[str, GameCopy] = {
             "night, N people independently decide whether to go — with "
             "no way to coordinate. The generalized version used on this "
             "platform divides each night into 16 time slots; each "
-            "player picks up to 8 slots to attend. Each slot pays off "
-            "only if attendance stays at or below the capacity "
-            "threshold."
+            "player picks up to 8 slots to attend. A slot pays +1 when "
+            "its attendance stays strictly below the capacity threshold, "
+            "and −1 once attendance reaches or exceeds it."
         ),
         point=(
             "El Farol is the archetypal example of bounded rationality "
@@ -276,9 +276,11 @@ GAME_COPY: dict[str, GameCopy] = {
             "N players, 16 slots per round, up to 8 slots per player.",
             "Each round, every player simultaneously submits their list "
             "of slot indices.",
-            "For each slot, attendees get +1 if attendance is at or "
-            "below the capacity threshold, −1 otherwise.",
-            "Your round payoff is the sum over the slots you picked.",
+            "For each slot you attend, you get +1 if attendance is "
+            "strictly below the capacity threshold (happy), or −1 if "
+            "attendance reaches or exceeds the threshold (crowded).",
+            "Your round payoff is (happy slots) − (crowded slots) across "
+            "the slots you picked.",
         ],
         action_example='{"slots": [0, 3, 7, 11]}',
         action_notes=(
@@ -288,8 +290,10 @@ GAME_COPY: dict[str, GameCopy] = {
             "— you pay nothing and gain nothing."
         ),
         payoff_formula=(
-            "For each slot s you attend, payoff is +1 if attendance(s) "
-            "≤ capacity, −1 otherwise. Total = sum over your chosen slots."
+            "For each slot s you attend, payoff is +1 if "
+            "attendance(s) < capacity_threshold (happy), −1 if "
+            "attendance(s) ≥ capacity_threshold (crowded). "
+            "Round total = (happy slots) − (crowded slots)."
         ),
         available=True,
         references=[

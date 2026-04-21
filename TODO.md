@@ -1,5 +1,47 @@
 # TODO
 
+## Ecosystem Roadmap (план от 2026-04-16)
+
+> Стратегический контекст: `../_cowork_output/roadmap/ecosystem-roadmap.md`
+> Актуальный статус: `../_cowork_output/status/2026-04-10-status.md`
+> **Роль ATP в экосистеме**: валидация задач Maestro (`validation_cmd`) и eval-driven обучение arbiter
+
+### Активные кросс-проектные задачи
+
+- [ ] **R-06a: Поддержать Maestro CLI quick win** (effort S)
+  - Maestro добавит пример `validation_cmd: "atp run <suite.yaml>"` — проверить, что `atp run` стабильно работает как validation_cmd
+  - Документ: `docs/maestro-integration.md` — как ATP вызывается из Maestro (exit codes, вывод)
+  - Гарантировать стабильность CLI-интерфейса (semver)
+
+- [ ] **R-13: Нормализация guardrails с arbiter** (effort M)
+  - Текущее состояние: `atp/evaluators/guardrails.py` — 3 правила "inspired by arbiter", у arbiter — 10 invariants
+  - Совместно с `../arbiter/`: задокументировать семантический маппинг правил
+  - Решение: shared-типы через JSON Schema из arbiter, или выровнять naming/семантику
+  - Reference: `../arbiter/arbiter-core/src/invariant/`
+
+### Готовы предоставить (ждём запроса от Maestro)
+
+- [ ] **R-06b: SDK-интеграция для Maestro** (зависит от Maestro R-03)
+  - `atp.sdk.arun()` или SDK Adapter — структурированные результаты
+  - Автоматический feedback loop: Maestro → задача → ATP eval → arbiter обучение
+  - Наш SDK уже готов (PyPI `atp-platform-sdk` v2.0.0)
+
+- [ ] **R-07: Eval-driven routing validation** (зависит от R-03, R-06b)
+  - A/B тестирование arbiter DT routing vs random vs always-best-agent
+  - Совместно с `../arbiter/` — набор test suites на нашей стороне
+
+### Ждём от других проектов
+
+- **Maestro → R-03**: без MCP-клиента в Maestro невозможен feedback loop в arbiter → отложить R-06b/R-07
+- **arbiter → R-10 (CI)**: при работе над R-13 хочется уверенности в стабильности invariants
+
+### НЕ делаем здесь
+
+- ❌ Собственная интеграция с spec-runner — связь идёт через Maestro
+- ❌ Расширение ATP под специфику Maestro до формализации `validation_cmd` контракта
+
+---
+
 ## ~~Publish sub-packages to PyPI~~ DONE
 
 All packages published.

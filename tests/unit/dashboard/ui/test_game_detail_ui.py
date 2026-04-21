@@ -130,6 +130,37 @@ def test_action_example_is_valid_json(game_name: str):
     assert isinstance(parsed, dict)
 
 
+def test_el_farol_boundary_matches_game_implementation():
+    """El Farol public copy must match the code's strict-inequality rule.
+
+    ``el_farol.py`` treats a slot as ``crowded`` when
+    ``occupancy >= capacity_threshold`` and ``happy`` only when
+    ``occupancy < capacity_threshold`` (strict). Earlier copy used
+    "at or below the capacity threshold" for the +1 case, which flips
+    the boundary and tells users the wrong rule at occupancy ==
+    threshold. This guards against that specific regression.
+    """
+    copy = GAME_COPY["el_farol"]
+    setup_rules_payoff = "\n".join([copy.setup, copy.payoff_formula, *copy.rules])
+
+    # Must describe +1 condition as strictly below, not "at or below".
+    assert "at or below" not in setup_rules_payoff, (
+        "El Farol copy reintroduces the off-by-one: +1 happens only "
+        "below the threshold, not at it."
+    )
+    assert "≤ capacity" not in setup_rules_payoff, (
+        "El Farol copy reintroduces the off-by-one: payoff should be "
+        "+1 for attendance strictly less than capacity_threshold."
+    )
+
+    # Must positively describe the correct boundary.
+    assert "strictly below" in setup_rules_payoff
+    assert (
+        "reaches or exceeds" in setup_rules_payoff
+        or "≥ capacity_threshold" in setup_rules_payoff
+    )
+
+
 @pytest.mark.parametrize("game_name", sorted(GAME_COPY.keys()))
 def test_copy_fields_are_plain_text(game_name: str):
     """Copy text must not contain raw HTML — rendered without |safe.

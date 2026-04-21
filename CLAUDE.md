@@ -2,6 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Active Work & Roadmap
+
+- **Current task list:** `./TODO.md` — read it at the start of every session (ecosystem section at top)
+- **Ecosystem roadmap (strategic):** `../_cowork_output/roadmap/ecosystem-roadmap.md` — R-01…R-16 across Maestro / arbiter / ATP / spec-runner
+- **Latest weekly status:** `../_cowork_output/status/2026-04-10-status.md`
+- **Sibling projects** (reference only): `../Maestro/`, `../arbiter/`, `../spec-runner/`, `../proctor-a/`
+
+ATP's role in the ecosystem: task validation for Maestro (`validation_cmd`) and eval-driven learning for arbiter. Active work: R-06a (CLI quick win support) and R-13 (guardrails normalization with arbiter). Deep integration (R-06b, R-07) is blocked on Maestro R-03.
+
 ## Project Overview
 
 ATP (Agent Test Platform) is a framework-agnostic platform for testing and evaluating AI agents. It provides a unified protocol and infrastructure for testing agents regardless of their implementation framework (LangGraph, CrewAI, AutoGen, custom, etc.).
