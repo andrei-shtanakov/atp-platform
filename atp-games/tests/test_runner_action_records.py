@@ -32,7 +32,13 @@ from game_envs.games.el_farol import ElFarolBar, ElFarolConfig
 from game_envs.games.prisoners_dilemma import PDConfig, PrisonersDilemma
 from game_envs.strategies.pd_strategies import AlwaysCooperate, AlwaysDefect
 
-from atp_games.models import ActionRecord, EpisodeResult, GameRunConfig, IntervalPair
+from atp_games.models import (
+    ActionRecord,
+    EpisodeResult,
+    GameResult,
+    GameRunConfig,
+    IntervalPair,
+)
 from atp_games.runner.builtin_adapter import BuiltinAdapter
 from atp_games.runner.game_runner import GameRunner
 
@@ -77,12 +83,12 @@ class EveningAttendee(Strategy):
 # ---------------------------------------------------------------------------
 
 
-async def _run_el_farol_match(
+async def _run_el_farol_game_result(
     *,
     num_rounds: int = 3,
     capacity_threshold: int = 2,
-) -> EpisodeResult:
-    """Run a 2-agent El Farol match and return the first episode result."""
+) -> GameResult:
+    """Run a 2-agent El Farol match and return the full GameResult."""
     config = ElFarolConfig(
         num_players=2,
         num_rounds=num_rounds,
@@ -94,7 +100,19 @@ async def _run_el_farol_match(
         "player_1": BuiltinAdapter(EveningAttendee()),
     }
     runner = GameRunner()
-    result = await runner.run_game(game, agents, GameRunConfig(episodes=1))
+    return await runner.run_game(game, agents, GameRunConfig(episodes=1))
+
+
+async def _run_el_farol_match(
+    *,
+    num_rounds: int = 3,
+    capacity_threshold: int = 2,
+) -> EpisodeResult:
+    """Run a 2-agent El Farol match and return the first episode result."""
+    result = await _run_el_farol_game_result(
+        num_rounds=num_rounds,
+        capacity_threshold=capacity_threshold,
+    )
     return result.episodes[0]
 
 
@@ -197,6 +215,61 @@ class TestRunnerBuildsActionRecordsForElFarol:
             assert record.retry_count == 0, (
                 f"expected retry_count=0 for {record.agent_id} day "
                 f"{record.day}, got {record.retry_count}"
+            )
+
+
+class TestRunIdAndMatchIdUniqueness:
+    """Independent runs produce distinct run_id and match_id values."""
+
+    @pytest.mark.anyio
+    async def test_match_id_differs_across_independent_runs(self) -> None:
+        # GIVEN two separate run_game() invocations with identical config/agents
+        run_a = await _run_el_farol_game_result(num_rounds=2)
+        run_b = await _run_el_farol_game_result(num_rounds=2)
+
+        # WHEN collecting match_ids from each run's first episode
+        match_ids_a = {record.match_id for record in run_a.episodes[0].actions}
+        match_ids_b = {record.match_id for record in run_b.episodes[0].actions}
+
+        # THEN the two sets are disjoint — no match_id leaks across runs
+        assert match_ids_a, "expected ActionRecords in run A"
+        assert match_ids_b, "expected ActionRecords in run B"
+        assert match_ids_a.isdisjoint(match_ids_b), (
+            f"expected disjoint match_ids across independent runs, "
+            f"got overlap {match_ids_a & match_ids_b}"
+        )
+
+    @pytest.mark.anyio
+    async def test_game_result_run_id_is_populated_and_unique(self) -> None:
+        # GIVEN two successive runs of the same El Farol config
+        run_a = await _run_el_farol_game_result(num_rounds=1)
+        run_b = await _run_el_farol_game_result(num_rounds=1)
+
+        # THEN each result has a non-empty run_id string
+        assert isinstance(run_a.run_id, str) and run_a.run_id, (
+            f"expected non-empty run_id on run A, got {run_a.run_id!r}"
+        )
+        assert isinstance(run_b.run_id, str) and run_b.run_id, (
+            f"expected non-empty run_id on run B, got {run_b.run_id!r}"
+        )
+
+        # AND the two run_ids differ
+        assert run_a.run_id != run_b.run_id, (
+            f"expected distinct run_ids across runs, got {run_a.run_id!r}"
+        )
+
+    @pytest.mark.anyio
+    async def test_match_id_contains_run_id(self) -> None:
+        # GIVEN a single El Farol run
+        result = await _run_el_farol_game_result(num_rounds=2)
+
+        # THEN every ActionRecord.match_id starts with "{game_name}#{run_id}"
+        assert result.episodes[0].actions, "expected ActionRecords to be produced"
+        expected_prefix = f"{result.game_name}#{result.run_id}"
+        for record in result.episodes[0].actions:
+            assert record.match_id.startswith(expected_prefix), (
+                f"expected match_id {record.match_id!r} to start with "
+                f"{expected_prefix!r}"
             )
 
 

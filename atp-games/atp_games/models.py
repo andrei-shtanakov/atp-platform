@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -436,6 +437,10 @@ class GameResult:
         config: Run configuration used.
         episodes: Per-episode results.
         agent_names: Mapping of player_id to agent name.
+        run_id: Unique identifier for this run. Each call to
+            ``GameRunner.run_game`` generates a fresh uuid4 so that
+            ``match_id`` (derived from ``run_id`` + episode index)
+            can distinguish independent runs of the same config.
     """
 
     game_name: str
@@ -443,6 +448,7 @@ class GameResult:
     episodes: list[EpisodeResult] = field(default_factory=list)
     agent_names: dict[str, str] = field(default_factory=dict)
     agents: list[AgentRecord] = field(default_factory=list)
+    run_id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
     @property
     def num_episodes(self) -> int:
@@ -497,6 +503,7 @@ class GameResult:
         """Serialize to dictionary."""
         result: dict[str, Any] = {
             "game_name": self.game_name,
+            "run_id": self.run_id,
             "config": {
                 "episodes": self.config.episodes,
                 "max_retries": self.config.max_retries,
@@ -523,18 +530,21 @@ class GameResult:
     def from_dict(cls, data: dict[str, Any]) -> GameResult:
         """Deserialize from dictionary."""
         config_data = data.get("config", {})
-        return cls(
-            game_name=data["game_name"],
-            config=GameRunConfig(
+        kwargs: dict[str, Any] = {
+            "game_name": data["game_name"],
+            "config": GameRunConfig(
                 episodes=config_data.get("episodes", 1),
                 max_retries=config_data.get("max_retries", 3),
                 move_timeout=config_data.get("move_timeout", 30.0),
                 parallel=config_data.get("parallel", 1),
                 base_seed=config_data.get("base_seed"),
             ),
-            episodes=[EpisodeResult.from_dict(e) for e in data.get("episodes", [])],
-            agent_names=data.get("agent_names", {}),
-        )
+            "episodes": [EpisodeResult.from_dict(e) for e in data.get("episodes", [])],
+            "agent_names": data.get("agent_names", {}),
+        }
+        if "run_id" in data:
+            kwargs["run_id"] = data["run_id"]
+        return cls(**kwargs)
 
 
 # ---------------------------------------------------------------------------

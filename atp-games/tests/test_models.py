@@ -112,3 +112,50 @@ class TestGameResult:
         assert restored.game_name == "PD"
         assert restored.config.max_retries == 2
         assert restored.agent_names == {"p0": "tft", "p1": "alld"}
+
+    def test_game_result_to_dict_includes_run_id(self) -> None:
+        # GIVEN a GameResult constructed with an explicit run_id
+        result = GameResult(
+            game_name="PD",
+            config=GameRunConfig(),
+            run_id="abc-123",
+        )
+
+        # THEN to_dict() surfaces the run_id verbatim
+        assert result.to_dict()["run_id"] == "abc-123"
+
+    def test_game_result_from_dict_roundtrips_run_id(self) -> None:
+        # GIVEN a GameResult with an explicit run_id
+        result = GameResult(
+            game_name="PD",
+            config=GameRunConfig(),
+            run_id="abc-123",
+        )
+
+        # WHEN roundtripping through to_dict + from_dict
+        restored = GameResult.from_dict(result.to_dict())
+
+        # THEN run_id is preserved
+        assert restored.run_id == "abc-123"
+
+    def test_game_result_from_dict_without_run_id_generates_new(self) -> None:
+        # GIVEN a serialized GameResult payload with NO "run_id" key
+        data = {
+            "game_name": "PD",
+            "config": {
+                "episodes": 1,
+                "max_retries": 3,
+                "move_timeout": 30.0,
+                "parallel": 1,
+            },
+            "episodes": [],
+            "agent_names": {},
+        }
+        assert "run_id" not in data
+
+        # WHEN deserializing
+        restored = GameResult.from_dict(data)
+
+        # THEN a fresh non-empty run_id is generated
+        assert isinstance(restored.run_id, str)
+        assert restored.run_id, "expected a non-empty run_id to be generated"

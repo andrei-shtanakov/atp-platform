@@ -6,6 +6,7 @@ import asyncio
 import copy
 import logging
 import time
+import uuid
 from typing import Any
 
 from atp.adapters.base import AgentAdapter
@@ -194,6 +195,8 @@ class GameRunner:
         config = config or GameRunConfig()
         self.action_validator.max_retries = config.max_retries
 
+        run_id = str(uuid.uuid4())
+
         agent_names = {
             pid: self._get_agent_name(pid, adapter) for pid, adapter in agents.items()
         }
@@ -205,9 +208,13 @@ class GameRunner:
         progress = ProgressReporter(config.episodes)
 
         if config.parallel <= 1:
-            episodes = await self._run_sequential(game, agents, config, progress)
+            episodes = await self._run_sequential(
+                game, agents, config, progress, run_id
+            )
         else:
-            episodes = await self._run_parallel(game, agents, config, progress)
+            episodes = await self._run_parallel(
+                game, agents, config, progress, run_id
+            )
 
         logger.info(
             "Game '%s' complete: %d episodes in %.1fs",
@@ -222,6 +229,7 @@ class GameRunner:
             episodes=episodes,
             agent_names=agent_names,
             agents=agent_records,
+            run_id=run_id,
         )
 
     async def _run_sequential(
@@ -230,6 +238,7 @@ class GameRunner:
         agents: dict[str, AgentAdapter],
         config: GameRunConfig,
         progress: ProgressReporter,
+        run_id: str,
     ) -> list[EpisodeResult]:
         """Run episodes sequentially."""
         episodes: list[EpisodeResult] = []
@@ -238,7 +247,7 @@ class GameRunner:
             episode_game = _make_game_for_episode(game, seed)
             episode_agents = self._copy_agents(agents)
             result = await self._run_episode(
-                episode_game, episode_agents, config, idx, seed
+                episode_game, episode_agents, config, idx, seed, run_id
             )
             episodes.append(result)
             await progress.report_complete(idx)
@@ -250,6 +259,7 @@ class GameRunner:
         agents: dict[str, AgentAdapter],
         config: GameRunConfig,
         progress: ProgressReporter,
+        run_id: str,
     ) -> list[EpisodeResult]:
         """Run episodes with bounded parallelism."""
         semaphore = asyncio.Semaphore(config.parallel)
@@ -266,6 +276,7 @@ class GameRunner:
                     config,
                     idx,
                     seed,
+                    run_id,
                 )
                 results[idx] = result
                 await progress.report_complete(idx)
@@ -298,6 +309,7 @@ class GameRunner:
         config: GameRunConfig,
         episode: int,
         seed: int | None = None,
+        run_id: str | None = None,
     ) -> EpisodeResult:
         """Run a single game episode.
 
@@ -322,7 +334,11 @@ class GameRunner:
         action_records: list[ActionRecord] = []
         round_payoffs: list[dict[str, float]] = []
 
-        match_id = f"{game.name}#ep{episode}"
+        # Include run_id so independent runs of the same config don't
+        # collide on match_id. Fall back to a fresh uuid4 if a caller
+        # invokes _run_episode directly (only happens in older tests).
+        resolved_run_id = run_id if run_id is not None else str(uuid.uuid4())
+        match_id = f"{game.name}#{resolved_run_id}#ep{episode}"
         day = 0
 
         while not game.is_terminal:
