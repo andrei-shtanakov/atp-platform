@@ -44,6 +44,7 @@ from atp.dashboard.tournament.events import (
 )
 from atp.dashboard.tournament.models import (
     Action,
+    ActionSource,
     Participant,
     Round,
     RoundStatus,
@@ -1291,3 +1292,226 @@ class TournamentService:
         # and persist payoffs identically to submit-driven resolution.
         await self._session.flush()
         await self._resolve_round(round_obj, tournament)
+
+    # ------------------------------------------------------------------
+    # Admin: kick participant
+    # ------------------------------------------------------------------
+
+    async def kick_participant(self, tournament_id: int, participant_id: int) -> None:
+        """Release a participant from a live tournament.
+
+        Sets ``Participant.released_at = now``. If there is no Action
+        yet for the current in-progress round, inserts a
+        ``TIMEOUT_DEFAULT`` action with the game's
+        ``default_action_on_timeout()`` payload so round resolution is
+        not blocked by the freed slot.
+
+        Kicking is only allowed on *live* tournaments (PENDING or
+        ACTIVE). COMPLETED and CANCELLED tournaments are frozen
+        post-mortem state and mutating ``released_at`` there would
+        corrupt the audit trail.
+
+        Raises:
+            LookupError: participant does not exist in this tournament.
+            ValueError: participant is already released, OR the
+                tournament is not in a live status (pending/active).
+        """
+        stmt = (
+            select(Participant)
+            .where(
+                Participant.tournament_id == tournament_id,
+                Participant.id == participant_id,
+            )
+            .options(selectinload(Participant.tournament))
+        )
+        participant = (await self._session.execute(stmt)).scalars().first()
+        if participant is None:
+            raise LookupError(
+                f"participant {participant_id} not found in tournament {tournament_id}"
+            )
+        tournament = participant.tournament
+        if tournament.status not in (
+            TournamentStatus.PENDING.value,
+            TournamentStatus.ACTIVE.value,
+        ):
+            raise ValueError(
+                f"cannot kick from tournament in status {tournament.status!r}; "
+                f"kicking is only allowed on live (pending/active) tournaments"
+            )
+        if participant.released_at is not None:
+            raise ValueError("participant already released")
+
+        participant.released_at = _utc_now()
+
+        if tournament.status == TournamentStatus.ACTIVE.value:
+            round_stmt = (
+                select(Round)
+                .where(
+                    Round.tournament_id == tournament_id,
+                    Round.status.in_(
+                        (
+                            RoundStatus.WAITING_FOR_ACTIONS.value,
+                            RoundStatus.IN_PROGRESS.value,
+                        )
+                    ),
+                )
+                .order_by(Round.round_number.desc())
+            )
+            current_round = (await self._session.execute(round_stmt)).scalars().first()
+            if current_round is not None:
+                existing_stmt = select(Action).where(
+                    Action.round_id == current_round.id,
+                    Action.participant_id == participant.id,
+                )
+                existing = (
+                    (await self._session.execute(existing_stmt)).scalars().first()
+                )
+                if existing is None:
+                    game = _game_for(tournament)
+                    default_action = game.default_action_on_timeout()
+                    self._session.add(
+                        Action(
+                            round_id=current_round.id,
+                            participant_id=participant.id,
+                            action_data=default_action,
+                            submitted_at=_utc_now(),
+                            source=ActionSource.TIMEOUT_DEFAULT,
+                        )
+                    )
+
+        await self._session.commit()
+
+    # ------------------------------------------------------------------
+    # Admin activity snapshot
+    # ------------------------------------------------------------------
+
+    async def get_admin_activity(self, tournament_id: int) -> dict:
+        """Return an admin-level activity snapshot for HTMX rendering.
+
+        Loads the tournament, its participants, and every Round + Action
+        in a single eagerly-loaded query, then aggregates into the shape
+        documented in the admin-GUI spec. Raises LookupError if the
+        tournament does not exist.
+        """
+        stmt = (
+            select(Tournament)
+            .where(Tournament.id == tournament_id)
+            .options(
+                selectinload(Tournament.participants),
+                selectinload(Tournament.rounds).selectinload(Round.actions),
+            )
+        )
+        tournament = (await self._session.execute(stmt)).scalars().first()
+        if tournament is None:
+            raise LookupError(f"tournament {tournament_id} not found")
+
+        total_rounds = tournament.total_rounds
+        rounds_by_number: dict[int, Round] = {
+            r.round_number: r for r in tournament.rounds
+        }
+
+        # Current round = highest round_number among rounds not yet
+        # COMPLETED; else the highest round_number overall; else 0.
+        active_rounds = [
+            r
+            for r in tournament.rounds
+            if r.status != RoundStatus.COMPLETED.value
+            and r.status != RoundStatus.CANCELLED.value
+        ]
+        if active_rounds:
+            current_round_number = max(r.round_number for r in active_rounds)
+        elif tournament.rounds:
+            current_round_number = max(r.round_number for r in tournament.rounds)
+        else:
+            current_round_number = 0
+
+        # Deadline countdown (live rounds only).
+        deadline_remaining_s: int | None = None
+        current_round_obj = rounds_by_number.get(current_round_number)
+        if (
+            current_round_obj is not None
+            and current_round_obj.deadline is not None
+            and current_round_obj.status
+            in (
+                RoundStatus.WAITING_FOR_ACTIONS.value,
+                RoundStatus.IN_PROGRESS.value,
+            )
+        ):
+            now = _utc_now()  # naive UTC per module convention
+            deadline = current_round_obj.deadline
+            if deadline.tzinfo is not None:
+                deadline = deadline.astimezone(UTC).replace(tzinfo=None)
+            delta = deadline - now
+            deadline_remaining_s = max(0, int(delta.total_seconds()))
+
+        # Action lookup: (participant_id, round_number) -> Action.
+        actions_by_pid_round: dict[tuple[int, int], Action] = {}
+        for rnd in tournament.rounds:
+            for act in rnd.actions:
+                actions_by_pid_round[(act.participant_id, rnd.round_number)] = act
+
+        def cell_for(action: Action | None, round_status: str | None) -> str:
+            if action is None:
+                # Rounds that have already completed or been cancelled
+                # without an action from this participant count as
+                # timeout (force_resolve_round normally fills completed
+                # rounds; cancelled rounds may simply stop with missing
+                # actions, which we still surface as a miss).
+                if round_status in (
+                    RoundStatus.COMPLETED.value,
+                    RoundStatus.CANCELLED.value,
+                ):
+                    return "timeout"
+                return "waiting"
+            if action.source == ActionSource.TIMEOUT_DEFAULT.value:
+                return "timeout"
+            return "submitted"
+
+        participants_out: list[dict] = []
+        submitted_this_round = 0
+        for p in tournament.participants:
+            row_per_round: list[str] = []
+            for r_num in range(1, total_rounds + 1):
+                rnd = rounds_by_number.get(r_num)
+                act = actions_by_pid_round.get((p.id, r_num))
+                row_per_round.append(
+                    cell_for(act, rnd.status if rnd is not None else None)
+                )
+
+            current_act = actions_by_pid_round.get((p.id, current_round_number))
+            if p.released_at is not None:
+                status_str = "released"
+            elif current_round_number == 0:
+                status_str = "waiting"
+            elif current_act is None:
+                status_str = "waiting"
+            elif current_act.source == ActionSource.TIMEOUT_DEFAULT.value:
+                status_str = "timeout"
+            else:
+                status_str = "submitted"
+                submitted_this_round += 1
+
+            participants_out.append(
+                {
+                    "id": p.id,
+                    "agent_name": p.agent_name,
+                    "released_at": p.released_at,
+                    "total_score": p.total_score,
+                    "current_round_status": status_str,
+                    "current_round_submitted_at": (
+                        current_act.submitted_at if current_act else None
+                    ),
+                    "row_per_round": row_per_round,
+                }
+            )
+
+        return {
+            "tournament_id": tournament.id,
+            "status": tournament.status,
+            "current_round": current_round_number or None,
+            "total_rounds": total_rounds,
+            "deadline_remaining_s": deadline_remaining_s,
+            "participants": participants_out,
+            "submitted_this_round": submitted_this_round,
+            "total_this_round": len(tournament.participants),
+        }
