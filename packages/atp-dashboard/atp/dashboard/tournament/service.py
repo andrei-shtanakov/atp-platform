@@ -1306,9 +1306,15 @@ class TournamentService:
         ``default_action_on_timeout()`` payload so round resolution is
         not blocked by the freed slot.
 
+        Kicking is only allowed on *live* tournaments (PENDING or
+        ACTIVE). COMPLETED and CANCELLED tournaments are frozen
+        post-mortem state and mutating ``released_at`` there would
+        corrupt the audit trail.
+
         Raises:
             LookupError: participant does not exist in this tournament.
-            ValueError: participant is already released.
+            ValueError: participant is already released, OR the
+                tournament is not in a live status (pending/active).
         """
         stmt = (
             select(Participant)
@@ -1323,11 +1329,19 @@ class TournamentService:
             raise LookupError(
                 f"participant {participant_id} not found in tournament {tournament_id}"
             )
+        tournament = participant.tournament
+        if tournament.status not in (
+            TournamentStatus.PENDING.value,
+            TournamentStatus.ACTIVE.value,
+        ):
+            raise ValueError(
+                f"cannot kick from tournament in status {tournament.status!r}; "
+                f"kicking is only allowed on live (pending/active) tournaments"
+            )
         if participant.released_at is not None:
             raise ValueError("participant already released")
 
         participant.released_at = _utc_now()
-        tournament = participant.tournament
 
         if tournament.status == TournamentStatus.ACTIVE.value:
             round_stmt = (
@@ -1361,7 +1375,7 @@ class TournamentService:
                             participant_id=participant.id,
                             action_data=default_action,
                             submitted_at=_utc_now(),
-                            source=ActionSource.TIMEOUT_DEFAULT.value,
+                            source=ActionSource.TIMEOUT_DEFAULT,
                         )
                     )
 
@@ -1438,11 +1452,15 @@ class TournamentService:
 
         def cell_for(action: Action | None, round_status: str | None) -> str:
             if action is None:
-                # Rounds that have already completed without an action from
-                # this participant count as timeout (force_resolve_round
-                # normally fills these, but if the round is cancelled we
-                # keep them as timeout too).
-                if round_status == RoundStatus.COMPLETED.value:
+                # Rounds that have already completed or been cancelled
+                # without an action from this participant count as
+                # timeout (force_resolve_round normally fills completed
+                # rounds; cancelled rounds may simply stop with missing
+                # actions, which we still surface as a miss).
+                if round_status in (
+                    RoundStatus.COMPLETED.value,
+                    RoundStatus.CANCELLED.value,
+                ):
                     return "timeout"
                 return "waiting"
             if action.source == ActionSource.TIMEOUT_DEFAULT.value:

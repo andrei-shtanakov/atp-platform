@@ -148,3 +148,36 @@ async def test_kick_raises_lookup_error_for_unknown_participant(
     service = TournamentService(session=session, bus=TournamentEventBus())
     with pytest.raises(LookupError):
         await service.kick_participant(t.id, 99999999)
+
+
+@pytest.mark.anyio
+async def test_kick_rejects_completed_tournament(
+    session: AsyncSession, admin_user: User
+):
+    """Copilot review PR #58 comment 6 — no post-mortem mutation."""
+    t, participants = await _seed_live_el_farol_with_stalled(session, admin_user)
+    # Flip the tournament to COMPLETED to simulate post-mortem state.
+    t.status = TournamentStatus.COMPLETED.value
+    await session.commit()
+
+    service = TournamentService(session=session, bus=TournamentEventBus())
+    with pytest.raises(ValueError, match="live"):
+        await service.kick_participant(t.id, participants["alpha"].id)
+
+    # And released_at must still be None.
+    refreshed = await session.get(Participant, participants["alpha"].id)
+    assert refreshed is not None
+    assert refreshed.released_at is None
+
+
+@pytest.mark.anyio
+async def test_kick_rejects_cancelled_tournament(
+    session: AsyncSession, admin_user: User
+):
+    t, participants = await _seed_live_el_farol_with_stalled(session, admin_user)
+    t.status = TournamentStatus.CANCELLED.value
+    await session.commit()
+
+    service = TournamentService(session=session, bus=TournamentEventBus())
+    with pytest.raises(ValueError, match="live"):
+        await service.kick_participant(t.id, participants["stalled_bot"].id)

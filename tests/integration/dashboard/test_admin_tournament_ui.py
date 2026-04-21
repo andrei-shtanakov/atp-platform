@@ -7,7 +7,6 @@ other integration tests that rely on their own database setup.
 
 from __future__ import annotations
 
-import os
 from collections.abc import AsyncGenerator
 from datetime import datetime, timedelta
 
@@ -31,11 +30,22 @@ from atp.dashboard.v2.factory import create_app
 
 
 @pytest.fixture
-async def admin_ui_ctx() -> AsyncGenerator[dict, None]:
-    """Yield an app + client + seeded admin/regular headers."""
-    os.environ["ATP_SECRET_KEY"] = "test-secret"
-    os.environ["ATP_DISABLE_AUTH"] = "false"
-    os.environ["ATP_RATE_LIMIT_ENABLED"] = "false"
+async def admin_ui_ctx(monkeypatch) -> AsyncGenerator[dict, None]:
+    """Yield an app + client + seeded admin/regular headers.
+
+    Uses ``monkeypatch`` so the env mutations here are reverted on
+    teardown and cannot leak into later tests. Note that
+    ``ATP_SECRET_KEY`` is read once at import time of
+    ``atp.dashboard.auth`` into the module-level ``SECRET_KEY``; the
+    env-var override here therefore only affects code paths that read
+    ``os.environ`` directly (config, rate-limit), while JWT signing /
+    verification still uses the already-initialized module SECRET_KEY.
+    That is acceptable for integration tests because both sides of the
+    JWT round-trip share the same module-global.
+    """
+    monkeypatch.setenv("ATP_SECRET_KEY", "test-secret")
+    monkeypatch.setenv("ATP_DISABLE_AUTH", "false")
+    monkeypatch.setenv("ATP_RATE_LIMIT_ENABLED", "false")
     get_config.cache_clear()
 
     db = Database(url="sqlite+aiosqlite:///:memory:", echo=False)
@@ -573,6 +583,19 @@ async def test_kick_endpoint_returns_404_for_unknown_participant(admin_ui_ctx):
         headers=admin_ui_ctx["admin_headers"],
     )
     assert resp.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_kick_endpoint_returns_409_on_completed_tournament(admin_ui_ctx):
+    """Copilot review PR #58 comment 5 — reject kick on post-mortem."""
+    client = admin_ui_ctx["client"]
+    tid = await _seed_completed_el_farol_in_ctx(admin_ui_ctx)
+    pid = await _get_participant_id(admin_ui_ctx, tid, "alpha_done")
+    resp = await client.delete(
+        f"/api/v1/tournaments/{tid}/participants/{pid}",
+        headers=admin_ui_ctx["admin_headers"],
+    )
+    assert resp.status_code == 409
 
 
 @pytest.mark.anyio
