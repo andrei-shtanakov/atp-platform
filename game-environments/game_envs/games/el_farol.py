@@ -193,11 +193,11 @@ class ElFarolActionSpace(ActionSpace):
     def sanitize(self, action: Any) -> list[int]:
         """Convert any input shape to a safe flat slot list.
 
-        Handles None, non-list types, duplicates, out-of-range values
-        and oversized input. Returns ``[]`` for input that is invalid
-        at the structural level (e.g. too many intervals). Valid
-        flat-list input is sorted, deduplicated and truncated to
-        ``max_total_slots`` entries.
+        Handles None, non-list types, duplicates and out-of-range values.
+        Returns ``[]`` for input that violates the interval invariants
+        (too many intervals or more than ``max_total_slots`` slots), so
+        the caller's default-action fallback decides what to submit.
+        Valid input is returned as a sorted, deduplicated ``list[int]``.
         """
         dict_intervals = self._extract_intervals_from_dict(action)
         if dict_intervals is not None:
@@ -230,7 +230,10 @@ class ElFarolActionSpace(ActionSpace):
             seen.add(s)
         result = sorted(seen)
         if len(result) > self.max_total_slots:
-            result = result[: self.max_total_slots]
+            return []
+        runs = self._classify_flat_runs(result)
+        if runs is None or len(runs) > self.max_intervals:
+            return []
         return result
 
     # ------------------------------------------------------------------

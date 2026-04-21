@@ -281,14 +281,12 @@ class TestSanitize:
         # THEN out-of-range entry is silently dropped
         assert aspace.sanitize([0, 1, 99]) == [0, 1]
 
-    def test_sanitize_truncates_over_max_total_slots(self) -> None:
+    def test_sanitize_rejects_over_max_total_slots(self) -> None:
         # GIVEN a flat list longer than max_total_slots
         aspace = ElFarolActionSpace(max_total_slots=4)
         # WHEN sanitizing
-        # THEN at most max_total_slots returned, first 4 in sorted order
-        result = aspace.sanitize([0, 1, 2, 3, 4, 5])
-        assert len(result) <= 4
-        assert result == [0, 1, 2, 3]
+        # THEN [] (strict rejection, caller's default-action fallback kicks in)
+        assert aspace.sanitize([0, 1, 2, 3, 4, 5]) == []
 
     def test_sanitize_interval_shape_rejects_third_pair_entirely(self) -> None:
         # GIVEN interval-shape input with too many pairs
@@ -296,6 +294,20 @@ class TestSanitize:
         # WHEN sanitizing
         # THEN [] (caller's default-action fallback kicks in)
         assert aspace.sanitize([[0, 0], [2, 2], [4, 4]]) == []
+
+    def test_sanitize_rejects_flat_list_exceeding_max_intervals(self) -> None:
+        # GIVEN a flat list decomposing into 3 runs (> max_intervals=2)
+        aspace = ElFarolActionSpace()
+        # WHEN sanitizing
+        # THEN [] (strict rejection, consistent with list-of-pairs / dict shapes)
+        assert aspace.sanitize([0, 1, 4, 5, 10, 11]) == []
+
+    def test_sanitize_accepts_flat_list_at_max_intervals_boundary(self) -> None:
+        # GIVEN a flat list decomposing into exactly max_intervals=2 runs
+        aspace = ElFarolActionSpace()
+        # WHEN sanitizing
+        # THEN the sorted, deduped slot list is returned (boundary-inclusive)
+        assert aspace.sanitize([0, 1, 4, 5]) == [0, 1, 4, 5]
 
 
 # ---------------------------------------------------------------------------
@@ -320,3 +332,32 @@ class TestIntegrationWithConfig:
         # THEN the action space reflects the config limits
         assert aspace.max_intervals == 2
         assert aspace.max_total_slots == 6
+
+    def test_step_rejects_flat_list_exceeding_max_intervals(self) -> None:
+        # GIVEN a 2-player ElFarolBar with default max_intervals=2
+        from game_envs.games.el_farol import ElFarolBar, ElFarolConfig
+
+        cfg = ElFarolConfig(
+            num_players=2,
+            num_slots=16,
+            max_intervals=2,
+            max_total_slots=8,
+            num_rounds=1,
+            capacity_threshold=2,  # solo visits are always happy
+        )
+        game = ElFarolBar(cfg)
+        game.reset()
+        # WHEN player_0 submits 3 disjoint visits (flat list, 3 runs)
+        # AND player_1 submits a valid 2-run action
+        result = game.step(
+            {
+                "player_0": [0, 4, 8],  # 3 runs, exceeds max_intervals=2
+                "player_1": [0, 1, 4, 5],  # 2 runs, valid
+            }
+        )
+        # THEN player_0's action sanitizes to [] (no happy slots, no payoff)
+        assert result.payoffs["player_0"] == 0.0
+        assert game._t_happy["player_0"] == 0.0
+        assert game._t_crowded["player_0"] == 0.0
+        # AND player_1 still earns from valid slots (sanity check)
+        assert game._t_happy["player_1"] > 0.0
