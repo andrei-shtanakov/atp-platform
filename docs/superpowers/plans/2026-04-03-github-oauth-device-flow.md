@@ -112,7 +112,7 @@ elif provider == OIDCProvider.GITHUB:
 
 - [ ] **Step 4: Run tests to verify nothing broke**
 
-Run: `cd /Users/Andrei_Shtanakov/labs/all_ai_orchestrators/atp-platform && uv run pytest tests/unit/dashboard/test_auth.py -v`
+Run from the repo root: `uv run pytest tests/unit/dashboard/test_auth.py -v`
 Expected: All existing tests PASS
 
 - [ ] **Step 5: Run ruff + pyrefly**
