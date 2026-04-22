@@ -82,6 +82,7 @@ def _slots_to_interval_pair(
     slots: list[int],
     *,
     num_slots: int,
+    max_total_slots: int,
 ) -> IntervalPair | None:
     """Convert a sorted-or-unsorted list of slot indices to an IntervalPair.
 
@@ -89,9 +90,19 @@ def _slots_to_interval_pair(
     decompose into more than two runs (not representable as a pair of
     contiguous intervals) or when IntervalPair construction rejects the
     result for any other invariant (out-of-range, total slots exceeded).
+
+    ``max_total_slots`` is the match's configured cap and is stored on the
+    returned :class:`IntervalPair` so the action metadata remains faithful
+    to the rules that produced it (e.g. a match with ``max_total_slots=4``
+    emits pairs whose cap is 4, not the global default).
     """
     if not slots:
-        return IntervalPair(first=(), second=(), num_slots=num_slots)
+        return IntervalPair(
+            first=(),
+            second=(),
+            num_slots=num_slots,
+            max_total_slots=max_total_slots,
+        )
 
     sorted_slots = sorted(set(slots))
     runs: list[tuple[int, int]] = []
@@ -111,13 +122,12 @@ def _slots_to_interval_pair(
 
     first: tuple[int, int] | tuple[()] = runs[0]
     second: tuple[int, int] | tuple[()] = runs[1] if len(runs) == 2 else ()
-    max_total = max(len(sorted_slots), 8)
     try:
         return IntervalPair(
             first=first,
             second=second,
             num_slots=num_slots,
-            max_total_slots=max_total,
+            max_total_slots=max_total_slots,
         )
     except ValueError:
         return None
@@ -410,13 +420,18 @@ class GameRunner:
         an empty ``EpisodeResult.actions``.
         """
         num_slots = self._infer_num_slots(game, actions)
+        max_total_slots = self._infer_max_total_slots(game, num_slots)
         crowded_slots = self._extract_crowded_slots(step_result)
 
         for pid, action in actions.items():
             slot_list = self._normalise_to_slot_list(game, pid, action)
             if slot_list is None:
                 return  # bail out entirely — non-slot games (PD etc.)
-            intervals = _slots_to_interval_pair(slot_list, num_slots=num_slots)
+            intervals = _slots_to_interval_pair(
+                slot_list,
+                num_slots=num_slots,
+                max_total_slots=max_total_slots,
+            )
             if intervals is None:
                 continue  # action not representable as IntervalPair (>2 runs)
 
@@ -501,6 +516,22 @@ class GameRunner:
                     if isinstance(s, int) and s > max_slot:
                         max_slot = s
         return max_slot + 1 if max_slot >= 0 else 16
+
+    @staticmethod
+    def _infer_max_total_slots(game: Game, num_slots: int) -> int:
+        """Read the match's configured slot cap, falling back to num_slots.
+
+        Prefers ``game.config.max_total_slots`` so persisted
+        :class:`IntervalPair` instances carry the real rule that produced
+        them. When the game config does not expose the attribute (e.g.
+        non-El-Farol slot games), falls back to ``num_slots`` which is a
+        valid upper bound for any action the space can accept.
+        """
+        cfg = getattr(game, "config", None)
+        value = getattr(cfg, "max_total_slots", None)
+        if isinstance(value, int) and value > 0:
+            return value
+        return num_slots
 
     @staticmethod
     def _extract_crowded_slots(step_result: Any) -> set[int] | None:

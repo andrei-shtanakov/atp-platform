@@ -40,7 +40,7 @@ from atp_games.models import (
     IntervalPair,
 )
 from atp_games.runner.builtin_adapter import BuiltinAdapter
-from atp_games.runner.game_runner import GameRunner
+from atp_games.runner.game_runner import GameRunner, _slots_to_interval_pair
 
 # ---------------------------------------------------------------------------
 # Deterministic El Farol test strategies
@@ -417,3 +417,164 @@ class TestActionRecordIntentPlumbing:
             assert record.intent is None, (
                 f"expected fallback path to drop intent, got {record.intent!r}"
             )
+
+
+# ---------------------------------------------------------------------------
+# IntervalPair cap plumbing tests
+# ---------------------------------------------------------------------------
+
+
+async def _run_el_farol_with_config(
+    config: ElFarolConfig,
+    *,
+    player_0_action: list[int],
+    player_1_action: list[int],
+) -> EpisodeResult:
+    """Run a 2-player, 1-round El Farol match with mock adapters."""
+    game = ElFarolBar(config)
+    agents = {
+        "player_0": _make_mock_el_farol_adapter(action=player_0_action),
+        "player_1": _make_mock_el_farol_adapter(action=player_1_action),
+    }
+    runner = GameRunner()
+    result = await runner.run_game(game, agents, GameRunConfig(episodes=1))
+    return result.episodes[0]
+
+
+class TestActionRecordIntervalPairCap:
+    """ActionRecord.intervals carries the match's configured slot cap."""
+
+    @pytest.mark.anyio
+    async def test_action_record_interval_pair_honors_config_max_total_slots(
+        self,
+    ) -> None:
+        # GIVEN an El Farol match with max_total_slots=4 (custom cap)
+        config = ElFarolConfig(
+            num_players=2,
+            num_rounds=1,
+            num_slots=16,
+            max_total_slots=4,
+            max_intervals=2,
+            capacity_threshold=2,
+        )
+
+        # WHEN both players submit a valid 2-slot action
+        ep = await _run_el_farol_with_config(
+            config,
+            player_0_action=[0, 1],
+            player_1_action=[0, 1],
+        )
+
+        # THEN every ActionRecord.intervals.max_total_slots is the configured
+        # cap (4), not the old len(sorted_slots)-or-8 default
+        assert ep.actions, "expected ActionRecords to be produced"
+        for record in ep.actions:
+            assert record.intervals.max_total_slots == 4, (
+                f"expected max_total_slots=4 for {record.agent_id} day "
+                f"{record.day}, got {record.intervals.max_total_slots}"
+            )
+
+    @pytest.mark.anyio
+    async def test_action_record_interval_pair_preserves_num_slots_from_config(
+        self,
+    ) -> None:
+        # GIVEN an El Farol match with num_slots=8
+        config = ElFarolConfig(
+            num_players=2,
+            num_rounds=1,
+            num_slots=8,
+            max_total_slots=4,
+            max_intervals=2,
+            capacity_threshold=2,
+        )
+
+        # WHEN both players submit a valid 2-slot action
+        ep = await _run_el_farol_with_config(
+            config,
+            player_0_action=[0, 1],
+            player_1_action=[0, 1],
+        )
+
+        # THEN every ActionRecord.intervals.num_slots is 8
+        assert ep.actions, "expected ActionRecords to be produced"
+        for record in ep.actions:
+            assert record.intervals.num_slots == 8, (
+                f"expected num_slots=8 for {record.agent_id} day "
+                f"{record.day}, got {record.intervals.num_slots}"
+            )
+
+    @pytest.mark.anyio
+    async def test_action_record_interval_pair_uses_default_config_max_total_slots(
+        self,
+    ) -> None:
+        # GIVEN a default ElFarolConfig (max_total_slots=8), overriding only
+        # the number of players/rounds/threshold so the match runs quickly
+        config = ElFarolConfig(
+            num_players=2,
+            num_rounds=1,
+            capacity_threshold=2,
+        )
+        assert config.max_total_slots == 8, (
+            "pre-condition: default ElFarolConfig.max_total_slots should be 8"
+        )
+
+        # WHEN both players submit a small valid action
+        ep = await _run_el_farol_with_config(
+            config,
+            player_0_action=[0, 1],
+            player_1_action=[0, 1],
+        )
+
+        # THEN every ActionRecord.intervals.max_total_slots equals the default 8
+        assert ep.actions, "expected ActionRecords to be produced"
+        for record in ep.actions:
+            assert record.intervals.max_total_slots == 8, (
+                f"expected default max_total_slots=8 for {record.agent_id} "
+                f"day {record.day}, got {record.intervals.max_total_slots}"
+            )
+
+
+class TestSlotsToIntervalPair:
+    """Direct tests for the _slots_to_interval_pair helper."""
+
+    def test_slots_to_interval_pair_forwards_max_total_slots(self) -> None:
+        # GIVEN a small slot list and a cap of 4
+        # WHEN converting to an IntervalPair
+        result = _slots_to_interval_pair(
+            [0, 1],
+            num_slots=16,
+            max_total_slots=4,
+        )
+
+        # THEN the resulting IntervalPair carries the forwarded cap
+        assert result is not None
+        assert result.max_total_slots == 4
+
+    def test_slots_to_interval_pair_returns_none_when_exceeds_max_total_slots(
+        self,
+    ) -> None:
+        # GIVEN 5 slots, which exceeds the cap of 4
+        # WHEN converting to an IntervalPair
+        result = _slots_to_interval_pair(
+            [0, 1, 2, 3, 4],
+            num_slots=16,
+            max_total_slots=4,
+        )
+
+        # THEN construction fails and the helper returns None
+        assert result is None
+
+    def test_slots_to_interval_pair_empty_action_preserves_cap(self) -> None:
+        # GIVEN an empty slot list with a configured cap of 4
+        # WHEN converting to an IntervalPair
+        result = _slots_to_interval_pair(
+            [],
+            num_slots=16,
+            max_total_slots=4,
+        )
+
+        # THEN the empty pair still records the cap and has no covered slots
+        assert result is not None
+        assert result.max_total_slots == 4
+        assert result.first == ()
+        assert result.second == ()
