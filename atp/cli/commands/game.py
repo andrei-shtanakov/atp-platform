@@ -162,7 +162,7 @@ async def _run_game_suite(
         _print_game_results(result, verbose)
 
     # Store results in dashboard DB (if available)
-    await _store_game_result(result, suite, run_config)
+    await _store_game_result(result, suite, run_config, game)
 
     return True
 
@@ -729,14 +729,232 @@ def _print_benchmark_results(result: Any) -> None:
             click.echo(f"    {agent_name}: {payoff:.4f}")
 
 
+def _build_game_result_kwargs(
+    result: Any,
+    suite: Any,
+    game: Any,
+) -> dict[str, Any]:
+    """Build ORM ``GameResult(...)`` kwargs from a run result + suite + game.
+
+    Populates both the legacy JSON-blob fields (``players_json``,
+    ``episodes_json``, ``metadata_json``) and the Phase 7 El Farol
+    additive columns (``match_id``, ``game_version``, ``num_days``,
+    ``num_slots``, ``max_intervals``, ``max_total_slots``,
+    ``capacity_ratio``, ``capacity_threshold``, ``actions_json``,
+    ``day_aggregates_json``, ``round_payoffs_json``, ``agents_json``).
+
+    Keys whose source data is absent are omitted entirely so the ORM
+    stores ``NULL`` for legacy rows / non-El-Farol games. This is a pure
+    function — no DB, no I/O — so it is easy to unit-test.
+    """
+    from dataclasses import asdict
+    from datetime import datetime as _dt
+
+    # Legacy players_json
+    players: list[dict[str, Any]] = []
+    for pid, payoff in result.average_payoffs.items():
+        name = result.agent_names.get(pid, pid)
+        players.append(
+            {
+                "player_id": pid,
+                "name": name,
+                "strategy": name,
+                "average_payoff": payoff,
+            }
+        )
+
+    episodes_data: list[dict[str, Any]] = []
+    for ep in result.episodes:
+        episodes_data.append(
+            {
+                "episode": ep.episode,
+                "payoffs": ep.payoffs,
+                "seed": ep.seed,
+            }
+        )
+
+    # ``num_rounds`` / ``num_days`` come from the game's typed config
+    # (authoritative) rather than the YAML suite blob, so users who leave
+    # suite.game.config empty still get accurate values.
+    game_cfg = getattr(game, "config", None)
+    num_rounds = getattr(game_cfg, "num_rounds", None)
+
+    kwargs: dict[str, Any] = {
+        "game_name": result.game_name,
+        "game_type": suite.game.variant or "one_shot",
+        "num_players": len(result.agent_names),
+        "num_rounds": num_rounds if num_rounds is not None else 1,
+        "num_episodes": len(result.episodes),
+        "status": "completed",
+        "completed_at": _dt.now(),
+        "players_json": players,
+        "episodes_json": episodes_data,
+        "metadata_json": {
+            "suite_name": suite.name,
+            "config": {
+                "episodes": result.config.episodes,
+            },
+        },
+    }
+
+    # ------------------------------------------------------------------
+    # Phase 7 additive columns — keys omitted when source data is absent
+    # so legacy rows continue to read as NULL.
+    # ------------------------------------------------------------------
+
+    # match_id = run_id — distinguishes independent runs of the same config.
+    run_id = getattr(result, "run_id", None)
+    if run_id:
+        kwargs["match_id"] = run_id
+
+    # game_version from the suite envelope (YAML-declared).
+    suite_version = getattr(suite, "version", None)
+    if suite_version:
+        kwargs["game_version"] = suite_version
+
+    # num_days mirrors num_rounds when present on the game config.
+    if num_rounds is not None:
+        kwargs["num_days"] = num_rounds
+
+    # El Farol-only config columns: populated when the typed game config
+    # exposes the attribute. ``hasattr`` gate keeps non-El-Farol games
+    # (PD, etc.) from leaking stray ``None`` defaults into the row.
+    for attr in (
+        "num_slots",
+        "max_intervals",
+        "max_total_slots",
+        "capacity_ratio",
+        "capacity_threshold",
+    ):
+        if game_cfg is not None and hasattr(game_cfg, attr):
+            kwargs[attr] = getattr(game_cfg, attr)
+
+    # Typed agent roster — list[AgentRecord] → list[dict].
+    agents = list(getattr(result, "agents", None) or [])
+    if agents:
+        kwargs["agents_json"] = [asdict(a) for a in agents]
+
+    # Flatten typed ActionRecords across all episodes. Gate for
+    # day_aggregates: episode 0 having any ActionRecord marks the run as
+    # El-Farol-shaped and therefore worth deriving per-day attendance.
+    actions_json = _serialize_action_records(result.episodes)
+    if actions_json:
+        kwargs["actions_json"] = actions_json
+
+    # Per-round payoffs — episode 0 only. Multi-episode runs still emit
+    # all action records above; here we persist the canonical series.
+    if result.episodes:
+        rp = result.episodes[0].round_payoffs
+        if rp:
+            kwargs["round_payoffs_json"] = [dict(r) for r in rp]
+
+    # Day aggregates — computed from episode 0's step history when the
+    # El Farol gate (typed actions on episode 0) is open. Use
+    # ``game.name`` (not ``result.game_name``) so the synthesised
+    # ``match_id`` matches the runner's per-ActionRecord ``match_id``
+    # format: ``{game.name}#{run_id}#ep{episode}``.
+    if result.episodes and result.episodes[0].actions:
+        aggregates = _compute_day_aggregates(
+            game_name=getattr(game, "name", result.game_name),
+            run_id=run_id,
+            episode_index=result.episodes[0].episode,
+            history=result.episodes[0].history,
+            capacity_threshold=getattr(game_cfg, "capacity_threshold", None),
+        )
+        if aggregates:
+            kwargs["day_aggregates_json"] = aggregates
+
+    return kwargs
+
+
+def _serialize_action_records(episodes: list[Any]) -> list[dict[str, Any]]:
+    """Flatten typed ``ActionRecord`` lists across episodes.
+
+    Converts each record with :func:`dataclasses.asdict` and replaces any
+    ``submitted_at`` datetime with its ISO 8601 string form so the
+    payload is directly ``json.dumps``-safe.
+    """
+    from dataclasses import asdict as _asdict
+    from datetime import datetime as _dt
+
+    out: list[dict[str, Any]] = []
+    for ep in episodes:
+        for rec in getattr(ep, "actions", None) or []:
+            payload = _asdict(rec)
+            submitted_at = payload.get("submitted_at")
+            if isinstance(submitted_at, _dt):
+                payload["submitted_at"] = submitted_at.isoformat()
+            out.append(payload)
+    return out
+
+
+def _compute_day_aggregates(
+    *,
+    game_name: str,
+    run_id: str | None,
+    episode_index: int,
+    history: list[dict[str, Any]],
+    capacity_threshold: int | None,
+) -> list[dict[str, Any]]:
+    """Derive per-day attendance aggregates from El Farol step history.
+
+    Each step in ``history`` is the serialised form of a ``StepResult``
+    whose ``state.public_state.attendance_history`` is the cumulative
+    list of per-slot occupancy arrays. The last element is the day that
+    step resolved. Returns an empty list when the history does not carry
+    the expected El Farol public-state shape (e.g. PD) so callers can
+    decide to omit the dashboard column entirely.
+    """
+    rid = run_id if run_id is not None else "run"
+    match_id = f"{game_name}#{rid}#ep{episode_index}"
+
+    aggregates: list[dict[str, Any]] = []
+    for idx, entry in enumerate(history):
+        if not isinstance(entry, dict):
+            continue
+        state = entry.get("state")
+        if not isinstance(state, dict):
+            continue
+        public = state.get("public_state")
+        if not isinstance(public, dict):
+            continue
+        attendance_history = public.get("attendance_history")
+        if not isinstance(attendance_history, list) or not attendance_history:
+            continue
+        last = attendance_history[-1]
+        if not isinstance(last, (list, tuple)):
+            continue
+        try:
+            slot_attendance = [int(x) for x in last]
+        except (TypeError, ValueError):
+            continue
+        if capacity_threshold is not None:
+            over_slots = sum(1 for occ in slot_attendance if occ >= capacity_threshold)
+        else:
+            over_slots = 0
+        aggregates.append(
+            {
+                "match_id": match_id,
+                "day": idx + 1,
+                "slot_attendance": slot_attendance,
+                "over_slots": over_slots,
+                "total_attendances": sum(slot_attendance),
+            }
+        )
+    return aggregates
+
+
 async def _store_game_result(
     result: Any,
     suite: Any,
     config: Any,
+    game: Any,
 ) -> None:
     """Store game result in dashboard database (if available).
 
-    Silently skips if dashboard is not installed.
+    Silently skips if dashboard is not installed. The ``config`` argument
+    is kept for backward compatibility; authoritative run metadata is
+    read from ``result.config``.
     """
     try:
         from atp.dashboard import init_database
@@ -744,47 +962,8 @@ async def _store_game_result(
 
         db = await init_database()
         async with db.session() as session:
-            from datetime import datetime
-
-            players = []
-            for pid, payoff in result.average_payoffs.items():
-                name = result.agent_names.get(pid, pid)
-                players.append(
-                    {
-                        "player_id": pid,
-                        "name": name,
-                        "strategy": name,
-                        "average_payoff": payoff,
-                    }
-                )
-
-            episodes_data = []
-            for ep in result.episodes:
-                episodes_data.append(
-                    {
-                        "episode": ep.episode,
-                        "payoffs": ep.payoffs,
-                        "seed": ep.seed,
-                    }
-                )
-
-            game_result = GameResult(
-                game_name=result.game_name,
-                game_type=suite.game.variant or "one_shot",
-                num_players=len(result.agent_names),
-                num_rounds=suite.game.config.get("num_rounds", 1),
-                num_episodes=len(result.episodes),
-                status="completed",
-                completed_at=datetime.now(),
-                players_json=players,
-                episodes_json=episodes_data,
-                metadata_json={
-                    "suite_name": suite.name,
-                    "config": {
-                        "episodes": config.episodes,
-                    },
-                },
-            )
+            kwargs = _build_game_result_kwargs(result, suite, game)
+            game_result = GameResult(**kwargs)
             session.add(game_result)
             await session.commit()
             click.echo(f"Results saved to dashboard (game_id={game_result.id})")
