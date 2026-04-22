@@ -1,10 +1,12 @@
 """Database connection and session management for ATP Dashboard."""
 
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -14,6 +16,8 @@ from sqlalchemy.ext.asyncio import (
 
 import atp.dashboard.tokens as _tokens_models  # noqa: F401  — register ORM models
 from atp.dashboard.models import Base
+
+logger = logging.getLogger(__name__)
 
 
 class Database:
@@ -153,8 +157,16 @@ def set_database(db: Database) -> None:
 async def init_database(url: str | None = None, echo: bool = False) -> Database:
     """Initialize and return the database.
 
-    Creates tables if they don't exist, adds missing columns to existing
-    tables, and seeds default RBAC roles.
+    Creates tables if they don't exist, reconciles legacy tables whose
+    columns/indexes lag behind the current ORM metadata (additive-migration
+    path), backfills legacy run ownership, and seeds default RBAC roles.
+
+    The reconcile step is what keeps pre-migration deployments from crashing
+    once new ORM attributes are mapped. ``create_all`` alone never alters an
+    existing table, so a database upgraded from ``main`` would otherwise keep
+    its old ``game_results`` (for example) table and every ``SELECT`` that
+    references a newly-mapped column would raise
+    ``OperationalError: no such column``.
 
     Args:
         url: Database URL.
@@ -341,6 +353,42 @@ async def _add_missing_columns(db: Database) -> None:
                 stmt = f"ALTER TABLE {table.name} ADD COLUMN {column_ddl}"
                 logger.info("Auto-adding column: %s.%s", table.name, column.name)
                 await conn.execute(text(stmt))
+
+        await conn.run_sync(_create_missing_indexes)
+
+
+def _create_missing_indexes(conn: Any) -> None:
+    """Create ORM-declared indexes missing from existing tables.
+
+    ``create_all`` skips indexes on pre-existing tables. Legacy databases
+    upgraded from earlier versions therefore lack the newer named indexes
+    (e.g. ``idx_game_result_match``). Runs on the sync DBAPI connection via
+    ``AsyncConnection.run_sync`` because ``sqlalchemy.inspect`` is sync-only.
+    """
+    inspector = sa_inspect(conn)
+    for table in Base.metadata.sorted_tables:
+        if not inspector.has_table(table.name):
+            continue
+        existing_idx_names = {
+            idx["name"] for idx in inspector.get_indexes(table.name) if idx.get("name")
+        }
+        for idx in table.indexes:
+            if idx.name is None or idx.name in existing_idx_names:
+                continue
+            try:
+                idx.create(conn)
+                logger.info(
+                    "Reconciled schema: created missing index %s on %s",
+                    idx.name,
+                    table.name,
+                )
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning(
+                    "Could not create missing index %s on %s: %s",
+                    idx.name,
+                    table.name,
+                    exc,
+                )
 
 
 async def _seed_default_roles(db: Database) -> None:
