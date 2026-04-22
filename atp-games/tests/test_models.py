@@ -1,7 +1,7 @@
 """Tests for data models."""
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 
@@ -463,6 +463,131 @@ class TestDashboardRoundtrip:
         assert restored.episodes[0].actions[0].intent == "probe"
         assert restored.episodes[0].actions[0].intervals.first == (0, 2)
         assert restored.episodes[0].round_payoffs == [{"p0": 1.5, "p1": -0.5}]
+
+    def test_episode_result_to_dict_serializes_submitted_at_as_iso_string(
+        self,
+    ) -> None:
+        # GIVEN an ActionRecord whose submitted_at is a naive datetime
+        action = _make_action_record(
+            match_id="match-iso",
+            day=0,
+            agent_id="p0",
+        )
+        action.submitted_at = datetime(2026, 4, 22, 10, 30, 0)
+        ep = EpisodeResult(
+            episode=0,
+            payoffs={"p0": 1.0},
+            actions=[action],
+        )
+
+        # WHEN serializing
+        result = ep.to_dict()
+
+        # THEN submitted_at is emitted as an ISO-8601 string
+        assert isinstance(result["actions"][0]["submitted_at"], str)
+        assert result["actions"][0]["submitted_at"] == "2026-04-22T10:30:00"
+
+    def test_episode_result_to_dict_preserves_submitted_at_none(self) -> None:
+        # GIVEN an ActionRecord with submitted_at left at its default (None)
+        action = _make_action_record(
+            match_id="match-none",
+            day=0,
+            agent_id="p0",
+        )
+        assert action.submitted_at is None
+        ep = EpisodeResult(
+            episode=0,
+            payoffs={"p0": 1.0},
+            actions=[action],
+        )
+
+        # WHEN serializing
+        result = ep.to_dict()
+
+        # THEN submitted_at remains None (or absent) — no stringification
+        payload = result["actions"][0]
+        assert payload.get("submitted_at") is None
+
+    def test_game_result_to_dict_is_json_serializable_with_timestamps(self) -> None:
+        # GIVEN a GameResult whose episode carries an action with a timestamp
+        original_ts = datetime(2026, 4, 22, 10, 30, 0)
+        action = _make_action_record(
+            match_id="match-json-ts",
+            day=0,
+            agent_id="p0",
+        )
+        action.submitted_at = original_ts
+        episode = EpisodeResult(
+            episode=0,
+            payoffs={"p0": 1.5},
+            actions=[action],
+        )
+        result = GameResult(
+            game_name="El Farol",
+            config=GameRunConfig(),
+            episodes=[episode],
+            run_id="run-json-ts",
+        )
+
+        # WHEN dumping to JSON, parsing, and rebuilding
+        # THEN json.dumps must NOT raise on the raw datetime
+        payload = json.dumps(result.to_dict())
+        restored = GameResult.from_dict(json.loads(payload))
+
+        # THEN the roundtripped submitted_at is a matching datetime
+        restored_action = restored.episodes[0].actions[0]
+        assert isinstance(restored_action.submitted_at, datetime)
+        assert restored_action.submitted_at == original_ts
+
+    def test_action_record_roundtrip_preserves_submitted_at_across_json(
+        self,
+    ) -> None:
+        # GIVEN an ActionRecord with a naive submitted_at datetime
+        original_ts = datetime(2026, 4, 22, 10, 30, 0)
+        action = _make_action_record(
+            match_id="match-rt",
+            day=0,
+            agent_id="p0",
+        )
+        action.submitted_at = original_ts
+        ep = EpisodeResult(
+            episode=0,
+            payoffs={"p0": 1.0},
+            actions=[action],
+        )
+
+        # WHEN roundtripping EpisodeResult -> dict -> json -> dict -> EpisodeResult
+        payload = json.loads(json.dumps(ep.to_dict()))
+        restored = EpisodeResult.from_dict(payload)
+
+        # THEN the ActionRecord's submitted_at is the exact original datetime
+        assert restored.actions[0].submitted_at == original_ts
+
+    def test_submitted_at_with_timezone_roundtrips(self) -> None:
+        # GIVEN an ActionRecord with a timezone-aware submitted_at
+        original_ts = datetime(2026, 4, 22, 10, 30, tzinfo=timezone.utc)
+        action = _make_action_record(
+            match_id="match-tz",
+            day=0,
+            agent_id="p0",
+        )
+        action.submitted_at = original_ts
+        ep = EpisodeResult(
+            episode=0,
+            payoffs={"p0": 1.0},
+            actions=[action],
+        )
+
+        # WHEN roundtripping via JSON
+        payload = json.loads(json.dumps(ep.to_dict()))
+        restored = EpisodeResult.from_dict(payload)
+
+        # THEN the timezone-aware datetime is preserved
+        restored_ts = restored.actions[0].submitted_at
+        assert isinstance(restored_ts, datetime)
+        assert restored_ts == original_ts
+        assert restored_ts.tzinfo is not None
+        assert restored_ts.utcoffset() == timezone.utc.utcoffset(None)
 
     def test_game_result_from_dict_legacy_no_new_fields(self) -> None:
         # GIVEN a minimal legacy payload with no agents/run_id

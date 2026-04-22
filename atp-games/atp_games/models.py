@@ -75,7 +75,15 @@ class EpisodeResult:
     seed: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize to dictionary."""
+        """Serialize to dictionary.
+
+        ``ActionRecord`` entries are normalised for JSON export:
+        ``submitted_at`` is emitted as an ISO 8601 string (or ``None``)
+        so ``json.dumps`` on the resulting payload never hits the raw
+        ``datetime`` that ``dataclasses.asdict`` would otherwise leave
+        in place. :py:meth:`ActionRecord.from_dict` already accepts ISO
+        strings, keeping the round-trip lossless.
+        """
         result: dict[str, Any] = {
             "episode": self.episode,
             "payoffs": dict(self.payoffs),
@@ -85,7 +93,14 @@ class EpisodeResult:
         if self.actions:
             from dataclasses import asdict as _asdict
 
-            result["actions"] = [_asdict(a) for a in self.actions]
+            encoded_actions: list[dict[str, Any]] = []
+            for a in self.actions:
+                payload = _asdict(a)
+                submitted_at = payload.get("submitted_at")
+                if isinstance(submitted_at, datetime):
+                    payload["submitted_at"] = submitted_at.isoformat()
+                encoded_actions.append(payload)
+            result["actions"] = encoded_actions
         if self.round_payoffs:
             result["round_payoffs"] = [dict(rp) for rp in self.round_payoffs]
         if self.seed is not None:
