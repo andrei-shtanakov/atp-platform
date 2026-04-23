@@ -15,6 +15,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import (
     DeclarativeBase,
@@ -1045,6 +1046,16 @@ class GameResult(Base):
         JSON, nullable=True
     )
 
+    # LABS-TSA PR-1: link to the tournament that produced this match.
+    # NULL for CLI standalone runs. UNIQUE partial index below enforces
+    # at-most-one GameResult per tournament so the dual-write from the
+    # tournament completion hook is idempotent without TOCTOU races.
+    tournament_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("tournaments.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     # Indexes
     __table_args__ = (
         Index("idx_game_result_name", "game_name"),
@@ -1054,6 +1065,18 @@ class GameResult(Base):
         Index("idx_game_result_tenant", "tenant_id"),
         Index("idx_game_result_match", "match_id"),
         Index("idx_game_result_game_completed", "game_name", "completed_at"),
+        # LABS-TSA PR-1
+        Index(
+            "idx_game_results_tournament",
+            "tournament_id",
+        ),
+        Index(
+            "uq_game_results_tournament_id",
+            "tournament_id",
+            unique=True,
+            sqlite_where=text("tournament_id IS NOT NULL"),
+            postgresql_where=text("tournament_id IS NOT NULL"),
+        ),
     )
 
     def __repr__(self) -> str:

@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from atp.dashboard.database import Database, set_database
-from atp.dashboard.models import Agent, Base, User
+from atp.dashboard.models import Agent, Base, GameResult, User
 from atp.dashboard.tournament.models import Participant, Tournament
 
 
@@ -138,3 +138,72 @@ class TestParticipantBuiltin:
         with pytest.raises(IntegrityError):
             await db_session.commit()
         await db_session.rollback()
+
+
+class TestGameResultTournamentLink:
+    @pytest.mark.anyio
+    async def test_tournament_id_nullable_default_none(
+        self, db_session: AsyncSession
+    ) -> None:
+        g = GameResult(
+            game_name="x",
+            game_type="one_shot",
+            num_players=2,
+            num_rounds=1,
+            status="completed",
+        )
+        db_session.add(g)
+        await db_session.commit()
+        await db_session.refresh(g)
+        assert g.tournament_id is None
+
+    @pytest.mark.anyio
+    async def test_tournament_id_unique_partial(
+        self, db_session: AsyncSession, user: User
+    ) -> None:
+        t = Tournament(
+            game_type="el_farol", num_players=2, total_rounds=1, created_by=user.id
+        )
+        db_session.add(t)
+        await db_session.commit()
+
+        g1 = GameResult(
+            game_name="x",
+            game_type="one_shot",
+            num_players=2,
+            num_rounds=1,
+            status="completed",
+            tournament_id=t.id,
+        )
+        db_session.add(g1)
+        await db_session.commit()
+
+        g2 = GameResult(
+            game_name="x",
+            game_type="one_shot",
+            num_players=2,
+            num_rounds=1,
+            status="completed",
+            tournament_id=t.id,  # duplicate
+        )
+        db_session.add(g2)
+        with pytest.raises(IntegrityError):
+            await db_session.commit()
+        await db_session.rollback()
+
+    @pytest.mark.anyio
+    async def test_two_results_without_tournament_id_allowed(
+        self, db_session: AsyncSession
+    ) -> None:
+        # tournament_id IS NULL rows are not uniqueness-constrained.
+        for i in range(2):
+            db_session.add(
+                GameResult(
+                    game_name=f"g{i}",
+                    game_type="one_shot",
+                    num_players=2,
+                    num_rounds=1,
+                    status="completed",
+                )
+            )
+        await db_session.commit()  # must succeed
