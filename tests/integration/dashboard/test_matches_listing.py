@@ -60,19 +60,25 @@ class TestMatchesListing:
         aggs = [{"day": 1, "slot_attendance": [0] * 16, "over_slots": 0}]
         db_session.add_all(
             [
+                # Production CLI writer stores game_name as the engine's
+                # pretty name, e.g. "El Farol Bar (n=6, threshold=4,
+                # days=30)". Filter must not depend on the literal
+                # "el_farol" key.
                 GameResult(
-                    game_name="el_farol",
-                    game_type="el_farol_interval",
-                    num_players=2,
-                    num_rounds=3,
+                    game_name="El Farol Bar (n=6, threshold=4, days=30)",
+                    game_type="repeated",
+                    num_players=6,
+                    num_rounds=30,
                     status="completed",
                     completed_at=datetime(2026, 4, 20, 12, 0),
-                    match_id="m-listed",
-                    num_days=3,
+                    match_id="m-pretty-name",
+                    num_days=30,
                     num_slots=16,
                     actions_json=actions,
                     day_aggregates_json=aggs,
                 ),
+                # Legacy row: matches on game_name but has no Phase-7
+                # columns → hidden because not renderable.
                 GameResult(
                     game_name="el_farol",
                     game_type="el_farol",
@@ -81,16 +87,6 @@ class TestMatchesListing:
                     status="completed",
                     match_id="m-legacy",
                     # actions_json deliberately null
-                ),
-                GameResult(
-                    game_name="prisoners_dilemma",
-                    game_type="repeated",
-                    num_players=2,
-                    num_rounds=5,
-                    status="completed",
-                    match_id="m-pd",
-                    actions_json=actions,
-                    day_aggregates_json=aggs,
                 ),
             ]
         )
@@ -103,11 +99,10 @@ class TestMatchesListing:
 
         assert resp.status_code == 200
         html = resp.text
-        assert "m-listed" in html
-        assert "/ui/matches/m-listed" in html
-        # legacy and non-el-farol rows hidden
+        assert "m-pretty-name" in html
+        assert "/ui/matches/m-pretty-name" in html
+        # legacy row hidden because Phase-7 columns missing
         assert "m-legacy" not in html
-        assert "m-pd" not in html
         assert "1 completed El Farol matches" in html or ">1 completed" in html
 
     @pytest.mark.anyio
