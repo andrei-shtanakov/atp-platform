@@ -169,13 +169,22 @@ async def init_database(url: str | None = None, echo: bool = False) -> Database:
     ``OperationalError: no such column``.
 
     Args:
-        url: Database URL.
+        url: Database URL. When None, falls back to the
+            ``ATP_DATABASE_URL`` environment variable and finally to
+            the SQLite default. This lets CLI-side callers (e.g.
+            ``atp game run``'s dashboard writer) share the server's
+            configured database without threading the URL through every
+            callsite.
         echo: Whether to echo SQL statements.
 
     Returns:
         Database instance.
     """
+    import os
+
     global _database
+    if url is None:
+        url = os.environ.get("ATP_DATABASE_URL") or None
     _database = Database(url=url, echo=echo)
     await _database.create_tables()
     await _add_missing_columns(_database)
