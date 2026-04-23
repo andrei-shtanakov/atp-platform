@@ -520,30 +520,32 @@ async def ui_matches(
 ) -> HTMLResponse:
     """List El Farol matches that have the Phase-7 dashboard payload.
 
-    Filters to ``game_name='el_farol'`` with ``actions_json`` populated
-    so the link in each row actually lands on a renderable dashboard.
-    Legacy pre-Phase-7 rows are hidden — clicking them would show the
-    "predates schema" page, which is useless in a listing.
+    Filters match the renderability criteria in :func:`ui_match_detail`:
+    ``status == 'completed'`` plus both ``actions_json`` and
+    ``day_aggregates_json`` populated. Rows missing any of these would
+    land on the "predates schema" or "still running" branches if
+    clicked — hiding them in the listing keeps every link clickable.
     """
     from atp.dashboard.models import GameResult
 
     user = await _get_ui_user(request, session)
 
+    renderable_filters = [
+        GameResult.game_name == "el_farol",
+        GameResult.status == "completed",
+        GameResult.actions_json.is_not(None),
+        GameResult.day_aggregates_json.is_not(None),
+    ]
+
     stmt = (
         select(GameResult)
-        .where(
-            GameResult.game_name == "el_farol",
-            GameResult.actions_json.is_not(None),
-        )
+        .where(*renderable_filters)
         .order_by(GameResult.completed_at.desc().nulls_last())
         .limit(100)
     )
     matches = list((await session.execute(stmt)).scalars().all())
 
-    total_stmt = select(func.count(GameResult.id)).where(
-        GameResult.game_name == "el_farol",
-        GameResult.actions_json.is_not(None),
-    )
+    total_stmt = select(func.count(GameResult.id)).where(*renderable_filters)
     total = (await session.execute(total_stmt)).scalar_one()
 
     return _templates(request).TemplateResponse(
