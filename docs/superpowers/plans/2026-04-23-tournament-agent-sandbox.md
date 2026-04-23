@@ -648,9 +648,10 @@ from sqlalchemy import create_engine, inspect
 async def test_migration_up_down_up_clean_sqlite() -> None:
     with tempfile.TemporaryDirectory() as td:
         dbpath = Path(td) / "atp.db"
-        env = {"ATP_DATABASE_URL": f"sqlite:///{dbpath}"}
+        import os
+        env = {**os.environ, "ATP_DATABASE_URL": f"sqlite:///{dbpath}"}
         # up to head
-        subprocess.check_call(["uv", "run", "alembic", "upgrade", "head"], env={**env})
+        subprocess.check_call(["uv", "run", "alembic", "upgrade", "head"], env=env)
         # inspect new columns exist
         eng = create_engine(f"sqlite:///{dbpath}")
         insp = inspect(eng)
@@ -663,14 +664,14 @@ async def test_migration_up_down_up_clean_sqlite() -> None:
         eng.dispose()
         # downgrade one step
         subprocess.check_call(
-            ["uv", "run", "alembic", "downgrade", "-1"], env={**env}
+            ["uv", "run", "alembic", "downgrade", "-1"], env=env
         )
         eng = create_engine(f"sqlite:///{dbpath}")
         insp = inspect(eng)
         assert "purpose" not in {c["name"] for c in insp.get_columns("agents")}
         eng.dispose()
         # upgrade again
-        subprocess.check_call(["uv", "run", "alembic", "upgrade", "head"], env={**env})
+        subprocess.check_call(["uv", "run", "alembic", "upgrade", "head"], env=env)
         eng = create_engine(f"sqlite:///{dbpath}")
         insp = inspect(eng)
         assert "purpose" in {c["name"] for c in insp.get_columns("agents")}
@@ -1733,20 +1734,39 @@ class TestBuiltinRegistry:
         assert "el_farol/contrarian" in names
         assert "el_farol/random" in names
 
-    def test_resolve_with_seed(self) -> None:
-        strategy = resolve_builtin("el_farol/traditionalist", seed=42)
-        # Strategy instance has ._rng configured; smoke test only —
-        # we don't exercise decide() here.
+    def test_resolve_returns_strategy_instance(self) -> None:
+        strategy = resolve_builtin(
+            "el_farol/traditionalist", tournament_id=1, participant_id=1
+        )
         assert strategy is not None
+        # Strategy base class provides choose_action — smoke only, no call.
+        assert hasattr(strategy, "choose_action")
+
+    def test_resolve_seeded_strategy_is_deterministic(self) -> None:
+        # Strategies with a ``seed`` kwarg (e.g. Random family) must
+        # produce the same RNG state for the same (tournament,
+        # participant) pair across repeated resolves.
+        a = resolve_builtin(
+            "prisoners_dilemma/random", tournament_id=7, participant_id=3
+        )
+        b = resolve_builtin(
+            "prisoners_dilemma/random", tournament_id=7, participant_id=3
+        )
+        # ._rng is the ``random.Random`` instance seeded in __init__
+        assert a._rng.random() == b._rng.random()
 
     def test_unknown_raises(self) -> None:
         with pytest.raises(BuiltinNotFoundError):
-            resolve_builtin("el_farol/nonexistent", seed=1)
+            resolve_builtin(
+                "el_farol/nonexistent", tournament_id=1, participant_id=1
+            )
 
     def test_unnamespaced_raises(self) -> None:
         with pytest.raises(BuiltinNotFoundError):
             # bare name without game/ prefix
-            resolve_builtin("traditionalist", seed=1)
+            resolve_builtin(
+                "traditionalist", tournament_id=1, participant_id=1
+            )
 ```
 
 - [ ] **Step 4.2.2: Run — must fail (module missing)**
@@ -1761,16 +1781,30 @@ Create `packages/atp-dashboard/atp/dashboard/tournament/builtins.py`:
 ```python
 """Namespaced builtin-strategy registry for private test tournaments.
 
-Wire name: ``{game}/{strategy}``. Cross-game collisions (e.g. "random"
-exists in PD, auction, congestion, blotto as separate classes) are
-disambiguated by the game prefix. `resolve_builtin` always takes an
-explicit seed — the tournament runner must never use the global RNG.
+Wire name: ``{game}/{strategy}``. Cross-game collisions (e.g.
+"random" in PD, auction, congestion, blotto) are disambiguated by
+the game prefix. ``resolve_builtin`` derives a stable seed from
+``(tournament_id, participant_id)`` and passes it to the class
+constructor only when the class accepts a ``seed`` kwarg.
+
+The underlying class lookup uses the real
+``game_envs.strategies.registry.StrategyRegistry`` — a classmethod
+registry populated via decorator-style ``register`` calls when
+each ``<game>_strategies`` module is imported. There is no
+hypothetical ``REGISTRY`` dict on the modules; we explicitly narrow
+the global registry to classes from the importing game's module.
 """
 
 from __future__ import annotations
 
+import hashlib
+import inspect
 from dataclasses import dataclass
+from importlib import import_module
 from typing import Any
+
+from game_envs.core.strategy import Strategy
+from game_envs.strategies.registry import StrategyRegistry
 
 
 class BuiltinNotFoundError(KeyError):
@@ -1783,57 +1817,88 @@ class BuiltinDescriptor:
     description: str
 
 
-def _load_game_strategies(game_type: str) -> dict[str, type[Any]]:
-    """Import strategy classes for a given game.
+# Each entry lists the strategy module that, once imported, registers
+# its classes with StrategyRegistry. Dashboard → game_envs direction is
+# a runtime dep (peer package in the uv workspace).
+_GAME_STRATEGY_MODULES: dict[str, str] = {
+    "el_farol": "game_envs.strategies.el_farol_strategies",
+    "prisoners_dilemma": "game_envs.strategies.pd_strategies",
+    "colonel_blotto": "game_envs.strategies.blotto_strategies",
+    "auction": "game_envs.strategies.auction_strategies",
+    "congestion": "game_envs.strategies.congestion_strategies",
+    "stag_hunt": "game_envs.strategies.stag_hunt_strategies",
+    "battle_of_sexes": "game_envs.strategies.bos_strategies",
+    "public_goods": "game_envs.strategies.pg_strategies",
+}
 
-    Each game module in ``game_envs.strategies`` exposes a ``REGISTRY``
-    dict mapping bare strategy name to class. We read that dict.
+
+def _load_game_strategies(game_type: str) -> dict[str, type[Strategy]]:
+    """Return ``{bare_name: class}`` for the given game.
+
+    Imports the game's strategies module (which triggers
+    ``StrategyRegistry.register`` calls at import time), then filters
+    the global registry to classes defined in that module.
     """
-    if game_type == "el_farol":
-        from game_envs.strategies import el_farol_strategies as m
-    elif game_type == "prisoners_dilemma":
-        from game_envs.strategies import pd_strategies as m
-    elif game_type == "colonel_blotto":
-        from game_envs.strategies import blotto_strategies as m
-    elif game_type == "auction":
-        from game_envs.strategies import auction_strategies as m
-    elif game_type == "congestion":
-        from game_envs.strategies import congestion_strategies as m
-    elif game_type == "stag_hunt":
-        from game_envs.strategies import stag_hunt_strategies as m
-    elif game_type == "battle_of_sexes":
-        from game_envs.strategies import bos_strategies as m
-    elif game_type == "public_goods":
-        from game_envs.strategies import pg_strategies as m
-    else:
+    module_path = _GAME_STRATEGY_MODULES.get(game_type)
+    if module_path is None:
         return {}
-    return dict(getattr(m, "REGISTRY", {}))
+    module = import_module(module_path)
+    out: dict[str, type[Strategy]] = {}
+    # StrategyRegistry stores in a classmethod-internal dict; access via
+    # the documented class attribute (see game_envs/strategies/registry.py).
+    for bare_name in StrategyRegistry.list_strategies():
+        cls = StrategyRegistry.get(bare_name)
+        if cls.__module__ == module.__name__:
+            out[bare_name] = cls
+    return out
 
 
 def list_builtins_for_game(game_type: str) -> list[BuiltinDescriptor]:
-    """Return the list of builtins available for a game, namespaced."""
+    """Namespaced descriptors for every builtin the game offers."""
     out: list[BuiltinDescriptor] = []
     for bare_name, cls in _load_game_strategies(game_type).items():
         desc = (cls.__doc__ or "").strip().split("\n", 1)[0]
-        out.append(BuiltinDescriptor(name=f"{game_type}/{bare_name}", description=desc))
+        out.append(
+            BuiltinDescriptor(name=f"{game_type}/{bare_name}", description=desc)
+        )
     out.sort(key=lambda b: b.name)
     return out
 
 
-def resolve_builtin(namespaced_name: str, *, seed: int) -> Any:
+def _stable_seed(tournament_id: int, participant_id: int) -> int:
+    """Derive a process-stable integer seed.
+
+    Python's built-in ``hash()`` is PYTHONHASHSEED-randomised per process
+    — not usable here. We hash the identity pair with blake2b and
+    project the first 8 bytes to an unsigned 64-bit int.
+    """
+    digest = hashlib.blake2b(
+        f"{tournament_id}:{participant_id}".encode("utf-8"),
+        digest_size=8,
+    ).digest()
+    return int.from_bytes(digest, "big")
+
+
+def resolve_builtin(
+    namespaced_name: str,
+    *,
+    tournament_id: int,
+    participant_id: int,
+) -> Strategy:
     """Instantiate a builtin strategy by its namespaced wire name.
 
-    Args:
-        namespaced_name: ``"{game_type}/{strategy_name}"``.
-        seed: Required integer seed — runner must thread in
-              ``hash((tournament.id, participant.id))``.
+    The class's constructor is inspected: only classes that accept a
+    ``seed`` keyword argument receive one, so non-RNG-backed strategies
+    like ``Traditionalist(window_size=6)`` are not forced to take a
+    parameter they don't understand.
 
     Raises:
-        BuiltinNotFoundError: if the name is malformed or unknown.
+        BuiltinNotFoundError: name malformed or unknown, or game unknown.
     """
     if "/" not in namespaced_name:
         raise BuiltinNotFoundError(
-            f"strategy name must be namespaced as 'game/name', got {namespaced_name!r}"
+            f"strategy name must be namespaced as 'game/name',"
+            f" got {namespaced_name!r}"
         )
     game_type, bare_name = namespaced_name.split("/", 1)
     strategies = _load_game_strategies(game_type)
@@ -1842,15 +1907,24 @@ def resolve_builtin(namespaced_name: str, *, seed: int) -> Any:
         raise BuiltinNotFoundError(
             f"unknown builtin strategy {namespaced_name!r} for game {game_type!r}"
         )
-    return cls(seed=seed)
+    kwargs: dict[str, Any] = {}
+    params = inspect.signature(cls).parameters
+    if "seed" in params:
+        kwargs["seed"] = _stable_seed(tournament_id, participant_id)
+    return cls(**kwargs)
 ```
 
-Before running tests, verify `REGISTRY` exists in each strategies module:
+Before running tests, smoke-check the class imports & registry lookup:
 
-Run: `rg -n "^REGISTRY\s*=" game-environments/game_envs/strategies/`
-Expected: each referenced module has a top-level `REGISTRY` dict. If a module
-uses a different name (e.g. `STRATEGIES`), adjust `_load_game_strategies`
-accordingly.
+```bash
+uv run python -c "
+from atp.dashboard.tournament.builtins import list_builtins_for_game
+print(list_builtins_for_game('el_farol'))
+"
+```
+
+Expected: non-empty list with at least ``el_farol/traditionalist`` and
+``el_farol/contrarian`` in the output.
 
 - [ ] **Step 4.2.4: Run tests**
 
@@ -2169,7 +2243,9 @@ from atp.dashboard.v2.config import get_config
 # 1. Validate every builtin name and game pairing
 for name in roster:
     try:
-        resolve_builtin(name, seed=0)  # just to validate existence
+        # Dummy tournament/participant ids — the instance is discarded
+        # immediately. We only care whether the class resolves.
+        resolve_builtin(name, tournament_id=0, participant_id=0)
     except BuiltinNotFoundError as e:
         raise ValueError(f"unknown builtin strategy in roster: {e}") from e
     game_prefix, _ = name.split("/", 1)
@@ -2296,7 +2372,8 @@ from atp.dashboard.tournament.models import Participant
 class TestRunnerBranch:
     @pytest.mark.anyio
     async def test_builtin_participant_resolved_synchronously(self) -> None:
-        # Construct an in-memory Participant (no DB).
+        from game_envs.core.strategy import Observation
+
         p = Participant(
             id=42,
             tournament_id=1,
@@ -2305,41 +2382,64 @@ class TestRunnerBranch:
             agent_name="el_farol/traditionalist",
             builtin_strategy="el_farol/traditionalist",
         )
-        # Fake game state enough to let the strategy decide.
-        state = {"round": 1, "history": [], "num_slots": 16}  # shape varies per game
+        # Observation fields vary per game — consult
+        # ``game_envs/core/strategy.py`` for the exact dataclass.
+        # For El Farol the Traditionalist needs at least an empty
+        # history to compute its "attend if recent attendance was low"
+        # rule.
+        obs = Observation(history=[], own_history=[], round_number=1)
         action = await collect_action_for_participant(
             participant=p,
-            state=state,
+            observation=obs,
             tournament_id=1,
         )
         assert action is not None
 ```
 
 The test shape depends on the function signature you refactor — adjust to
-match.
+match. If the ``Observation`` dataclass has additional required fields,
+either pass sensible defaults or build the observation via the same helper
+the MCP path uses.
 
 - [ ] **Step 4.5.3: Implement the branching**
 
 In the move-collection site, wrap the current MCP-based logic with:
 
 ```python
+from atp.dashboard.tournament.builtins import resolve_builtin
+
+
 async def collect_action_for_participant(
-    *, participant: Participant, state: Any, tournament_id: int
+    *, participant: Participant, observation: Any, tournament_id: int
 ) -> Any:
     if participant.builtin_strategy is not None:
-        seed = hash((tournament_id, participant.id))
-        strategy = resolve_builtin(participant.builtin_strategy, seed=seed)
-        return strategy.decide(state)
+        strategy = resolve_builtin(
+            participant.builtin_strategy,
+            tournament_id=tournament_id,
+            participant_id=participant.id,
+        )
+        # `Strategy.choose_action` is synchronous and deterministic.
+        # The seed (when the class accepts one) is derived inside
+        # resolve_builtin via a stable blake2b of the identity pair —
+        # never the PYTHONHASHSEED-randomised built-in hash().
+        return strategy.choose_action(observation)
     # existing MCP path
     return await wait_for_make_move(participant=participant, ...)
 ```
 
-Import `resolve_builtin` from `atp.dashboard.tournament.builtins`.
+`observation` is an instance of the game's `Observation` dataclass
+(see `game_envs.core.strategy`), constructed from the same per-player
+state view the MCP `get_current_state` tool produces today. The move-
+collection site already builds a per-participant state dict for the
+MCP path; wrap that into an `Observation` and pass it through on the
+builtin path — the `Observation` type is the game-envs contract.
 
-The exact `strategy.decide(state)` call may need adaptation — each
-`game_envs.strategies.*` class has its own `decide(...)` signature. Use the
-same shape the game's game_envs tests use. For El Farol the state includes
-`slot_history`; pass a compatible dict.
+For each game, the mapping from "current round state dict" to
+`Observation` is small and deterministic. If the existing runner
+helper hides this behind a single function, reuse it; if it inlines
+the construction, factor it into a named helper
+`_observation_for(game_type, state, participant)` and call it from
+both branches.
 
 - [ ] **Step 4.5.4: Determinism test**
 
@@ -2348,20 +2448,27 @@ Append:
 ```python
     @pytest.mark.anyio
     async def test_same_participant_and_tournament_gives_same_action(self) -> None:
+        from game_envs.core.strategy import Observation
+
         p = Participant(
             id=7, tournament_id=3, user_id=None, agent_id=None,
             agent_name="el_farol/random",
             builtin_strategy="el_farol/random",
         )
-        state = {"round": 1, "history": [], "num_slots": 16}
+        obs = Observation(history=[], own_history=[], round_number=1)
         a = await collect_action_for_participant(
-            participant=p, state=state, tournament_id=3
+            participant=p, observation=obs, tournament_id=3
         )
         b = await collect_action_for_participant(
-            participant=p, state=state, tournament_id=3
+            participant=p, observation=obs, tournament_id=3
         )
         assert a == b
 ```
+
+Crucially, run the test **in a fresh Python process** (pytest spawns a
+new process per invocation) to verify the blake2b-based seed is stable
+across process boundaries — Python's built-in ``hash()`` would have
+differed between runs because of ``PYTHONHASHSEED``.
 
 - [ ] **Step 4.5.5: Run**
 
@@ -2514,13 +2621,18 @@ async def _write_game_result_for_tournament(
         # stub that reads the Round rows is acceptable as long as the
         # schema fields are populated.
     )
-    session.add(row)
+    # Wrap the insert in a SAVEPOINT so the UNIQUE-partial-index
+    # IntegrityError on the second completion attempt only rolls back
+    # the nested transaction — the outer transaction (which flipped
+    # tournament.status to 'completed') stays intact.
     try:
-        await session.flush()
+        async with session.begin_nested():
+            session.add(row)
+            await session.flush()
     except IntegrityError:
-        # UNIQUE partial index on (tournament_id) rejects duplicates —
-        # a second completion attempt is idempotent.
-        await session.rollback()
+        # Idempotency path — some other completion handler already wrote
+        # the GameResult for this tournament_id. Fall through silently.
+        pass
 ```
 
 The reshape into `actions_json` / `day_aggregates_json` is game-specific (El
@@ -2791,9 +2903,15 @@ Create `packages/atp-dashboard/atp/dashboard/v2/templates/ui/tournament_new.html
 
     <fieldset>
       <legend>Visibility</legend>
-      <label><input type="radio" name="private" value="on" {% if not user.is_admin %}checked disabled{% endif %}> Private</label>
       {% if user.is_admin %}
+      <label><input type="radio" name="private" value="on" checked> Private</label>
       <label><input type="radio" name="private" value="off"> Public</label>
+      {% else %}
+      {# Disabled inputs don't submit — use a hidden input to carry the
+         "always private for non-admins" intent into the POST body and
+         render a disabled radio purely for visual feedback. #}
+      <input type="hidden" name="private" value="on">
+      <label><input type="radio" checked disabled> Private (non-admins cannot create public tournaments)</label>
       {% endif %}
     </fieldset>
 

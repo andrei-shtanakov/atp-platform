@@ -10,12 +10,14 @@ tournament runs. Users building tournament agents today can't
 effectively rehearse the full flow before a public tournament
 because:
 
-- **No quota or classification on agents.** `ATP_MAX_AGENTS_PER_USER`
-  is documented in `CLAUDE.md` but not actually enforced in
-  `POST /api/v1/agents` (grep confirms zero references in
-  `packages/` / `atp/`). There is no way to say "this agent is for
-  tournaments" vs "this agent is for benchmark suites" — a single
-  flat pool conflates the two.
+- **No purpose-specific quota or classification on agents.** A
+  general per-user agent quota is already enforced in
+  `packages/atp-dashboard/atp/dashboard/v2/routes/agent_management_api.py`
+  (`create_agent_for_user` compares `COUNT(*)` to
+  `cfg.max_agents_per_user`), but there is no way to say "this
+  agent is for tournaments" vs "this agent is for benchmark
+  suites" and therefore no way to set separate limits for the two
+  purposes — a single flat pool conflates them.
 - **No sparring opponents.** Tournaments require N live participants
   via MCP `join_tournament`. A user who only has one tournament
   agent has no way to test — the tournament never starts because
@@ -24,8 +26,9 @@ because:
   isn't wired into the tournament runner).
 - **No UI for self-service creation.** `POST /api/v1/tournaments`
   already allows any authenticated user to create a tournament,
-  optionally `private=True` (which produces a single-use
-  `join_token`), and the visibility filter in
+  optionally `private=True` (which produces a secret invite
+  `join_token`, shown once on creation, reusable by multiple
+  joiners until the tournament starts), and the visibility filter in
   `tournament/service.py::list_tournaments` already hides private
   tournaments from non-participants. The UI surface is
   admin-only — there is no `/ui/tournaments/new` for regular users.
@@ -80,11 +83,12 @@ dashboard.
 - `POST /api/v1/tournaments` — any authenticated user can create,
   `private: bool` already works; this spec doesn't change the
   permission gate.
-- `Tournament.join_token` — cryptographic (32-byte urlsafe) one-time
-  secret for private tournaments. Invite-by-link continues to work
-  exactly as today; another authenticated user who has the token
-  can still join the private tournament via MCP. This is a feature,
-  not a bug to fix.
+- `Tournament.join_token` — cryptographic (32-byte urlsafe) secret
+  for private tournaments. Reusable by multiple joiners until the
+  tournament fills — not single-use. Invite-by-link continues to
+  work exactly as today; another authenticated user who has the
+  token can still join the private tournament via MCP. This is a
+  feature, not a bug to fix.
 - `list_tournaments` / `get_tournament` visibility filter in
   `service.py` — reused verbatim. Admin sees everything; a regular
   user sees `join_token IS NULL OR created_by=me OR EXISTS
@@ -171,31 +175,63 @@ strategy, never both and never neither.
 
 **Runner.** The tournament runner today reads moves via
 `await wait_for_make_move(...)` which blocks on the MCP tool call.
-For builtin participants it calls:
+For builtin participants it builds an `Observation` (per
+`game_envs.core.strategy.Strategy.choose_action(observation)` — the
+real interface, not a hypothetical `decide(state)`) and calls the
+strategy directly:
 
 ```
-seed = hash((tournament.id, participant.id))
-strategy = registry.get_builtin(participant.builtin_strategy, seed=seed)
-action = strategy.decide(game_state_view_for(participant))
+obs = build_observation(game_type, game_state, participant)
+strategy = resolve_builtin(
+    game_type, strategy_name,
+    tournament_id=tournament.id, participant_id=participant.id,
+)
+action = strategy.choose_action(obs)
 ```
 
-Every builtin strategy class in `game_envs.strategies.*` already
-accepts a `seed: int | None` in its constructor (verified via
-`grep 'self._rng = random.Random(seed)'`). The runner must always
-pass one, derived from the tournament + participant identity so two
-runs of the same private tournament produce identical moves. Using
-the global `random` is a reproducibility regression and is
-explicitly forbidden in the implementation plan.
+`resolve_builtin` is a dashboard-side wrapper that:
+
+1. Looks up the class by `(game_type, strategy_name)` via
+   `game_envs.strategies.registry.StrategyRegistry` (the existing
+   real registry — not a fictional `REGISTRY` dict).
+2. Inspects the constructor signature and passes a deterministic
+   `seed` kwarg **only when the class accepts one**
+   (`inspect.signature(cls).parameters`). Non-RNG-backed strategies
+   like El Farol's `Traditionalist(window_size=6)` get plain default
+   args; RNG-backed strategies like the `Random` family receive the
+   seed.
+3. Derives the seed from the tournament + participant identity using
+   a **stable hash** (`hashlib.blake2b(f"{tournament_id}:{participant_id}".encode(), digest_size=8)`),
+   **not** Python's built-in `hash()` — the built-in is randomised
+   per-process by default (`PYTHONHASHSEED`) and would break the
+   "two runs produce identical moves" guarantee.
+
+Because strategies across games share short names (e.g.
+`"traditionalist"` is El Farol, `"random"` exists in multiple
+games), the dashboard registry wrapper is **per-game**: it imports
+the game's strategies module to trigger `StrategyRegistry.register`
+calls, then narrows to classes exported from that module. The
+wire-level `builtin_strategy` value on `Participant` stays
+namespaced (`el_farol/traditionalist`) — this is what the
+`POST /api/v1/tournaments` roster submits and what the server
+round-trips back.
 
 The runner's "wait for move" state machine needs one branching
 point:
 
 ```
 if participant.builtin_strategy is not None:
-    action = builtin.decide(state)   # sync, deterministic
+    action = builtin.choose_action(obs)   # sync, deterministic
 else:
     action = await wait_for_make_move(...)  # via MCP
 ```
+
+**Observation construction** is game-specific. The runner already
+knows how to build per-player views of game state for MCP
+participants (same data the MCP `get_current_state` tool returns);
+the builtin path reuses the same construction, converting the
+per-player dict into the `Observation` dataclass the Strategy base
+class expects.
 
 **Cross-package boundary.** `GameRegistry` and the strategies live
 in `game-environments`, which `atp-dashboard` does not currently
@@ -364,7 +400,7 @@ agent-backed); existing game_results keep `tournament_id=NULL`.
 ### `POST /api/v1/agents`
 
 ```json
-{ "name": "my-agent", "adapter": "mcp", "purpose": "tournament" }
+{ "name": "my-agent", "agent_type": "mcp", "purpose": "tournament" }
 ```
 `purpose` optional, default `"benchmark"`. Quota enforced per-purpose.
 
@@ -415,20 +451,21 @@ strategies available for a game:
 {
   "game_type": "el_farol",
   "builtins": [
-    {"name": "traditionalist", "description": "..."},
-    {"name": "contrarian", "description": "..."},
-    {"name": "random", "description": "..."}
+    {"name": "el_farol/traditionalist", "description": "..."},
+    {"name": "el_farol/contrarian", "description": "..."},
+    {"name": "el_farol/random", "description": "..."}
   ]
 }
 ```
 
-Strategy names are **namespaced by game** on the wire — i.e. the
-roster submitted on `POST /api/v1/tournaments` carries
-`{"builtin_strategy": "el_farol/contrarian"}`, never bare
-`"contrarian"`. Same string `"random"` exists in PD, auction,
-congestion, and blotto as distinct classes; without the namespace
-`Participant.builtin_strategy` would be ambiguous. The validator on
-`POST /api/v1/tournaments` checks
+The endpoint returns **namespaced** names (`{game}/{strategy}`) so
+the client never has to prefix anything — the value in
+`builtins[i].name` is the exact string to submit as
+`roster[i].builtin_strategy` on `POST /api/v1/tournaments` and the
+exact string stored in `Participant.builtin_strategy`. Short name
+`"random"` exists in PD, auction, congestion, and blotto as
+distinct classes; namespacing keeps the wire unambiguous
+end-to-end. The validator on `POST /api/v1/tournaments` checks
 `(game_type, strategy_name) ∈ registry.allowed_set()`.
 
 ## UI Changes
@@ -573,7 +610,7 @@ effort).
 | Users flood server with private tournaments | Medium | Medium | Per-user concurrent cap of 3; builtins are cheap (synchronous decide) so compute is bounded by `cap × num_rounds × decide_ms` |
 | MCP rejects existing benchmark-purpose tokens retroactively | Low | High | Pre-existing tokens default to benchmark purpose; MCP is a new surface — no one currently uses it with a benchmark token, but a test confirms the 403 path only catches the intended class |
 | Token → agent DB lookup on every JWT-authenticated request | Medium | High | PR-3 puts `agent_id` / `agent_purpose` into the token claims at issuance so the hot path is decode-only. A one-time lazy lookup with in-process cache absorbs legacy tokens until operators rotate. p99 regression monitored on `/api/v1/benchmarks/next-task` and `/mcp` after PR-3 rolls out |
-| Builtins produce non-deterministic moves across two runs of the same private tournament | Medium | High | Runner seeds every builtin with `hash((tournament.id, participant.id))` — documented in Architecture → Builtin participants. Unit test: run the same tournament twice, assert identical action transcripts |
+| Builtins produce non-deterministic moves across two runs of the same private tournament | Medium | High | Runner seeds every RNG-backed builtin with `int.from_bytes(hashlib.blake2b(f"{tournament.id}:{participant.id}".encode(), digest_size=8).digest(), "big")` — Python's built-in `hash()` is `PYTHONHASHSEED`-randomised per process and must not be used. Documented in Architecture → Builtin participants. Unit test: run the same tournament twice, assert identical action transcripts |
 | Private tournament results leak into public leaderboard | Medium | Medium | Explicit test on the leaderboard SQL joins `game_results.tournament_id → tournaments.join_token IS NULL` |
 | `GameResult` dual-write races with tournament completion | Low | High | Dual-write runs inside the same DB transaction that flips status to `completed`; idempotency guard on `tournament_id` unique lookup |
 | Cross-package `game-environments` import breaks dashboard startup if registry misconfigured | Low | Medium | Import is at module-import time of `tournament/service.py`; any broken registry crashes the server at startup rather than runtime — easy to catch in CI |
