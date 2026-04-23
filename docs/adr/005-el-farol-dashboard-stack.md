@@ -4,14 +4,15 @@
 **Date**: 2026-04-23
 **Context**: PR #63 (merged 2026-04-23) landed the El Farol data model
 (Phases 1–7 of `docs/plans/el-farol-dashboard-data-model.md`). Two
-standalone HTML mockups at the repo root (`ATP_Dashboard_standalone_.html`,
-`ATP_Dashboard_Scaled_standalone_.html`) describe the target UX. They
-proved sufficient fidelity of the schema but are packaged as a
-self-contained SPA (vanilla DOM + SVG, ~22 k chars dashboard code +
-~9 k chars data/helpers + inlined fonts/assets). The rest of `/ui/*` is
-Jinja2 templates extending `base_ui.html`, Pico CSS (light theme), HTMX
-2.0.4, no client JS framework. LABS-98 asks: how do we integrate the
-mockup into the running dashboard?
+standalone HTML mockups checked in under
+`docs/mockups/el-farol/cards.html` and
+`docs/mockups/el-farol/scaled.html` (LABS-97 / PR #65) describe the
+target UX. They proved sufficient fidelity of the schema but are
+packaged as a self-contained SPA (vanilla DOM + SVG, ~22 k chars
+dashboard code + ~9 k chars data/helpers + inlined fonts/assets). The
+rest of `/ui/*` is Jinja2 templates extending `base_ui.html`, Pico CSS
+(light theme), HTMX 2.0.4, no client JS framework. LABS-98 asks: how do
+we integrate the mockup into the running dashboard?
 
 ## Decision
 
@@ -77,9 +78,11 @@ light theme remains default outside.
 ### Style
 
 - The mockup's inline `<style>` block extracts into
-  `static/css/el_farol.css`, scoped under `.atp-dashboard-dark`. Fonts
-  (Inter, JetBrains Mono) load from Google Fonts CDN the way the mockup
-  does, scoped so they don't leak to Pico.
+  `packages/atp-dashboard/atp/dashboard/v2/static/css/el_farol.css` and
+  is referenced from the page as `/static/v2/css/el_farol.css`
+  (matching the `/static/v2` mount in `v2/factory.py`), scoped under
+  `.atp-dashboard-dark`. Fonts (Inter, JetBrains Mono) load from Google
+  Fonts CDN the way the mockup does, scoped so they don't leak to Pico.
 - No CSS framework collision because `.atp-dashboard-dark` isolates the
   tree.
 
@@ -157,8 +160,8 @@ light theme remains default outside.
 ## References
 
 - `docs/plans/el-farol-dashboard-data-model.md` — data-model plan (PR #63)
-- `ATP_Dashboard_standalone_.html` — Cards mockup
-- `ATP_Dashboard_Scaled_standalone_.html` — Scaled mockup (phase 2)
+- `docs/mockups/el-farol/cards.html` — Cards mockup (LABS-97 / PR #65)
+- `docs/mockups/el-farol/scaled.html` — Scaled mockup (phase 2)
 - LABS-97 — Cards dashboard epic
 - LABS-99 — fetch adapter sub-issue
 - LABS-100 — `floor`/`round` alignment sub-issue
