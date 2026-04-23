@@ -257,15 +257,15 @@ class ElFarolActionSpace(ActionSpace):
         return (
             f"Choose which time slots to attend today as up to "
             f"{self.max_intervals} contiguous interval(s). "
-            f"Preferred shape: {{\"intervals\": [[start, end], ...]}} "
+            f'Preferred shape: {{"intervals": [[start, end], ...]}} '
             f"with inclusive slot indices in 0..{self.num_slots - 1} "
             f"(each slot = 30 min). "
             f"At most {self.max_total_slots} slots total per day. "
             f"Intervals must be non-overlapping and non-adjacent (at least "
             f"one empty slot between them). Example: "
-            f"{{\"intervals\": [[6, 9], [12, 15]]}}. "
+            f'{{"intervals": [[6, 9], [12, 15]]}}. '
             f"A flat list of slot indices (e.g. [6, 7, 8, 9]) is also "
-            f"accepted. Return {{\"intervals\": []}} or [] to stay home."
+            f'accepted. Return {{"intervals": []}} or [] to stay home.'
         )
 
 
@@ -742,7 +742,7 @@ class ElFarolBar(Game):
                 f"({slot_hours:.0f} h total).",
                 "- You choose which slots to attend as up to "
                 f"{c.max_intervals} contiguous interval(s): "
-                f"{{\"intervals\": [[start, end], ...]}} with inclusive "
+                f'{{"intervals": [[start, end], ...]}} with inclusive '
                 f"indices in 0–{c.num_slots - 1}, at most "
                 f"{c.max_total_slots} slots total per day, intervals "
                 "non-overlapping and non-adjacent.",

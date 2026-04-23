@@ -260,9 +260,7 @@ class TestConfigDrivenMaxTotalSlots:
 
     def test_action_space_enforces_config_max_total_slots(self) -> None:
         # GIVEN an El Farol config with max_total_slots=4
-        game = ElFarolBar(
-            ElFarolConfig(num_players=8, num_slots=16, max_total_slots=4)
-        )
+        game = ElFarolBar(ElFarolConfig(num_players=8, num_slots=16, max_total_slots=4))
         aspace = game.action_space("player_0")
 
         # THEN a 5-slot interval [[0, 4]] is rejected (5 > 4)

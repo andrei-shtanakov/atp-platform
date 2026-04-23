@@ -1,7 +1,7 @@
 """Tests for data models."""
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -565,7 +565,7 @@ class TestDashboardRoundtrip:
 
     def test_submitted_at_with_timezone_roundtrips(self) -> None:
         # GIVEN an ActionRecord with a timezone-aware submitted_at
-        original_ts = datetime(2026, 4, 22, 10, 30, tzinfo=timezone.utc)
+        original_ts = datetime(2026, 4, 22, 10, 30, tzinfo=UTC)
         action = _make_action_record(
             match_id="match-tz",
             day=0,
@@ -587,7 +587,7 @@ class TestDashboardRoundtrip:
         assert isinstance(restored_ts, datetime)
         assert restored_ts == original_ts
         assert restored_ts.tzinfo is not None
-        assert restored_ts.utcoffset() == timezone.utc.utcoffset(None)
+        assert restored_ts.utcoffset() == UTC.utcoffset(None)
 
     def test_game_result_from_dict_legacy_no_new_fields(self) -> None:
         # GIVEN a minimal legacy payload with no agents/run_id

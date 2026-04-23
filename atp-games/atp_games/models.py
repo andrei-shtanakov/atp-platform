@@ -656,9 +656,7 @@ class IntervalPair:
                     f"intervals are adjacent (no gap): first={first}, second={second}"
                 )
 
-    def _as_bounds(
-        self, interval: Interval, label: str
-    ) -> tuple[int, int] | None:
+    def _as_bounds(self, interval: Interval, label: str) -> tuple[int, int] | None:
         """Validate an interval and return (start, end) or None if empty."""
         if len(interval) == 0:
             return None

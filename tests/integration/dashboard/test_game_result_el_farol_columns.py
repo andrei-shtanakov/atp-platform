@@ -17,7 +17,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from atp.dashboard.database import Database, set_database
 from atp.dashboard.models import Base, GameResult
 
-
 # --- Fixtures (self-contained; mirrors test_game_routes.py) -----------------
 
 
@@ -77,9 +76,7 @@ class TestElFarolColumnsOnGameResult:
             }
         ]
         round_payoffs = [{"p0": 3.0, "p1": 3.0}]
-        agents = [
-            {"agent_id": "p0", "display_name": "tft", "user_id": "u1"}
-        ]
+        agents = [{"agent_id": "p0", "display_name": "tft", "user_id": "u1"}]
 
         game = GameResult(
             game_name="El Farol",
@@ -152,9 +149,7 @@ class TestElFarolColumnsOnGameResult:
             episodes_json=[
                 {"episode": 0, "payoffs": {"player_1": 3.0, "player_2": 3.0}}
             ],
-            players_json=[
-                {"player_id": "player_1", "strategy": "tit_for_tat"}
-            ],
+            players_json=[{"player_id": "player_1", "strategy": "tit_for_tat"}],
         )
 
         # WHEN
@@ -291,9 +286,7 @@ class TestElFarolColumnsOnGameResult:
         THEN length and individual entries are preserved exactly.
         """
         # GIVEN
-        round_payoffs = [
-            {"player_0": i * 1.5, "player_1": i * 2.0} for i in range(10)
-        ]
+        round_payoffs = [{"player_0": i * 1.5, "player_1": i * 2.0} for i in range(10)]
         game = GameResult(
             game_name="El Farol",
             game_type="el_farol",

@@ -222,9 +222,7 @@ class GameRunner:
                 game, agents, config, progress, run_id
             )
         else:
-            episodes = await self._run_parallel(
-                game, agents, config, progress, run_id
-            )
+            episodes = await self._run_parallel(game, agents, config, progress, run_id)
 
         logger.info(
             "Game '%s' complete: %d episodes in %.1fs",
