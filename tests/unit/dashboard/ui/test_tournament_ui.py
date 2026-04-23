@@ -7,6 +7,13 @@ from datetime import datetime, timedelta
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+# Eager-register RBAC models onto the shared Base so Base.metadata
+# picks up `roles` / `role_permissions` / `user_roles` in the
+# per-test init_database() call below. `_seed_default_roles` runs on
+# startup and would fail without these tables.
+import atp.dashboard.rbac.models  # noqa: F401
+import atp.dashboard.tournament.models  # noqa: F401  (Participant etc.)
+from atp.dashboard.database import init_database, set_database
 from atp.dashboard.models import User
 from atp.dashboard.tournament.models import (
     Action,
@@ -22,10 +29,20 @@ from atp.dashboard.v2.factory import create_test_app
 
 @pytest.fixture
 async def client():
-    app = create_test_app()
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as c:
-        yield c
+    # LABS-TSA PR-4: `httpx.ASGITransport` does not trigger FastAPI
+    # lifespan events, so the module-level `_database` singleton that
+    # `_seed_tournament` below relies on would be left un-initialised
+    # and hit "no such table" at runtime. Initialise the in-memory DB
+    # explicitly for the duration of each test.
+    db = await init_database(url="sqlite+aiosqlite:///:memory:")
+    try:
+        app = create_test_app()
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            yield c
+    finally:
+        await db.close()
+        set_database(None)  # type: ignore[arg-type]
 
 
 @pytest.mark.anyio
@@ -82,9 +99,22 @@ async def _seed_tournament(client: AsyncClient) -> int:
         session.add(t)
         await session.flush()
 
+        # LABS-TSA PR-4: Participants must satisfy the agent-xor-builtin
+        # CHECK — real-agent participants need agent_id NOT NULL.
+        from atp.dashboard.models import Agent
+
+        a1 = Agent(
+            name=f"alice_{uid}",
+            agent_type="mcp",
+            owner_id=user.id,
+            purpose="tournament",
+        )
+        session.add(a1)
+        await session.flush()
         p1 = Participant(
             tournament_id=t.id,
             user_id=user.id,
+            agent_id=a1.id,
             agent_name="alice",
             total_score=6.0,
         )
@@ -93,9 +123,18 @@ async def _seed_tournament(client: AsyncClient) -> int:
         )
         session.add(p2_user)
         await session.flush()
+        a2 = Agent(
+            name=f"bob_{uid}",
+            agent_type="mcp",
+            owner_id=p2_user.id,
+            purpose="tournament",
+        )
+        session.add(a2)
+        await session.flush()
         p2 = Participant(
             tournament_id=t.id,
             user_id=p2_user.id,
+            agent_id=a2.id,
             agent_name="bob",
             total_score=6.0,
         )
@@ -185,9 +224,22 @@ async def _seed_el_farol_tournament(client: AsyncClient) -> int:
         session.add(t)
         await session.flush()
 
+        # LABS-TSA PR-4 CHECK: agent_id must be populated for real
+        # agent participants.
+        from atp.dashboard.models import Agent
+
+        a1 = Agent(
+            name=f"ef_alice_{uid}",
+            agent_type="mcp",
+            owner_id=user.id,
+            purpose="tournament",
+        )
+        session.add(a1)
+        await session.flush()
         p1 = Participant(
             tournament_id=t.id,
             user_id=user.id,
+            agent_id=a1.id,
             agent_name="alice",
             total_score=2.0,
         )
@@ -196,9 +248,18 @@ async def _seed_el_farol_tournament(client: AsyncClient) -> int:
         )
         session.add(p2_user)
         await session.flush()
+        a2 = Agent(
+            name=f"ef_bob_{uid}",
+            agent_type="mcp",
+            owner_id=p2_user.id,
+            purpose="tournament",
+        )
+        session.add(a2)
+        await session.flush()
         p2 = Participant(
             tournament_id=t.id,
             user_id=p2_user.id,
+            agent_id=a2.id,
             agent_name="bob",
             total_score=0.0,
         )
@@ -305,11 +366,36 @@ async def _seed_pd_tournament_with_reasoning(
         session.add(t)
         await session.flush()
 
+        # LABS-TSA PR-4 CHECK: populate agent_id.
+        from atp.dashboard.models import Agent
+
+        a_alice = Agent(
+            name=f"pdr_alice_{alice.id}",
+            agent_type="mcp",
+            owner_id=alice.id,
+            purpose="tournament",
+        )
+        a_bob = Agent(
+            name=f"pdr_bob_{bob.id}",
+            agent_type="mcp",
+            owner_id=bob.id,
+            purpose="tournament",
+        )
+        session.add_all([a_alice, a_bob])
+        await session.flush()
         p_alice = Participant(
-            tournament_id=t.id, user_id=alice.id, agent_name="alice", total_score=3.0
+            tournament_id=t.id,
+            user_id=alice.id,
+            agent_id=a_alice.id,
+            agent_name="alice",
+            total_score=3.0,
         )
         p_bob = Participant(
-            tournament_id=t.id, user_id=bob.id, agent_name="bob", total_score=3.0
+            tournament_id=t.id,
+            user_id=bob.id,
+            agent_id=a_bob.id,
+            agent_name="bob",
+            total_score=3.0,
         )
         session.add_all([p_alice, p_bob])
         await session.flush()
