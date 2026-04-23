@@ -1,0 +1,47 @@
+{% extends "ui/base_ui.html" %}
+
+{% block title %}ATP · Matches{% endblock %}
+
+{% block content %}
+<article style="padding:16px 20px">
+  <header style="display:flex; align-items:baseline; gap:12px; margin-bottom:12px">
+    <h2 style="margin:0">Matches</h2>
+    <small style="color:var(--muted-color,#6b7280)">{{ total }} completed El Farol matches with Phase-7 data</small>
+  </header>
+
+  {% if matches %}
+    <table>
+      <thead>
+        <tr>
+          <th>Match</th>
+          <th>Completed</th>
+          <th>Agents</th>
+          <th>Days</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in matches %}
+        <tr>
+          <td><code>{{ m.match_id or m.id }}</code></td>
+          <td>{{ m.completed_at.strftime("%Y-%m-%d %H:%M") if m.completed_at else "—" }}</td>
+          <td>{{ m.num_players }}</td>
+          <td>{{ m.num_days or m.num_rounds }}</td>
+          <td>{{ m.status }}</td>
+          <td><a href="/ui/matches/{{ m.match_id or m.id }}">Open dashboard →</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p style="color:var(--muted-color,#6b7280); font-style:italic">
+      No completed El Farol matches yet. Run one via
+      <code>uv run atp game &lt;suite.yaml&gt;</code> and it will show up here.
+    </p>
+    <p>
+      <a href="/ui/games/el_farol">See how El Farol works →</a>
+    </p>
+  {% endif %}
+</article>
+{% endblock %}
