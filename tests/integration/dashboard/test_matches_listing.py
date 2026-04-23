@@ -111,6 +111,83 @@ class TestMatchesListing:
         assert "1 completed El Farol matches" in html or ">1 completed" in html
 
     @pytest.mark.anyio
+    async def test_excludes_rows_that_would_not_render(
+        self,
+        v2_app,
+        db_session: AsyncSession,
+        disable_dashboard_auth,
+    ) -> None:
+        """The listing must only show rows whose link lands on a
+        rendered dashboard. Non-completed, missing-day-aggregates, and
+        legacy rows are all excluded."""
+        actions = [{"day": 1, "agent_id": "a1"}]
+        aggs = [{"day": 1, "slot_attendance": [0] * 16, "over_slots": 0}]
+        db_session.add_all(
+            [
+                # A. fully renderable → listed
+                GameResult(
+                    game_name="el_farol",
+                    game_type="el_farol_interval",
+                    num_players=2,
+                    num_rounds=3,
+                    status="completed",
+                    completed_at=datetime(2026, 4, 20, 12, 0),
+                    match_id="m-good",
+                    actions_json=actions,
+                    day_aggregates_json=aggs,
+                ),
+                # B. status=running → hidden (would show "still running")
+                GameResult(
+                    game_name="el_farol",
+                    game_type="el_farol_interval",
+                    num_players=2,
+                    num_rounds=3,
+                    status="running",
+                    match_id="m-running",
+                    actions_json=actions,
+                    day_aggregates_json=aggs,
+                ),
+                # C. status=failed → hidden
+                GameResult(
+                    game_name="el_farol",
+                    game_type="el_farol_interval",
+                    num_players=2,
+                    num_rounds=3,
+                    status="failed",
+                    match_id="m-failed",
+                    actions_json=actions,
+                    day_aggregates_json=aggs,
+                ),
+                # D. actions_json populated but day_aggregates_json null
+                #    → hidden (would show "predates schema")
+                GameResult(
+                    game_name="el_farol",
+                    game_type="el_farol_interval",
+                    num_players=2,
+                    num_rounds=3,
+                    status="completed",
+                    completed_at=datetime(2026, 4, 20, 12, 0),
+                    match_id="m-no-aggs",
+                    actions_json=actions,
+                    # day_aggregates_json deliberately null
+                ),
+            ]
+        )
+        await db_session.commit()
+
+        async with AsyncClient(
+            transport=ASGITransport(app=v2_app), base_url="http://test"
+        ) as client:
+            resp = await client.get("/ui/matches")
+
+        assert resp.status_code == 200
+        html = resp.text
+        assert "m-good" in html
+        assert "m-running" not in html
+        assert "m-failed" not in html
+        assert "m-no-aggs" not in html
+
+    @pytest.mark.anyio
     async def test_orders_newest_first(
         self,
         v2_app,
