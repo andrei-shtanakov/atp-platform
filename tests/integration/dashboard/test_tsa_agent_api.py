@@ -86,3 +86,83 @@ class TestAgentPurposeAPI:
             )
             names = {a["name"] for a in resp.json()}
             assert names == {"t1"}
+
+
+class TestAgentQuota:
+    @pytest.mark.anyio
+    async def test_tournament_quota_rejects_sixth(
+        self, v2_app, auth_headers, monkeypatch
+    ) -> None:
+        monkeypatch.setenv("ATP_MAX_TOURNAMENT_AGENTS_PER_USER", "5")
+        # Must clear cached config
+        from atp.dashboard.v2.config import get_config
+
+        get_config.cache_clear()
+
+        async with AsyncClient(
+            transport=ASGITransport(app=v2_app), base_url="http://test"
+        ) as client:
+            for i in range(5):
+                resp = await client.post(
+                    "/api/v1/agents",
+                    headers=auth_headers,
+                    json={
+                        "name": f"t{i}",
+                        "agent_type": "mcp",
+                        "purpose": "tournament",
+                    },
+                )
+                assert resp.status_code == 201, (i, resp.text)
+            resp = await client.post(
+                "/api/v1/agents",
+                headers=auth_headers,
+                json={
+                    "name": "t5",
+                    "agent_type": "mcp",
+                    "purpose": "tournament",
+                },
+            )
+            assert resp.status_code == 429
+            assert "tournament agent quota" in resp.text.lower()
+
+    @pytest.mark.anyio
+    async def test_benchmark_quota_independent(
+        self, v2_app, auth_headers, monkeypatch
+    ) -> None:
+        monkeypatch.setenv("ATP_MAX_BENCHMARK_AGENTS_PER_USER", "2")
+        monkeypatch.setenv("ATP_MAX_TOURNAMENT_AGENTS_PER_USER", "2")
+        from atp.dashboard.v2.config import get_config
+
+        get_config.cache_clear()
+
+        async with AsyncClient(
+            transport=ASGITransport(app=v2_app), base_url="http://test"
+        ) as client:
+            # 2 benchmark agents — fill quota
+            for i in range(2):
+                resp = await client.post(
+                    "/api/v1/agents",
+                    headers=auth_headers,
+                    json={"name": f"b{i}", "agent_type": "http"},
+                )
+                assert resp.status_code == 201
+
+            # 3rd benchmark rejected
+            resp = await client.post(
+                "/api/v1/agents",
+                headers=auth_headers,
+                json={"name": "b2", "agent_type": "http"},
+            )
+            assert resp.status_code == 429
+
+            # But tournament slot still open
+            resp = await client.post(
+                "/api/v1/agents",
+                headers=auth_headers,
+                json={
+                    "name": "t0",
+                    "agent_type": "mcp",
+                    "purpose": "tournament",
+                },
+            )
+            assert resp.status_code == 201
