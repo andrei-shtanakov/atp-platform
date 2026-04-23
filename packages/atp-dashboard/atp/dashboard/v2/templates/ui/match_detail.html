@@ -61,42 +61,48 @@
       </select>
     </div>
 
-    <div class="kpis" id="kpis">
+    <div class="kpi-strip">
       <div class="kpi"><div class="label">Leader</div><div class="value" id="kpiLeader">—</div><div class="sub" id="kpiLeaderSub">—</div></div>
-      <div class="kpi"><div class="label">Spread</div><div class="value" id="kpiSpread">—</div><div class="sub">first vs last</div></div>
-      <div class="kpi"><div class="label">Over-cap today</div><div class="value" id="kpiOver">—</div><div class="sub">of {{ num_slots }}</div></div>
-      <div class="kpi"><div class="label">Attendance</div><div class="value" id="kpiAtt">—</div><div class="sub">total visits today</div></div>
-      <div class="kpi"><div class="label">Best day</div><div class="value" id="kpiBest">—</div><div class="sub" id="kpiBestSub">—</div></div>
+      <div class="kpi"><div class="label">Spread (1st ↔ last)</div><div class="value" id="kpiSpread">—</div><div class="sub">payoff gap</div></div>
+      <div class="kpi"><div class="label">Over-cap slots today</div><div class="value" id="kpiOver">—</div><div class="sub">of {{ num_slots }} slots</div></div>
+      <div class="kpi"><div class="label">Attendances</div><div class="value" id="kpiAtt">—</div><div class="sub">total agent-slots</div></div>
+      <div class="kpi"><div class="label">Best day</div><div class="value good" id="kpiBest">—</div><div class="sub" id="kpiBestSub">—</div></div>
     </div>
 
-    <div class="main-grid">
-      <section class="section cards-section">
-        <h3 class="section-title">Agents <span class="subtitle">ranked by cumulative payoff</span></h3>
-        <div class="cards" id="cards"></div>
-      </section>
-      <aside class="section compare-section">
-        <h3 class="section-title">Compare <span class="subtitle">hover or pin</span></h3>
-        <div class="compare" id="compare"></div>
-      </aside>
-    </div>
+    <div class="main">
+      <div class="cards-grid" id="cards"></div>
 
-    <section class="section heat-section">
-      <div class="heat-head">
-        <h3 class="section-title">Heatmap <span class="subtitle" id="heatSub">slot × day · darker red = over capacity · click to jump</span></h3>
-        <div class="heat-seg" id="heatSeg">
-          <button class="on" data-m="slot-day">slot × day</button>
-          <button data-m="agent-day">agent × day</button>
-          <button data-m="agent-slot">agent × slot</button>
+      <div class="lower">
+        <div class="panel-card">
+          <div class="hd">
+            <div>
+              <h3>Attendance heatmap</h3>
+              <div class="sub" id="heatSub">slot × day · darker red = over capacity</div>
+            </div>
+            <div class="seg" id="heatSeg">
+              <button class="on" data-m="slot-day">slot × day</button>
+              <button data-m="agent-day">agent × day</button>
+              <button data-m="agent-slot">agent × slot (avg)</button>
+            </div>
+          </div>
+          <svg class="heatmap" id="heatmap" viewBox="0 0 900 340" preserveAspectRatio="none"></svg>
+        </div>
+
+        <div class="panel-card">
+          <div class="hd">
+            <h3>Compare</h3>
+            <span class="sub">hover a card · click <code class="mono" style="font-size:10px">+</code> to pin</span>
+          </div>
+          <div id="compare"></div>
         </div>
       </div>
-      <svg id="heatmap" viewBox="0 0 900 340" preserveAspectRatio="xMidYMid meet"></svg>
-    </section>
+    </div>
 
     <!-- rules popover -->
     <div class="rules-pop" id="rulesPop">
       <h3>The El Farol Bar Problem</h3>
       <p>Agents decide which <b>slots</b> of a {{ num_slots }}-slot day to visit.</p>
-      <p>If at most <b>cap = {{ capacity }}</b> agents picked the same slot → everyone there earns <b>+1</b>. Over cap → <b>−1</b>.</p>
+      <p>If fewer than <b>cap = {{ capacity }}</b> agents picked the same slot → everyone there earns <b>+1</b>. Otherwise → <b>−1</b>.</p>
       <div style="margin: 12px 0">
         <div class="tiny muted">example · day <span id="rulesDayNum">—</span></div>
         <div class="rules-slot" id="rulesDiagram"></div>
@@ -127,7 +133,7 @@
     <div class="drawer" id="drawer">
       <div class="drawer-head">
         <div><h3 id="drawTitle">—</h3><div class="muted tiny" id="drawSub">—</div></div>
-        <button class="btn-icon" onclick="closeDrawer()">✕</button>
+        <button class="drawer-close" onclick="closeDrawer()">×</button>
       </div>
       <div id="drawBody"></div>
     </div>

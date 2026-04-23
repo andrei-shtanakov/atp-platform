@@ -12,6 +12,40 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
+/* Pico CSS resets — Pico (loaded by base_ui.html) forces padding on all
+ * buttons and width:100% on selects/range inputs. Both clobber the
+ * dashboard's compact controls (icon buttons overflow their declared
+ * 30×30 box; speed <select> eats the scrubber's flex space). Neutralise
+ * them under the dashboard scope so the component styles below take
+ * effect. */
+.atp-dashboard-dark button {
+  padding: 0;
+  font: inherit;
+  letter-spacing: 0;
+  border-width: 1px;
+}
+.atp-dashboard-dark select,
+.atp-dashboard-dark input[type="range"] {
+  width: auto;
+}
+.atp-dashboard-dark table,
+.atp-dashboard-dark thead,
+.atp-dashboard-dark tbody,
+.atp-dashboard-dark tfoot,
+.atp-dashboard-dark tr {
+  background: transparent;
+  color: inherit;
+  border: 0;
+  margin: 0;
+}
+.atp-dashboard-dark th,
+.atp-dashboard-dark td {
+  background: transparent;
+  color: inherit;
+  border: 0;
+  font-weight: inherit;
+  padding: 0;
+}
 
 .atp-dashboard-dark {
   --bg: #0b0c0f;
