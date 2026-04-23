@@ -29,9 +29,12 @@ def test_participant_has_released_at():
     assert "released_at" in columns
 
 
-def test_participant_user_id_not_nullable():
+def test_participant_user_id_nullable_for_builtins():
+    # Plan 2a (IDOR fix) originally made user_id NOT NULL. LABS-TSA
+    # PR-1 flipped it to nullable so builtin-strategy participants
+    # (which have no backing User) can live in the same table.
     col = inspect(Participant).columns["user_id"]
-    assert col.nullable is False
+    assert col.nullable is True
 
 
 def test_action_has_source_column():

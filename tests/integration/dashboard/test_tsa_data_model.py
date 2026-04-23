@@ -1,0 +1,178 @@
+"""Data-model tests for the tournament agent sandbox (PR-1)."""
+
+from collections.abc import AsyncGenerator
+
+import pytest
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from atp.dashboard.database import Database, set_database
+from atp.dashboard.models import Agent, Base, GameResult, User
+from atp.dashboard.tournament.models import Participant, Tournament
+
+
+@pytest.fixture
+async def test_database() -> AsyncGenerator[Database, None]:
+    db = Database(url="sqlite+aiosqlite:///:memory:", echo=False)
+    async with db.engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    set_database(db)
+    yield db
+    await db.close()
+    set_database(None)  # type: ignore[arg-type]
+
+
+@pytest.fixture
+async def db_session(test_database: Database) -> AsyncGenerator[AsyncSession, None]:
+    async with test_database.session() as session:
+        yield session
+
+
+@pytest.fixture
+async def user(db_session: AsyncSession) -> User:
+    u = User(username="u1", email="u1@t.com", hashed_password="x", is_active=True)
+    db_session.add(u)
+    await db_session.commit()
+    await db_session.refresh(u)
+    return u
+
+
+class TestAgentPurpose:
+    @pytest.mark.anyio
+    async def test_purpose_defaults_to_benchmark(
+        self, db_session: AsyncSession, user: User
+    ) -> None:
+        a = Agent(name="a1", agent_type="mcp", owner_id=user.id)
+        db_session.add(a)
+        await db_session.commit()
+        await db_session.refresh(a)
+        assert a.purpose == "benchmark"
+
+    @pytest.mark.anyio
+    async def test_purpose_tournament_roundtrips(
+        self, db_session: AsyncSession, user: User
+    ) -> None:
+        a = Agent(name="a2", agent_type="mcp", owner_id=user.id, purpose="tournament")
+        db_session.add(a)
+        await db_session.commit()
+        await db_session.refresh(a)
+        assert a.purpose == "tournament"
+
+    @pytest.mark.anyio
+    async def test_purpose_invalid_rejected_by_check(
+        self, db_session: AsyncSession, user: User
+    ) -> None:
+        a = Agent(name="a3", agent_type="mcp", owner_id=user.id, purpose="invalid")
+        db_session.add(a)
+        with pytest.raises(IntegrityError):
+            await db_session.commit()
+        # Explicit rollback so the session's pending-rollback state doesn't
+        # propagate into the fixture teardown commit (which would otherwise
+        # raise PendingRollbackError and mark the test as ERROR).
+        await db_session.rollback()
+
+
+class TestParticipantBuiltin:
+    """PR-1 only introduces the ``builtin_strategy`` column and makes
+    ``user_id`` nullable. The agent-xor-builtin CHECK constraint is
+    deferred to PR-4, where ``TournamentService`` is updated to populate
+    ``agent_id`` on real-agent joins — introducing the invariant now
+    would break the 19 existing tournament integration tests whose
+    join/leave/cancel flows insert Participant rows without ``agent_id``.
+
+    The tests below exercise the positive shape of the schema change
+    (a builtin participant is storable with null user_id / agent_id).
+    The invariant enforcement tests move into PR-4's test suite.
+    """
+
+    @pytest.mark.anyio
+    async def test_builtin_participant_has_no_agent_or_user(
+        self, db_session: AsyncSession, user: User
+    ) -> None:
+        t = Tournament(
+            game_type="el_farol", num_players=2, total_rounds=1, created_by=user.id
+        )
+        db_session.add(t)
+        await db_session.commit()
+        p = Participant(
+            tournament_id=t.id,
+            user_id=None,
+            agent_id=None,
+            agent_name="el_farol/traditionalist",
+            builtin_strategy="el_farol/traditionalist",
+        )
+        db_session.add(p)
+        await db_session.commit()  # must succeed
+        await db_session.refresh(p)
+        assert p.user_id is None
+        assert p.agent_id is None
+        assert p.builtin_strategy == "el_farol/traditionalist"
+
+
+class TestGameResultTournamentLink:
+    @pytest.mark.anyio
+    async def test_tournament_id_nullable_default_none(
+        self, db_session: AsyncSession
+    ) -> None:
+        g = GameResult(
+            game_name="x",
+            game_type="one_shot",
+            num_players=2,
+            num_rounds=1,
+            status="completed",
+        )
+        db_session.add(g)
+        await db_session.commit()
+        await db_session.refresh(g)
+        assert g.tournament_id is None
+
+    @pytest.mark.anyio
+    async def test_tournament_id_unique_partial(
+        self, db_session: AsyncSession, user: User
+    ) -> None:
+        t = Tournament(
+            game_type="el_farol", num_players=2, total_rounds=1, created_by=user.id
+        )
+        db_session.add(t)
+        await db_session.commit()
+
+        g1 = GameResult(
+            game_name="x",
+            game_type="one_shot",
+            num_players=2,
+            num_rounds=1,
+            status="completed",
+            tournament_id=t.id,
+        )
+        db_session.add(g1)
+        await db_session.commit()
+
+        g2 = GameResult(
+            game_name="x",
+            game_type="one_shot",
+            num_players=2,
+            num_rounds=1,
+            status="completed",
+            tournament_id=t.id,  # duplicate
+        )
+        db_session.add(g2)
+        with pytest.raises(IntegrityError):
+            await db_session.commit()
+        await db_session.rollback()
+
+    @pytest.mark.anyio
+    async def test_two_results_without_tournament_id_allowed(
+        self, db_session: AsyncSession
+    ) -> None:
+        # tournament_id IS NULL rows are not uniqueness-constrained.
+        for i in range(2):
+            db_session.add(
+                GameResult(
+                    game_name=f"g{i}",
+                    game_type="one_shot",
+                    num_players=2,
+                    num_rounds=1,
+                    status="completed",
+                )
+            )
+        await db_session.commit()  # must succeed

@@ -53,7 +53,12 @@ def test_upgrade_creates_participant_released_at(fresh_db):
         for c in inspect(engine).get_columns("tournament_participants")
         if c["name"] == "user_id"
     )
-    assert user_col["nullable"] is False
+    # Plan 2a originally shipped user_id as NOT NULL. LABS-TSA PR-1
+    # flipped it to nullable so builtin-strategy participants (which
+    # have no User backing them) can live in the same table. This
+    # fresh_db fixture runs every migration up to head, so the final
+    # state is nullable.
+    assert user_col["nullable"] is True
     engine.dispose()
 
 

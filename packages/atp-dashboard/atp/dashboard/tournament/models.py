@@ -197,8 +197,11 @@ class Participant(Base):
         ForeignKey("tournaments.id"),
         nullable=False,
     )
-    user_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id"), nullable=False
+    # LABS-TSA PR-1: nullable to allow builtin-strategy participants
+    # (which have no User). Enforced together with agent_id / builtin_strategy
+    # via a CHECK constraint in __table_args__ below.
+    user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=True
     )
     agent_name: Mapped[str] = mapped_column(String(200), nullable=False)
     joined_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
@@ -211,6 +214,11 @@ class Participant(Base):
     agent_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("agents.id"), nullable=True
     )
+
+    # LABS-TSA PR-1: builtin strategy name (namespaced as "{game}/{strategy}").
+    # Exactly one of agent_id / builtin_strategy must be set; the CHECK
+    # constraint in __table_args__ enforces this.
+    builtin_strategy: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     # Relationships
     tournament: Mapped["Tournament"] = relationship(
@@ -241,6 +249,20 @@ class Participant(Base):
             sqlite_where=text("user_id IS NOT NULL AND released_at IS NULL"),
             postgresql_where=text("user_id IS NOT NULL AND released_at IS NULL"),
         ),
+        # LABS-TSA PR-1
+        Index(
+            "idx_participants_builtin",
+            "tournament_id",
+            "builtin_strategy",
+            sqlite_where=text("builtin_strategy IS NOT NULL"),
+            postgresql_where=text("builtin_strategy IS NOT NULL"),
+        ),
+        # LABS-TSA PR-1: the agent-xor-builtin CHECK is deferred to PR-4.
+        # Today's TournamentService.join_tournament inserts Participant
+        # rows with user_id + agent_name but no agent_id, which would
+        # violate a CHECK added now. PR-4 updates the service to populate
+        # agent_id on real-agent joins and builtin_strategy on builtins,
+        # then adds the CHECK in its migration.
     )
 
     def __repr__(self) -> str:
