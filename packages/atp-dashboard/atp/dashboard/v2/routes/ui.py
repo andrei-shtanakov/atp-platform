@@ -512,6 +512,89 @@ async def ui_game_detail(
     )
 
 
+@router.get("/matches/{match_id}", response_class=HTMLResponse)
+@limiter.limit("120/minute")
+async def ui_match_detail(
+    request: Request,
+    match_id: str,
+    session: DBSession,
+) -> HTMLResponse:
+    """Render the El Farol match dashboard for a single completed match.
+
+    Wraps the standalone dashboard bundle
+    (``/static/v2/js/el_farol/{data_helpers,dashboard}.js``) with a Jinja
+    shell that extends ``base_ui.html`` so sidebar/auth/navigation stay
+    consistent. The server reshape (from
+    ``atp.dashboard.v2.routes.el_farol_dashboard``) runs inline during
+    the request and serialises the payload into ``window.__ATP_MATCH__``
+    so the JS boots from a single JSON blob rather than a second fetch.
+    ADR-005 (LABS-98) documents the stack choice.
+    """
+    import json
+    import os
+
+    from atp.dashboard.models import GameResult
+    from atp.dashboard.v2.routes.el_farol_dashboard import _reshape
+
+    user = await _get_ui_user(request, session)
+
+    # entry-path hint — /ui/matches can be reached from runs listing or
+    # tournaments; fall back to games list for anonymous traffic.
+    referer = request.headers.get("referer", "") or ""
+    if "/ui/tournaments" in referer:
+        back_link_href, back_link_label = "/ui/tournaments", "All tournaments"
+        active_page = "tournaments"
+    elif "/ui/runs" in referer:
+        back_link_href, back_link_label = "/ui/runs", "All runs"
+        active_page = "runs"
+    else:
+        back_link_href, back_link_label = "/ui/games", "All games"
+        active_page = "games"
+
+    stmt = select(GameResult).where(GameResult.match_id == match_id)
+    row = (await session.execute(stmt)).scalar_one_or_none()
+    if row is None and match_id.isdigit():
+        row = await session.get(GameResult, int(match_id))
+
+    context: dict[str, Any] = {
+        "active_page": active_page,
+        "match_id": match_id,
+        "user": user,
+        "back_link_href": back_link_href,
+        "back_link_label": back_link_label,
+        "not_found": False,
+        "predates_schema": False,
+        "in_progress": False,
+        "status": None,
+    }
+
+    if row is None:
+        context["not_found"] = True
+    elif row.status and row.status != "completed":
+        context["in_progress"] = True
+        context["status"] = row.status
+    elif not row.actions_json or not row.day_aggregates_json:
+        context["predates_schema"] = True
+    else:
+        payload = _reshape(row)
+        context.update(
+            {
+                "payload_json": json.dumps(payload.model_dump(), separators=(",", ":")),
+                "num_agents": len(payload.AGENTS),
+                "num_days": payload.NUM_DAYS,
+                "num_slots": payload.NUM_SLOTS,
+                "capacity": payload.CAPACITY,
+                "langfuse_base": os.environ.get("ATP_LANGFUSE_BASE_URL", ""),
+            }
+        )
+
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/match_detail.html",
+        context=context,
+    )
+
+
 @router.get("/tournaments", response_class=HTMLResponse)
 @limiter.limit("120/minute")
 async def ui_tournaments(
