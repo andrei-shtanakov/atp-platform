@@ -43,6 +43,7 @@ async def create_token_for_user(
     """
     config = get_config()
 
+    agent_purpose: str | None = None
     if agent_id is not None:
         agent = await session.get(Agent, agent_id)
         if agent is None or agent.owner_id != user.id or agent.deleted_at is not None:
@@ -50,6 +51,9 @@ async def create_token_for_user(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You don't own this agent",
             )
+        # LABS-TSA PR-3: snapshot purpose at issuance so the auth hot path
+        # doesn't have to join on agents. Refreshed on each new token.
+        agent_purpose = agent.purpose
         count_result = await session.execute(
             select(func.count(APIToken.id)).where(
                 APIToken.agent_id == agent_id,
@@ -100,6 +104,7 @@ async def create_token_for_user(
     db_token = APIToken(
         user_id=user.id,
         agent_id=agent_id,
+        agent_purpose=agent_purpose,
         name=name,
         token_prefix=raw_token[:12],
         token_hash=hash_token(raw_token),

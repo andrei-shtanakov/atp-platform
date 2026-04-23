@@ -11,7 +11,7 @@ from typing import Any
 
 from atp.loader.models import TestSuite
 from atp.protocol import ATPRequest, ATPResponse, Task
-from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,7 +32,12 @@ from atp.dashboard.benchmark.schemas import (
     TaskResultResponse,
 )
 from atp.dashboard.models import User
-from atp.dashboard.v2.dependencies import AdminUser, DBSession, RequiredUser
+from atp.dashboard.v2.dependencies import (
+    AdminUser,
+    BenchmarkCaller,
+    DBSession,
+    reject_tournament_token,
+)
 from atp.dashboard.v2.rate_limit import limiter
 from atp.dashboard.webhook import (
     build_webhook_payload,
@@ -40,7 +45,16 @@ from atp.dashboard.webhook import (
     validate_webhook_url,
 )
 
-router = APIRouter(prefix="/v1", tags=["benchmarks"])
+# LABS-TSA PR-3: router-level guard rejects tournament-agent tokens across
+# the whole benchmark API, including endpoints that don't otherwise require
+# auth (e.g. listing benchmarks). Endpoints that additionally require a
+# user use the BenchmarkCaller dep, which stacks the same check but also
+# enforces authentication.
+router = APIRouter(
+    prefix="/v1",
+    tags=["benchmarks"],
+    dependencies=[Depends(reject_tournament_token)],
+)
 
 MAX_RUN_EVENTS = 1000
 
@@ -195,7 +209,7 @@ async def start_run(
     request: Request,
     benchmark_id: int,
     session: DBSession,
-    current_user: RequiredUser,
+    current_user: BenchmarkCaller,
     timeout: int = Query(default=3600),
     agent_name: str = Query(default=""),
 ) -> RunResponse:
@@ -230,7 +244,7 @@ async def next_task(
     request: Request,
     run_id: int,
     session: DBSession,
-    current_user: RequiredUser,
+    current_user: BenchmarkCaller,
     batch: int = Query(default=1, ge=1),
 ) -> Any:
     """Get the next task(s) for a run as ATPRequest dict(s).
@@ -336,7 +350,7 @@ async def submit_result(
     run_id: int,
     data: SubmitRequest,
     session: DBSession,
-    current_user: RequiredUser,
+    current_user: BenchmarkCaller,
 ) -> dict[str, Any]:
     """Submit a task result for a run owned by the current user."""
     run = await _load_run_for_user(session, run_id, current_user)
@@ -405,7 +419,7 @@ async def get_run_status(
     request: Request,
     run_id: int,
     session: DBSession,
-    current_user: RequiredUser,
+    current_user: BenchmarkCaller,
 ) -> RunStatusResponse:
     """Get run status with completed tasks (owner-only)."""
     run = await _load_run_for_user(session, run_id, current_user)
@@ -443,7 +457,7 @@ async def cancel_run(
     request: Request,
     run_id: int,
     session: DBSession,
-    current_user: RequiredUser,
+    current_user: BenchmarkCaller,
 ) -> dict[str, str]:
     """Cancel a benchmark run (owner-only)."""
     run = await _load_run_for_user(session, run_id, current_user)
@@ -466,7 +480,7 @@ async def emit_events(
     run_id: int,
     data: dict[str, Any],
     session: DBSession,
-    current_user: RequiredUser,
+    current_user: BenchmarkCaller,
 ) -> dict[str, Any]:
     """Append events to a running benchmark run (owner-only).
 

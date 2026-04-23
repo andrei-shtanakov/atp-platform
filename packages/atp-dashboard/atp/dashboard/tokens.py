@@ -49,6 +49,16 @@ class APIToken(Base):
     agent_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("agents.id"), nullable=True
     )
+    # LABS-TSA PR-3: snapshot of agent.purpose at issuance — avoids a DB
+    # roundtrip on the auth hot path. Refreshed when the user regenerates
+    # the token; stale if the agent's purpose changes post-issuance (rare,
+    # corrected on next token rotation). NULL for user-level tokens and
+    # for legacy agent-scoped tokens issued before this column existed
+    # (middleware has a lazy fallback for those).
+    agent_purpose: Mapped[str | None] = mapped_column(
+        String(20),
+        nullable=True,
+    )
 
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     token_prefix: Mapped[str] = mapped_column(String(12), nullable=False)

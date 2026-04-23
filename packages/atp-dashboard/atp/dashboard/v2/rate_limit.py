@@ -91,6 +91,14 @@ def create_limiter(config: DashboardConfig) -> Limiter:
 _API_TOKEN_PREFIXES = ("atp_u_", "atp_a_")
 
 
+# LABS-TSA PR-3: lazy-fallback cache for tokens that were issued before the
+# APIToken.agent_purpose column existed. Keyed by token_hash (cryptographic
+# hash, safe to keep in RAM — no raw tokens stored here). Process-scoped,
+# unbounded: each legacy token contributes one small string; once all
+# legacy tokens are rotated, nothing new enters this dict.
+_legacy_purpose_cache: dict[str, str] = {}
+
+
 class JWTUserStateMiddleware:
     """Pure ASGI middleware — populate scope.state.user_id from JWT / API token.
 
@@ -129,6 +137,11 @@ class JWTUserStateMiddleware:
         state.setdefault("user_id", None)
         state.setdefault("agent_id", None)
         state.setdefault("token_type", None)
+        # LABS-TSA PR-3: agent_purpose is only populated for agent-scoped
+        # API tokens. NULL means "user-level token or anonymous" — used by
+        # MCPAuthMiddleware / benchmark API gating to distinguish admins
+        # and user-scoped tokens from agent-scoped ones.
+        state.setdefault("agent_purpose", None)
 
         token = self._extract_token(scope)
         if token:
@@ -216,6 +229,24 @@ class JWTUserStateMiddleware:
                 state["user_id"] = api_token.user_id
                 state["agent_id"] = api_token.agent_id
                 state["token_type"] = "api"
+
+                # LABS-TSA PR-3: surface agent_purpose for downstream
+                # MCP / benchmark-API gates. Fall back to a one-time
+                # Agent.purpose lookup (cached in-process by token_hash)
+                # for legacy tokens issued before the snapshot column
+                # existed.
+                if api_token.agent_id is not None:
+                    purpose = api_token.agent_purpose
+                    if purpose is None:
+                        purpose = _legacy_purpose_cache.get(token_hash)
+                        if purpose is None:
+                            from atp.dashboard.models import Agent
+
+                            agent = await session.get(Agent, api_token.agent_id)
+                            if agent is not None:
+                                purpose = agent.purpose
+                                _legacy_purpose_cache[token_hash] = purpose
+                    state["agent_purpose"] = purpose
 
                 # Debounced last_used_at: skip if updated within last 60s
                 now = datetime.now()

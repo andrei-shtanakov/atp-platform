@@ -7,7 +7,7 @@ including database sessions, configuration, authentication, and services.
 from collections.abc import AsyncGenerator
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from atp.dashboard.auth import (
@@ -73,6 +73,44 @@ Config = Annotated[DashboardConfig, Depends(get_dashboard_config)]
 CurrentUser = Annotated[User | None, Depends(get_current_user)]
 RequiredUser = Annotated[User, Depends(get_current_active_user)]
 AdminUser = Annotated[User, Depends(get_current_admin_user)]
+
+
+async def get_benchmark_caller(
+    request: Request,
+    user: RequiredUser,
+) -> User:
+    """Authenticate a caller for the benchmark API (LABS-TSA PR-3).
+
+    Wraps ``get_current_active_user`` with a purpose check: tournament
+    agents are rejected with 403. User-level tokens and admin sessions
+    (which have no ``agent_purpose`` on ``request.state``) keep access,
+    as do benchmark-agent tokens.
+    """
+    agent_purpose = getattr(request.state, "agent_purpose", None)
+    if agent_purpose == "tournament":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="benchmark API is benchmark-agents only",
+        )
+    return user
+
+
+async def reject_tournament_token(request: Request) -> None:
+    """Router-level guard: 403 tournament-agent tokens (LABS-TSA PR-3).
+
+    Unlike ``get_benchmark_caller`` this does NOT require authentication,
+    so it can sit on endpoints that are otherwise public (e.g. listing
+    benchmarks). It only acts when ``state.agent_purpose == "tournament"``.
+    """
+    agent_purpose = getattr(request.state, "agent_purpose", None)
+    if agent_purpose == "tournament":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="benchmark API is benchmark-agents only",
+        )
+
+
+BenchmarkCaller = Annotated[User, Depends(get_benchmark_caller)]
 
 
 class PaginationParams:
