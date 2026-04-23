@@ -522,16 +522,19 @@ async def ui_matches(
 
     Filters match the renderability criteria in :func:`ui_match_detail`:
     ``status == 'completed'`` plus both ``actions_json`` and
-    ``day_aggregates_json`` populated. Rows missing any of these would
-    land on the "predates schema" or "still running" branches if
-    clicked — hiding them in the listing keeps every link clickable.
+    ``day_aggregates_json`` populated. These Phase-7 JSON columns are
+    only written by the CLI writer for El Farol-shaped games (see
+    ``atp/cli/commands/game.py``), so the renderability filter
+    implicitly selects El Farol without matching on ``game_name`` —
+    the engine's pretty name
+    (``"El Farol Bar (n=6, threshold=4, days=30)"``) would not match a
+    literal ``"el_farol"`` anyway.
     """
     from atp.dashboard.models import GameResult
 
     user = await _get_ui_user(request, session)
 
     renderable_filters = [
-        GameResult.game_name == "el_farol",
         GameResult.status == "completed",
         GameResult.actions_json.is_not(None),
         GameResult.day_aggregates_json.is_not(None),
