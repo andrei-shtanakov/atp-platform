@@ -44,16 +44,15 @@ def upgrade() -> None:
         )
 
     # tournament_participants: user_id → nullable; builtin_strategy;
-    # agent-xor-builtin CHECK; builtin-only partial index
+    # builtin-only partial index. The agent-xor-builtin CHECK is
+    # deferred to the PR-4 migration, after TournamentService is
+    # updated to populate agent_id on real-agent joins — otherwise
+    # today's join flow (which inserts Participant rows without
+    # agent_id) would violate the invariant.
     with op.batch_alter_table("tournament_participants", schema=None) as batch_op:
         batch_op.alter_column("user_id", existing_type=sa.Integer(), nullable=True)
         batch_op.add_column(
             sa.Column("builtin_strategy", sa.String(length=64), nullable=True)
-        )
-        batch_op.create_check_constraint(
-            "ck_participants_agent_xor_builtin",
-            "(agent_id IS NOT NULL AND builtin_strategy IS NULL)"
-            " OR (agent_id IS NULL AND builtin_strategy IS NOT NULL)",
         )
         batch_op.create_index(
             "idx_participants_builtin",
@@ -96,7 +95,6 @@ def downgrade() -> None:
 
     with op.batch_alter_table("tournament_participants", schema=None) as batch_op:
         batch_op.drop_index("idx_participants_builtin")
-        batch_op.drop_constraint("ck_participants_agent_xor_builtin", type_="check")
         batch_op.drop_column("builtin_strategy")
         batch_op.alter_column("user_id", existing_type=sa.Integer(), nullable=False)
 

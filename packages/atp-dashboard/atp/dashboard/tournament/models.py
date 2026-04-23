@@ -257,11 +257,12 @@ class Participant(Base):
             sqlite_where=text("builtin_strategy IS NOT NULL"),
             postgresql_where=text("builtin_strategy IS NOT NULL"),
         ),
-        CheckConstraint(
-            "(agent_id IS NOT NULL AND builtin_strategy IS NULL)"
-            " OR (agent_id IS NULL AND builtin_strategy IS NOT NULL)",
-            name="ck_participants_agent_xor_builtin",
-        ),
+        # LABS-TSA PR-1: the agent-xor-builtin CHECK is deferred to PR-4.
+        # Today's TournamentService.join_tournament inserts Participant
+        # rows with user_id + agent_name but no agent_id, which would
+        # violate a CHECK added now. PR-4 updates the service to populate
+        # agent_id on real-agent joins and builtin_strategy on builtins,
+        # then adds the CHECK in its migration.
     )
 
     def __repr__(self) -> str:

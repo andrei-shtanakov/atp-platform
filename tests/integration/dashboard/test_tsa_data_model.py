@@ -73,27 +73,17 @@ class TestAgentPurpose:
 
 
 class TestParticipantBuiltin:
-    @pytest.mark.anyio
-    async def test_agent_backed_participant_rejects_builtin_strategy(
-        self, db_session: AsyncSession, user: User
-    ) -> None:
-        t = Tournament(
-            game_type="el_farol", num_players=2, total_rounds=1, created_by=user.id
-        )
-        a = Agent(name="x", agent_type="mcp", owner_id=user.id, purpose="tournament")
-        db_session.add_all([t, a])
-        await db_session.commit()
-        p = Participant(
-            tournament_id=t.id,
-            user_id=user.id,
-            agent_id=a.id,
-            agent_name="x",
-            builtin_strategy="el_farol/traditionalist",  # both set — must fail
-        )
-        db_session.add(p)
-        with pytest.raises(IntegrityError):
-            await db_session.commit()
-        await db_session.rollback()
+    """PR-1 only introduces the ``builtin_strategy`` column and makes
+    ``user_id`` nullable. The agent-xor-builtin CHECK constraint is
+    deferred to PR-4, where ``TournamentService`` is updated to populate
+    ``agent_id`` on real-agent joins — introducing the invariant now
+    would break the 19 existing tournament integration tests whose
+    join/leave/cancel flows insert Participant rows without ``agent_id``.
+
+    The tests below exercise the positive shape of the schema change
+    (a builtin participant is storable with null user_id / agent_id).
+    The invariant enforcement tests move into PR-4's test suite.
+    """
 
     @pytest.mark.anyio
     async def test_builtin_participant_has_no_agent_or_user(
@@ -117,27 +107,6 @@ class TestParticipantBuiltin:
         assert p.user_id is None
         assert p.agent_id is None
         assert p.builtin_strategy == "el_farol/traditionalist"
-
-    @pytest.mark.anyio
-    async def test_participant_without_builtin_or_agent_rejected(
-        self, db_session: AsyncSession, user: User
-    ) -> None:
-        t = Tournament(
-            game_type="el_farol", num_players=2, total_rounds=1, created_by=user.id
-        )
-        db_session.add(t)
-        await db_session.commit()
-        p = Participant(
-            tournament_id=t.id,
-            user_id=user.id,
-            agent_id=None,
-            agent_name="x",
-            builtin_strategy=None,  # neither set — must fail
-        )
-        db_session.add(p)
-        with pytest.raises(IntegrityError):
-            await db_session.commit()
-        await db_session.rollback()
 
 
 class TestGameResultTournamentLink:
