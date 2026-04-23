@@ -260,7 +260,25 @@ async def test_get_participants_returns_200(_app, seeded_tournament):
 
 
 @pytest.mark.anyio
-async def test_create_tournament_returns_201_with_token(_app, seeded_user):
+async def test_create_tournament_returns_201_with_token(
+    _app, seeded_user, tournament_db_database
+):
+    # LABS-TSA PR-4: private tournaments require the creator either to
+    # own a tournament-purpose agent or to provide a full builtin roster.
+    # Seed one tournament agent for the seeded user so this pre-existing
+    # test keeps validating just the 201 + join_token behaviour.
+    async with tournament_db_database.session_factory() as s:
+        await s.execute(
+            text(
+                "INSERT INTO agents "
+                "(tenant_id, name, agent_type, purpose, config, owner_id, "
+                "created_at, updated_at) "
+                "VALUES ('default', 'alice-tournament-agent', 'mcp', "
+                "'tournament', '{}', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+            )
+        )
+        await s.commit()
+
     async with AsyncClient(
         transport=ASGITransport(app=_app), base_url="http://test"
     ) as c:

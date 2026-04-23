@@ -29,8 +29,10 @@ from sqlalchemy.orm import selectinload
 from atp.dashboard.models import User
 from atp.dashboard.tournament.access import can_view_reasoning
 from atp.dashboard.tournament.errors import (
+    ConcurrentPrivateCapExceededError,
     ConflictError,
     NotFoundError,
+    RosterValidationError,
     ValidationError,
 )
 from atp.dashboard.tournament.models import (
@@ -98,6 +100,12 @@ TournamentSvc = Annotated[TournamentService, Depends(get_tournament_service)]
 # ---------------------------------------------------------------------------
 
 
+class BuiltinRosterEntry(BaseModel):
+    """A single builtin slot commitment on tournament creation (LABS-TSA PR-4)."""
+
+    builtin_strategy: str
+
+
 class CreateTournamentRequest(BaseModel):
     """Payload for creating a new tournament."""
 
@@ -107,6 +115,10 @@ class CreateTournamentRequest(BaseModel):
     total_rounds: int = Field(ge=1)
     round_deadline_s: int = Field(ge=1)
     private: bool = False
+    # LABS-TSA PR-4: optional list of namespaced builtin strategies
+    # that pre-populate the tournament with deterministic sparring
+    # partners. See ``packages/atp-dashboard/atp/dashboard/tournament/builtins.py``.
+    roster: list[BuiltinRosterEntry] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -300,7 +312,16 @@ async def create_tournament_endpoint(
     user: TournamentUser,
     service: TournamentSvc,
 ) -> dict[str, Any]:
-    """Create a tournament. Returns join_token once (private tournaments only)."""
+    """Create a tournament. Returns join_token once (private tournaments only).
+
+    Roster-validation failures (unknown builtin, cross-game pairing,
+    oversized roster, missing creator commitment) surface as HTTP 400
+    so callers can distinguish them from pure pydantic shape errors
+    (422).
+
+    Exceeding the concurrent-private tournament cap surfaces as HTTP
+    429 with the current/cap counts in the detail.
+    """
     try:
         tournament, join_token = await service.create_tournament(
             creator=user,
@@ -310,11 +331,28 @@ async def create_tournament_endpoint(
             total_rounds=req.total_rounds,
             round_deadline_s=req.round_deadline_s,
             private=req.private,
+            roster=[e.builtin_strategy for e in req.roster],
+        )
+    except RosterValidationError as e:
+        # Roster-specific semantic violations (unknown builtin,
+        # cross-game, missing creator commit, oversized roster)
+        # surface as HTTP 400 so clients can distinguish them from
+        # generic tournament validation (422).
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
         )
     except ValidationError as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(e),
+        )
+    except ConcurrentPrivateCapExceededError as e:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                f"concurrent private tournament limit exceeded ({e.current}/{e.cap})"
+            ),
         )
 
     response = _serialize(tournament, user.is_admin)

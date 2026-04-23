@@ -32,9 +32,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from atp.dashboard.models import Agent, User
+from atp.dashboard.tournament.builtins import (
+    BuiltinNotFoundError,
+    resolve_builtin,
+)
 from atp.dashboard.tournament.errors import (
+    ConcurrentPrivateCapExceededError,
     ConflictError,
     NotFoundError,
+    RosterValidationError,
     ValidationError,
 )
 from atp.dashboard.tournament.events import (
@@ -191,12 +197,30 @@ class TournamentService:
         total_rounds: int,
         round_deadline_s: int,
         private: bool = False,
+        roster: list[str] | None = None,
     ) -> tuple[Tournament, str | None]:
         """Create a tournament. AD-9 duration cap validation, pending_deadline,
         optional join_token.
 
         Does NOT auto-join the creator.
+
+        ``roster`` (LABS-TSA PR-4) is an optional list of namespaced
+        builtin strategy names (e.g. ``["el_farol/traditionalist"]``)
+        that will be inserted as Participant rows with
+        ``builtin_strategy=...`` so private test tournaments can
+        spin up against deterministic sparring partners.
+
+        Private tournaments enforce:
+        * Every roster entry is a known builtin for this game_type.
+        * Roster size does not exceed ``num_players``.
+        * Creator has at least one tournament-purpose agent OR the
+          roster fills every slot (so the tournament actually has
+          enough participants to resolve).
+        * Creator is under the concurrent-private cap
+          (``ATP_MAX_CONCURRENT_PRIVATE_TOURNAMENTS_PER_USER``) —
+          raises ``ConcurrentPrivateCapExceededError``.
         """
+        roster = list(roster or [])
         if game_type not in _SUPPORTED_GAMES:
             raise ValidationError(
                 f"unsupported game_type {game_type!r}; "
@@ -249,6 +273,74 @@ class TournamentService:
                 f"Reduce total_rounds or round_deadline_s."
             )
 
+        # --- LABS-TSA PR-4: roster validation (size, namespacing, lookup) ---
+        if len(roster) > num_players:
+            raise RosterValidationError(
+                f"builtin roster ({len(roster)}) larger than "
+                f"num_players ({num_players})"
+            )
+        for entry in roster:
+            if "/" not in entry:
+                raise RosterValidationError(
+                    f"unknown builtin strategy {entry!r} "
+                    "(must be namespaced as 'game/name')"
+                )
+            prefix, _ = entry.split("/", 1)
+            if prefix != game_type:
+                raise RosterValidationError(
+                    f"unknown builtin strategy {entry!r} "
+                    f"for game {game_type!r} (namespace mismatch)"
+                )
+            try:
+                # Probe resolution with dummy ids — the instance is
+                # discarded; only the class lookup matters.
+                resolve_builtin(entry, tournament_id=0, participant_id=0)
+            except BuiltinNotFoundError as exc:
+                raise RosterValidationError(
+                    f"unknown builtin strategy {entry!r}: {exc}"
+                ) from exc
+
+        # --- LABS-TSA PR-4: creator-commit check for private tournaments ---
+        if private:
+            creator_tournament_agents = await self._session.scalar(
+                select(func.count(Agent.id)).where(
+                    Agent.owner_id == creator.id,
+                    Agent.purpose == "tournament",
+                    Agent.deleted_at.is_(None),
+                )
+            )
+            has_agent = bool(creator_tournament_agents or 0)
+            roster_fills_all = len(roster) >= num_players
+            if not has_agent and not roster_fills_all:
+                raise RosterValidationError(
+                    "private tournament needs at least one participant: "
+                    "register a tournament-purpose agent or provide a "
+                    "full builtin roster"
+                )
+
+        # --- LABS-TSA PR-4: concurrent-private cap ---
+        if private:
+            from atp.dashboard.v2.config import get_config
+
+            cfg = get_config()
+            active = await self._session.scalar(
+                select(func.count(Tournament.id)).where(
+                    Tournament.created_by == creator.id,
+                    Tournament.join_token.is_not(None),
+                    Tournament.status.in_(
+                        [TournamentStatus.PENDING, TournamentStatus.ACTIVE]
+                    ),
+                    # Exclude expired-pending so deadlines.py auto-cancel
+                    # doesn't race the cap.
+                    (Tournament.status != TournamentStatus.PENDING)
+                    | (Tournament.pending_deadline > _utc_now()),
+                )
+            )
+            current = int(active or 0)
+            cap = cfg.max_concurrent_private_tournaments_per_user
+            if current >= cap:
+                raise ConcurrentPrivateCapExceededError(current, cap)
+
         now = _utc_now()
         pending_deadline = now + timedelta(seconds=TOURNAMENT_PENDING_MAX_WAIT_S)
 
@@ -272,6 +364,30 @@ class TournamentService:
         # transactions and conflict with the ambient session.
         self._session.add(tournament)
         await self._session.flush()
+
+        # --- LABS-TSA PR-4: insert builtin participants ---
+        for entry in roster:
+            self._session.add(
+                Participant(
+                    tournament_id=tournament.id,
+                    user_id=None,
+                    agent_id=None,
+                    agent_name=entry,
+                    builtin_strategy=entry,
+                )
+            )
+        if roster:
+            await self._session.flush()
+            # If the roster already fills every slot, transition straight
+            # to ACTIVE so downstream deadline/worker logic can pick up
+            # immediately. Mirrors the count-based transition in ``join``.
+            count = await self._session.scalar(
+                select(func.count(Participant.id)).where(
+                    Participant.tournament_id == tournament.id
+                )
+            )
+            if count == num_players:
+                await self._start_tournament(tournament)
 
         return tournament, join_token_plaintext
 
