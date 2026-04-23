@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
@@ -93,6 +94,18 @@ class Agent(Base):
     )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
+    # LABS-TSA PR-1: agent purpose classification.
+    # Benchmark agents run suite evaluations; tournament agents connect to
+    # /mcp for game-theoretic tournaments. The CHECK constraint is added
+    # explicitly in the Alembic migration — ORM-side the string is
+    # validated by Pydantic layer (PR-2) plus pyrefly Literal types.
+    purpose: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="benchmark",
+        server_default="benchmark",
+    )
+
     # Relationships
     suite_executions: Mapped[list["SuiteExecution"]] = relationship(
         back_populates="agent", cascade="all, delete-orphan"
@@ -110,6 +123,12 @@ class Agent(Base):
         Index("idx_agent_name", "name"),
         Index("idx_agent_tenant", "tenant_id"),
         Index("idx_agent_owner", "owner_id"),
+        # LABS-TSA PR-1
+        Index("idx_agents_owner_purpose", "owner_id", "purpose"),
+        CheckConstraint(
+            "purpose IN ('benchmark','tournament')",
+            name="ck_agents_purpose",
+        ),
     )
 
     def __repr__(self) -> str:
