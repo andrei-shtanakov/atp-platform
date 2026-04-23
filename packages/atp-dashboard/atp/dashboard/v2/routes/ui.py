@@ -512,6 +512,52 @@ async def ui_game_detail(
     )
 
 
+@router.get("/matches", response_class=HTMLResponse)
+@limiter.limit("120/minute")
+async def ui_matches(
+    request: Request,
+    session: DBSession,
+) -> HTMLResponse:
+    """List El Farol matches that have the Phase-7 dashboard payload.
+
+    Filters to ``game_name='el_farol'`` with ``actions_json`` populated
+    so the link in each row actually lands on a renderable dashboard.
+    Legacy pre-Phase-7 rows are hidden — clicking them would show the
+    "predates schema" page, which is useless in a listing.
+    """
+    from atp.dashboard.models import GameResult
+
+    user = await _get_ui_user(request, session)
+
+    stmt = (
+        select(GameResult)
+        .where(
+            GameResult.game_name == "el_farol",
+            GameResult.actions_json.is_not(None),
+        )
+        .order_by(GameResult.completed_at.desc().nulls_last())
+        .limit(100)
+    )
+    matches = list((await session.execute(stmt)).scalars().all())
+
+    total_stmt = select(func.count(GameResult.id)).where(
+        GameResult.game_name == "el_farol",
+        GameResult.actions_json.is_not(None),
+    )
+    total = (await session.execute(total_stmt)).scalar_one()
+
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/matches.html",
+        context={
+            "active_page": "matches",
+            "matches": matches,
+            "total": total,
+            "user": user,
+        },
+    )
+
+
 @router.get("/matches/{match_id}", response_class=HTMLResponse)
 @limiter.limit("120/minute")
 async def ui_match_detail(
