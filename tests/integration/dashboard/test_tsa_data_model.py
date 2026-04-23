@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from atp.dashboard.database import Database, set_database
 from atp.dashboard.models import Agent, Base, User
+from atp.dashboard.tournament.models import Participant, Tournament
 
 
 @pytest.fixture
@@ -68,4 +69,72 @@ class TestAgentPurpose:
         # Explicit rollback so the session's pending-rollback state doesn't
         # propagate into the fixture teardown commit (which would otherwise
         # raise PendingRollbackError and mark the test as ERROR).
+        await db_session.rollback()
+
+
+class TestParticipantBuiltin:
+    @pytest.mark.anyio
+    async def test_agent_backed_participant_rejects_builtin_strategy(
+        self, db_session: AsyncSession, user: User
+    ) -> None:
+        t = Tournament(
+            game_type="el_farol", num_players=2, total_rounds=1, created_by=user.id
+        )
+        a = Agent(name="x", agent_type="mcp", owner_id=user.id, purpose="tournament")
+        db_session.add_all([t, a])
+        await db_session.commit()
+        p = Participant(
+            tournament_id=t.id,
+            user_id=user.id,
+            agent_id=a.id,
+            agent_name="x",
+            builtin_strategy="el_farol/traditionalist",  # both set — must fail
+        )
+        db_session.add(p)
+        with pytest.raises(IntegrityError):
+            await db_session.commit()
+        await db_session.rollback()
+
+    @pytest.mark.anyio
+    async def test_builtin_participant_has_no_agent_or_user(
+        self, db_session: AsyncSession, user: User
+    ) -> None:
+        t = Tournament(
+            game_type="el_farol", num_players=2, total_rounds=1, created_by=user.id
+        )
+        db_session.add(t)
+        await db_session.commit()
+        p = Participant(
+            tournament_id=t.id,
+            user_id=None,
+            agent_id=None,
+            agent_name="el_farol/traditionalist",
+            builtin_strategy="el_farol/traditionalist",
+        )
+        db_session.add(p)
+        await db_session.commit()  # must succeed
+        await db_session.refresh(p)
+        assert p.user_id is None
+        assert p.agent_id is None
+        assert p.builtin_strategy == "el_farol/traditionalist"
+
+    @pytest.mark.anyio
+    async def test_participant_without_builtin_or_agent_rejected(
+        self, db_session: AsyncSession, user: User
+    ) -> None:
+        t = Tournament(
+            game_type="el_farol", num_players=2, total_rounds=1, created_by=user.id
+        )
+        db_session.add(t)
+        await db_session.commit()
+        p = Participant(
+            tournament_id=t.id,
+            user_id=user.id,
+            agent_id=None,
+            agent_name="x",
+            builtin_strategy=None,  # neither set — must fail
+        )
+        db_session.add(p)
+        with pytest.raises(IntegrityError):
+            await db_session.commit()
         await db_session.rollback()
