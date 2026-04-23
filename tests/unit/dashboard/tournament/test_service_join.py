@@ -167,11 +167,17 @@ async def test_join_populates_agent_id_from_owned_agent(
     from atp.dashboard.tournament.models import Participant
     from atp.dashboard.tournament.service import TournamentService
 
+    # LABS-TSA PR-4: join() looks up by
+    # (owner_id, name, purpose='tournament'), so a benchmark-purpose
+    # agent with the same name no longer satisfies the "owned agent"
+    # linkage contract. The test's intent is "tournament agent owned
+    # by the joining user" — set the purpose accordingly.
     alice_agent = Agent(
         name="alice-bot",
         agent_type="cli",
         owner_id=alice.id,
         version="v1",
+        purpose="tournament",
     )
     session.add(alice_agent)
     await session.commit()
