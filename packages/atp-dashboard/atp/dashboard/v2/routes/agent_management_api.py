@@ -1,7 +1,7 @@
 """Agent ownership management API endpoints."""
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, select, update
@@ -32,31 +32,39 @@ async def create_agent_for_user(
     agent_type: str,
     description: str | None = None,
     config: dict[str, Any] | None = None,
+    purpose: Literal["benchmark", "tournament"] = "benchmark",
 ) -> Agent:
-    """Create an agent owned by `user`, enforcing quota and uniqueness.
+    """Create an agent owned by `user`, enforcing per-purpose quota.
 
-    Raises HTTPException on quota exceeded or duplicate name/version.
+    Raises HTTPException(429) on quota exceeded (per-purpose; see
+    LABS-TSA PR-2) and HTTPException(409) on duplicate name/version.
     Shared by the JSON API and the cookie-authenticated UI handler.
 
     The quota check is best-effort (COUNT then INSERT): concurrent
-    requests can race past `max_agents_per_user` by a small margin at
-    high request rates. At current scale this is not observable; see
-    LABS-18 for the upgrade path if hard caps become required. The
-    name/version uniqueness check is backed by the DB unique index, so
-    duplicates cannot race past the guard.
+    requests can race past the cap by a small margin at high request
+    rates. At current scale this is not observable; see LABS-18 for
+    the upgrade path if hard caps become required. The name/version
+    uniqueness check is backed by the DB unique index, so duplicates
+    cannot race past the guard.
     """
     cfg = get_config()
+    if purpose == "tournament":
+        cap = cfg.max_tournament_agents_per_user
+    else:
+        cap = cfg.max_benchmark_agents_per_user
 
     count_result = await session.execute(
         select(func.count(Agent.id)).where(
             Agent.owner_id == user.id,
+            Agent.purpose == purpose,
             Agent.deleted_at.is_(None),
         )
     )
-    if count_result.scalar_one() >= cfg.max_agents_per_user:
+    existing_count = count_result.scalar_one()
+    if existing_count >= cap:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Agent limit reached (max {cfg.max_agents_per_user})",
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"{purpose} agent quota exceeded ({existing_count}/{cap})",
         )
 
     existing = await session.execute(
@@ -80,6 +88,7 @@ async def create_agent_for_user(
         config=config or {},
         description=description,
         owner_id=user.id,
+        purpose=purpose,
     )
     session.add(agent)
     await session.flush()
@@ -104,6 +113,7 @@ async def create_agent(
         agent_type=body.agent_type,
         description=body.description,
         config=body.config,
+        purpose=body.purpose,
     )
     return AgentOwnerResponse.model_validate(agent)
 
@@ -112,13 +122,21 @@ async def create_agent(
 async def list_my_agents(
     session: DBSession,
     user: RequiredUser,
+    purpose: Literal["benchmark", "tournament"] | None = None,
 ) -> list[AgentOwnerResponse]:
-    """List agents owned by the current user."""
-    result = await session.execute(
+    """List agents owned by the current user.
+
+    If ``purpose`` is provided, only agents with that purpose are
+    returned (LABS-TSA PR-2).
+    """
+    stmt = (
         select(Agent)
         .where(Agent.owner_id == user.id, Agent.deleted_at.is_(None))
         .order_by(Agent.created_at.desc())
     )
+    if purpose is not None:
+        stmt = stmt.where(Agent.purpose == purpose)
+    result = await session.execute(stmt)
     return [AgentOwnerResponse.model_validate(a) for a in result.scalars().all()]
 
 
