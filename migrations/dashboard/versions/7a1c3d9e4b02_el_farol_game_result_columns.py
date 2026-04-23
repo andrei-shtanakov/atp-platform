@@ -1,7 +1,7 @@
 """el farol game_result columns
 
 Revision ID: 7a1c3d9e4b02
-Revises: 4e902371a941
+Revises: b8c9d0e1f2a3
 Create Date: 2026-04-21 12:00:00.000000
 
 Adds El Farol dashboard data-model columns to ``game_results`` so the
@@ -17,7 +17,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "7a1c3d9e4b02"
-down_revision: str | Sequence[str] | None = "4e902371a941"
+down_revision: str | Sequence[str] | None = "b8c9d0e1f2a3"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -34,7 +34,9 @@ def upgrade() -> None:
         batch_op.add_column(sa.Column("max_intervals", sa.Integer(), nullable=True))
         batch_op.add_column(sa.Column("max_total_slots", sa.Integer(), nullable=True))
         batch_op.add_column(sa.Column("capacity_ratio", sa.Float(), nullable=True))
-        batch_op.add_column(sa.Column("capacity_threshold", sa.Integer(), nullable=True))
+        batch_op.add_column(
+            sa.Column("capacity_threshold", sa.Integer(), nullable=True)
+        )
         batch_op.add_column(sa.Column("actions_json", sa.JSON(), nullable=True))
         batch_op.add_column(sa.Column("day_aggregates_json", sa.JSON(), nullable=True))
         batch_op.add_column(sa.Column("round_payoffs_json", sa.JSON(), nullable=True))

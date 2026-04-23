@@ -855,7 +855,7 @@ def _build_game_result_kwargs(
     # format: ``{game.name}#{run_id}#ep{episode}``.
     if result.episodes and result.episodes[0].actions:
         aggregates = _compute_day_aggregates(
-            game_name=getattr(game, "name", result.game_name),
+            game_name=getattr(game, "name", None) or result.game_name,
             run_id=run_id,
             episode_index=result.episodes[0].episode,
             history=result.episodes[0].history,

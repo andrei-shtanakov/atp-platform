@@ -366,6 +366,7 @@ def _create_missing_indexes(conn: Any) -> None:
     ``AsyncConnection.run_sync`` because ``sqlalchemy.inspect`` is sync-only.
     """
     inspector = sa_inspect(conn)
+    assert inspector is not None
     for table in Base.metadata.sorted_tables:
         if not inspector.has_table(table.name):
             continue
