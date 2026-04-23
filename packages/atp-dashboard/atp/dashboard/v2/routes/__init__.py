@@ -59,6 +59,9 @@ from atp.dashboard.v2.routes.definitions import router as definitions_router
 from atp.dashboard.v2.routes.device_auth import (
     router as device_auth_router,
 )
+from atp.dashboard.v2.routes.el_farol_dashboard import (
+    router as el_farol_dashboard_router,
+)
 from atp.dashboard.v2.routes.experiments import router as experiments_router
 from atp.dashboard.v2.routes.games import router as games_router
 from atp.dashboard.v2.routes.home import router as home_router
@@ -113,6 +116,7 @@ router.include_router(budgets_router)
 router.include_router(analytics_router)
 router.include_router(experiments_router)
 router.include_router(games_router)
+router.include_router(el_farol_dashboard_router)
 router.include_router(tenants_router)
 router.include_router(roles_router)
 router.include_router(sso_router)
@@ -143,6 +147,7 @@ __all__ = [
     "costs_router",
     "definitions_router",
     "upload_router",
+    "el_farol_dashboard_router",
     "experiments_router",
     "games_router",
     "home_router",
