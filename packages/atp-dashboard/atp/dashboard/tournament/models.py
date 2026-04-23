@@ -257,12 +257,18 @@ class Participant(Base):
             sqlite_where=text("builtin_strategy IS NOT NULL"),
             postgresql_where=text("builtin_strategy IS NOT NULL"),
         ),
-        # LABS-TSA PR-1: the agent-xor-builtin CHECK is deferred to PR-4.
-        # Today's TournamentService.join_tournament inserts Participant
-        # rows with user_id + agent_name but no agent_id, which would
-        # violate a CHECK added now. PR-4 updates the service to populate
-        # agent_id on real-agent joins and builtin_strategy on builtins,
-        # then adds the CHECK in its migration.
+        # LABS-TSA PR-4: agent-xor-builtin CHECK. Every Participant row
+        # is either a real agent-backed entry (agent_id set, builtin
+        # null) or a synthetic builtin (builtin_strategy set, agent_id
+        # null) — never both, never neither. Duplicated here so
+        # Base.metadata.create_all() produces a schema equivalent to
+        # ``alembic upgrade head``. See the PR-4 migration
+        # ``a9c4e81f3d2a_tournament_participant_agent_xor_builtin_check``.
+        CheckConstraint(
+            "(agent_id IS NOT NULL AND builtin_strategy IS NULL)"
+            " OR (agent_id IS NULL AND builtin_strategy IS NOT NULL)",
+            name="ck_participants_agent_xor_builtin",
+        ),
     )
 
     def __repr__(self) -> str:

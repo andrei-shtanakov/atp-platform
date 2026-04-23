@@ -29,6 +29,20 @@ async def _seed_two_tournaments_and_user(session) -> None:
             "'pending', 2, 3, 30, CURRENT_TIMESTAMP, 1, CURRENT_TIMESTAMP)"
         )
     )
+    # LABS-TSA PR-4: seed agents to satisfy agent-xor-builtin CHECK on
+    # Participant inserts below.
+    await session.execute(
+        text(
+            "INSERT INTO agents "
+            "(id, tenant_id, name, agent_type, purpose, config, owner_id, "
+            "created_at, updated_at) "
+            "VALUES "
+            "(1, 'default', 'a', 'mcp', 'tournament', '{}', 1, "
+            "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP), "
+            "(2, 'default', 'b', 'mcp', 'tournament', '{}', 1, "
+            "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+        )
+    )
 
 
 @pytest.mark.anyio
@@ -38,8 +52,8 @@ async def test_one_active_per_user_across_tournaments(session_factory):
         await s.execute(
             text(
                 "INSERT INTO tournament_participants "
-                "(tournament_id, user_id, agent_name, joined_at) "
-                "VALUES (1, 1, 'a', CURRENT_TIMESTAMP)"
+                "(tournament_id, user_id, agent_id, agent_name, joined_at) "
+                "VALUES (1, 1, 1, 'a', CURRENT_TIMESTAMP)"
             )
         )
         await s.commit()
@@ -49,8 +63,8 @@ async def test_one_active_per_user_across_tournaments(session_factory):
             await s.execute(
                 text(
                     "INSERT INTO tournament_participants "
-                    "(tournament_id, user_id, agent_name, joined_at) "
-                    "VALUES (2, 1, 'b', CURRENT_TIMESTAMP)"
+                    "(tournament_id, user_id, agent_id, agent_name, joined_at) "
+                    "VALUES (2, 1, 2, 'b', CURRENT_TIMESTAMP)"
                 )
             )
             await s.commit()
@@ -88,15 +102,29 @@ async def test_released_rows_do_not_block(session_factory):
                 ),
                 {"id": i, "cfg": f'{{"name":"t{i}"}}'},
             )
+        # LABS-TSA PR-4: agent per Participant for agent-xor-builtin CHECK
+        for i in range(1, 11):
+            await s.execute(
+                text(
+                    "INSERT INTO agents "
+                    "(id, tenant_id, name, agent_type, purpose, config, "
+                    "owner_id, created_at, updated_at) "
+                    "VALUES (:id, 'default', :n, 'mcp', 'tournament', '{}', "
+                    "1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+                ),
+                {"id": i, "n": f"bot{i}"},
+            )
         # Seed 10 released participants across them
         for i in range(1, 11):
             await s.execute(
                 text(
                     "INSERT INTO tournament_participants "
-                    "(tournament_id, user_id, agent_name, joined_at, released_at) "
-                    "VALUES (:id, 1, :n, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+                    "(tournament_id, user_id, agent_id, agent_name, "
+                    "joined_at, released_at) "
+                    "VALUES (:id, 1, :aid, :n, CURRENT_TIMESTAMP, "
+                    "CURRENT_TIMESTAMP)"
                 ),
-                {"id": i, "n": f"bot{i}"},
+                {"id": i, "aid": i, "n": f"bot{i}"},
             )
         await s.commit()
 

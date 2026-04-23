@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from atp.dashboard.models import Base, User
+from atp.dashboard.models import Agent, Base, User
 from atp.dashboard.tournament.models import (
     Action,
     Participant,
@@ -29,6 +29,25 @@ def _make_user(session: Session, username: str = "u1") -> User:
     session.commit()
     session.refresh(user)
     return user
+
+
+def _make_agent(
+    session: Session, user: User, name: str = "a1", purpose: str = "tournament"
+) -> Agent:
+    """Helper: create an owned Agent so non-builtin Participant.agent_id is
+    satisfied (LABS-TSA PR-4 agent-xor-builtin CHECK)."""
+    agent = Agent(
+        tenant_id="default",
+        name=name,
+        agent_type="mcp",
+        owner_id=user.id,
+        config={},
+        purpose=purpose,
+    )
+    session.add(agent)
+    session.commit()
+    session.refresh(agent)
+    return agent
 
 
 @pytest.fixture()
@@ -118,10 +137,12 @@ class TestParticipant:
 
         # Plan 2a IDOR fix made Participant.user_id NOT NULL.
         u = _make_user(session, "alice")
+        a = _make_agent(session, u, "tit-for-tat")
 
         p = Participant(
             tournament_id=t.id,
             user_id=u.id,
+            agent_id=a.id,
             agent_name="tit-for-tat",
         )
         session.add(p)
@@ -142,10 +163,12 @@ class TestParticipant:
         session.refresh(t)
 
         u = _make_user(session, "bob")
+        a = _make_agent(session, u, "always-cooperate")
 
         p = Participant(
             tournament_id=t.id,
             user_id=u.id,
+            agent_id=a.id,
             agent_name="always-cooperate",
             total_score=42.5,
         )
@@ -199,7 +222,13 @@ class TestAction:
         session.refresh(t)
 
         u = _make_user(session, "carol")
-        p = Participant(tournament_id=t.id, user_id=u.id, agent_name="test-agent")
+        ag = _make_agent(session, u, "test-agent")
+        p = Participant(
+            tournament_id=t.id,
+            user_id=u.id,
+            agent_id=ag.id,
+            agent_name="test-agent",
+        )
         session.add(p)
         session.commit()
         session.refresh(p)

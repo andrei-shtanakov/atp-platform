@@ -453,9 +453,13 @@ class TournamentService:
 
         # Resolve agent_id from an owned Agent matching agent_name, so the
         # "agent in active tournament" check in DELETE /api/v1/agents/{id}
-        # can block soft-delete of an agent actively playing. If the user
-        # has no matching owned agent (e.g. legacy ownerless flow), agent_id
-        # stays NULL and the legacy behaviour is preserved.
+        # can block soft-delete of an agent actively playing.
+        #
+        # LABS-TSA PR-4: every non-builtin Participant row now MUST have
+        # agent_id NOT NULL (enforced by the agent-xor-builtin CHECK). If
+        # the user has no owned tournament agent matching agent_name, we
+        # auto-provision one here so legacy MCP clients that never called
+        # ``POST /api/v1/agents`` keep working.
         agent_id = await self._session.scalar(
             select(Agent.id)
             .where(
@@ -465,6 +469,39 @@ class TournamentService:
             )
             .limit(1)
         )
+        if agent_id is None:
+            # Race-tolerant auto-provision: another concurrent join may
+            # win the insert race on the agent's UNIQUE
+            # (tenant_id, owner_id, name, version) index. Use a
+            # savepoint so an IntegrityError doesn't tear down the
+            # outer transaction — we simply re-read the row and
+            # continue.
+            auto_agent = Agent(
+                tenant_id="default",
+                name=agent_name,
+                agent_type="mcp",
+                owner_id=user_id,
+                config={},
+                purpose="tournament",
+            )
+            try:
+                async with self._session.begin_nested():
+                    self._session.add(auto_agent)
+                    await self._session.flush()
+                agent_id = auto_agent.id
+            except IntegrityError:
+                agent_id = await self._session.scalar(
+                    select(Agent.id)
+                    .where(
+                        Agent.owner_id == user_id,
+                        Agent.name == agent_name,
+                        Agent.deleted_at.is_(None),
+                    )
+                    .limit(1)
+                )
+                if agent_id is None:
+                    # Reread failed — propagate the race
+                    raise
 
         # INSERT path
         participant = Participant(

@@ -42,14 +42,28 @@ async def _seed_minimal(session, num_participants: int):
             "'active', 2, 3, 30, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
         )
     )
+    # LABS-TSA PR-4: every non-builtin Participant row needs agent_id
+    # set (agent-xor-builtin CHECK). Seed one tournament-purpose Agent
+    # per (user, display-name) pair.
+    for i in range(1, num_participants + 1):
+        await session.execute(
+            text(
+                "INSERT INTO agents "
+                "(id, tenant_id, name, agent_type, purpose, config, "
+                "owner_id, created_at, updated_at) "
+                "VALUES (:id, 'default', :name, 'mcp', 'tournament', '{}', "
+                ":uid, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+            ),
+            {"id": i, "uid": i, "name": f"p{i}"},
+        )
     for i in range(1, num_participants + 1):
         await session.execute(
             text(
                 "INSERT INTO tournament_participants "
-                "(tournament_id, user_id, agent_name, joined_at) "
-                "VALUES (1, :uid, :name, CURRENT_TIMESTAMP)"
+                "(tournament_id, user_id, agent_id, agent_name, joined_at) "
+                "VALUES (1, :uid, :aid, :name, CURRENT_TIMESTAMP)"
             ),
-            {"uid": i, "name": f"p{i}"},
+            {"uid": i, "aid": i, "name": f"p{i}"},
         )
 
 

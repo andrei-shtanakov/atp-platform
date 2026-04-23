@@ -15,7 +15,7 @@ from httpx import ASGITransport, AsyncClient
 
 from atp.dashboard.auth import create_access_token, get_password_hash
 from atp.dashboard.database import Database, set_database
-from atp.dashboard.models import Base, User
+from atp.dashboard.models import Agent, Base, User
 from atp.dashboard.tournament.models import (
     Action,
     ActionSource,
@@ -288,15 +288,37 @@ async def _seed_live_el_farol_in_ctx(ctx: dict) -> int:
         session.add_all([u_alpha, u_beta])
         await session.flush()
 
+        # LABS-TSA PR-4: non-builtin Participants need agent_id.
+        a_alpha = Agent(
+            tenant_id="default",
+            name="alpha",
+            agent_type="mcp",
+            owner_id=u_alpha.id,
+            config={},
+            purpose="tournament",
+        )
+        a_beta = Agent(
+            tenant_id="default",
+            name="beta",
+            agent_type="mcp",
+            owner_id=u_beta.id,
+            config={},
+            purpose="tournament",
+        )
+        session.add_all([a_alpha, a_beta])
+        await session.flush()
+
         p_alpha = Participant(
             tournament_id=t.id,
             user_id=u_alpha.id,
+            agent_id=a_alpha.id,
             agent_name="alpha",
             total_score=1.0,
         )
         p_beta = Participant(
             tournament_id=t.id,
             user_id=u_beta.id,
+            agent_id=a_beta.id,
             agent_name="beta",
             total_score=0.0,
         )
@@ -383,9 +405,30 @@ async def _seed_completed_el_farol_in_ctx(ctx: dict) -> int:
         session.add_all([u_a, u_b])
         await session.flush()
 
+        # LABS-TSA PR-4: non-builtin Participants need agent_id.
+        a_a = Agent(
+            tenant_id="default",
+            name="alpha_done",
+            agent_type="mcp",
+            owner_id=u_a.id,
+            config={},
+            purpose="tournament",
+        )
+        a_b = Agent(
+            tenant_id="default",
+            name="beta_done",
+            agent_type="mcp",
+            owner_id=u_b.id,
+            config={},
+            purpose="tournament",
+        )
+        session.add_all([a_a, a_b])
+        await session.flush()
+
         p_a = Participant(
             tournament_id=t.id,
             user_id=u_a.id,
+            agent_id=a_a.id,
             agent_name="alpha_done",
             total_score=3.0,
             released_at=now - timedelta(minutes=1),
@@ -393,6 +436,7 @@ async def _seed_completed_el_farol_in_ctx(ctx: dict) -> int:
         p_b = Participant(
             tournament_id=t.id,
             user_id=u_b.id,
+            agent_id=a_b.id,
             agent_name="beta_done",
             total_score=1.0,
             released_at=now - timedelta(minutes=1),

@@ -175,13 +175,28 @@ async def seeded_tournament_with_actions(
                 "1, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
             )
         )
+        # LABS-TSA PR-4: seed owning agents so Participant rows satisfy
+        # the agent-xor-builtin CHECK.
+        await s.execute(
+            text(
+                "INSERT INTO agents "
+                "(id, tenant_id, name, agent_type, purpose, config, "
+                "owner_id, created_at, updated_at) "
+                "VALUES "
+                "(1, 'default', 'alice', 'mcp', 'tournament', '{}', 1, "
+                "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP), "
+                "(2, 'default', 'bob', 'mcp', 'tournament', '{}', 2, "
+                "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+            )
+        )
         await s.execute(
             text(
                 "INSERT INTO tournament_participants "
-                "(tournament_id, user_id, agent_name, total_score, joined_at) "
+                "(tournament_id, user_id, agent_id, agent_name, "
+                "total_score, joined_at) "
                 "VALUES "
-                "(1, 1, 'alice', 3.0, CURRENT_TIMESTAMP), "
-                "(1, 2, 'bob', 3.0, CURRENT_TIMESTAMP)"
+                "(1, 1, 1, 'alice', 3.0, CURRENT_TIMESTAMP), "
+                "(1, 2, 2, 'bob', 3.0, CURRENT_TIMESTAMP)"
             )
         )
         await s.execute(
