@@ -167,7 +167,10 @@ def _build_rounds(
         agg = aggregates.get(day, {})
         slot_attendance = list(agg.get("slot_attendance") or [])
 
-        decisions = [_build_decision(a, slot_attendance) for a in day_actions]
+        decisions = [
+            _build_decision(a, slot_attendance, row.capacity_threshold)
+            for a in day_actions
+        ]
         rounds.append(
             DashboardRound(
                 round=day,
@@ -180,9 +183,20 @@ def _build_rounds(
 
 
 def _build_decision(
-    action: dict[str, Any], slot_attendance: list[int]
+    action: dict[str, Any],
+    slot_attendance: list[int],
+    capacity_threshold: int | None,
 ) -> DashboardDecision:
-    """Reshape one ActionRecord dict into a DashboardDecision."""
+    """Reshape one ActionRecord dict into a DashboardDecision.
+
+    ``slotPayoffs`` are derived from ``slot_attendance`` and the match's
+    ``capacity_threshold`` using the canonical El Farol rule: a slot
+    pays +1 when ``attendance < capacity_threshold`` (happy), -1
+    otherwise (crowded). Matches ``over_slots`` accounting in
+    ``atp/cli/commands/game.py::_compute_day_aggregates``. When
+    ``capacity_threshold`` is unknown (None), slot payoffs are omitted
+    — the client degrades to aggregate counters.
+    """
     intervals_raw = action.get("intervals") or {}
     # ActionRecord serialises IntervalPair as {"first": [a,b] or [], "second": ...}
     if isinstance(intervals_raw, dict):
@@ -196,17 +210,12 @@ def _build_decision(
         intervals_out = [[], []]
 
     picks = list(action.get("picks") or [])
-    capacity = max(slot_attendance) if slot_attendance else 0
-    # slotPayoffs / intervalPayoffs aren't persisted directly; derive
-    # from ActionRecord.payoff + attendance. This is a compat shim:
-    # the mockup renderer reads these, but the real data model keeps
-    # only aggregate payoff counters. We surface per-slot detail best-
-    # effort; null capacity_threshold collapses everything to 0.
     slot_payoffs: list[SlotPayoff] = []
-    for slot in picks:
-        att = slot_attendance[slot] if 0 <= slot < len(slot_attendance) else 0
-        p = 1 if att <= capacity else -1
-        slot_payoffs.append(SlotPayoff(slot=slot, attendance=att, payoff=p))
+    if capacity_threshold is not None:
+        for slot in picks:
+            att = slot_attendance[slot] if 0 <= slot < len(slot_attendance) else 0
+            p = 1 if att < capacity_threshold else -1
+            slot_payoffs.append(SlotPayoff(slot=slot, attendance=att, payoff=p))
 
     return DashboardDecision(
         agent=action.get("agent_id") or "unknown",

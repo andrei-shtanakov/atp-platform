@@ -184,6 +184,14 @@ class TestElFarolDashboardEndpoint:
         assert d0["picks"] == [0, 1, 2]
         assert d0["numVisits"] == 1
         assert d0["intent"] == "gpt-5 day 1"
+        # slotPayoffs — El Farol rule: +1 when attendance < capacity_threshold.
+        # Fixture has capacity_threshold=1, slot_attendance=[2,2,2,...] on the
+        # picked slots, so every pick is crowded (-1).
+        assert d0["slotPayoffs"] == [
+            {"slot": 0, "attendance": 2, "payoff": -1},
+            {"slot": 1, "attendance": 2, "payoff": -1},
+            {"slot": 2, "attendance": 2, "payoff": -1},
+        ]
         # Tier-2
         assert d0["model_id"] == "gpt-5-latest"
         assert d0["trace_id"] == "trace-gpt-5-1"
@@ -266,6 +274,142 @@ class TestElFarolDashboardEndpoint:
 
         assert resp.status_code == 404
         assert "not found" in resp.json()["detail"].lower()
+
+    @pytest.mark.anyio
+    async def test_slot_payoffs_follow_capacity_threshold_rule(
+        self,
+        v2_app,
+        db_session: AsyncSession,
+        disable_dashboard_auth,
+    ) -> None:
+        """GIVEN a row with a known capacity_threshold and picks spanning
+        happy (attendance < threshold) and crowded (attendance >= threshold)
+        WHEN we GET the dashboard endpoint
+        THEN slotPayoffs[*].payoff follows the strict < rule.
+        """
+        # 4 players, capacity_threshold=2, attendance [1, 2, 3, 0]
+        #   slot 0 (1 < 2) → happy → +1
+        #   slot 1 (2 == 2) → crowded → -1
+        #   slot 2 (3 > 2) → crowded → -1
+        #   slot 3 unused
+        row = GameResult(
+            game_name="el_farol",
+            game_type="el_farol_interval",
+            num_players=4,
+            num_rounds=1,
+            status="completed",
+            match_id="m-rule",
+            num_days=1,
+            num_slots=4,
+            max_intervals=2,
+            max_total_slots=4,
+            capacity_ratio=0.5,
+            capacity_threshold=2,
+            agents_json=[
+                {"agent_id": "A", "display_name": "A", "user_id": "u1", "color": "#f00"}
+            ],
+            actions_json=[
+                {
+                    "match_id": "m-rule",
+                    "day": 1,
+                    "agent_id": "A",
+                    "intervals": {"first": [0, 2], "second": []},
+                    "picks": [0, 1, 2],
+                    "num_visits": 1,
+                    "total_slots": 3,
+                    "payoff": -1.0,
+                    "num_under": 1,
+                    "num_over": 2,
+                    "intent": "covers all three outcomes",
+                }
+            ],
+            day_aggregates_json=[
+                {
+                    "match_id": "m-rule",
+                    "day": 1,
+                    "slot_attendance": [1, 2, 3, 0],
+                    "over_slots": 2,
+                    "total_attendances": 6,
+                }
+            ],
+        )
+        db_session.add(row)
+        await db_session.commit()
+
+        async with AsyncClient(
+            transport=ASGITransport(app=v2_app), base_url="http://test"
+        ) as client:
+            resp = await client.get("/api/v1/games/m-rule/dashboard")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["CAPACITY"] == 2
+        sp = data["DATA"][0]["decisions"][0]["slotPayoffs"]
+        assert sp == [
+            {"slot": 0, "attendance": 1, "payoff": 1},
+            {"slot": 1, "attendance": 2, "payoff": -1},
+            {"slot": 2, "attendance": 3, "payoff": -1},
+        ]
+
+    @pytest.mark.anyio
+    async def test_null_capacity_threshold_omits_slot_payoffs(
+        self,
+        v2_app,
+        db_session: AsyncSession,
+        disable_dashboard_auth,
+    ) -> None:
+        """When ``capacity_threshold`` is missing on the row, slotPayoffs
+        is empty — we won't fabricate per-slot signs without a threshold."""
+        row = GameResult(
+            game_name="el_farol",
+            game_type="el_farol_interval",
+            num_players=1,
+            num_rounds=1,
+            status="completed",
+            match_id="m-nocap",
+            num_days=1,
+            num_slots=4,
+            max_intervals=2,
+            max_total_slots=4,
+            capacity_threshold=None,
+            agents_json=[{"agent_id": "A", "display_name": "A", "user_id": "u1"}],
+            actions_json=[
+                {
+                    "match_id": "m-nocap",
+                    "day": 1,
+                    "agent_id": "A",
+                    "intervals": {"first": [0, 1], "second": []},
+                    "picks": [0, 1],
+                    "num_visits": 1,
+                    "total_slots": 2,
+                    "payoff": 0.0,
+                    "num_under": 0,
+                    "num_over": 0,
+                    "intent": "",
+                }
+            ],
+            day_aggregates_json=[
+                {
+                    "match_id": "m-nocap",
+                    "day": 1,
+                    "slot_attendance": [1, 1, 0, 0],
+                    "over_slots": 0,
+                    "total_attendances": 2,
+                }
+            ],
+        )
+        db_session.add(row)
+        await db_session.commit()
+
+        async with AsyncClient(
+            transport=ASGITransport(app=v2_app), base_url="http://test"
+        ) as client:
+            resp = await client.get("/api/v1/games/m-nocap/dashboard")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["CAPACITY"] == 0  # reshape defaults to 0 when None
+        assert data["DATA"][0]["decisions"][0]["slotPayoffs"] == []
 
     @pytest.mark.anyio
     async def test_numeric_match_id_falls_back_to_primary_key(
