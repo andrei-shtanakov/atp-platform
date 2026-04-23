@@ -111,22 +111,28 @@ rows become benchmark on migration — no behavioural change.
 
 Purpose-based token gating:
 
-- **MCP middleware (`MCPAuthMiddleware`)** currently only resolves
-  `user_id` from `request.state`. To reject benchmark-purpose tokens,
-  the middleware needs access to the `agent_id` that the token was
-  minted for. Two options:
-  - (a) extend the upstream `JWTUserStateMiddleware` to write
-    `agent_id` and `agent_purpose` onto `scope["state"]` alongside
-    `user_id` when the bearer is an `atp_a_*` token, and read them
-    in the MCP middleware. **Preferred** — concentrates token→agent
-    resolution in one place.
-  - (b) duplicate the resolution inside `MCPAuthMiddleware` (raw DB
-    lookup on every request). Rejected — fans out DB hits.
+- **Token claims carry `agent_id` and `agent_purpose`.** At token
+  issuance time (`POST /api/v1/tokens` for agent-scoped `atp_a_*`
+  tokens), the JWT payload — or the `APIToken` row for opaque
+  tokens — records the `agent_id` + `agent.purpose` snapshot. No
+  DB lookup on the hot path.
+- **`JWTUserStateMiddleware`** is extended to decode the claims and
+  write `scope["state"]["agent_id"]` / `agent_purpose` alongside
+  `user_id`. User-level `atp_u_*` tokens and admin browser sessions
+  leave these keys unset.
+- **`MCPAuthMiddleware`** reads `agent_purpose` from state and
+  rejects anything that isn't `'tournament'`. If `agent_purpose` is
+  absent entirely (user-level token or admin browser session), also
+  reject — MCP is strictly for agent tokens.
 - **Benchmark API (`/api/v1/benchmarks/*`)** symmetrically rejects
-  tokens whose `agent.purpose == 'tournament'`. Same pattern,
-  different direction.
-- **User-level tokens (`atp_u_*`)** and admin sessions aren't
-  affected — they don't carry an agent_id.
+  tokens whose `agent_purpose == 'tournament'`. Unset (user-level /
+  admin) stays allowed.
+- **Migration for existing tokens.** Tokens minted before this PR
+  have no claims — when one hits the hot path we fall back to a
+  lazy one-time lookup (`SELECT agent_id, purpose FROM api_tokens
+  JOIN agents ON ...`) and cache the result in-process keyed by
+  token hash. Once an operator rotates tokens, the lazy path stops
+  triggering. Rotation note goes in the PR-3 CHANGELOG.
 
 Quotas (all first-time enforcement):
 
@@ -168,19 +174,27 @@ strategy, never both and never neither.
 For builtin participants it calls:
 
 ```
-strategy = registry.get_builtin(participant.builtin_strategy)
+seed = hash((tournament.id, participant.id))
+strategy = registry.get_builtin(participant.builtin_strategy, seed=seed)
 action = strategy.decide(game_state_view_for(participant))
 ```
 
-`strategy.decide(...)` is a synchronous call into
-`game_envs.strategies.*` — deterministic, no MCP round-trip. The
-runner's "wait for move" state machine needs one branching point:
+Every builtin strategy class in `game_envs.strategies.*` already
+accepts a `seed: int | None` in its constructor (verified via
+`grep 'self._rng = random.Random(seed)'`). The runner must always
+pass one, derived from the tournament + participant identity so two
+runs of the same private tournament produce identical moves. Using
+the global `random` is a reproducibility regression and is
+explicitly forbidden in the implementation plan.
+
+The runner's "wait for move" state machine needs one branching
+point:
 
 ```
 if participant.builtin_strategy is not None:
-    action = builtin.decide(state)
+    action = builtin.decide(state)   # sync, deterministic
 else:
-    action = await wait_for_make_move(...)
+    action = await wait_for_make_move(...)  # via MCP
 ```
 
 **Cross-package boundary.** `GameRegistry` and the strategies live
@@ -191,24 +205,41 @@ in the uv workspace — no external dep). Alternative — hardcoding the
 builtin list in dashboard — rejected, drifts with upstream.
 
 **Creation API.** `POST /api/v1/tournaments` body gains an optional
-`roster` field:
+`roster` field. Strategy names are namespaced by game (see
+`GET /api/v1/games/{game_type}/builtins` below):
 
 ```json
 {
   "game_type": "el_farol",
   "private": true,
   "roster": [
-    {"builtin_strategy": "traditionalist"},
-    {"builtin_strategy": "contrarian"}
+    {"builtin_strategy": "el_farol/traditionalist"},
+    {"builtin_strategy": "el_farol/contrarian"}
   ],
   "config": {...}
 }
 ```
 
 Real agents still join through MCP `join_tournament` after creation
-(status quo). Builtins are inserted into `Participant` at create
-time; the `num_players` config must match `len(roster_builtins) +
-len(expected_mcp_joiners)` for the tournament to start.
+(status quo). Builtins are inserted into `Participant` rows
+**immediately** at creation. The tournament engine's existing
+"start when `participants.count() == num_players`" check keeps
+working unchanged: builtins already count because they already
+exist as Participant rows.
+
+Roster semantics, explicit:
+
+- `num_players = N`, `len(roster) = K` → engine waits for
+  `N - K` MCP joiners before starting. Already existing behaviour.
+- `K == N` → tournament starts immediately, no MCP joiners
+  expected. Edge case worth testing — validates "pure sparring
+  against builtins".
+- `K > N` → 400 on POST, "builtin roster larger than num_players".
+- `K == 0`, `private=true` → validator still requires at least one
+  of the creator's tournament-purpose agents to be eligible (the
+  creator must commit to joining); the agent joins via MCP after
+  creation as today. 400 if creator has zero tournament-purpose
+  agents.
 
 ### Concurrent-private cap
 
@@ -238,17 +269,28 @@ transition (`status → completed`), calls a new writer that
 materialises the tournament into the `GameResult` schema:
 
 - `game_name`, `game_type` come from the game config
-- `match_id` is set to the tournament's `join_token` or a new UUID
-  for public tournaments
+- `match_id` is **always a freshly-generated UUID**, never the
+  tournament's `join_token`. The `join_token` is a 32-byte invite
+  secret and must never appear in URLs, access logs, or browser
+  history. `GameResult.tournament_id` carries the real linkage.
 - `tournament_id` (new nullable FK) is set to `tournament.id`
 - `actions_json`, `day_aggregates_json`, `round_payoffs_json`,
   `agents_json` are filled from `Round` / `Action` rows via a
   reshape — same shape the CLI writer produces today
 
-This is **dual-write**, so idempotency matters: the writer runs
-inside the same DB session that marks the tournament completed, and
-the insert is guarded by `SELECT 1 FROM game_results WHERE
-tournament_id = :id` beforehand. Rerun-safe.
+This is **dual-write**, so idempotency matters. Rather than the
+check-then-insert pattern (which is TOCTOU-vulnerable under
+concurrent completion handlers), enforce uniqueness in the schema:
+
+```sql
+CREATE UNIQUE INDEX uq_game_results_tournament_id
+    ON game_results(tournament_id)
+    WHERE tournament_id IS NOT NULL;
+```
+
+The writer just attempts the INSERT and treats `IntegrityError` on
+this constraint as "already written, drop it". Works on Postgres
+and SQLite ≥3.8.
 
 Trade-offs considered:
 
@@ -267,14 +309,23 @@ Trade-offs considered:
 `tournament_id` and applies:
 
 ```
-tournament.join_token IS NULL
+tournament_id IS NULL
+  OR tournament.join_token IS NULL
   OR tournament.created_by = :me
   OR EXISTS participant with user_id = :me
   OR user.is_admin
 ```
 
-Matches with `tournament_id IS NULL` (CLI standalone runs) stay
-visible to everyone — no regression.
+**Non-regression invariant.** Every `GameResult` row that exists
+today has `tournament_id IS NULL` (the column is new with this
+spec), so every current match passes the first clause and stays
+visible to anonymous visitors just like today. No existing user-
+facing match disappears. The filter only takes effect for
+tournament matches written **after** PR-5 lands.
+
+An integration test on the `/ui/matches` listing must include an
+anonymous caller seeing a `tournament_id IS NULL` match — the
+contract guarantee for legacy data.
 
 ## Data Model Summary
 
@@ -295,7 +346,10 @@ No `Tournament.visibility` column — we reuse `join_token IS NULL` /
 - `idx_participants_builtin` on `(tournament_id, builtin_strategy)`
   where `builtin_strategy IS NOT NULL` — partial, for builtin
   roster snapshot
-- `idx_game_results_tournament` on `(tournament_id)` — match lookup
+- `uq_game_results_tournament_id` — **UNIQUE partial index** on
+  `(tournament_id) WHERE tournament_id IS NOT NULL` — enforces
+  at-most-one `GameResult` per tournament, neutralising dual-write
+  TOCTOU races (see Match → tournament linkage)
 
 ### Alembic migration
 
@@ -320,13 +374,16 @@ New optional query param. Default lists all purposes for the user.
 
 ### `POST /api/v1/tournaments`
 
-Request body gains one optional field on top of today's schema:
+Request body gains one optional field on top of today's schema.
+The snippet below shows **only the new / relevant fields** —
+`name`, `num_players`, `total_rounds`, `round_deadline_s`, etc.
+remain required exactly as today:
 
 ```json
 {
   "game_type": "el_farol",
   "private": true,
-  "roster": [{"builtin_strategy": "traditionalist"}],
+  "roster": [{"builtin_strategy": "el_farol/traditionalist"}],
   "config": {...}
 }
 ```
@@ -347,6 +404,32 @@ Request body gains one optional field on top of today's schema:
   `get_history` — purpose-gated at middleware.
 - No new tools. Builtins never talk to MCP — they're resolved
   server-side.
+
+### `GET /api/v1/games/{game_type}/builtins`
+
+New endpoint backing the "Builtin sparring partners" widget on
+`/ui/tournaments/new`. Returns the namespaced list of builtin
+strategies available for a game:
+
+```json
+{
+  "game_type": "el_farol",
+  "builtins": [
+    {"name": "traditionalist", "description": "..."},
+    {"name": "contrarian", "description": "..."},
+    {"name": "random", "description": "..."}
+  ]
+}
+```
+
+Strategy names are **namespaced by game** on the wire — i.e. the
+roster submitted on `POST /api/v1/tournaments` carries
+`{"builtin_strategy": "el_farol/contrarian"}`, never bare
+`"contrarian"`. Same string `"random"` exists in PD, auction,
+congestion, and blotto as distinct classes; without the namespace
+`Participant.builtin_strategy` would be ambiguous. The validator on
+`POST /api/v1/tournaments` checks
+`(game_type, strategy_name) ∈ registry.allowed_set()`.
 
 ## UI Changes
 
@@ -370,9 +453,15 @@ Jinja + Pico + HTMX form, reachable from a primary button on
   `num_slots`, `capacity_threshold`).
 - **Round deadline (s)** — default 30.
 
-On success, redirect to `/ui/tournaments/{id}`. The page now shows
-a copy-box with the `join_token` (one-time reveal, existing
-behaviour).
+On success the server **renders the tournament detail page directly
+from the POST handler** — no redirect. The HTML response carries
+the `join_token` in a dismissible copy-box at the top. A POST→GET
+redirect would drop the token from the response; stuffing it into a
+query param would leak it to browser history and access logs.
+Refreshing the detail page later fetches it again via a normal GET
+that does **not** return the token — the user sees the token once,
+stays on the page, copies it out of band. This is the only
+deviation from the rest of `/ui/*` where POST handlers redirect.
 
 ### `/ui/tournaments/{id}`
 
@@ -400,6 +489,7 @@ behaviour).
 | Condition | HTTP | Body |
 | --- | --- | --- |
 | Benchmark-purpose token hits `/mcp` | 403 | `"MCP is tournament-agents only; this token belongs to a benchmark agent"` |
+| User-level token (`atp_u_*`) or admin browser session hits `/mcp` | 403 | `"MCP requires an agent-scoped token (atp_a_*)"` |
 | Tournament-purpose token hits `/api/v1/benchmarks/*` | 403 | `"benchmark API is benchmark-agents only"` |
 | `POST /api/v1/agents` with 6th tournament agent | 429 | `"tournament agent quota exceeded (5/5)"` |
 | `POST /api/v1/tournaments {private:true, roster:[]}` with no owned tournament agents | 400 | `"private tournament needs at least one participant (your agent or a builtin)"` |
@@ -482,7 +572,8 @@ effort).
 | --- | --- | --- | --- |
 | Users flood server with private tournaments | Medium | Medium | Per-user concurrent cap of 3; builtins are cheap (synchronous decide) so compute is bounded by `cap × num_rounds × decide_ms` |
 | MCP rejects existing benchmark-purpose tokens retroactively | Low | High | Pre-existing tokens default to benchmark purpose; MCP is a new surface — no one currently uses it with a benchmark token, but a test confirms the 403 path only catches the intended class |
-| Builtin strategy decisions diverge between test and prod | Medium | High | Same `game_envs.strategies` module used in both; determinism via seeded RNG documented in `ADR-005`-neighbour |
+| Token → agent DB lookup on every JWT-authenticated request | Medium | High | PR-3 puts `agent_id` / `agent_purpose` into the token claims at issuance so the hot path is decode-only. A one-time lazy lookup with in-process cache absorbs legacy tokens until operators rotate. p99 regression monitored on `/api/v1/benchmarks/next-task` and `/mcp` after PR-3 rolls out |
+| Builtins produce non-deterministic moves across two runs of the same private tournament | Medium | High | Runner seeds every builtin with `hash((tournament.id, participant.id))` — documented in Architecture → Builtin participants. Unit test: run the same tournament twice, assert identical action transcripts |
 | Private tournament results leak into public leaderboard | Medium | Medium | Explicit test on the leaderboard SQL joins `game_results.tournament_id → tournaments.join_token IS NULL` |
 | `GameResult` dual-write races with tournament completion | Low | High | Dual-write runs inside the same DB transaction that flips status to `completed`; idempotency guard on `tournament_id` unique lookup |
 | Cross-package `game-environments` import breaks dashboard startup if registry misconfigured | Low | Medium | Import is at module-import time of `tournament/service.py`; any broken registry crashes the server at startup rather than runtime — easy to catch in CI |
