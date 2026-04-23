@@ -47,15 +47,17 @@ class BuiltinDescriptor:
 # ``StrategyRegistry`` lookups to just that game (the global
 # registry is flat but class ``__module__`` attributes let us
 # filter). The registration itself happens in ``game_envs/__init__.py``
-# — see module docstring.
+# — only games with entries in that top-level register block are
+# listed here so advertised support matches runtime resolution.
+# ``stag_hunt`` and ``battle_of_sexes`` strategy classes exist but
+# are not yet wired into the upstream registry; add them here once
+# ``game_envs/__init__.py`` registers them.
 _GAME_STRATEGY_MODULES: dict[str, str] = {
     "el_farol": "game_envs.strategies.el_farol_strategies",
     "prisoners_dilemma": "game_envs.strategies.pd_strategies",
     "colonel_blotto": "game_envs.strategies.blotto_strategies",
     "auction": "game_envs.strategies.auction_strategies",
     "congestion": "game_envs.strategies.congestion_strategies",
-    "stag_hunt": "game_envs.strategies.stag_hunt_strategies",
-    "battle_of_sexes": "game_envs.strategies.bos_strategies",
     "public_goods": "game_envs.strategies.pg_strategies",
 }
 

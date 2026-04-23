@@ -31,7 +31,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from atp.dashboard.models import Agent, User
+from atp.dashboard.models import DEFAULT_TENANT_ID, Agent, User
 from atp.dashboard.tournament.builtins import (
     BuiltinNotFoundError,
     resolve_builtin,
@@ -457,17 +457,21 @@ class TournamentService:
         #
         # LABS-TSA PR-4: every non-builtin Participant row now MUST have
         # agent_id NOT NULL (enforced by the agent-xor-builtin CHECK). If
-        # the user has no owned tournament agent matching agent_name, we
-        # auto-provision one here so legacy MCP clients that never called
-        # ``POST /api/v1/agents`` keep working.
+        # the user has no owned **tournament-purpose** agent matching
+        # agent_name, we auto-provision one here so legacy MCP clients
+        # that never called ``POST /api/v1/agents`` keep working. The
+        # filter excludes benchmark-purpose agents of the same name so a
+        # benchmark agent never gets silently linked to a tournament
+        # Participant.
+        agent_lookup_filter = (
+            Agent.owner_id == user_id,
+            Agent.tenant_id == DEFAULT_TENANT_ID,
+            Agent.name == agent_name,
+            Agent.purpose == "tournament",
+            Agent.deleted_at.is_(None),
+        )
         agent_id = await self._session.scalar(
-            select(Agent.id)
-            .where(
-                Agent.owner_id == user_id,
-                Agent.name == agent_name,
-                Agent.deleted_at.is_(None),
-            )
-            .limit(1)
+            select(Agent.id).where(*agent_lookup_filter).limit(1)
         )
         if agent_id is None:
             # Race-tolerant auto-provision: another concurrent join may
@@ -477,7 +481,7 @@ class TournamentService:
             # outer transaction — we simply re-read the row and
             # continue.
             auto_agent = Agent(
-                tenant_id="default",
+                tenant_id=DEFAULT_TENANT_ID,
                 name=agent_name,
                 agent_type="mcp",
                 owner_id=user_id,
@@ -490,14 +494,11 @@ class TournamentService:
                     await self._session.flush()
                 agent_id = auto_agent.id
             except IntegrityError:
+                # Re-read with the same purpose-aware filter so we pick
+                # up the concurrent insert, not a stale benchmark-
+                # purpose agent that happens to share the name.
                 agent_id = await self._session.scalar(
-                    select(Agent.id)
-                    .where(
-                        Agent.owner_id == user_id,
-                        Agent.name == agent_name,
-                        Agent.deleted_at.is_(None),
-                    )
-                    .limit(1)
+                    select(Agent.id).where(*agent_lookup_filter).limit(1)
                 )
                 if agent_id is None:
                     # Reread failed — propagate the race
@@ -1077,7 +1078,7 @@ class TournamentService:
                     round_id=round_obj.id,
                     participant_id=p.id,
                     action_data=canonical,
-                    source=ActionSource.SUBMITTED,
+                    source=ActionSource.BUILTIN,
                 )
             )
             inserted += 1

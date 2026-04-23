@@ -58,6 +58,10 @@ class ActionSource(StrEnum):
     TIMEOUT_DEFAULT — deadline worker force_resolve_round created a
     default action for a participant who did not submit before the
     round deadline.
+    BUILTIN — LABS-TSA PR-4: tournament runner synthesised this
+    action by calling a builtin strategy's ``choose_action`` during
+    round resolution. Distinct from SUBMITTED so UI/admin reporting
+    can tell real player moves from sparring-partner moves.
 
     Stored as plain String(32) without a native enum type or CHECK
     constraint.
@@ -65,6 +69,7 @@ class ActionSource(StrEnum):
 
     SUBMITTED = "submitted"
     TIMEOUT_DEFAULT = "timeout_default"
+    BUILTIN = "builtin"
 
 
 class Tournament(Base):
