@@ -1001,6 +1001,31 @@ class GameResult(Base):
     )
     metadata_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
+    # El Farol dashboard additive columns (Phase 7). All nullable so legacy
+    # rows stay readable; writers populate them from the typed in-memory
+    # models.
+    match_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    game_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    num_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    num_slots: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_intervals: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_total_slots: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    capacity_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
+    capacity_threshold: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    actions_json: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSON, nullable=True
+    )
+    day_aggregates_json: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSON, nullable=True
+    )
+    round_payoffs_json: Mapped[list[dict[str, float]] | None] = mapped_column(
+        JSON, nullable=True
+    )
+    agents_json: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSON, nullable=True
+    )
+
     # Indexes
     __table_args__ = (
         Index("idx_game_result_name", "game_name"),
@@ -1008,6 +1033,8 @@ class GameResult(Base):
         Index("idx_game_result_status", "status"),
         Index("idx_game_result_created", "created_at"),
         Index("idx_game_result_tenant", "tenant_id"),
+        Index("idx_game_result_match", "match_id"),
+        Index("idx_game_result_game_completed", "game_name", "completed_at"),
     )
 
     def __repr__(self) -> str:

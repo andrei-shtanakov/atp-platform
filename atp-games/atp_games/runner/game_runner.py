@@ -6,6 +6,7 @@ import asyncio
 import copy
 import logging
 import time
+import uuid
 from typing import Any
 
 from atp.adapters.base import AgentAdapter
@@ -14,7 +15,14 @@ from game_envs.core.game import Game, MoveOrder
 
 from atp_games.mapping.action_mapper import ActionMapper
 from atp_games.mapping.observation_mapper import ObservationMapper
-from atp_games.models import EpisodeResult, GameResult, GameRunConfig
+from atp_games.models import (
+    ActionRecord,
+    AgentRecord,
+    EpisodeResult,
+    GameResult,
+    GameRunConfig,
+    IntervalPair,
+)
 from atp_games.runner.action_validator import ActionValidator
 from atp_games.runner.builtin_adapter import BuiltinAdapter
 
@@ -61,6 +69,68 @@ class ProgressReporter:
     def elapsed(self) -> float:
         """Total elapsed time in seconds."""
         return time.monotonic() - self._start_time
+
+
+def _is_slot_list(action: Any) -> bool:
+    """True if ``action`` is a (possibly empty) list of non-negative ints."""
+    if not isinstance(action, list):
+        return False
+    return all(isinstance(s, int) and s >= 0 for s in action)
+
+
+def _slots_to_interval_pair(
+    slots: list[int],
+    *,
+    num_slots: int,
+    max_total_slots: int,
+) -> IntervalPair | None:
+    """Convert a sorted-or-unsorted list of slot indices to an IntervalPair.
+
+    Groups contiguous slot indices into runs. Returns None when the picks
+    decompose into more than two runs (not representable as a pair of
+    contiguous intervals) or when IntervalPair construction rejects the
+    result for any other invariant (out-of-range, total slots exceeded).
+
+    ``max_total_slots`` is the match's configured cap and is stored on the
+    returned :class:`IntervalPair` so the action metadata remains faithful
+    to the rules that produced it (e.g. a match with ``max_total_slots=4``
+    emits pairs whose cap is 4, not the global default).
+    """
+    if not slots:
+        return IntervalPair(
+            first=(),
+            second=(),
+            num_slots=num_slots,
+            max_total_slots=max_total_slots,
+        )
+
+    sorted_slots = sorted(set(slots))
+    runs: list[tuple[int, int]] = []
+    run_start = sorted_slots[0]
+    prev = sorted_slots[0]
+    for s in sorted_slots[1:]:
+        if s == prev + 1:
+            prev = s
+            continue
+        runs.append((run_start, prev))
+        run_start = s
+        prev = s
+    runs.append((run_start, prev))
+
+    if len(runs) > 2:
+        return None
+
+    first: tuple[int, int] | tuple[()] = runs[0]
+    second: tuple[int, int] | tuple[()] = runs[1] if len(runs) == 2 else ()
+    try:
+        return IntervalPair(
+            first=first,
+            second=second,
+            num_slots=num_slots,
+            max_total_slots=max_total_slots,
+        )
+    except ValueError:
+        return None
 
 
 def _make_game_for_episode(
@@ -135,16 +205,24 @@ class GameRunner:
         config = config or GameRunConfig()
         self.action_validator.max_retries = config.max_retries
 
+        run_id = str(uuid.uuid4())
+
         agent_names = {
             pid: self._get_agent_name(pid, adapter) for pid, adapter in agents.items()
         }
+        agent_records = [
+            AgentRecord.from_legacy(agent_id=pid, display_name=name)
+            for pid, name in agent_names.items()
+        ]
 
         progress = ProgressReporter(config.episodes)
 
         if config.parallel <= 1:
-            episodes = await self._run_sequential(game, agents, config, progress)
+            episodes = await self._run_sequential(
+                game, agents, config, progress, run_id
+            )
         else:
-            episodes = await self._run_parallel(game, agents, config, progress)
+            episodes = await self._run_parallel(game, agents, config, progress, run_id)
 
         logger.info(
             "Game '%s' complete: %d episodes in %.1fs",
@@ -158,6 +236,8 @@ class GameRunner:
             config=config,
             episodes=episodes,
             agent_names=agent_names,
+            agents=agent_records,
+            run_id=run_id,
         )
 
     async def _run_sequential(
@@ -166,6 +246,7 @@ class GameRunner:
         agents: dict[str, AgentAdapter],
         config: GameRunConfig,
         progress: ProgressReporter,
+        run_id: str,
     ) -> list[EpisodeResult]:
         """Run episodes sequentially."""
         episodes: list[EpisodeResult] = []
@@ -174,7 +255,7 @@ class GameRunner:
             episode_game = _make_game_for_episode(game, seed)
             episode_agents = self._copy_agents(agents)
             result = await self._run_episode(
-                episode_game, episode_agents, config, idx, seed
+                episode_game, episode_agents, config, idx, seed, run_id
             )
             episodes.append(result)
             await progress.report_complete(idx)
@@ -186,6 +267,7 @@ class GameRunner:
         agents: dict[str, AgentAdapter],
         config: GameRunConfig,
         progress: ProgressReporter,
+        run_id: str,
     ) -> list[EpisodeResult]:
         """Run episodes with bounded parallelism."""
         semaphore = asyncio.Semaphore(config.parallel)
@@ -202,6 +284,7 @@ class GameRunner:
                     config,
                     idx,
                     seed,
+                    run_id,
                 )
                 results[idx] = result
                 await progress.report_complete(idx)
@@ -234,6 +317,7 @@ class GameRunner:
         config: GameRunConfig,
         episode: int,
         seed: int | None = None,
+        run_id: str | None = None,
     ) -> EpisodeResult:
         """Run a single game episode.
 
@@ -255,12 +339,21 @@ class GameRunner:
         game.reset()
         history: list[dict[str, Any]] = []
         actions_log: list[dict[str, Any]] = []
+        action_records: list[ActionRecord] = []
+        round_payoffs: list[dict[str, float]] = []
+
+        # Include run_id so independent runs of the same config don't
+        # collide on match_id. Fall back to a fresh uuid4 if a caller
+        # invokes _run_episode directly (only happens in older tests).
+        resolved_run_id = run_id if run_id is not None else str(uuid.uuid4())
+        match_id = f"{game.name}#{resolved_run_id}#ep{episode}"
+        day = 0
 
         while not game.is_terminal:
             observations = {pid: game.observe(pid) for pid in game.player_ids}
 
             if game.move_order == MoveOrder.SIMULTANEOUS:
-                actions = await self._parallel_moves(
+                actions, intents = await self._parallel_moves(
                     observations,
                     agents,
                     game,
@@ -268,7 +361,7 @@ class GameRunner:
                     config,
                 )
             else:
-                actions = await self._sequential_moves(
+                actions, intents = await self._sequential_moves(
                     observations,
                     agents,
                     game,
@@ -279,14 +372,179 @@ class GameRunner:
             step_result = game.step(actions)
             history.append(step_result.to_dict())
             actions_log.append(dict(actions))
+            round_payoffs.append(
+                {pid: float(v) for pid, v in step_result.payoffs.items()}
+            )
+
+            day += 1
+            self._append_action_records(
+                records=action_records,
+                match_id=match_id,
+                day=day,
+                actions=actions,
+                intents=intents,
+                step_result=step_result,
+                game=game,
+            )
 
         return EpisodeResult(
             episode=episode,
             payoffs=game.get_payoffs(),
             history=history,
             actions_log=actions_log,
+            actions=action_records,
+            round_payoffs=round_payoffs,
             seed=seed,
         )
+
+    def _append_action_records(
+        self,
+        *,
+        records: list[ActionRecord],
+        match_id: str,
+        day: int,
+        actions: dict[str, Any],
+        intents: dict[str, str | None],
+        step_result: Any,
+        game: Game,
+    ) -> None:
+        """Build per-agent ActionRecord for this day when possible.
+
+        ActionRecords are built for games whose player actions are
+        convertible to a slot list via the per-player action space
+        (El Farol accepts flat lists, list-of-pairs and
+        ``{"intervals": [...]}`` shapes). For any other action shape,
+        the list is left untouched — non-interval games simply produce
+        an empty ``EpisodeResult.actions``.
+        """
+        num_slots = self._infer_num_slots(game, actions)
+        max_total_slots = self._infer_max_total_slots(game, num_slots)
+        crowded_slots = self._extract_crowded_slots(step_result)
+
+        for pid, action in actions.items():
+            slot_list = self._normalise_to_slot_list(game, pid, action)
+            if slot_list is None:
+                return  # bail out entirely — non-slot games (PD etc.)
+            intervals = _slots_to_interval_pair(
+                slot_list,
+                num_slots=num_slots,
+                max_total_slots=max_total_slots,
+            )
+            if intervals is None:
+                continue  # action not representable as IntervalPair (>2 runs)
+
+            picks = intervals.covered_slots()
+            payoff = float(step_result.payoffs.get(pid, 0.0))
+            if crowded_slots is not None:
+                num_over = sum(1 for s in picks if s in crowded_slots)
+                num_under = len(picks) - num_over
+            else:
+                num_under = len(picks)
+                num_over = 0
+
+            records.append(
+                ActionRecord(
+                    match_id=match_id,
+                    day=day,
+                    agent_id=pid,
+                    intervals=intervals,
+                    picks=picks,
+                    num_visits=intervals.num_visits(),
+                    total_slots=intervals.total_slots(),
+                    payoff=payoff,
+                    num_under=num_under,
+                    num_over=num_over,
+                    intent=intents.get(pid),
+                )
+            )
+
+    @staticmethod
+    def _normalise_to_slot_list(
+        game: Game, player_id: str, action: Any
+    ) -> list[int] | None:
+        """Normalise an agent action to a flat slot list.
+
+        Returns the slot list for El Farol-style actions (flat list,
+        list of ``[start, end]`` pairs, or ``{"intervals": [...]}``),
+        or ``None`` when the game's action space cannot produce a slot
+        list (e.g. PD whose actions are strings). The action space's
+        ``sanitize`` method does the shape normalisation.
+        """
+        if _is_slot_list(action):
+            return list(action)
+        # Interval-shaped input — only meaningful for slot-based games.
+        try:
+            aspace = game.action_space(player_id)
+        except Exception:
+            return None
+        # Only games whose action space exposes ``sanitize`` returning a
+        # list[int] can produce records here. We detect this by checking
+        # that the space accepts an empty list as a valid slot action.
+        sanitize = getattr(aspace, "sanitize", None)
+        if sanitize is None:
+            return None
+        try:
+            result = sanitize(action)
+        except Exception:
+            return None
+        if not isinstance(result, list):
+            return None
+        if not all(isinstance(s, int) and not isinstance(s, bool) for s in result):
+            return None
+        # Confirm this is a slot-based space (empty is a valid action).
+        try:
+            if not aspace.contains([]):
+                return None
+        except Exception:
+            return None
+        return result
+
+    @staticmethod
+    def _infer_num_slots(game: Game, actions: dict[str, Any]) -> int:
+        """Best-effort extraction of num_slots from game config or actions."""
+        cfg = getattr(game, "config", None)
+        num_slots = getattr(cfg, "num_slots", None)
+        if isinstance(num_slots, int) and num_slots > 0:
+            return num_slots
+        # Fallback: infer from the largest slot index observed.
+        max_slot = -1
+        for action in actions.values():
+            if _is_slot_list(action):
+                for s in action:
+                    if isinstance(s, int) and s > max_slot:
+                        max_slot = s
+        return max_slot + 1 if max_slot >= 0 else 16
+
+    @staticmethod
+    def _infer_max_total_slots(game: Game, num_slots: int) -> int:
+        """Read the match's configured slot cap, falling back to num_slots.
+
+        Prefers ``game.config.max_total_slots`` so persisted
+        :class:`IntervalPair` instances carry the real rule that produced
+        them. When the game config does not expose the attribute (e.g.
+        non-El-Farol slot games), falls back to ``num_slots`` which is a
+        valid upper bound for any action the space can accept.
+        """
+        cfg = getattr(game, "config", None)
+        value = getattr(cfg, "max_total_slots", None)
+        if isinstance(value, int) and value > 0:
+            return value
+        return num_slots
+
+    @staticmethod
+    def _extract_crowded_slots(step_result: Any) -> set[int] | None:
+        """Pull ``crowded_slots_today`` from the step-result public state."""
+        state = getattr(step_result, "state", None)
+        public = getattr(state, "public_state", None)
+        if not isinstance(public, dict):
+            return None
+        crowded = public.get("crowded_slots_today")
+        if crowded is None:
+            return None
+        try:
+            return {int(s) for s in crowded}
+        except (TypeError, ValueError):
+            return None
 
     async def _parallel_moves(
         self,
@@ -295,11 +553,12 @@ class GameRunner:
         game: Game,
         episode: int,
         config: GameRunConfig,
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], dict[str, str | None]]:
         """Send requests to all agents in parallel.
 
         For simultaneous-move games, all agents are queried
-        concurrently.
+        concurrently. Returns both the resolved actions and
+        the per-agent Tier-1 intent strings (``None`` when absent).
         """
         tasks = {
             pid: self._get_validated_action(
@@ -314,7 +573,12 @@ class GameRunner:
         }
 
         results = await asyncio.gather(*tasks.values())
-        return dict(zip(tasks.keys(), results))
+        actions: dict[str, Any] = {}
+        intents: dict[str, str | None] = {}
+        for pid, (action, intent) in zip(tasks.keys(), results):
+            actions[pid] = action
+            intents[pid] = intent
+        return actions, intents
 
     async def _sequential_moves(
         self,
@@ -323,16 +587,19 @@ class GameRunner:
         game: Game,
         episode: int,
         config: GameRunConfig,
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], dict[str, str | None]]:
         """Query agents sequentially in player order.
 
         For sequential-move games, each agent is queried
-        one at a time in the order of player_ids.
+        one at a time in the order of player_ids. Returns both
+        the resolved actions and the per-agent Tier-1 intent
+        strings (``None`` when absent).
         """
         actions: dict[str, Any] = {}
+        intents: dict[str, str | None] = {}
         for pid in game.player_ids:
             if pid in observations:
-                action = await self._get_validated_action(
+                action, intent = await self._get_validated_action(
                     pid,
                     agents[pid],
                     observations[pid],
@@ -341,7 +608,8 @@ class GameRunner:
                     config,
                 )
                 actions[pid] = action
-        return actions
+                intents[pid] = intent
+        return actions, intents
 
     async def _get_validated_action(
         self,
@@ -351,13 +619,16 @@ class GameRunner:
         game: Game,
         episode: int,
         config: GameRunConfig,
-    ) -> Any:
+    ) -> tuple[Any, str | None]:
         """Get a validated action from an agent.
 
         Sends the observation to the agent, validates the
         response, and retries on invalid actions up to
         max_retries times. Falls back to a default action
-        if all retries fail.
+        if all retries fail. Returns the resolved action
+        alongside the agent's Tier-1 ``intent`` self-report
+        (``None`` when absent or when the fallback path is
+        taken).
         """
         action_space = game.action_space(player_id)
         request = self.observation_mapper.to_atp_request(
@@ -371,7 +642,7 @@ class GameRunner:
                 result = self.action_validator.validate(game_action, action_space)
 
                 if result.valid:
-                    return game_action.action
+                    return game_action.action, game_action.intent
 
                 if attempt < config.max_retries:
                     error_msg = result.errors[0]
@@ -403,7 +674,7 @@ class GameRunner:
             player_id,
             default.action,
         )
-        return default.action
+        return default.action, None
 
     def _add_error_context(
         self,

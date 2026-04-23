@@ -12,6 +12,7 @@ def _game(n: int = 5, num_slots: int = 16) -> ElFarolBar:
             num_players=n,
             num_slots=num_slots,
             capacity_threshold=3,
+            max_total_slots=min(num_slots, 8),
         )
     )
 

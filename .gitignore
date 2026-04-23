@@ -101,3 +101,5 @@ docs/*.pdf
 
 # Experiment output directories
 results/
+
+.agents/skills/
