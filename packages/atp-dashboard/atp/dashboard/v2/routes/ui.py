@@ -15,7 +15,7 @@ from typing import Any
 
 from fastapi import APIRouter, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import selectinload
 
 from atp.dashboard.benchmark.models import Benchmark, Run, RunStatus, TaskResult
@@ -531,8 +531,11 @@ async def ui_matches(
     literal ``"el_farol"`` anyway.
     """
     from atp.dashboard.models import GameResult
+    from atp.dashboard.tournament.models import Participant
+    from atp.dashboard.tournament.models import Tournament as _Tournament
 
     user = await _get_ui_user(request, session)
+    user_id = user.id if user else None
 
     renderable_filters = [
         GameResult.status == "completed",
@@ -540,15 +543,41 @@ async def ui_matches(
         GameResult.day_aggregates_json.is_not(None),
     ]
 
-    stmt = (
-        select(GameResult)
-        .where(*renderable_filters)
-        .order_by(GameResult.completed_at.desc().nulls_last())
-        .limit(100)
-    )
+    def _apply_visibility(stmt):  # type: ignore[no-untyped-def]
+        """LABS-TSA PR-5: outer-join Tournament and filter by visibility.
+
+        Rows pass when any of:
+          * ``tournament_id IS NULL`` (legacy / CLI standalone runs)
+          * ``tournament.join_token IS NULL`` (public tournaments)
+          * the current user is the tournament creator
+          * the current user is a Participant of the tournament
+          * the current user is an admin (no filter applied)
+        """
+        stmt = stmt.outerjoin(_Tournament, GameResult.tournament_id == _Tournament.id)
+        if user is not None and user.is_admin:
+            return stmt
+        visibility_clauses: list[Any] = [
+            GameResult.tournament_id.is_(None),
+            _Tournament.join_token.is_(None),
+        ]
+        if user_id is not None:
+            visibility_clauses.append(_Tournament.created_by == user_id)
+            visibility_clauses.append(
+                _Tournament.id.in_(
+                    select(Participant.tournament_id).where(
+                        Participant.user_id == user_id
+                    )
+                )
+            )
+        return stmt.where(or_(*visibility_clauses))
+
+    stmt = _apply_visibility(select(GameResult).where(*renderable_filters))
+    stmt = stmt.order_by(GameResult.completed_at.desc().nulls_last()).limit(100)
     matches = list((await session.execute(stmt)).scalars().all())
 
-    total_stmt = select(func.count(GameResult.id)).where(*renderable_filters)
+    total_stmt = _apply_visibility(
+        select(func.count(GameResult.id)).where(*renderable_filters)
+    )
     total = (await session.execute(total_stmt)).scalar_one()
 
     return _templates(request).TemplateResponse(
@@ -730,6 +759,215 @@ async def ui_tournaments(
             "total": total,
             "user": user,
         },
+    )
+
+
+# Whitelist of game_types surfaced by the /ui/tournaments/new form —
+# derived from TournamentService.SUPPORTED_GAMES so the UI cannot drift
+# from the service-level validator.
+from atp.dashboard.tournament.service import (  # noqa: E402
+    SUPPORTED_GAMES as _TOURNAMENT_SUPPORTED_GAMES,
+)
+
+_TOURNAMENT_NEW_GAMES: list[str] = sorted(_TOURNAMENT_SUPPORTED_GAMES)
+
+
+def _resolve_form_user(request: Request, session_user: User | None) -> int | None:
+    """Resolve the active user id for form POSTs.
+
+    Mirrors ``get_current_user_for_tournament`` in ``tournament_api.py``:
+    prefers the JWT-decoded ``request.state.user_id`` and falls back to
+    id=1 when ``ATP_DISABLE_AUTH=true`` so integration tests that bypass
+    auth can seed a user and still transit the POST path.
+    """
+    import os
+
+    if session_user is not None:
+        return session_user.id
+    user_id: int | None = getattr(request.state, "user_id", None)
+    if user_id is not None:
+        return user_id
+    if os.environ.get("ATP_DISABLE_AUTH") == "true":
+        return 1
+    return None
+
+
+@router.get("/tournaments/new", response_class=HTMLResponse)
+@limiter.limit("60/minute")
+async def ui_tournaments_new(
+    request: Request,
+    session: DBSession,
+    game_type: str = "el_farol",
+) -> HTMLResponse:
+    """Render the self-service tournament creation form.
+
+    LABS-TSA PR-5. Non-admin users see a forced-private visibility
+    widget (disabled radio backed by a hidden input so the POST body
+    always carries ``private=on``); admins can toggle private/public.
+    The builtin-strategy checklist is game-scoped via
+    ``list_builtins_for_game``.
+    """
+    from atp.dashboard.tournament.builtins import list_builtins_for_game
+
+    user = await _get_ui_user(request, session)
+    builtins = list_builtins_for_game(game_type)
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/tournament_new.html",
+        context={
+            "active_page": "tournaments",
+            "games": _TOURNAMENT_NEW_GAMES,
+            "selected_game": game_type,
+            "builtins": builtins,
+            "user": user,
+        },
+    )
+
+
+@router.post("/tournaments/new", response_class=HTMLResponse)
+@limiter.limit("30/minute")
+async def ui_tournaments_new_submit(
+    request: Request,
+    session: DBSession,
+) -> HTMLResponse:
+    """Handle the self-service tournament creation POST.
+
+    LABS-TSA PR-5. Renders the detail page inline on success (no
+    redirect) so the one-time ``join_token`` reveal stays in the
+    response body and is not exposed through a follow-up GET.
+    """
+    from atp.dashboard.mcp import tournament_event_bus
+    from atp.dashboard.tournament.errors import (
+        ConcurrentPrivateCapExceededError,
+        RosterValidationError,
+    )
+    from atp.dashboard.tournament.errors import (
+        ValidationError as TournamentValidationError,
+    )
+    from atp.dashboard.tournament.service import TournamentService
+
+    user_row = await _get_ui_user(request, session)
+    user_id = _resolve_form_user(request, user_row)
+    if user_id is None:
+        return RedirectResponse(url="/ui/login", status_code=303)  # type: ignore[return-value]
+    creator = user_row or await session.get(User, user_id)
+    if creator is None or not creator.is_active:
+        return RedirectResponse(url="/ui/login", status_code=303)  # type: ignore[return-value]
+
+    form = await request.form()
+    game_type = str(form.get("game_type", "el_farol"))
+    private = str(form.get("private", "")).lower() in ("on", "true", "1")
+    try:
+        num_players = int(str(form.get("num_players", "2")))
+        total_rounds = int(str(form.get("total_rounds", "1")))
+        round_deadline_s = int(str(form.get("round_deadline_s", "30")))
+    except ValueError:
+        return _render_tournament_new_form_error(
+            request,
+            creator,
+            game_type,
+            "num_players / total_rounds / round_deadline_s must be integers",
+        )
+    roster_raw = form.getlist("roster[]")
+    roster = [str(r) for r in roster_raw if r]
+
+    # Non-admins cannot create public tournaments — enforce server-side
+    # regardless of what the form submitted. The template already hides
+    # the "public" radio for non-admins, but the check here is the hard
+    # gate.
+    if not creator.is_admin:
+        private = True
+
+    bus = getattr(request.app.state, "tournament_event_bus", tournament_event_bus)
+    svc = TournamentService(session=session, bus=bus)
+    tournament_name = f"{game_type} #{creator.username}"
+    try:
+        tournament, join_token = await svc.create_tournament(
+            creator=creator,
+            name=tournament_name,
+            game_type=game_type,
+            num_players=num_players,
+            total_rounds=total_rounds,
+            round_deadline_s=round_deadline_s,
+            private=private,
+            roster=roster,
+        )
+    except (
+        TournamentValidationError,
+        RosterValidationError,
+        ConcurrentPrivateCapExceededError,
+    ) as exc:
+        return _render_tournament_new_form_error(request, creator, game_type, str(exc))
+    # Ensure the caller-owned transaction writes the Tournament row.
+    await session.commit()
+
+    # Re-read the tournament with participants and rounds eager-loaded so
+    # the synchronous Jinja render doesn't trigger an async lazy-load
+    # (which blows up with ``MissingGreenlet``).
+    from atp.dashboard.tournament.models import Round
+    from atp.dashboard.tournament.models import Tournament as _Tournament
+
+    reloaded = (
+        await session.execute(
+            select(_Tournament)
+            .where(_Tournament.id == tournament.id)
+            .options(
+                selectinload(_Tournament.participants),
+                selectinload(_Tournament.rounds).selectinload(Round.actions),
+            )
+        )
+    ).scalar_one()
+
+    # Server-render the detail page directly so the join_token is never
+    # exposed through a POST→GET redirect.
+    creator_name = creator.username
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/tournament_detail.html",
+        context={
+            "active_page": "tournaments",
+            "tournament": reloaded,
+            "creator_name": creator_name,
+            "cancelled_by_name": None,
+            "sorted_rounds": sorted(
+                list(reloaded.rounds), key=lambda r: r.round_number, reverse=True
+            ),
+            "sorted_participants": sorted(
+                list(reloaded.participants), key=lambda p: p.id
+            ),
+            "participant_map": {p.id: p.agent_name for p in reloaded.participants},
+            "completed_rounds": 0,
+            "timeline": [],
+            "user": creator,
+            "is_admin": creator.is_admin,
+            "visible_reasoning_action_ids": set(),
+            "join_token_once": join_token,
+        },
+    )
+
+
+def _render_tournament_new_form_error(
+    request: Request,
+    user: User,
+    game_type: str,
+    error: str,
+) -> HTMLResponse:
+    """Re-render /ui/tournaments/new with an error banner."""
+    from atp.dashboard.tournament.builtins import list_builtins_for_game
+
+    builtins = list_builtins_for_game(game_type)
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/tournament_new.html",
+        context={
+            "active_page": "tournaments",
+            "games": _TOURNAMENT_NEW_GAMES,
+            "selected_game": game_type,
+            "builtins": builtins,
+            "user": user,
+            "error": error,
+        },
+        status_code=400,
     )
 
 
@@ -1406,7 +1644,15 @@ async def ui_analytics(request: Request, session: DBSession) -> HTMLResponse:
 @router.get("/agents", response_class=HTMLResponse)
 @limiter.limit("120/minute")
 async def ui_agents(request: Request, session: DBSession) -> HTMLResponse:
-    """My Agents page."""
+    """My Agents page.
+
+    LABS-TSA PR-5: adds a per-purpose quota strip (benchmark + tournament
+    agent counts vs. their configured caps) and surfaces ``purpose`` as a
+    table column. ``counts`` and ``quota`` are keyed by the two
+    ``Agent.purpose`` values.
+    """
+    from atp.dashboard.v2.config import get_config
+
     user = await _get_ui_user(request, session)
     if not user:
         return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
@@ -1433,11 +1679,32 @@ async def ui_agents(request: Request, session: DBSession) -> HTMLResponse:
             name=a.name,
             version=a.version,
             agent_type=a.agent_type,
+            purpose=a.purpose,
             created_at=a.created_at,
             token_count=tc,
         )
         for a, tc in result.all()
     ]
+
+    # Per-purpose counts for the quota strip. Exclude soft-deleted agents
+    # so the UI matches the enforcement logic in create_agent_for_user.
+    counts: dict[str, int] = {}
+    for purpose in ("benchmark", "tournament"):
+        counts[purpose] = (
+            await session.scalar(
+                select(func.count(Agent.id)).where(
+                    Agent.owner_id == user.id,
+                    Agent.purpose == purpose,
+                    Agent.deleted_at.is_(None),
+                )
+            )
+            or 0
+        )
+    cfg = get_config()
+    quota = {
+        "benchmark": cfg.max_benchmark_agents_per_user,
+        "tournament": cfg.max_tournament_agents_per_user,
+    }
 
     error = request.query_params.get("error")
     return _templates(request).TemplateResponse(
@@ -1447,6 +1714,8 @@ async def ui_agents(request: Request, session: DBSession) -> HTMLResponse:
             "active_page": "agents",
             "user": user,
             "agents": agents,
+            "counts": counts,
+            "quota": quota,
             "error": error,
         },
     )

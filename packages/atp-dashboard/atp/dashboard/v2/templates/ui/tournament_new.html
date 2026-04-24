@@ -1,0 +1,60 @@
+{% extends "ui/base_ui.html" %}
+
+{% block title %}ATP · New tournament{% endblock %}
+
+{% block content %}
+<article style="padding:16px 20px; max-width:720px">
+  <h2>New tournament</h2>
+  {% if error %}
+  <div class="cancel-box" style="background:#fde2e2;border-color:#c62828;color:#8b0000;padding:12px;margin:12px 0;border-radius:4px">
+    <strong>Error:</strong> {{ error }}
+  </div>
+  {% endif %}
+  <form method="post" action="/ui/tournaments/new">
+    <label>Game
+      <select
+        name="game_type"
+        id="game_type"
+        onchange="window.location.assign('/ui/tournaments/new?game_type=' + encodeURIComponent(this.value))">
+        {% for game in games %}
+        <option value="{{ game }}"{% if game == selected_game %} selected{% endif %}>{{ game }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <p style="color:#666; margin:4px 0 12px; font-size:0.9em">
+      Changing the game reloads the page to refresh the builtin roster below.
+    </p>
+
+    <fieldset>
+      <legend>Visibility</legend>
+      {% if user and user.is_admin %}
+      <label><input type="radio" name="private" value="on" checked> Private</label>
+      <label><input type="radio" name="private" value="off"> Public</label>
+      {% else %}
+      {# Disabled inputs don't submit. Use a hidden input to carry the
+         "always private for non-admins" intent into the POST body and
+         render a disabled radio purely for visual feedback. #}
+      <input type="hidden" name="private" value="on">
+      <label><input type="radio" checked disabled> Private (non-admins cannot create public tournaments)</label>
+      {% endif %}
+    </fieldset>
+
+    <label>num_players <input type="number" name="num_players" min="2" max="16" value="4" required></label>
+    <label>total_rounds <input type="number" name="total_rounds" min="1" max="500" value="30" required></label>
+    <label>round_deadline_s <input type="number" name="round_deadline_s" min="5" max="600" value="30" required></label>
+
+    <fieldset>
+      <legend>Builtin sparring partners</legend>
+      {% if builtins %}
+      {% for b in builtins %}
+      <label><input type="checkbox" name="roster[]" value="{{ b.name }}"> {{ b.name }} — {{ b.description }}</label>
+      {% endfor %}
+      {% else %}
+      <p style="color:#666">No builtin strategies registered for this game.</p>
+      {% endif %}
+    </fieldset>
+
+    <button type="submit">Create</button>
+  </form>
+</article>
+{% endblock %}
