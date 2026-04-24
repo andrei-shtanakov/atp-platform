@@ -84,3 +84,6 @@ docs/*.pdf
 
 # Experiment output directories
 results/
+
+# Local presentation drafts
+PRESENTATION_PLAN_EL_FAROL.md
