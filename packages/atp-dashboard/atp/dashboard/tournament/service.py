@@ -614,14 +614,15 @@ class TournamentService:
         )
         self._session.add(round_1)
         # Commit (not just flush) BEFORE publishing round_started —
-        # same invariant the subsequent-round path enforces at line
-        # 1186 (LABS-74). The notification forwarder opens a fresh DB
-        # session to build the per-player state snapshot; without the
-        # commit that session reads pre-commit rows and the snapshot's
-        # state trails the outer event.round_number by one. The MCP
-        # ``join`` shim also subscribes to the event bus *before*
-        # calling ``service.join()``, so a pre-commit publish could
-        # deliver a first-round state that hasn't yet been persisted.
+        # same invariant the subsequent-round branch of
+        # ``_resolve_round`` enforces (LABS-74). The notification
+        # forwarder opens a fresh DB session to build the per-player
+        # state snapshot; without the commit that session reads
+        # pre-commit rows and the snapshot's state trails the outer
+        # event.round_number by one. The MCP ``join`` shim also
+        # subscribes to the event bus *before* calling
+        # ``service.join()``, so a pre-commit publish could deliver a
+        # first-round state that hasn't yet been persisted.
         await self._session.commit()
         await self._bus.publish(
             TournamentEvent(
