@@ -30,6 +30,7 @@ COPY atp/ atp/
 COPY game-environments/ game-environments/
 COPY atp-games/ atp-games/
 COPY migrations/ migrations/
+COPY scripts/ scripts/
 COPY alembic.ini ./
 
 # Install workspace packages (uses cached deps)
