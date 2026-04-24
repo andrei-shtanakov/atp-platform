@@ -227,3 +227,161 @@ class TestMatchesListing:
         html = resp.text
         # newer appears first
         assert html.index("m-newer") < html.index("m-older")
+
+
+class TestVisibilityFilter:
+    """LABS-TSA PR-5: /ui/matches must filter rows linked to private
+    tournaments so non-owners cannot see them. Legacy rows with
+    ``tournament_id IS NULL`` (CLI standalone runs) stay visible to
+    everyone — that's the non-regression path.
+    """
+
+    @pytest.mark.anyio
+    async def test_anonymous_does_not_see_private_tournament_match(
+        self,
+        v2_app,
+        db_session: AsyncSession,
+    ) -> None:
+        """A match linked to a private tournament (``join_token`` set)
+        is hidden from anonymous viewers."""
+        from atp.dashboard.models import User
+        from atp.dashboard.tournament.models import Tournament
+
+        user = User(
+            username="creator",
+            email="c@test.com",
+            hashed_password="x",
+            is_active=True,
+        )
+        db_session.add(user)
+        await db_session.commit()
+
+        t = Tournament(
+            game_type="el_farol",
+            num_players=2,
+            total_rounds=1,
+            round_deadline_s=30,
+            created_by=user.id,
+            join_token="secret-private-token",
+        )
+        db_session.add(t)
+        await db_session.commit()
+
+        db_session.add(
+            GameResult(
+                game_name="El Farol Bar (n=2, days=1)",
+                game_type="tournament",
+                num_players=2,
+                num_rounds=1,
+                status="completed",
+                completed_at=datetime(2026, 4, 20, 12, 0),
+                tournament_id=t.id,
+                match_id="uuid-private",
+                actions_json=[{"day": 1}],
+                day_aggregates_json=[
+                    {"day": 1, "slot_attendance": [0] * 16, "over_slots": 0}
+                ],
+            )
+        )
+        await db_session.commit()
+
+        async with AsyncClient(
+            transport=ASGITransport(app=v2_app), base_url="http://test"
+        ) as client:
+            resp = await client.get("/ui/matches")
+
+        assert resp.status_code == 200
+        assert "uuid-private" not in resp.text
+
+    @pytest.mark.anyio
+    async def test_anonymous_sees_legacy_null_tournament_match(
+        self,
+        v2_app,
+        db_session: AsyncSession,
+    ) -> None:
+        """Rows with ``tournament_id IS NULL`` (CLI standalone runs) stay
+        visible to everyone — non-regression for legacy matches.
+        """
+        db_session.add(
+            GameResult(
+                game_name="El Farol Bar (n=6, days=30)",
+                game_type="repeated",
+                num_players=6,
+                num_rounds=30,
+                status="completed",
+                completed_at=datetime(2026, 4, 20, 12, 0),
+                tournament_id=None,
+                match_id="uuid-legacy",
+                actions_json=[{"day": 1}],
+                day_aggregates_json=[
+                    {"day": 1, "slot_attendance": [0] * 16, "over_slots": 0}
+                ],
+            )
+        )
+        await db_session.commit()
+
+        async with AsyncClient(
+            transport=ASGITransport(app=v2_app), base_url="http://test"
+        ) as client:
+            resp = await client.get("/ui/matches")
+
+        assert resp.status_code == 200
+        assert "uuid-legacy" in resp.text
+
+    @pytest.mark.anyio
+    async def test_anonymous_sees_public_tournament_match(
+        self,
+        v2_app,
+        db_session: AsyncSession,
+    ) -> None:
+        """A match linked to a public tournament (``join_token IS NULL``)
+        stays visible to everyone.
+        """
+        from atp.dashboard.models import User
+        from atp.dashboard.tournament.models import Tournament
+
+        user = User(
+            username="creator2",
+            email="c2@test.com",
+            hashed_password="x",
+            is_active=True,
+        )
+        db_session.add(user)
+        await db_session.commit()
+
+        t = Tournament(
+            game_type="el_farol",
+            num_players=2,
+            total_rounds=1,
+            round_deadline_s=30,
+            created_by=user.id,
+            join_token=None,  # public
+        )
+        db_session.add(t)
+        await db_session.commit()
+
+        db_session.add(
+            GameResult(
+                game_name="El Farol Bar (public)",
+                game_type="tournament",
+                num_players=2,
+                num_rounds=1,
+                status="completed",
+                completed_at=datetime(2026, 4, 20, 12, 0),
+                tournament_id=t.id,
+                match_id="uuid-public",
+                actions_json=[{"day": 1}],
+                day_aggregates_json=[
+                    {"day": 1, "slot_attendance": [0] * 16, "over_slots": 0}
+                ],
+            )
+        )
+        await db_session.commit()
+
+        async with AsyncClient(
+            transport=ASGITransport(app=v2_app), base_url="http://test"
+        ) as client:
+            resp = await client.get("/ui/matches")
+
+        assert resp.status_code == 200
+        assert "uuid-public" in resp.text

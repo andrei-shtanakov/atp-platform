@@ -15,7 +15,7 @@ from typing import Any
 
 from fastapi import APIRouter, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import selectinload
 
 from atp.dashboard.benchmark.models import Benchmark, Run, RunStatus, TaskResult
@@ -531,8 +531,11 @@ async def ui_matches(
     literal ``"el_farol"`` anyway.
     """
     from atp.dashboard.models import GameResult
+    from atp.dashboard.tournament.models import Participant
+    from atp.dashboard.tournament.models import Tournament as _Tournament
 
     user = await _get_ui_user(request, session)
+    user_id = user.id if user else None
 
     renderable_filters = [
         GameResult.status == "completed",
@@ -540,15 +543,41 @@ async def ui_matches(
         GameResult.day_aggregates_json.is_not(None),
     ]
 
-    stmt = (
-        select(GameResult)
-        .where(*renderable_filters)
-        .order_by(GameResult.completed_at.desc().nulls_last())
-        .limit(100)
-    )
+    def _apply_visibility(stmt):  # type: ignore[no-untyped-def]
+        """LABS-TSA PR-5: outer-join Tournament and filter by visibility.
+
+        Rows pass when any of:
+          * ``tournament_id IS NULL`` (legacy / CLI standalone runs)
+          * ``tournament.join_token IS NULL`` (public tournaments)
+          * the current user is the tournament creator
+          * the current user is a Participant of the tournament
+          * the current user is an admin (no filter applied)
+        """
+        stmt = stmt.outerjoin(_Tournament, GameResult.tournament_id == _Tournament.id)
+        if user is not None and user.is_admin:
+            return stmt
+        visibility_clauses: list[Any] = [
+            GameResult.tournament_id.is_(None),
+            _Tournament.join_token.is_(None),
+        ]
+        if user_id is not None:
+            visibility_clauses.append(_Tournament.created_by == user_id)
+            visibility_clauses.append(
+                _Tournament.id.in_(
+                    select(Participant.tournament_id).where(
+                        Participant.user_id == user_id
+                    )
+                )
+            )
+        return stmt.where(or_(*visibility_clauses))
+
+    stmt = _apply_visibility(select(GameResult).where(*renderable_filters))
+    stmt = stmt.order_by(GameResult.completed_at.desc().nulls_last()).limit(100)
     matches = list((await session.execute(stmt)).scalars().all())
 
-    total_stmt = select(func.count(GameResult.id)).where(*renderable_filters)
+    total_stmt = _apply_visibility(
+        select(func.count(GameResult.id)).where(*renderable_filters)
+    )
     total = (await session.execute(total_stmt)).scalar_one()
 
     return _templates(request).TemplateResponse(
