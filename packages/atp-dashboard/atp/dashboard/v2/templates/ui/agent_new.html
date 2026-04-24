@@ -1,0 +1,65 @@
+{% extends "ui/base_ui.html" %}
+
+{% block title %}Register {{ purpose }} agent · ATP{% endblock %}
+
+{% block content %}
+<article style="padding:16px 20px; max-width:560px">
+  <header style="display:flex; align-items:baseline; gap:10px; margin-bottom:12px">
+    <h2 style="margin:0">Register {{ purpose }} agent</h2>
+    <small><a href="/ui/agents">← all agents</a></small>
+  </header>
+
+  {% if error %}
+  <aside style="background:#ffeded; color:#8a1f11; padding:10px 14px; border-radius:6px; margin-bottom:14px">
+    <strong>Error:</strong> {{ error }}
+  </aside>
+  {% endif %}
+
+  <p style="color:var(--muted-color,#6b7280)">
+    {% if purpose == "tournament" %}
+    Tournament agents play in game-theoretic tournaments via the
+    <code>/mcp</code> server. A tournament agent's token is required
+    to <code>join_tournament</code> / <code>submit_action</code>.
+    {% else %}
+    Benchmark agents are evaluated by test suites via
+    <code>atp test</code>. A benchmark agent's token authenticates
+    the <code>/api/v1/benchmarks/*</code> pull-model endpoints.
+    {% endif %}
+  </p>
+
+  <form method="post" action="/ui/agents/new">
+    <input type="hidden" name="purpose" value="{{ purpose }}">
+
+    <label>Name
+      <input type="text" name="name" required
+             placeholder="{% if purpose == 'tournament' %}my-tournament-bot{% else %}my-benchmark-agent{% endif %}"
+             value="{{ form_name | default('') }}"
+             pattern="[a-zA-Z0-9_.\-]+"
+             title="Letters, digits, dash, underscore, dot">
+      <small>Letters, digits, dash, underscore, dot. Unique per your account.</small>
+    </label>
+
+    <label>Adapter type
+      <select name="agent_type">
+        {% set default_type = 'mcp' if purpose == 'tournament' else 'http' %}
+        {% for t in ['mcp', 'http', 'cli', 'sdk'] %}
+        <option value="{{ t }}"{% if (form_agent_type or default_type) == t %} selected{% endif %}>{{ t }}</option>
+        {% endfor %}
+      </select>
+      <small>
+        {% if purpose == "tournament" %}
+        Tournament agents must use <code>mcp</code>.
+        {% else %}
+        Benchmark agents are usually <code>http</code> or <code>cli</code>.
+        {% endif %}
+      </small>
+    </label>
+
+    <label>Description (optional)
+      <textarea name="description" rows="3" placeholder="What this agent does, what strategy it uses, etc.">{{ form_description | default('') }}</textarea>
+    </label>
+
+    <button type="submit">Register agent</button>
+  </form>
+</article>
+{% endblock %}

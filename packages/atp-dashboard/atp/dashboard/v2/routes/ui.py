@@ -1889,6 +1889,101 @@ async def _render_agent_detail(
     )
 
 
+@router.get("/agents/new", response_class=HTMLResponse)
+@limiter.limit("60/minute")
+async def ui_agent_new(
+    request: Request,
+    session: DBSession,
+    purpose: str = "benchmark",
+) -> HTMLResponse:
+    """Render the agent-registration form.
+
+    Reachable from the "Register benchmark agent" / "Register tournament
+    agent" buttons on ``/ui/agents``. Must be declared BEFORE
+    ``/agents/{agent_id}`` below — FastAPI route matching is
+    declaration-order, and ``"new"`` would fail the
+    ``agent_id: int`` coercion otherwise (this was the QA-blocking
+    422 bug surfaced on prod).
+    """
+    user = await _get_ui_user(request, session)
+    if not user:
+        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+    if purpose not in ("benchmark", "tournament"):
+        purpose = "benchmark"
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/agent_new.html",
+        context={
+            "active_page": "agents",
+            "user": user,
+            "purpose": purpose,
+            "error": None,
+        },
+    )
+
+
+@router.post("/agents/new", response_class=HTMLResponse)
+@limiter.limit("30/minute")
+async def ui_agent_new_submit(
+    request: Request,
+    session: DBSession,
+) -> HTMLResponse:
+    """Create an agent from the UI form; redirect to /ui/agents on success."""
+    user = await _get_ui_user(request, session)
+    if not user:
+        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+    form = await request.form()
+    name = str(form.get("name", "")).strip()
+    agent_type = str(form.get("agent_type", "mcp")).strip()
+    purpose = str(form.get("purpose", "benchmark")).strip()
+    description = str(form.get("description", "")).strip() or None
+
+    if purpose not in ("benchmark", "tournament"):
+        purpose = "benchmark"
+
+    error: str | None = None
+    if not name:
+        error = "Name is required."
+
+    if error is None:
+        from atp.dashboard.v2.routes.agent_management_api import (
+            create_agent_for_user,
+        )
+
+        try:
+            await create_agent_for_user(
+                session=session,
+                user=user,
+                name=name,
+                version="latest",
+                agent_type=agent_type,
+                description=description,
+                config=None,
+                purpose=purpose,
+            )
+        except HTTPException as exc:
+            error = str(exc.detail)
+        except Exception as exc:  # pragma: no cover - defensive
+            error = str(exc)
+
+    if error is not None:
+        return _templates(request).TemplateResponse(
+            request=request,
+            name="ui/agent_new.html",
+            context={
+                "active_page": "agents",
+                "user": user,
+                "purpose": purpose,
+                "form_name": name,
+                "form_agent_type": agent_type,
+                "form_description": description or "",
+                "error": error,
+            },
+            status_code=400,
+        )
+    return RedirectResponse(url="/ui/agents", status_code=303)  # type: ignore[return-value]
+
+
 @router.get("/agents/{agent_id}", response_class=HTMLResponse)
 @limiter.limit("120/minute")
 async def ui_agent_detail(
