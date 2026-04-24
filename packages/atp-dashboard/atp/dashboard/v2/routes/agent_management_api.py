@@ -105,11 +105,17 @@ async def create_agent_for_user(
             session.add(agent)
             await session.flush()
     except IntegrityError as exc:
+        # The detail deliberately does not single out ``version``: on the
+        # current schema (tenant_id, owner_id, name, version) the
+        # conflict may be on that 4-tuple, but on the legacy prod schema
+        # (tenant_id, name) any new version of an existing name also
+        # trips this path. Keep the copy accurate under both by
+        # referring to the name only.
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                f"Agent '{name}' version '{version}' already exists "
-                "(possibly soft-deleted; pick a different name)"
+                f"Agent name '{name}' is already in use "
+                "(possibly by a soft-deleted row; pick a different name)"
             ),
         ) from exc
     await session.refresh(agent)

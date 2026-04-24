@@ -130,8 +130,10 @@ class TestAgentNewSubmit:
     ) -> None:
         """Regression: before the fix, IntegrityError escaped as a 500 and
         the error-template render tripped on user.is_admin lazy-load
-        (PendingRollbackError). Now the session is rolled back and a
-        friendly 409 message is rendered at status 400."""
+        (PendingRollbackError). Now the failed INSERT is scoped by a
+        SAVEPOINT — only that SAVEPOINT rolls back while the outer
+        session/transaction stays live — and a friendly 409 message is
+        rendered at status 400."""
         user, cookies = owner_cookies
 
         # Seed a soft-deleted agent with the same (owner, name, version)
@@ -166,7 +168,7 @@ class TestAgentNewSubmit:
                 },
             )
         assert resp.status_code == 400, resp.text
-        assert "already exists" in resp.text.lower()
+        assert "already in use" in resp.text.lower()
 
     @pytest.mark.anyio
     async def test_post_without_name_renders_error(self, v2_app, owner_cookies) -> None:
