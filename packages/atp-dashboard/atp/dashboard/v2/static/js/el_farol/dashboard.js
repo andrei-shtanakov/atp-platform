@@ -56,7 +56,7 @@ function renderRulesDiagram() {
   $('rulesDayNum').textContent = currentDay;
   const el = $('rulesDiagram'); el.innerHTML = '';
   for (let s = 0; s < NUM_SLOTS; s++) {
-    const att = rd.slotAttendance[s]; const over = att > CAPACITY; const empty = att === 0;
+    const att = rd.slotAttendance[s]; const over = att >= CAPACITY; const empty = att === 0;
     const div = document.createElement('div');
     div.className = 's ' + (empty ? '' : (over ? 'over' : 'ok'));
     div.textContent = att;
@@ -146,7 +146,7 @@ function renderCards() {
       const picked = d.picks.includes(s);
       const att = rd.slotAttendance[s];
       let c = 'c';
-      if (picked) c += (att > CAPACITY ? ' b' : ' g');
+      if (picked) c += (att >= CAPACITY ? ' b' : ' g');
       pips += `<div class="${c}" title="slot ${s}: ${att}/${AGENTS.length}${picked?' · picked':''}"></div>`;
     }
     const pinned = pinnedCompare.includes(e.idx);
@@ -195,8 +195,8 @@ function renderCards() {
 /* ---------- heatmap ---------- */
 function heatColor(att) {
   if (att === 0) return '#13151a';
-  if (att <= CAPACITY) { const i = att/CAPACITY; return `rgba(74,222,128,${0.15 + i*0.55})`; }
-  const over = att - CAPACITY;
+  if (att < CAPACITY) { const i = att/CAPACITY; return `rgba(74,222,128,${0.15 + i*0.55})`; }
+  const over = att - CAPACITY + 1;
   const i = Math.min(over/3, 1);
   return `rgba(248,113,113,${0.45 + i*0.5})`;
 }
@@ -215,7 +215,7 @@ function renderHeatmap() {
     for (let d = 0; d < NUM_DAYS; d++) {
       for (let s = 0; s < NUM_SLOTS; s++) {
         const att = DATA[d].slotAttendance[s];
-        out += `<rect x="${PAD_L + d*cw}" y="${PAD_T + s*ch}" width="${cw-0.3}" height="${ch-0.3}" fill="${heatColor(att)}" data-day="${d+1}" class="hmcell-sd"><title>day ${d+1} · slot ${s} · ${att}/${AGENTS.length}${att>CAPACITY?' (over cap)':''}</title></rect>`;
+        out += `<rect x="${PAD_L + d*cw}" y="${PAD_T + s*ch}" width="${cw-0.3}" height="${ch-0.3}" fill="${heatColor(att)}" data-day="${d+1}" class="hmcell-sd"><title>day ${d+1} · slot ${s} · ${att}/${AGENTS.length}${att>=CAPACITY?' (over cap)':''}</title></rect>`;
       }
     }
     for (let d = 1; d <= NUM_DAYS; d++)
@@ -367,7 +367,7 @@ function openDrawer(agentIdx, day) {
       breakdownBody += `<tr class="group"><td colspan="3">visit ${i+1} · [${iv[0]}, ${iv[1]}] · ${iv[1]-iv[0]+1} slot(s)</td></tr>`;
       for (let s = iv[0]; s <= iv[1]; s++) {
         const sp = d.slotPayoffs.find(x => x.slot === s);
-        breakdownBody += `<tr><td><span class="slot-chip">${s}</span></td><td>${sp.attendance}/${AGENTS.length}${sp.attendance>CAPACITY?' <span style="color:var(--bad)">over</span>':''}</td><td class="${sp.payoff>0?'g':'r'}">${sp.payoff>0?'+1':'−1'}</td></tr>`;
+        breakdownBody += `<tr><td><span class="slot-chip">${s}</span></td><td>${sp.attendance}/${AGENTS.length}${sp.attendance>=CAPACITY?' <span style="color:var(--bad); margin-left:6px">over</span>':''}</td><td class="${sp.payoff>0?'g':'r'}">${sp.payoff>0?'+1':'−1'}</td></tr>`;
       }
     });
   }
