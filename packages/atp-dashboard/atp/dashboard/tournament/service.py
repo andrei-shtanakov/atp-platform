@@ -406,12 +406,16 @@ class TournamentService:
 
         Returns (participant, is_new).
 
+        LABS-TSA PR-6: uniqueness is agent-keyed, not user-keyed. A
+        single user may register multiple tournament agents and play
+        them all in the same tournament.
+
         Race semantics on INSERT IntegrityError:
-        - uq_participant_tournament_user violation: a concurrent idempotent
-          re-join from the same user won the insert race. Re-read the
+        - uq_participant_tournament_agent violation: a concurrent idempotent
+          re-join of the same agent won the insert race. Re-read the
           existing row and return (existing, False).
-        - uq_participant_user_active violation: user has active participation
-          in a different tournament. Raise ConflictError(409).
+        - uq_participant_agent_active violation: the agent has active
+          participation in a different tournament. Raise ConflictError(409).
         - Any other IntegrityError: re-raise unchanged.
         """
         tournament = await self._session.get(Tournament, tournament_id)
@@ -420,40 +424,6 @@ class TournamentService:
 
         # Capture scalar values before any potential rollback expiry
         user_id = user.id
-
-        # Idempotent pre-check: existing participant can always reconnect,
-        # even when the tournament is already active (MCP reconnect scenario).
-        existing = await self._session.scalar(
-            select(Participant)
-            .where(Participant.tournament_id == tournament_id)
-            .where(Participant.user_id == user_id)
-        )
-        if existing is not None:
-            if existing.released_at is not None:
-                # Leave is terminal — cannot rejoin
-                raise ConflictError(
-                    f"user {user_id} already left tournament "
-                    f"{tournament_id}; rejoin not permitted"
-                )
-            return existing, False
-
-        # Fresh join: tournament must be pending.
-        if tournament.status != TournamentStatus.PENDING:
-            raise ConflictError(
-                f"tournament {tournament_id} is {tournament.status!r}, "
-                "not accepting joins"
-            )
-
-        # Private tournament token check (AD-10)
-        if tournament.join_token is not None:
-            import hmac
-
-            if join_token is None or not hmac.compare_digest(
-                tournament.join_token, join_token
-            ):
-                raise ConflictError(
-                    f"tournament {tournament_id} requires a valid join_token"
-                )
 
         # Resolve agent_id from an owned Agent matching agent_name, so the
         # "agent in active tournament" check in DELETE /api/v1/agents/{id}
@@ -467,6 +437,12 @@ class TournamentService:
         # filter excludes benchmark-purpose agents of the same name so a
         # benchmark agent never gets silently linked to a tournament
         # Participant.
+        #
+        # LABS-TSA PR-6: agent_id resolution happens before the tournament
+        # status check because the idempotent pre-check and the new
+        # uniqueness indexes are both agent-keyed. Auto-provisioning an
+        # Agent row here is harmless even if the join itself later fails
+        # — Agents are user-level resources and may be reused.
         agent_lookup_filter = (
             Agent.owner_id == user_id,
             Agent.tenant_id == DEFAULT_TENANT_ID,
@@ -508,6 +484,41 @@ class TournamentService:
                     # Reread failed — propagate the race
                     raise
 
+        # Idempotent pre-check: an existing participant for this agent
+        # can always reconnect, even when the tournament is already
+        # active (MCP reconnect scenario).
+        existing = await self._session.scalar(
+            select(Participant)
+            .where(Participant.tournament_id == tournament_id)
+            .where(Participant.agent_id == agent_id)
+        )
+        if existing is not None:
+            if existing.released_at is not None:
+                # Leave is terminal — cannot rejoin
+                raise ConflictError(
+                    f"agent {agent_name!r} already left tournament "
+                    f"{tournament_id}; rejoin not permitted"
+                )
+            return existing, False
+
+        # Fresh join: tournament must be pending.
+        if tournament.status != TournamentStatus.PENDING:
+            raise ConflictError(
+                f"tournament {tournament_id} is {tournament.status!r}, "
+                "not accepting joins"
+            )
+
+        # Private tournament token check (AD-10)
+        if tournament.join_token is not None:
+            import hmac
+
+            if join_token is None or not hmac.compare_digest(
+                tournament.join_token, join_token
+            ):
+                raise ConflictError(
+                    f"tournament {tournament_id} requires a valid join_token"
+                )
+
         # INSERT path
         participant = Participant(
             tournament_id=tournament_id,
@@ -530,24 +541,39 @@ class TournamentService:
             constraint_name = self._extract_constraint_name(exc)
             await self._session.rollback()
             if constraint_name in (
-                "uq_participant_tournament_user",
-                "uq_participant_user_active",
+                "uq_participant_tournament_agent",
+                "uq_participant_agent_active",
             ):
-                # Re-read to determine actual conflict type.
-                # Both constraints fire when the same user is already active in any
-                # tournament. Check if the existing row is for THIS tournament
-                # (idempotent re-join) or a DIFFERENT one (true conflict).
+                # Re-read to determine actual conflict type. Both
+                # constraints fire when the same agent is already
+                # active anywhere. Check if the existing row is for
+                # THIS tournament (idempotent re-join) or a DIFFERENT
+                # one (true conflict — name the conflicting agent).
                 existing = await self._session.scalar(
                     select(Participant)
                     .where(Participant.tournament_id == tournament_id)
-                    .where(Participant.user_id == user_id)
+                    .where(Participant.agent_id == agent_id)
                     .where(Participant.released_at.is_(None))
                 )
                 if existing is not None:
                     # Same tournament — idempotent re-join
                     return existing, False
-                # Different tournament active — true conflict
-                raise ConflictError("user already has an active tournament") from exc
+                # Different tournament active — name the conflicting
+                # agent and the other tournament in the message so MCP
+                # clients can surface the conflict clearly.
+                other = await self._session.scalar(
+                    select(Participant)
+                    .where(Participant.agent_id == agent_id)
+                    .where(Participant.released_at.is_(None))
+                )
+                if other is not None:
+                    raise ConflictError(
+                        f"agent {other.agent_name!r} already active in "
+                        f"tournament {other.tournament_id}"
+                    ) from exc
+                raise ConflictError(
+                    f"agent {agent_name!r} already has an active tournament"
+                ) from exc
             raise
 
         return participant, True
@@ -561,11 +587,11 @@ class TournamentService:
         Named constraints may appear as 'constraint failed: <name>'.
         PostgreSQL: exc.orig.diag.constraint_name is available.
 
-        Disambiguation for tournament_participants:
-        - uq_participant_user_active: single-column partial index on user_id
-          → message contains only 'tournament_participants.user_id'
-        - uq_participant_tournament_user: two-column index on
-          (tournament_id, user_id) → message contains 'tournament_id'
+        Disambiguation for tournament_participants (LABS-TSA PR-6):
+        - uq_participant_agent_active: single-column partial index on agent_id
+          → message contains only 'tournament_participants.agent_id'
+        - uq_participant_tournament_agent: two-column partial index on
+          (tournament_id, agent_id) → message contains 'tournament_id'
         """
         # Extract only the first line of the error — the constraint description.
         # SQLite format: '(sqlite3.IntegrityError) UNIQUE constraint failed: table.col'
@@ -573,25 +599,27 @@ class TournamentService:
         first_line = str(exc).split("\n")[0].lower()
         # Named index/constraint — check for explicit name first
         for name in (
-            "uq_participant_user_active",
-            "uq_participant_tournament_user",
+            "uq_participant_agent_active",
+            "uq_participant_tournament_agent",
             "uq_action_round_participant",
             "uq_round_tournament_number",
         ):
             if name in first_line:
                 return name
         # SQLite column-based disambiguation for tournament_participants.
-        # The partial unique index on user_id (uq_participant_user_active) shows
-        # only 'tournament_participants.user_id' in the first line (single column).
-        # The composite (tournament_id, user_id) unique constraint shows both
-        # 'tournament_participants.tournament_id' and 'tournament_participants.user_id'.
-        if "tournament_participants" in first_line and "user_id" in first_line:
+        # The partial unique index on agent_id (uq_participant_agent_active)
+        # shows only 'tournament_participants.agent_id' in the first line
+        # (single column). The composite (tournament_id, agent_id) partial
+        # unique index shows both 'tournament_participants.tournament_id'
+        # and 'tournament_participants.agent_id'.
+        if "tournament_participants" in first_line and "agent_id" in first_line:
             if "tournament_id" in first_line:
-                # composite (tournament_id, user_id) → uq_participant_tournament_user
-                return "uq_participant_tournament_user"
+                # composite (tournament_id, agent_id) →
+                # uq_participant_tournament_agent
+                return "uq_participant_tournament_agent"
             else:
-                # single user_id partial index → uq_participant_user_active
-                return "uq_participant_user_active"
+                # single agent_id partial index → uq_participant_agent_active
+                return "uq_participant_agent_active"
         # PostgreSQL path
         orig = getattr(exc, "orig", None)
         diag = getattr(orig, "diag", None)
@@ -1227,10 +1255,10 @@ class TournamentService:
         """Mark tournament COMPLETED and write final per-participant scores.
 
         Also releases every participant (``released_at = now``) so their
-        ``user_id`` is no longer matched by ``uq_participant_user_active``
-        and they are free to join another tournament. Mirrors the release
-        step in ``_cancel_impl``; without it, natural completion would
-        leave users "stuck" active forever.
+        ``agent_id`` is no longer matched by
+        ``uq_participant_agent_active`` and they are free to join another
+        tournament. Mirrors the release step in ``_cancel_impl``; without
+        it, natural completion would leave agents "stuck" active forever.
 
         LABS-TSA PR-5: writes a companion ``GameResult`` row with a fresh
         UUID ``match_id`` and ``tournament_id = tournament.id`` so
