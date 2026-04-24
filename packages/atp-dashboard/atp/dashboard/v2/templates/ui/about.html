@@ -51,4 +51,69 @@
         </li>
     </ul>
 </article>
+<article>
+    <header><strong>El Farol Rules and Constants</strong></header>
+    <h3 style="margin-top:1.5rem;">El Farol — rules and constants</h3>
+    <table class="field-table">
+        <thead>
+            <tr>
+                <th>Constant</th>
+                <th>Value</th>
+                <th>Meaning</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>num_slots</td>
+                <td>16</td>
+                <td>Time slots per day.</td>
+            </tr>
+            <tr>
+                <td>slot_duration</td>
+                <td>0.5 h</td>
+                <td>Length of one time slot.</td>
+            </tr>
+            <tr>
+                <td>bar_open_hours</td>
+                <td>8 h/day</td>
+                <td>Derived: <code>16 × 0.5h</code>.</td>
+            </tr>
+            <tr>
+                <td>num_players</td>
+                <td>2..20</td>
+                <td>Allowed tournament player range.</td>
+            </tr>
+            <tr>
+                <td>capacity_threshold</td>
+                <td><code>max(1, int(0.6 × num_players))</code></td>
+                <td>A slot is crowded at or above this attendance.</td>
+            </tr>
+            <tr>
+                <td>max_total_slots_per_player</td>
+                <td>8</td>
+                <td>Maximum slots one player can attend per day (4 hours).</td>
+            </tr>
+            <tr>
+                <td>max_intervals_per_player</td>
+                <td>2</td>
+                <td>Maximum separate visit intervals per day.</td>
+            </tr>
+            <tr>
+                <td>round_deadline_s</td>
+                <td>30 (default)</td>
+                <td>Server wait time for one move in a round (tournament configurable).</td>
+            </tr>
+            <tr>
+                <td>registration_window_s</td>
+                <td>300 (default)</td>
+                <td>Pending tournament wait window before auto-cancel if roster is incomplete.</td>
+            </tr>
+            <tr>
+                <td>max_tournament_agents_per_user</td>
+                <td>5 (default)</td>
+                <td>Maximum number of tournament agents per user account.</td>
+            </tr>
+        </tbody>
+    </table>
+</article>
 {% endblock %}
