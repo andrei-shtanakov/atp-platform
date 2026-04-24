@@ -636,6 +636,33 @@ async def ui_match_detail(
     if row is None and match_id.isdigit():
         row = await session.get(GameResult, int(match_id))
 
+    # Visibility gate: mirror the /ui/matches listing filter so private
+    # tournament matches can't be enumerated by match_id or autoincrement
+    # PK. Anyone with the match_id of a match from a public tournament
+    # (or a legacy CLI run with tournament_id IS NULL) stays allowed;
+    # private-tournament matches require owner / participant / admin.
+    if row is not None and row.tournament_id is not None:
+        from atp.dashboard.tournament.models import Participant, Tournament
+
+        tournament = await session.get(Tournament, row.tournament_id)
+        if tournament is not None and tournament.join_token is not None:
+            allowed = False
+            if user is not None:
+                if user.is_admin or tournament.created_by == user.id:
+                    allowed = True
+                else:
+                    participant_id = await session.scalar(
+                        select(Participant.id)
+                        .where(Participant.tournament_id == tournament.id)
+                        .where(Participant.user_id == user.id)
+                        .limit(1)
+                    )
+                    allowed = participant_id is not None
+            if not allowed:
+                # Hide the existence — 404, not 403, so callers can't
+                # enumerate valid match_ids by status code.
+                row = None
+
     context: dict[str, Any] = {
         "active_page": active_page,
         "match_id": match_id,

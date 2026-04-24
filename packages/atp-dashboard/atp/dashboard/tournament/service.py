@@ -613,7 +613,16 @@ class TournamentService:
             state={},
         )
         self._session.add(round_1)
-        await self._session.flush()
+        # Commit (not just flush) BEFORE publishing round_started —
+        # same invariant the subsequent-round path enforces at line
+        # 1186 (LABS-74). The notification forwarder opens a fresh DB
+        # session to build the per-player state snapshot; without the
+        # commit that session reads pre-commit rows and the snapshot's
+        # state trails the outer event.round_number by one. The MCP
+        # ``join`` shim also subscribes to the event bus *before*
+        # calling ``service.join()``, so a pre-commit publish could
+        # deliver a first-round state that hasn't yet been persisted.
+        await self._session.commit()
         await self._bus.publish(
             TournamentEvent(
                 event_type="round_started",
@@ -1263,13 +1272,24 @@ class TournamentService:
             if p.released_at is None:
                 p.released_at = now
         await self._session.flush()
+        # Builtin-strategy Participant rows have ``user_id IS NULL``
+        # (LABS-TSA PR-4). Skip them when keying the final_scores dict
+        # by user_id — without the filter, multiple builtins collapse
+        # into a single ``null`` key and clients expecting int keys
+        # (see tests/e2e/test_mcp_pd_tournament.py) get a malformed
+        # event. Builtin scores are still available via the tournament
+        # detail API for callers that need them.
         await self._bus.publish(
             TournamentEvent(
                 event_type="tournament_completed",
                 tournament_id=tournament.id,
                 round_number=None,
                 data={
-                    "final_scores": {p.user_id: p.total_score for p in participants},
+                    "final_scores": {
+                        p.user_id: p.total_score
+                        for p in participants
+                        if p.user_id is not None
+                    },
                 },
                 timestamp=_utc_now(),
             )
