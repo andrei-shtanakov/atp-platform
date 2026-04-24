@@ -55,15 +55,31 @@ def _seed_legacy_agents(db: sqlite3.Connection) -> None:
         "INSERT INTO agents (tenant_id, name, agent_type, owner_id, version, purpose) "
         "VALUES ('default', 'bot-a', 'mcp', 1, 'latest', 'tournament')"
     )
-    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY)")
-    db.execute("INSERT INTO users (id) VALUES (1)")
+    db.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY)")
+    db.execute("INSERT OR IGNORE INTO users (id) VALUES (1)")
 
 
 def _seed_legacy_participants(db: sqlite3.Connection) -> None:
     """Recreate pre-853688412c5b participants schema:
-    user_id NOT NULL, no builtin_strategy, no agent_id."""
+    user_id NOT NULL, no builtin_strategy, no agent_id. Includes a
+    matching ``agents`` row so the legacy participant can be
+    backfilled through the (user_id, agent_name) lookup."""
     db.execute("CREATE TABLE tournaments (id INTEGER PRIMARY KEY)")
     db.execute("INSERT INTO tournaments (id) VALUES (100)")
+    db.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY)")
+    db.execute("INSERT OR IGNORE INTO users (id) VALUES (1)")
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS agents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            owner_id INTEGER NOT NULL,
+            name VARCHAR(100) NOT NULL
+        )
+        """
+    )
+    db.execute(
+        "INSERT OR IGNORE INTO agents (id, owner_id, name) VALUES (42, 1, 'legacy-bot')"
+    )
     db.execute(
         """
         CREATE TABLE tournament_participants (
@@ -92,12 +108,26 @@ def test_fix_agents_rebuild_drops_legacy_unique(tmp_path, reconcile_module) -> N
     changed = reconcile_module.fix_agents_legacy_unique(db)
     assert changed is True
 
-    # Legacy constraint is gone from the new CREATE TABLE SQL.
+    # Rebuilt schema matches Alembic HEAD: legacy constraint gone, new
+    # 4-tuple unique present, purpose CHECK present, NOT NULL columns
+    # enforced.
     sql = db.execute(
         "SELECT sql FROM sqlite_master WHERE type='table' AND name='agents'"
     ).fetchone()[0]
-    assert "uq_agent_tenant_name" not in sql
+    assert "uq_agent_tenant_name " not in sql  # legacy (note trailing space)
     assert "uq_agent_tenant_owner_name_version" in sql
+    assert "ck_agents_purpose" in sql
+    # NOT NULL declarations for the three columns the old script left nullable.
+    info = {row[1]: row for row in db.execute("PRAGMA table_info(agents)")}
+    assert info["config"][3] == 1
+    assert info["created_at"][3] == 1
+    assert info["updated_at"][3] == 1
+
+    # HEAD must NOT carry uq_agent_ownerless_tenant_name_version (dropped
+    # by migration b8c9d0e1f2a3 when owner_id became NOT NULL).
+    index_names = {row[1] for row in db.execute("PRAGMA index_list(agents)")}
+    assert "uq_agent_ownerless_tenant_name_version" not in index_names
+    assert "idx_agents_owner_purpose" in index_names
 
     # Data survived.
     rows = db.execute(
@@ -119,13 +149,41 @@ def test_fix_participants_rebuild_makes_user_id_nullable(
     changed = reconcile_module.fix_participants_user_id_nullable(db)
     assert changed is True
 
-    # user_id is nullable now (notnull flag at index 3 == 0).
+    # Rebuilt schema matches Alembic HEAD.
     info = {
         row[1]: row for row in db.execute("PRAGMA table_info(tournament_participants)")
     }
-    assert info["user_id"][3] == 0
+    assert info["user_id"][3] == 0  # nullable
+    assert info["agent_name"][2] == "VARCHAR(200)"  # HEAD length, not 100
     assert "builtin_strategy" in info
     assert "agent_id" in info
+
+    table_sql = db.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' "
+        "AND name='tournament_participants'"
+    ).fetchone()[0]
+    # Strict XOR check — not the permissive both-NULL variant.
+    assert "ck_participants_agent_xor_builtin" in table_sql
+    assert "agent_id IS NULL AND builtin_strategy IS NULL" not in table_sql
+
+    # Partial indexes declared by Alembic HEAD, with matching names.
+    index_names = {
+        row[1] for row in db.execute("PRAGMA index_list(tournament_participants)")
+    }
+    assert "uq_participant_tournament_agent" in index_names
+    assert "uq_participant_agent_active" in index_names
+    assert "idx_participants_builtin" in index_names
+
+    for idx_name, expected_where in (
+        ("uq_participant_tournament_agent", "agent_id IS NOT NULL"),
+        ("uq_participant_agent_active", "agent_id IS NOT NULL AND released_at IS NULL"),
+        ("idx_participants_builtin", "builtin_strategy IS NOT NULL"),
+    ):
+        idx_sql = db.execute(
+            "SELECT sql FROM sqlite_master WHERE type='index' AND name=?",
+            (idx_name,),
+        ).fetchone()[0]
+        assert expected_where in idx_sql, f"{idx_name}: {idx_sql!r}"
 
     # We can now insert a builtin-style participant with user_id=NULL.
     db.execute(
@@ -135,9 +193,80 @@ def test_fix_participants_rebuild_makes_user_id_nullable(
         "'2026-01-01 00:00:00', 'el_farol/contrarian')"
     )
 
+    # Strict XOR rejects a row with neither agent_id nor builtin_strategy.
+    with pytest.raises(sqlite3.IntegrityError):
+        db.execute(
+            "INSERT INTO tournament_participants "
+            "(tournament_id, user_id, agent_name, joined_at) "
+            "VALUES (100, 1, 'orphan-bot', '2026-01-01 00:00:00')"
+        )
+
     # Running again is a no-op.
     changed_again = reconcile_module.fix_participants_user_id_nullable(db)
     assert changed_again is False
+
+
+def test_fix_participants_drops_orphan_rows_before_xor_check(
+    tmp_path, reconcile_module
+) -> None:
+    """Pre-PR-4 participant rows (agent_id IS NULL AND builtin_strategy IS
+    NULL) must be either backfilled via (user_id, agent_name) lookup or
+    deleted — otherwise the XOR CHECK would fail the rebuild."""
+    db = sqlite3.connect(tmp_path / "t.db")
+
+    # Seed a participant schema that already has agent_id + builtin_strategy
+    # columns (so needs_agent_id / needs_builtin are False and the backfill
+    # branch actually runs) but still has user_id as NOT NULL.
+    db.execute("CREATE TABLE tournaments (id INTEGER PRIMARY KEY)")
+    db.execute("INSERT INTO tournaments (id) VALUES (100)")
+    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY)")
+    db.execute("INSERT INTO users (id) VALUES (7)")
+    db.execute(
+        """
+        CREATE TABLE agents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            owner_id INTEGER NOT NULL,
+            name VARCHAR(100) NOT NULL,
+            version VARCHAR(50) NOT NULL DEFAULT 'latest'
+        )
+        """
+    )
+    db.execute("INSERT INTO agents (id, owner_id, name) VALUES (42, 7, 'real-bot')")
+    db.execute(
+        """
+        CREATE TABLE tournament_participants (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tournament_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            agent_name VARCHAR(100) NOT NULL,
+            joined_at DATETIME NOT NULL,
+            total_score FLOAT,
+            released_at DATETIME,
+            agent_id INTEGER,
+            builtin_strategy VARCHAR(64)
+        )
+        """
+    )
+    # Row 1: resolvable via (user_id=7, name='real-bot') → agent_id=42
+    db.execute(
+        "INSERT INTO tournament_participants "
+        "(tournament_id, user_id, agent_name, joined_at) "
+        "VALUES (100, 7, 'real-bot', '2026-01-01 00:00:00')"
+    )
+    # Row 2: orphan — no matching agent, will be deleted
+    db.execute(
+        "INSERT INTO tournament_participants "
+        "(tournament_id, user_id, agent_name, joined_at) "
+        "VALUES (100, 7, 'ghost-bot', '2026-01-01 00:00:00')"
+    )
+
+    changed = reconcile_module.fix_participants_user_id_nullable(db)
+    assert changed is True
+
+    rows = db.execute(
+        "SELECT agent_name, agent_id, builtin_strategy FROM tournament_participants"
+    ).fetchall()
+    assert rows == [("real-bot", 42, None)]
 
 
 def test_stamp_alembic_head_idempotent(tmp_path, reconcile_module) -> None:

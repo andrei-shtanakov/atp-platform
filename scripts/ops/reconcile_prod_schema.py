@@ -5,9 +5,9 @@ does NOT apply Alembic migrations. As the model evolved, prod drifted
 from HEAD in ways that neither of those helpers can repair:
 
 - Drops of old unique constraints (e.g. ``uq_agent_tenant_name``)
-- NOT NULL → NULL alterations (e.g. ``tournament_participants.user_id``)
+- NOT NULL → nullable alterations (e.g. ``tournament_participants.user_id``)
 - New CHECK constraints (e.g. ``ck_agents_purpose``)
-- Partial unique indexes (e.g. ``uq_agent_ownerless_tenant_name_version``)
+- Partial unique indexes (e.g. ``uq_participant_agent_active``)
 
 This script rebuilds the drifted tables to match HEAD and then stamps
 Alembic at HEAD so the new ``alembic upgrade head`` entrypoint has
@@ -72,6 +72,14 @@ def fix_agents_legacy_unique(db: sqlite3.Connection) -> bool:
         return False
 
     print("  [agents] rebuilding: dropping legacy uq_agent_tenant_name")
+    # Backfill NOT NULL columns in case any pre-migration row has NULL —
+    # the rebuilt table declares them NOT NULL to match the ORM + Alembic
+    # HEAD (migration 9f1fc0c9cb9f).
+    now_sql = "strftime('%Y-%m-%d %H:%M:%f', 'now')"
+    db.execute("UPDATE agents SET config = '{}' WHERE config IS NULL")
+    db.execute(f"UPDATE agents SET created_at = {now_sql} WHERE created_at IS NULL")
+    db.execute(f"UPDATE agents SET updated_at = {now_sql} WHERE updated_at IS NULL")
+
     db.execute(
         """
         CREATE TABLE agents_new (
@@ -79,10 +87,10 @@ def fix_agents_legacy_unique(db: sqlite3.Connection) -> bool:
             tenant_id VARCHAR(100) NOT NULL DEFAULT 'default',
             name VARCHAR(100) NOT NULL,
             agent_type VARCHAR(50) NOT NULL,
-            config JSON,
+            config JSON NOT NULL,
             description TEXT,
-            created_at DATETIME,
-            updated_at DATETIME,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL,
             owner_id INTEGER NOT NULL,
             version VARCHAR(50) NOT NULL DEFAULT 'latest',
             deleted_at DATETIME,
@@ -125,7 +133,10 @@ def fix_agents_legacy_unique(db: sqlite3.Connection) -> bool:
     db.execute("DROP TABLE agents")
     db.execute("ALTER TABLE agents_new RENAME TO agents")
 
-    # Recreate indexes the model declares.
+    # Recreate indexes the model declares. The partial unique index
+    # ``uq_agent_ownerless_tenant_name_version`` from migration
+    # e1b2c3d4f5a6 is NOT recreated — b8c9d0e1f2a3 drops it when
+    # owner_id is enforced NOT NULL (which it is at HEAD).
     for name, cols in (
         ("idx_agent_name", ["name"]),
         ("idx_agent_tenant", ["tenant_id"]),
@@ -134,11 +145,6 @@ def fix_agents_legacy_unique(db: sqlite3.Connection) -> bool:
         ("ix_agents_tenant_id", ["tenant_id"]),
     ):
         db.execute(f"CREATE INDEX IF NOT EXISTS {name} ON agents ({', '.join(cols)})")
-    # Partial unique index for ownerless rows (migration e1b2c3d4f5a6).
-    db.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS uq_agent_ownerless_tenant_name_version "
-        "ON agents (tenant_id, name, version) WHERE owner_id IS NULL"
-    )
     return True
 
 
@@ -170,13 +176,55 @@ def fix_participants_user_id_nullable(db: sqlite3.Connection) -> bool:
         f"add_builtin_strategy={needs_builtin}, add_agent_id={needs_agent_id})"
     )
 
+    # Resolve agent_id during the copy: prefer existing column value
+    # (PR d7f3a2b1c4e5 added the column; PR-4 backfills it on live
+    # joins), fall back to a lookup by (user_id, agent_name) against
+    # agents — same resolution PR-4's service uses. Rows that stay
+    # unresolved (no matching agent) AND have no builtin_strategy
+    # violate the XOR invariant and get dropped — there's no valid
+    # state for them.
+    has_agent_id_col = "agent_id" in cols
+    has_builtin_col = "builtin_strategy" in cols
+    agents_table_exists = bool(
+        db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='agents'"
+        ).fetchone()
+    )
+
+    lookup = (
+        "(SELECT a.id FROM agents a "
+        "WHERE a.owner_id = tp.user_id AND a.name = tp.agent_name)"
+    )
+    if has_agent_id_col and agents_table_exists:
+        agent_id_expr = f"COALESCE(tp.agent_id, {lookup})"
+    elif has_agent_id_col:
+        agent_id_expr = "tp.agent_id"
+    elif agents_table_exists:
+        agent_id_expr = lookup
+    else:
+        # Fresh DB where the agents table hasn't been created yet —
+        # there's nothing to resolve. Any existing participant row
+        # without builtin_strategy is an orphan.
+        agent_id_expr = "NULL"
+    builtin_expr = "tp.builtin_strategy" if has_builtin_col else "NULL"
+
+    droppable_row_count = db.execute(
+        f"SELECT COUNT(*) FROM tournament_participants tp "
+        f"WHERE {agent_id_expr} IS NULL AND {builtin_expr} IS NULL"
+    ).fetchone()[0]
+    if droppable_row_count:
+        print(
+            f"  [tournament_participants] dropping {droppable_row_count} "
+            "orphan row(s) — no matching agent and no builtin_strategy"
+        )
+
     db.execute(
         """
         CREATE TABLE tournament_participants_new (
             id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
             tournament_id INTEGER NOT NULL,
             user_id INTEGER,
-            agent_name VARCHAR(100) NOT NULL,
+            agent_name VARCHAR(200) NOT NULL,
             joined_at DATETIME NOT NULL,
             total_score FLOAT,
             released_at DATETIME,
@@ -186,33 +234,24 @@ def fix_participants_user_id_nullable(db: sqlite3.Connection) -> bool:
             FOREIGN KEY(user_id) REFERENCES users(id),
             FOREIGN KEY(agent_id) REFERENCES agents(id),
             CONSTRAINT ck_participants_agent_xor_builtin CHECK (
-                (agent_id IS NOT NULL AND builtin_strategy IS NULL) OR
-                (agent_id IS NULL AND builtin_strategy IS NOT NULL) OR
-                (agent_id IS NULL AND builtin_strategy IS NULL)
+                (agent_id IS NOT NULL AND builtin_strategy IS NULL)
+                OR (agent_id IS NULL AND builtin_strategy IS NOT NULL)
             )
         )
         """
     )
 
-    carry = [
-        c
-        for c in (
-            "id",
-            "tournament_id",
-            "user_id",
-            "agent_name",
-            "joined_at",
-            "total_score",
-            "released_at",
-            "agent_id",
-            "builtin_strategy",
-        )
-        if c in cols
-    ]
-    col_list = ",".join(carry)
+    # SELECT lists the target columns in the new-table order so the
+    # resolved expressions land in the right slots.
     db.execute(
-        f"INSERT INTO tournament_participants_new ({col_list}) "
-        f"SELECT {col_list} FROM tournament_participants"
+        f"INSERT INTO tournament_participants_new "
+        "(id, tournament_id, user_id, agent_name, joined_at, total_score, "
+        "released_at, agent_id, builtin_strategy) "
+        "SELECT tp.id, tp.tournament_id, tp.user_id, tp.agent_name, "
+        f"tp.joined_at, tp.total_score, tp.released_at, "
+        f"{agent_id_expr}, {builtin_expr} "
+        f"FROM tournament_participants tp "
+        f"WHERE NOT ({agent_id_expr} IS NULL AND {builtin_expr} IS NULL)"
     )
 
     db.execute("DROP TABLE tournament_participants")
@@ -220,6 +259,7 @@ def fix_participants_user_id_nullable(db: sqlite3.Connection) -> bool:
         "ALTER TABLE tournament_participants_new RENAME TO tournament_participants"
     )
 
+    # Regular indexes declared by the ORM.
     for name, cols_ in (
         ("idx_participant_tournament", ["tournament_id"]),
         ("idx_participant_user", ["user_id"]),
@@ -230,11 +270,23 @@ def fix_participants_user_id_nullable(db: sqlite3.Connection) -> bool:
             f"ON tournament_participants ({', '.join(cols_)})"
         )
 
-    # Partial unique index from migration d2e5a1c7f3b8 (PR-6): an agent
-    # can participate in only one active tournament at a time.
+    # Partial index from migration 853688412c5b (PR-1): fast lookup of
+    # builtin participants per tournament. Non-unique.
     db.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS "
-        "uq_tournament_participant_active_agent "
+        "CREATE INDEX IF NOT EXISTS idx_participants_builtin "
+        "ON tournament_participants (tournament_id, builtin_strategy) "
+        "WHERE builtin_strategy IS NOT NULL"
+    )
+    # Partial UNIQUE indexes from migration d2e5a1c7f3b8 (PR-6): shift
+    # uniqueness from user_id to agent_id. Names match Alembic HEAD so
+    # future migrations that reference them resolve correctly.
+    db.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_participant_tournament_agent "
+        "ON tournament_participants (tournament_id, agent_id) "
+        "WHERE agent_id IS NOT NULL"
+    )
+    db.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_participant_agent_active "
         "ON tournament_participants (agent_id) "
         "WHERE agent_id IS NOT NULL AND released_at IS NULL"
     )

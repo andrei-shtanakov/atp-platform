@@ -6,7 +6,7 @@ Historically the ATP platform container booted with
 `init_database()` → `create_all()` + `_add_missing_columns()`, which
 does *not* apply Alembic migrations. As the model evolved, prod
 drifted from HEAD in ways those helpers can't fix (dropped unique
-constraints, nullable → NOT NULL changes, partial indexes, CHECK
+constraints, NOT NULL → nullable changes, partial indexes, CHECK
 constraints). Each drift manifested eventually as a runtime 500.
 
 This change adds `alembic upgrade head` to the container entrypoint so
