@@ -101,7 +101,7 @@ async def admin_tournament_new_form(request: Request, session: DBSession):
     return _templates(request).TemplateResponse(
         request=request,
         name="ui/admin/tournament_new.html",
-        context={"user": user, "error": None},
+        context={"user": user, "error": None, "active_page": "admin"},
     )
 
 
@@ -136,7 +136,11 @@ async def admin_tournament_new_submit(
         return _templates(request).TemplateResponse(
             request=request,
             name="ui/admin/tournament_new.html",
-            context={"user": user, "error": str(exc)},
+            context={
+                "user": user,
+                "error": str(exc),
+                "active_page": "admin",
+            },
             status_code=status.HTTP_400_BAD_REQUEST,
         )
     return RedirectResponse(
@@ -200,6 +204,7 @@ async def admin_tournament_detail(
             "current_round": current_round,
             "is_live": is_live,
             "snap": snap,
+            "active_page": "admin",
         },
     )
 
@@ -211,9 +216,12 @@ async def admin_users_list(request: Request, session: DBSession):
     Counts surfaced per row:
     * ``tournaments_created`` — rows in ``tournaments`` where
       ``created_by`` matches the user.
-    * ``tournaments_joined`` — rows in ``tournament_participants``
-      where ``user_id`` matches. Builtin-strategy participants have
-      ``user_id IS NULL`` and are excluded naturally.
+    * ``tournaments_joined`` — distinct tournaments the user has at
+      least one participant row in. We count ``DISTINCT tournament_id``
+      because a single user can register multiple agents in the same
+      private tournament (one Participant row per agent); a raw
+      ``COUNT(id)`` would then double-count that tournament. Builtin
+      strategies have ``user_id IS NULL`` and are excluded naturally.
     * ``agents_owned`` — non-soft-deleted ``agents`` rows owned by
       the user.
 
@@ -236,7 +244,7 @@ async def admin_users_list(request: Request, session: DBSession):
     tournaments_joined_sq = (
         select(
             Participant.user_id.label("uid"),
-            func.count(Participant.id).label("n"),
+            func.count(func.distinct(Participant.tournament_id)).label("n"),
         )
         .where(Participant.user_id.is_not(None))
         .group_by(Participant.user_id)
