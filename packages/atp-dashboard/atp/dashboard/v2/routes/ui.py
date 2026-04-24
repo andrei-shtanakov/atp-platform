@@ -16,6 +16,7 @@ from typing import Any
 from fastapi import APIRouter, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from atp.dashboard.benchmark.models import Benchmark, Run, RunStatus, TaskResult
@@ -552,6 +553,11 @@ async def ui_matches(
           * the current user is the tournament creator
           * the current user is a Participant of the tournament
           * the current user is an admin (no filter applied)
+
+        The detail route at ``/ui/matches/{id}`` applies the same rule
+        post-fetch via ``_match_visible_to_user`` below. Any change
+        here MUST be mirrored in that helper or an IDOR bug sneaks
+        back in.
         """
         stmt = stmt.outerjoin(_Tournament, GameResult.tournament_id == _Tournament.id)
         if user is not None and user.is_admin:
@@ -590,6 +596,44 @@ async def ui_matches(
             "user": user,
         },
     )
+
+
+async def _match_visible_to_user(
+    session: AsyncSession,
+    match: Any,  # noqa: ANN401 — GameResult ORM row, avoids circular import
+    user: User | None,
+) -> bool:
+    """Return True iff ``match`` should be visible to ``user``.
+
+    Business rule mirrors the SQL predicate in the listing
+    (``ui_matches._apply_visibility``). Any divergence between the
+    two is a security bug — keep them lockstep:
+
+      * ``tournament_id IS NULL`` (legacy / CLI standalone runs) → visible
+      * ``tournament.join_token IS NULL`` (public tournament) → visible
+      * the caller is an admin → visible
+      * the caller is the tournament's creator → visible
+      * the caller is a Participant of the tournament → visible
+      * otherwise → hidden
+    """
+    if match.tournament_id is None:
+        return True
+    from atp.dashboard.tournament.models import Participant, Tournament
+
+    tournament = await session.get(Tournament, match.tournament_id)
+    if tournament is None or tournament.join_token is None:
+        return True
+    if user is None:
+        return False
+    if user.is_admin or tournament.created_by == user.id:
+        return True
+    participant_id = await session.scalar(
+        select(Participant.id)
+        .where(Participant.tournament_id == tournament.id)
+        .where(Participant.user_id == user.id)
+        .limit(1)
+    )
+    return participant_id is not None
 
 
 @router.get("/matches/{match_id}", response_class=HTMLResponse)
@@ -635,6 +679,19 @@ async def ui_match_detail(
     row = (await session.execute(stmt)).scalar_one_or_none()
     if row is None and match_id.isdigit():
         row = await session.get(GameResult, int(match_id))
+
+    # Visibility gate: same business rule as the /ui/matches listing
+    # filter (``_apply_visibility`` closure in ``ui_matches``) — kept
+    # in sync via ``_match_visible_to_user`` below. Without this, a
+    # private-tournament match_id would still be enumerable by
+    # autoincrement PK (``/ui/matches/1``, ``/ui/matches/2``, …) or by
+    # a leaked UUID.
+    if row is not None and not await _match_visible_to_user(session, row, user):
+        # Hide existence: render the same "not found" HTML path the
+        # unknown-match branch uses (200 + friendly message). Avoids
+        # using HTTP status as an existence oracle — same 200 for
+        # "does not exist" and "you are not allowed to see it".
+        row = None
 
     context: dict[str, Any] = {
         "active_page": active_page,

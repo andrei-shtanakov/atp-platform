@@ -202,3 +202,58 @@ class TestMatchDetailUI:
         html = resp.text
         assert "not found" in html.lower()
         assert 'id="atp-el-farol"' not in html
+
+    @pytest.mark.anyio
+    async def test_private_tournament_match_hidden_from_non_owner(
+        self,
+        v2_app,
+        db_session: AsyncSession,
+        disable_dashboard_auth,
+    ) -> None:
+        """IDOR guard: detail route must not leak private tournament
+        matches to non-owner callers, even by PK enumeration."""
+        from atp.dashboard.models import User
+        from atp.dashboard.tournament.models import Tournament
+
+        owner = User(
+            username="owner",
+            email="o@t.com",
+            hashed_password="x",
+            is_active=True,
+        )
+        db_session.add(owner)
+        await db_session.commit()
+
+        priv = Tournament(
+            game_type="el_farol",
+            num_players=2,
+            total_rounds=1,
+            created_by=owner.id,
+            join_token="secret-invite",
+        )
+        db_session.add(priv)
+        await db_session.commit()
+
+        row = _complete_row(match_id="m-private")
+        row.tournament_id = priv.id
+        db_session.add(row)
+        await db_session.commit()
+        await db_session.refresh(row)
+        pk = row.id
+
+        async with AsyncClient(
+            transport=ASGITransport(app=v2_app), base_url="http://test"
+        ) as client:
+            # Anonymous should see the "not found" message for both the
+            # match_id and the autoincrement PK — no enumeration vector.
+            resp = await client.get("/ui/matches/m-private")
+            html = resp.text
+            assert resp.status_code == 200
+            assert 'id="atp-el-farol"' not in html
+            assert "not found" in html.lower()
+
+            resp = await client.get(f"/ui/matches/{pk}")
+            html = resp.text
+            assert resp.status_code == 200
+            assert 'id="atp-el-farol"' not in html
+            assert "not found" in html.lower()
