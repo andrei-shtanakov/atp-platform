@@ -13,18 +13,19 @@ Routes added here:
 - ``POST /ui/admin/tournaments/new``               — submit form
 - ``GET  /ui/admin/tournaments/{id}``              — detail (live or post-mortem)
 - ``GET  /ui/admin/tournaments/{id}/activity``     — HTMX fragment (polled)
+- ``GET  /ui/admin/users``                         — registered users + activity counts
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from atp.dashboard.models import User
+from atp.dashboard.models import Agent, User
 from atp.dashboard.tournament.errors import ValidationError as TournamentValidationError
-from atp.dashboard.tournament.models import Round, Tournament
+from atp.dashboard.tournament.models import Participant, Round, Tournament
 from atp.dashboard.tournament.service import TournamentService
 from atp.dashboard.v2.dependencies import DBSession
 from atp.dashboard.v2.routes.tournament_api import get_tournament_service
@@ -71,7 +72,7 @@ async def admin_home(request: Request, session: DBSession):
     return _templates(request).TemplateResponse(
         request=request,
         name="ui/admin/index.html",
-        context={"user": user},
+        context={"user": user, "active_page": "admin"},
     )
 
 
@@ -85,7 +86,11 @@ async def admin_tournaments_list(request: Request, session: DBSession):
     return _templates(request).TemplateResponse(
         request=request,
         name="ui/admin/tournaments_list.html",
-        context={"user": user, "tournaments": tournaments},
+        context={
+            "user": user,
+            "tournaments": tournaments,
+            "active_page": "admin",
+        },
     )
 
 
@@ -196,6 +201,98 @@ async def admin_tournament_detail(
             "is_live": is_live,
             "snap": snap,
         },
+    )
+
+
+@router.get("/users")
+async def admin_users_list(request: Request, session: DBSession):
+    """List every registered user with minimal activity counters.
+
+    Counts surfaced per row:
+    * ``tournaments_created`` — rows in ``tournaments`` where
+      ``created_by`` matches the user.
+    * ``tournaments_joined`` — rows in ``tournament_participants``
+      where ``user_id`` matches. Builtin-strategy participants have
+      ``user_id IS NULL`` and are excluded naturally.
+    * ``agents_owned`` — non-soft-deleted ``agents`` rows owned by
+      the user.
+
+    All three are computed via grouped subqueries joined to ``users``
+    so a user with no activity still shows up with zeros (LEFT JOIN
+    + COALESCE), and we stay at three aggregate scans regardless of
+    user count.
+    """
+    user = await _require_admin_ui_user(request, session)
+
+    tournaments_created_sq = (
+        select(
+            Tournament.created_by.label("uid"),
+            func.count(Tournament.id).label("n"),
+        )
+        .where(Tournament.created_by.is_not(None))
+        .group_by(Tournament.created_by)
+        .subquery()
+    )
+    tournaments_joined_sq = (
+        select(
+            Participant.user_id.label("uid"),
+            func.count(Participant.id).label("n"),
+        )
+        .where(Participant.user_id.is_not(None))
+        .group_by(Participant.user_id)
+        .subquery()
+    )
+    agents_owned_sq = (
+        select(
+            Agent.owner_id.label("uid"),
+            func.count(Agent.id).label("n"),
+        )
+        .where(Agent.deleted_at.is_(None))
+        .group_by(Agent.owner_id)
+        .subquery()
+    )
+
+    stmt = (
+        select(
+            User,
+            func.coalesce(tournaments_created_sq.c.n, 0).label("t_created"),
+            func.coalesce(tournaments_joined_sq.c.n, 0).label("t_joined"),
+            func.coalesce(agents_owned_sq.c.n, 0).label("a_owned"),
+        )
+        .outerjoin(
+            tournaments_created_sq,
+            User.id == tournaments_created_sq.c.uid,
+        )
+        .outerjoin(
+            tournaments_joined_sq,
+            User.id == tournaments_joined_sq.c.uid,
+        )
+        .outerjoin(
+            agents_owned_sq,
+            User.id == agents_owned_sq.c.uid,
+        )
+        .order_by(User.id)
+    )
+    rows = (await session.execute(stmt)).all()
+
+    users = [
+        {
+            "id": row.User.id,
+            "username": row.User.username,
+            "email": row.User.email,
+            "is_admin": row.User.is_admin,
+            "is_active": row.User.is_active,
+            "created_at": row.User.created_at,
+            "tournaments_created": row.t_created,
+            "tournaments_joined": row.t_joined,
+            "agents_owned": row.a_owned,
+        }
+        for row in rows
+    ]
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/admin/users_list.html",
+        context={"user": user, "users": users, "active_page": "admin"},
     )
 
 

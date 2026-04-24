@@ -29,7 +29,20 @@
       <td>{{ t.total_rounds }}</td>
       <td>{{ t.num_players }}</td>
       <td>{{ t.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
-      <td><a href="/ui/admin/tournaments/{{ t.id }}">Open</a></td>
+      <td style="display:flex;gap:0.5rem;">
+        <a href="/ui/admin/tournaments/{{ t.id }}">Open</a>
+        {% if t.status in ("pending", "active") %}
+        <button type="button"
+                class="secondary outline"
+                style="padding:0.1rem 0.5rem;"
+                hx-post="/api/v1/tournaments/{{ t.id }}/cancel"
+                hx-confirm="Cancel tournament #{{ t.id }}? This cannot be undone."
+                hx-swap="none"
+                hx-on::after-request="if (event.detail.successful) window.location.reload();">
+          Cancel
+        </button>
+        {% endif %}
+      </td>
     </tr>
     {% else %}
     <tr><td colspan="7"><em>No tournaments yet.</em></td></tr>

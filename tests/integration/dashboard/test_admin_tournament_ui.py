@@ -674,3 +674,91 @@ async def test_admin_create_tournament_rejects_invalid_input(admin_ui_ctx):
         or "Validation" in resp.text
         or "el_farol" in resp.text
     )
+
+
+# ---------------------------------------------------------------------------
+# /ui/admin/users
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_admin_users_list_rejects_anonymous(admin_ui_ctx):
+    client = admin_ui_ctx["client"]
+    resp = await client.get("/ui/admin/users")
+    assert resp.status_code == 401
+
+
+@pytest.mark.anyio
+async def test_admin_users_list_rejects_regular_user(admin_ui_ctx):
+    client = admin_ui_ctx["client"]
+    resp = await client.get("/ui/admin/users", headers=admin_ui_ctx["regular_headers"])
+    assert resp.status_code == 403
+
+
+@pytest.mark.anyio
+async def test_admin_users_list_renders_zero_activity(admin_ui_ctx):
+    """Fresh users with no tournaments/agents render with zero counters."""
+    client = admin_ui_ctx["client"]
+    resp = await client.get("/ui/admin/users", headers=admin_ui_ctx["admin_headers"])
+    assert resp.status_code == 200
+    assert "admin_ui_test" in resp.text
+    assert "regular_ui_test" in resp.text
+    # Both users are seeded without any associated tournaments/agents
+    # so every counter column should render zero. Count the zero-cells
+    # conservatively: 2 users × 3 counters = at least 6 occurrences of
+    # ">0<" in the HTML.
+    assert resp.text.count(">0<") >= 6
+
+
+@pytest.mark.anyio
+async def test_admin_users_list_counts_activity(admin_ui_ctx):
+    """Counters include tournaments_created, tournaments_joined, agents_owned."""
+    client = admin_ui_ctx["client"]
+    db = admin_ui_ctx["db"]
+    regular_id = admin_ui_ctx["regular_id"]
+
+    async with db.session() as session:
+        agent = Agent(
+            name="qa-bot",
+            agent_type="http",
+            owner_id=regular_id,
+            config={},
+        )
+        session.add(agent)
+        await session.flush()
+
+        tournament = Tournament(
+            game_type="el_farol",
+            num_players=3,
+            total_rounds=2,
+            round_deadline_s=30,
+            status=TournamentStatus.PENDING,
+            created_by=regular_id,
+            config={"name": "activity test"},
+            pending_deadline=datetime.now() + timedelta(minutes=5),
+        )
+        session.add(tournament)
+        await session.flush()
+
+        # ck_participants_agent_xor_builtin requires exactly one of
+        # agent_id / builtin_strategy, so link to the agent just seeded.
+        session.add(
+            Participant(
+                tournament_id=tournament.id,
+                user_id=regular_id,
+                agent_name="qa-bot",
+                agent_id=agent.id,
+            )
+        )
+        await session.commit()
+
+    resp = await client.get("/ui/admin/users", headers=admin_ui_ctx["admin_headers"])
+    assert resp.status_code == 200
+    # Locate the regular user's row and verify each counter column shows
+    # 1 (one tournament created, one participation, one agent). The
+    # admin row is still all zeros so we can't just search for ">1<"
+    # globally.
+    row_start = resp.text.index("regular_ui_test")
+    row_end = resp.text.index("</tr>", row_start)
+    row = resp.text[row_start:row_end]
+    assert row.count(">1<") == 3
