@@ -516,4 +516,8 @@ async def test_reasoning_placeholder_hidden_for_anon(client: AsyncClient):
     )
     resp = await client.get(f"/ui/tournaments/{tid}")
     assert resp.status_code == 200
+    # Neither the placeholder text nor the 💭 icon itself may leak —
+    # either would reveal that reasoning is a feature for callers the
+    # gate rejects.
     assert "no reasoning" not in resp.text
+    assert "💭" not in resp.text

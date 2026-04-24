@@ -92,6 +92,12 @@
             {% for p in sorted_participants %}
                 {% set action = r.actions | selectattr("participant_id", "equalto", p.id) | first %}
                 {% if action %}
+                    {# Single source of truth for the "this row was auto-
+                       submitted on timeout" predicate — reused below for
+                       both the (timeout) label and for suppressing the
+                       empty-reasoning placeholder. Avoids drift if the
+                       source enum name ever changes. #}
+                    {% set is_timeout_default = action.source == "timeout_default" %}
                     <td>
                         {% if t.game_type == "prisoners_dilemma" %}
                             {% set choice = (action.action_data or {}).get("choice", "—") %}
@@ -113,7 +119,7 @@
                         {% else %}
                             <span class="score-pair">{{ action.action_data | tojson }}</span>
                         {% endif %}
-                        {% if is_admin and action.source == "timeout_default" %}
+                        {% if is_admin and is_timeout_default %}
                         <span style="font-size:0.75rem;color:#999">(timeout)</span>
                         {% endif %}
                         {# Inline reasoning. Rendered for every action the
@@ -130,9 +136,12 @@
                                  style="font-size:0.8rem;color:#555;white-space:pre-wrap;margin-top:0.25rem;font-style:italic;">
                                 💭 {{ action.reasoning }}
                             </div>
-                            {% elif action.source != "timeout_default" %}
+                            {% elif not is_timeout_default %}
+                            {# #666 on white reaches WCAG AA for normal text
+                               (4.5:1); the prior #aaa failed the bar. Keep
+                               it muted enough to read as secondary. #}
                             <div class="reasoning-inline reasoning-inline-empty"
-                                 style="font-size:0.75rem;color:#aaa;margin-top:0.25rem;font-style:italic;">
+                                 style="font-size:0.75rem;color:#666;margin-top:0.25rem;font-style:italic;">
                                 💭 <span>no reasoning</span>
                             </div>
                             {% endif %}
