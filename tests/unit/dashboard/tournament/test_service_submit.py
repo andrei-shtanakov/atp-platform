@@ -89,7 +89,7 @@ async def test_pd_action_to_el_farol_tournament_error_has_hint(
         await svc.submit_action(t.id, alice, action={"choice": "cooperate"})
     text = str(exc.value)
     assert "el_farol" in text
-    assert "slots" in text
+    assert "intervals" in text
 
 
 @pytest.mark.anyio
@@ -102,7 +102,9 @@ async def test_el_farol_submit_happy(
 ) -> None:
     svc = TournamentService(session, event_bus)
     t = await _make_el_farol(svc, admin_user, alice, bob)
-    result = await svc.submit_action(t.id, alice, action={"slots": [0, 3]})
+    result = await svc.submit_action(
+        t.id, alice, action={"intervals": [[0, 0], [3, 3]]}
+    )
     assert result["status"] == "waiting"
 
 
@@ -210,7 +212,7 @@ async def test_reasoning_persists_el_farol(
     await svc.submit_action(
         t.id,
         alice,
-        action={"slots": [0, 3], "reasoning": "non-crowded window"},
+        action={"intervals": [[0, 0], [3, 3]], "reasoning": "non-crowded window"},
     )
     a = await _alice_action(session, alice.id)
     assert a.reasoning == "non-crowded window"

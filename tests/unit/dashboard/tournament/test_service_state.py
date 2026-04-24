@@ -95,7 +95,7 @@ async def test_state_el_farol_pending_flips_after_submit(
     )
     await svc.join(t.id, alice, "alice")
     await svc.join(t.id, bob, "bob")
-    await svc.submit_action(t.id, alice, action={"slots": [0]})
+    await svc.submit_action(t.id, alice, action={"intervals": [[0, 0]]})
 
     state = await svc.get_state_for(t.id, alice)
     assert state.pending_submission is False

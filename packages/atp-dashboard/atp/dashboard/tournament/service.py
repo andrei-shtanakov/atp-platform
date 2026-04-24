@@ -61,6 +61,7 @@ from atp.dashboard.tournament.models import (
 from atp.dashboard.tournament.reasons import CancelReason
 from atp.dashboard.tournament.schemas import (
     BoSRoundState,
+    ElFarolAction,
     ElFarolRoundState,
     PDRoundState,
     PGRoundState,
@@ -178,8 +179,9 @@ def _action_hint_for(game_type: str) -> str:
         return "{choice: 'A' | 'B'}"
     if game_type == "el_farol":
         return (
-            "{slots: list[int], values in [0, num_slots-1], "
-            f"unique, max {MAX_SLOTS_PER_DAY} entries}}"
+            "{intervals: list[[start, end]], up to 2 non-adjacent inclusive "
+            f"pairs with 0 <= start <= end < num_slots, max {MAX_SLOTS_PER_DAY} "
+            "slots total; [] = stay home}"
         )
     if game_type == "public_goods":
         return "{contribution: float in [0, endowment]}"
@@ -1011,9 +1013,16 @@ class TournamentService:
         reasoning = reasoning or None  # "" / whitespace-only → None
 
         game = _game_for(tournament)
-        canonical = game.validate_action(
-            typed.model_dump(exclude={"game_type", "reasoning"})
-        )
+        # El Farol wire format is intervals; the game-env strict path
+        # (validate_action) expects flat slots. Bridge here so the
+        # game-env contract stays unchanged.
+        if isinstance(typed, ElFarolAction):
+            game_payload: dict[str, Any] = {"slots": typed.to_slots()}
+        else:
+            game_payload = typed.model_dump(
+                exclude={"game_type", "reasoning", "telemetry"}
+            )
+        canonical = game.validate_action(game_payload)
 
         existing = (
             await self._session.execute(

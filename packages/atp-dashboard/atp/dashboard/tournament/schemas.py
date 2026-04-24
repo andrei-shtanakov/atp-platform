@@ -4,7 +4,9 @@ import os
 from typing import Annotated, Any, Literal
 
 from game_envs.games.el_farol import MAX_SLOTS_PER_DAY
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+_MAX_INTERVALS_PER_DAY = 2
 
 _REASONING_MAX = int(os.environ.get("ATP_TOURNAMENT_REASONING_MAX_CHARS", "8000"))
 
@@ -72,14 +74,64 @@ class PDAction(BaseModel):
 
 
 class ElFarolAction(BaseModel):
-    """El Farol submit action. ``game_type`` is server-injected."""
+    """El Farol submit action. ``game_type`` is server-injected.
+
+    Visits are expressed as ``intervals`` — up to ``_MAX_INTERVALS_PER_DAY``
+    inclusive ``[start, end]`` pairs covering at most ``MAX_SLOTS_PER_DAY``
+    slots in total. The empty list ``[]`` is the canonical "stay home"
+    action. Pair shape matches the preferred form accepted by
+    ``game_envs.games.el_farol.ElFarolActionSpace``.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     game_type: Literal["el_farol"]
-    slots: list[int] = Field(..., max_length=MAX_SLOTS_PER_DAY)
+    intervals: list[list[int]] = Field(
+        ...,
+        max_length=_MAX_INTERVALS_PER_DAY,
+        description="List of inclusive [start, end] slot ranges.",
+    )
     reasoning: str | None = Field(default=None, max_length=_REASONING_MAX)
     telemetry: ActionTelemetry | None = None
+
+    @field_validator("intervals")
+    @classmethod
+    def _validate_intervals(cls, pairs: list[list[int]]) -> list[list[int]]:
+        total = 0
+        for p in pairs:
+            if len(p) != 2:
+                raise ValueError(
+                    f"each interval must be a [start, end] pair, got {p!r}"
+                )
+            start, end = p
+            if start < 0 or end < start:
+                raise ValueError(
+                    f"interval [{start}, {end}] must satisfy 0 <= start <= end"
+                )
+            total += end - start + 1
+        if total > MAX_SLOTS_PER_DAY:
+            raise ValueError(
+                f"intervals cover {total} slots; max is {MAX_SLOTS_PER_DAY}"
+            )
+        # Non-overlap + non-adjacency (needs >= 1 empty slot between runs).
+        ordered = sorted(pairs, key=lambda p: p[0])
+        for prev, nxt in zip(ordered, ordered[1:]):
+            if nxt[0] <= prev[1] + 1:
+                raise ValueError(
+                    f"intervals {prev} and {nxt} overlap or are adjacent"
+                )
+        return pairs
+
+    def to_slots(self) -> list[int]:
+        """Expand ``intervals`` into a sorted flat slot list.
+
+        The game-environments strict path (``ElFarolBar.validate_action``)
+        accepts ``{"slots": list[int]}`` as its canonical input shape —
+        the interval form is the wire-layer convenience. The tournament
+        service uses this helper to bridge the two without touching the
+        game-env contract.
+        """
+        return sorted({s for start, end in self.intervals for s in range(start, end + 1)})
 
 
 class SHAction(BaseModel):
