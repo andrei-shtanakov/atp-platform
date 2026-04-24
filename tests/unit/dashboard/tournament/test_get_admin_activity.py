@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from atp.dashboard.models import User
+from atp.dashboard.models import Agent, User
 from atp.dashboard.tournament.events import TournamentEventBus
 from atp.dashboard.tournament.models import (
     Action,
@@ -52,9 +52,21 @@ async def _seed_live_el_farol(
         )
         session.add(u)
         await session.flush()
+        # LABS-TSA PR-4: non-builtin Participant rows need agent_id.
+        ag = Agent(
+            tenant_id="default",
+            name=name,
+            agent_type="mcp",
+            owner_id=u.id,
+            config={},
+            purpose="tournament",
+        )
+        session.add(ag)
+        await session.flush()
         p = Participant(
             tournament_id=t.id,
             user_id=u.id,
+            agent_id=ag.id,
             agent_name=name,
             total_score=0.0,
         )

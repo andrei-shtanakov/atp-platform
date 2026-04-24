@@ -20,10 +20,22 @@ def _make_user(user_id=1, is_admin=False):
     return u
 
 
-def _make_service():
+def _make_service(*, has_tournament_agent: bool = True):
+    """Build a stubbed service.
+
+    LABS-TSA PR-4: ``create_tournament`` now consults the DB to
+    enforce the creator-commit invariant on private tournaments.
+    The unit test stub returns ``has_tournament_agent`` as a positive
+    scalar count so the default flow succeeds; pass
+    ``has_tournament_agent=False`` to exercise the rejection branch.
+    """
     session = MagicMock()
     session.add = MagicMock()
     session.flush = AsyncMock()
+    # create_tournament awaits session.scalar(...) for the
+    # creator-commit + concurrent-cap checks. Return an int so
+    # len()/boolean comparisons work.
+    session.scalar = AsyncMock(return_value=1 if has_tournament_agent else 0)
     session.begin = MagicMock()
     session.begin.return_value.__aenter__ = AsyncMock()
     session.begin.return_value.__aexit__ = AsyncMock(return_value=False)

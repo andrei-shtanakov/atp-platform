@@ -20,6 +20,16 @@ class ValidationError(TournamentError):
     """
 
 
+class RosterValidationError(ValidationError):
+    """Roster / creator-commit / namespacing violation (LABS-TSA PR-4).
+
+    A subclass of ``ValidationError`` so MCP handlers and existing
+    422-returning code paths that catch ``ValidationError`` keep
+    working; REST routes catch this more specifically to return
+    HTTP 400.
+    """
+
+
 class ConflictError(TournamentError):
     """State machine violation: join in ACTIVE, double make_move,
     leave during ACTIVE, etc.
@@ -38,3 +48,21 @@ class NotFoundError(TournamentError):
 
     Maps to HTTP 404 / MCP ToolError(404).
     """
+
+
+class ConcurrentPrivateCapExceededError(TournamentError):
+    """Creator has hit the concurrent private tournament cap.
+
+    Raised by ``TournamentService.create_tournament`` when a private
+    tournament would push the creator above
+    ``ATP_MAX_CONCURRENT_PRIVATE_TOURNAMENTS_PER_USER``.
+
+    Maps to HTTP 429.
+    """
+
+    def __init__(self, current: int, cap: int) -> None:
+        super().__init__(
+            f"concurrent private tournament cap exceeded ({current}/{cap})"
+        )
+        self.current = current
+        self.cap = cap
