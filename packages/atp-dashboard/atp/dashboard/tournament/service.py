@@ -401,6 +401,8 @@ class TournamentService:
         user: User,
         agent_name: str,
         join_token: str | None = None,
+        *,
+        agent_id: int | None = None,
     ) -> tuple[Participant, bool]:
         """Idempotent join with race-aware IntegrityError handling.
 
@@ -410,12 +412,23 @@ class TournamentService:
         single user may register multiple tournament agents and play
         them all in the same tournament.
 
+        LABS-TSA PR-6 (post-review): ``agent_id`` is the clean-path
+        input from MCP agent-scoped tokens — the caller has already
+        identified the exact Agent row and we skip name-based lookup
+        entirely. When ``agent_id is None`` (CLI/admin callers), we
+        fall back to the by-name lookup + auto-provision path, which
+        now enforces ``ATP_MAX_TOURNAMENT_AGENTS_PER_USER`` and runs
+        AFTER join validation so a rejected join cannot orphan an
+        Agent row.
+
         Race semantics on INSERT IntegrityError:
-        - uq_participant_tournament_agent violation: a concurrent idempotent
-          re-join of the same agent won the insert race. Re-read the
-          existing row and return (existing, False).
+        - uq_participant_tournament_agent violation: either a concurrent
+          idempotent re-join of the same agent won the insert race, or
+          the agent previously participated in this tournament and was
+          released. Re-read; if an active row exists return it, else
+          raise ConflictError("previously participated").
         - uq_participant_agent_active violation: the agent has active
-          participation in a different tournament. Raise ConflictError(409).
+          participation in a *different* tournament. Raise ConflictError(409).
         - Any other IntegrityError: re-raise unchanged.
         """
         tournament = await self._session.get(Tournament, tournament_id)
@@ -425,35 +438,94 @@ class TournamentService:
         # Capture scalar values before any potential rollback expiry
         user_id = user.id
 
-        # Resolve agent_id from an owned Agent matching agent_name, so the
-        # "agent in active tournament" check in DELETE /api/v1/agents/{id}
-        # can block soft-delete of an agent actively playing.
-        #
-        # LABS-TSA PR-4: every non-builtin Participant row now MUST have
-        # agent_id NOT NULL (enforced by the agent-xor-builtin CHECK). If
-        # the user has no owned **tournament-purpose** agent matching
-        # agent_name, we auto-provision one here so legacy MCP clients
-        # that never called ``POST /api/v1/agents`` keep working. The
-        # filter excludes benchmark-purpose agents of the same name so a
-        # benchmark agent never gets silently linked to a tournament
-        # Participant.
-        #
-        # LABS-TSA PR-6: agent_id resolution happens before the tournament
-        # status check because the idempotent pre-check and the new
-        # uniqueness indexes are both agent-keyed. Auto-provisioning an
-        # Agent row here is harmless even if the join itself later fails
-        # — Agents are user-level resources and may be reused.
-        agent_lookup_filter = (
-            Agent.owner_id == user_id,
-            Agent.tenant_id == DEFAULT_TENANT_ID,
-            Agent.name == agent_name,
-            Agent.purpose == "tournament",
-            Agent.deleted_at.is_(None),
-        )
-        agent_id = await self._session.scalar(
-            select(Agent.id).where(*agent_lookup_filter).limit(1)
-        )
-        if agent_id is None:
+        # --- Step 1: validate the join itself BEFORE any auto-provision ---
+        # Previously the service auto-provisioned an Agent row before it
+        # knew whether the join would succeed. A failed join
+        # (wrong join_token, agent already active elsewhere) would leave
+        # an orphan Agent consuming a quota slot. We now validate first.
+        # The idempotent pre-check for agent_id-supplied callers happens
+        # inside Step 2 below; for name-based callers the pre-check runs
+        # after resolution (also in Step 2).
+
+        resolved_agent_id: int | None = agent_id
+
+        # --- Step 2: resolve agent_id ---
+        if resolved_agent_id is None:
+            # By-name resolution for CLI/admin callers. MCP clients
+            # pass agent_id explicitly and skip this branch.
+            agent_lookup_filter = (
+                Agent.owner_id == user_id,
+                Agent.tenant_id == DEFAULT_TENANT_ID,
+                Agent.name == agent_name,
+                Agent.purpose == "tournament",
+                Agent.deleted_at.is_(None),
+            )
+            resolved_agent_id = await self._session.scalar(
+                select(Agent.id).where(*agent_lookup_filter).limit(1)
+            )
+            needs_auto_provision = resolved_agent_id is None
+        else:
+            needs_auto_provision = False
+            agent_lookup_filter = ()  # unused on the explicit-agent_id path
+
+        # Idempotent pre-check (only meaningful once we already have a
+        # concrete agent_id — either supplied directly or resolved from
+        # an existing Agent row). The auto-provision branch inserts a
+        # brand-new Agent so it cannot have any prior Participant rows.
+        if resolved_agent_id is not None:
+            existing = await self._session.scalar(
+                select(Participant)
+                .where(Participant.tournament_id == tournament_id)
+                .where(Participant.agent_id == resolved_agent_id)
+            )
+            if existing is not None:
+                if existing.released_at is not None:
+                    # Leave is terminal — cannot rejoin.
+                    raise ConflictError(
+                        f"agent {agent_name!r} previously participated in "
+                        f"tournament {tournament_id} "
+                        f"(released={existing.released_at.isoformat()}); "
+                        "rejoin not permitted"
+                    )
+                return existing, False
+
+        # --- Step 3: validate tournament status and join_token ---
+        if tournament.status != TournamentStatus.PENDING:
+            raise ConflictError(
+                f"tournament {tournament_id} is {tournament.status!r}, "
+                "not accepting joins"
+            )
+
+        if tournament.join_token is not None:
+            import hmac
+
+            if join_token is None or not hmac.compare_digest(
+                tournament.join_token, join_token
+            ):
+                raise ConflictError(
+                    f"tournament {tournament_id} requires a valid join_token"
+                )
+
+        # --- Step 4: auto-provision (only for by-name callers, only
+        # after validation succeeded) ---
+        if needs_auto_provision:
+            from atp.dashboard.v2.config import get_config
+
+            cfg = get_config()
+            cap = cfg.max_tournament_agents_per_user
+            existing_count = await self._session.scalar(
+                select(func.count(Agent.id)).where(
+                    Agent.owner_id == user_id,
+                    Agent.purpose == "tournament",
+                    Agent.deleted_at.is_(None),
+                )
+            )
+            current = int(existing_count or 0)
+            if current >= cap:
+                raise ConflictError(
+                    f"tournament agent quota exceeded ({current}/{cap})"
+                )
+
             # Race-tolerant auto-provision: another concurrent join may
             # win the insert race on the agent's UNIQUE
             # (tenant_id, owner_id, name, version) index. Use a
@@ -472,59 +544,43 @@ class TournamentService:
                 async with self._session.begin_nested():
                     self._session.add(auto_agent)
                     await self._session.flush()
-                agent_id = auto_agent.id
+                resolved_agent_id = auto_agent.id
             except IntegrityError:
                 # Re-read with the same purpose-aware filter so we pick
                 # up the concurrent insert, not a stale benchmark-
                 # purpose agent that happens to share the name.
-                agent_id = await self._session.scalar(
+                resolved_agent_id = await self._session.scalar(
                     select(Agent.id).where(*agent_lookup_filter).limit(1)
                 )
-                if agent_id is None:
+                if resolved_agent_id is None:
                     # Reread failed — propagate the race
                     raise
 
-        # Idempotent pre-check: an existing participant for this agent
-        # can always reconnect, even when the tournament is already
-        # active (MCP reconnect scenario).
-        existing = await self._session.scalar(
-            select(Participant)
-            .where(Participant.tournament_id == tournament_id)
-            .where(Participant.agent_id == agent_id)
-        )
-        if existing is not None:
-            if existing.released_at is not None:
-                # Leave is terminal — cannot rejoin
-                raise ConflictError(
-                    f"agent {agent_name!r} already left tournament "
-                    f"{tournament_id}; rejoin not permitted"
-                )
-            return existing, False
-
-        # Fresh join: tournament must be pending.
-        if tournament.status != TournamentStatus.PENDING:
-            raise ConflictError(
-                f"tournament {tournament_id} is {tournament.status!r}, "
-                "not accepting joins"
+            # Re-check idempotency now that we have an agent_id —
+            # unlikely but possible if two concurrent joins race past
+            # the auto-provision block.
+            existing = await self._session.scalar(
+                select(Participant)
+                .where(Participant.tournament_id == tournament_id)
+                .where(Participant.agent_id == resolved_agent_id)
             )
+            if existing is not None:
+                if existing.released_at is not None:
+                    raise ConflictError(
+                        f"agent {agent_name!r} previously participated in "
+                        f"tournament {tournament_id} "
+                        f"(released={existing.released_at.isoformat()}); "
+                        "rejoin not permitted"
+                    )
+                return existing, False
 
-        # Private tournament token check (AD-10)
-        if tournament.join_token is not None:
-            import hmac
-
-            if join_token is None or not hmac.compare_digest(
-                tournament.join_token, join_token
-            ):
-                raise ConflictError(
-                    f"tournament {tournament_id} requires a valid join_token"
-                )
-
-        # INSERT path
+        # --- Step 5: INSERT path ---
+        assert resolved_agent_id is not None
         participant = Participant(
             tournament_id=tournament_id,
             user_id=user_id,
             agent_name=agent_name,
-            agent_id=agent_id,
+            agent_id=resolved_agent_id,
             released_at=None,
         )
         self._session.add(participant)
@@ -540,32 +596,45 @@ class TournamentService:
         except IntegrityError as exc:
             constraint_name = self._extract_constraint_name(exc)
             await self._session.rollback()
-            if constraint_name in (
-                "uq_participant_tournament_agent",
-                "uq_participant_agent_active",
-            ):
-                # Re-read to determine actual conflict type. Both
-                # constraints fire when the same agent is already
-                # active anywhere. Check if the existing row is for
-                # THIS tournament (idempotent re-join) or a DIFFERENT
-                # one (true conflict — name the conflicting agent).
+            if constraint_name == "uq_participant_tournament_agent":
+                # Composite (tournament_id, agent_id) uniqueness: fires
+                # on either a concurrent idempotent re-join (active row
+                # exists) OR a rejoin-after-leave (released row still
+                # exists). Disambiguate via a lookup that does NOT
+                # filter on released_at.
                 existing = await self._session.scalar(
                     select(Participant)
                     .where(Participant.tournament_id == tournament_id)
-                    .where(Participant.agent_id == agent_id)
-                    .where(Participant.released_at.is_(None))
+                    .where(Participant.agent_id == resolved_agent_id)
                 )
-                if existing is not None:
-                    # Same tournament — idempotent re-join
+                if existing is not None and existing.released_at is None:
                     return existing, False
-                # Different tournament active — name the conflicting
-                # agent and the other tournament in the message so MCP
-                # clients can surface the conflict clearly.
+                if existing is not None and existing.released_at is not None:
+                    raise ConflictError(
+                        f"agent {agent_name!r} previously participated in "
+                        f"tournament {tournament_id} "
+                        f"(released={existing.released_at.isoformat()}); "
+                        "rejoin not permitted"
+                    ) from exc
+                # Row vanished between INSERT and re-read — extremely
+                # unlikely but defend with a generic conflict.
+                raise ConflictError(
+                    f"agent {agent_name!r} conflict in tournament {tournament_id}"
+                ) from exc
+            if constraint_name == "uq_participant_agent_active":
+                # Agent is active *somewhere*. Distinguish same-
+                # tournament (concurrent idempotent re-join) from
+                # different-tournament (true conflict). Either row
+                # satisfies the partial unique index; inspect the
+                # existing one.
                 other = await self._session.scalar(
                     select(Participant)
-                    .where(Participant.agent_id == agent_id)
+                    .where(Participant.agent_id == resolved_agent_id)
                     .where(Participant.released_at.is_(None))
                 )
+                if other is not None and other.tournament_id == tournament_id:
+                    # Same tournament — idempotent re-join.
+                    return other, False
                 if other is not None:
                     raise ConflictError(
                         f"agent {other.agent_name!r} already active in "
@@ -666,12 +735,22 @@ class TournamentService:
         self,
         tournament_id: int,
         user: User,
+        *,
+        agent_id: int | None = None,
     ) -> PDRoundState | SHRoundState | BoSRoundState | ElFarolRoundState | PGRoundState:
         """Build a player-private RoundState for the current round.
 
         Returns a pydantic ``PDRoundState`` or ``ElFarolRoundState``
         (see ``atp.dashboard.tournament.schemas``), chosen by the
         tournament's game_type discriminator.
+
+        LABS-TSA PR-6 (post-review): ``agent_id`` selects the caller's
+        Participant when the user has multiple agents in the same
+        tournament. The MCP path always passes it (extracted from
+        ``scope.state['agent_id']`` by the caller). When None, the
+        legacy single-agent path looks up the first Participant whose
+        ``user_id`` matches — preserved for backwards compatibility
+        with admin/CLI call sites that don't own an agent_id.
 
         v1 slice raises NotFoundError if the user is not a participant
         of the tournament (enumeration-guard: indistinguishable from
@@ -692,10 +771,20 @@ class TournamentService:
             .scalars()
             .all()
         )
-        my_idx = next(
-            (i for i, p in enumerate(participants) if p.user_id == user.id),
-            None,
-        )
+        if agent_id is not None:
+            # Agent-keyed lookup — required for MCP multi-agent-per-user.
+            my_idx = next(
+                (i for i, p in enumerate(participants) if p.agent_id == agent_id),
+                None,
+            )
+        else:
+            # Legacy single-agent path: match by user_id. If the user has
+            # multiple agents, the first-registered Participant wins. MCP
+            # callers always pass agent_id to avoid this ambiguity.
+            my_idx = next(
+                (i for i, p in enumerate(participants) if p.user_id == user.id),
+                None,
+            )
         if my_idx is None:
             raise NotFoundError(f"tournament {tournament_id} not found")
 
@@ -794,8 +883,17 @@ class TournamentService:
         tournament_id: int,
         user: User,
         action: dict[str, Any],
+        *,
+        agent_id: int | None = None,
     ) -> dict[str, Any]:
         """Submit one player's action for the current round.
+
+        LABS-TSA PR-6 (post-review): ``agent_id`` selects the caller's
+        Participant when the user has multiple agents in the same
+        tournament. When None, the legacy single-agent path matches by
+        user_id with ``.limit(1)`` — admin/CLI callers that never used
+        agent-scoped tokens stay working, but concurrent multi-agent
+        setups must pass agent_id to avoid the ambiguity.
 
         Returns:
             {"status": "waiting", "round_number": N} if more actions
@@ -857,14 +955,33 @@ class TournamentService:
                 f"pydantic: {first_err.get('loc')}: {first_err.get('msg')}"
             ) from e
 
-        my_participant = (
-            await self._session.execute(
-                select(Participant).where(
-                    Participant.tournament_id == tournament_id,
-                    Participant.user_id == user.id,
+        if agent_id is not None:
+            # Agent-keyed lookup (MCP multi-agent-per-user path).
+            my_participant = (
+                await self._session.execute(
+                    select(Participant).where(
+                        Participant.tournament_id == tournament_id,
+                        Participant.agent_id == agent_id,
+                    )
                 )
-            )
-        ).scalar_one_or_none()
+            ).scalar_one_or_none()
+        else:
+            # Legacy single-agent path. ``.limit(1)`` guards against the
+            # ambiguity window where a user has >1 Participant row in the
+            # tournament — callers on this path are CLI/admin tooling
+            # that has never supported multiple agents. MCP clients
+            # always pass agent_id.
+            my_participant = (
+                await self._session.execute(
+                    select(Participant)
+                    .where(
+                        Participant.tournament_id == tournament_id,
+                        Participant.user_id == user.id,
+                    )
+                    .order_by(Participant.id)
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
         if my_participant is None:
             raise NotFoundError(f"tournament {tournament_id} not found")
 
@@ -1381,19 +1498,34 @@ class TournamentService:
                 },
             )
 
-    async def leave(self, tournament_id: int, user: User) -> None:
+    async def leave(
+        self,
+        tournament_id: int,
+        user: User,
+        *,
+        agent_id: int | None = None,
+    ) -> None:
         """Mark the caller's Participant as released.
+
+        LABS-TSA PR-6 (post-review): ``agent_id`` selects the caller's
+        Participant when the user has multiple agents in the same
+        tournament. When None, the legacy single-agent path matches by
+        user_id. MCP agent-scoped callers always pass agent_id.
 
         If the caller is the last active participant of an ACTIVE
         tournament, cascade to _cancel_impl with reason=ABANDONED inside
         the same transaction. Caller owns the transaction boundary.
         """
-        participant = await self._session.scalar(
+        participant_stmt = (
             select(Participant)
             .where(Participant.tournament_id == tournament_id)
-            .where(Participant.user_id == user.id)
             .where(Participant.released_at.is_(None))
         )
+        if agent_id is not None:
+            participant_stmt = participant_stmt.where(Participant.agent_id == agent_id)
+        else:
+            participant_stmt = participant_stmt.where(Participant.user_id == user.id)
+        participant = await self._session.scalar(participant_stmt)
         if participant is None:
             raise NotFoundError(
                 f"user {user.id} is not active in tournament {tournament_id}"
