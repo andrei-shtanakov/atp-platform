@@ -170,10 +170,19 @@ class TestCreateWithRoster:
 
 class TestConcurrentPrivateCap:
     @pytest.mark.anyio
-    async def test_fourth_private_tournament_rejected(
+    async def test_second_private_tournament_rejected_at_default_cap(
         self, v2_app, auth_headers, monkeypatch
     ) -> None:
-        monkeypatch.setenv("ATP_MAX_CONCURRENT_PRIVATE_TOURNAMENTS_PER_USER", "3")
+        """LABS-TSA PR-6: default cap is 1 (strictly "one private
+        tournament per user at a time"). The second concurrent
+        private tournament must be rejected with 429.
+        """
+        # Ensure we test the PR-6 default (1) rather than whatever the
+        # environment may be overriding. Unset the env var then clear
+        # the cache so get_config() picks up the Field default.
+        monkeypatch.delenv(
+            "ATP_MAX_CONCURRENT_PRIVATE_TOURNAMENTS_PER_USER", raising=False
+        )
         get_config.cache_clear()
         try:
             async with AsyncClient(
@@ -184,6 +193,41 @@ class TestConcurrentPrivateCap:
                 # invariant holds without the creator joining each one.
                 body = {
                     "name": "cap-probe",
+                    "game_type": "el_farol",
+                    "num_players": 2,
+                    "total_rounds": 1,
+                    "round_deadline_s": 30,
+                    "private": True,
+                    "roster": [
+                        {"builtin_strategy": "el_farol/traditionalist"},
+                        {"builtin_strategy": "el_farol/contrarian"},
+                    ],
+                }
+                resp = await client.post(
+                    "/api/v1/tournaments", headers=auth_headers, json=body
+                )
+                assert resp.status_code == 201, resp.text
+                resp = await client.post(
+                    "/api/v1/tournaments", headers=auth_headers, json=body
+                )
+                assert resp.status_code == 429, resp.text
+        finally:
+            get_config.cache_clear()
+
+    @pytest.mark.anyio
+    async def test_cap_override_via_env_still_works(
+        self, v2_app, auth_headers, monkeypatch
+    ) -> None:
+        """Env override allows a higher cap for tests/ops that need it."""
+        monkeypatch.setenv("ATP_MAX_CONCURRENT_PRIVATE_TOURNAMENTS_PER_USER", "3")
+        get_config.cache_clear()
+        try:
+            async with AsyncClient(
+                transport=ASGITransport(app=v2_app), base_url="http://test"
+            ) as client:
+                await _register_tournament_agent(client, auth_headers)
+                body = {
+                    "name": "cap-probe-3",
                     "game_type": "el_farol",
                     "num_players": 2,
                     "total_rounds": 1,

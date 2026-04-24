@@ -469,8 +469,8 @@ async def test_tournament_completion_releases_participants(
     event_bus: TournamentEventBus,
 ) -> None:
     """When a tournament transitions to COMPLETED, every participant's
-    ``released_at`` must be set so the user is no longer matched by the
-    ``uq_participant_user_active`` partial unique index and is free to
+    ``released_at`` must be set so the agent is no longer matched by the
+    ``uq_participant_agent_active`` partial unique index and is free to
     join another tournament. Mirrors the symmetric release done by
     ``_cancel_impl`` step 5.
     """
@@ -524,8 +524,8 @@ async def test_completed_participants_can_join_new_tournament(
     bob: User,
     event_bus: TournamentEventBus,
 ) -> None:
-    """After tournament COMPLETED, same users must be able to start a
-    new tournament without hitting ``uq_participant_user_active``.
+    """After tournament COMPLETED, same agents must be able to start a
+    new tournament without hitting ``uq_participant_agent_active``.
     """
     from atp.dashboard.tournament.service import TournamentService
 
@@ -544,7 +544,7 @@ async def test_completed_participants_can_join_new_tournament(
     await svc.submit_action(t1.id, alice, action={"choice": "cooperate"})
     await svc.submit_action(t1.id, bob, action={"choice": "cooperate"})
 
-    # Must not raise IntegrityError on uq_participant_user_active.
+    # Must not raise IntegrityError on uq_participant_agent_active.
     t2, _ = await svc.create_tournament(
         creator=admin_user,
         name="second",
