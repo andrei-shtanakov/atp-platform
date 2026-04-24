@@ -15,7 +15,7 @@ from typing import Any
 
 from fastapi import APIRouter, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -1820,6 +1820,63 @@ async def ui_create_agent(
     return RedirectResponse(url="/ui/agents", status_code=303)  # type: ignore[return-value]
 
 
+@router.post("/agents/{agent_id}/delete", response_class=HTMLResponse)
+@limiter.limit("10/minute")
+async def ui_delete_agent(
+    request: Request,
+    session: DBSession,
+    agent_id: int,
+) -> HTMLResponse:
+    """Soft-delete an agent via the cookie-auth UI.
+
+    Mirrors ``DELETE /api/v1/agents/{id}`` but accepts a form POST so
+    the agents table can expose a Delete button without JavaScript.
+    """
+    from urllib.parse import quote
+
+    user = await _get_ui_user(request, session)
+    if not user:
+        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+
+    agent = await session.get(Agent, agent_id)
+    if agent is None or agent.deleted_at is not None:
+        return RedirectResponse(  # type: ignore[return-value]
+            url="/ui/agents?error=Agent+not+found", status_code=303
+        )
+    if agent.owner_id != user.id and not user.is_admin:
+        return RedirectResponse(  # type: ignore[return-value]
+            url="/ui/agents?error=You+don%27t+own+this+agent", status_code=303
+        )
+
+    active = await session.execute(
+        select(Participant.id)
+        .join(TournamentModel, Participant.tournament_id == TournamentModel.id)
+        .where(
+            Participant.agent_id == agent_id,
+            Participant.released_at.is_(None),
+            TournamentModel.status.in_(
+                [TournamentStatus.PENDING, TournamentStatus.ACTIVE]
+            ),
+        )
+    )
+    if active.scalar_one_or_none() is not None:
+        return RedirectResponse(  # type: ignore[return-value]
+            url=f"/ui/agents?error={quote('Agent is in an active tournament')}",
+            status_code=303,
+        )
+
+    now = datetime.now()
+    agent.deleted_at = now
+    await session.execute(
+        update(APIToken)
+        .where(APIToken.agent_id == agent_id, APIToken.revoked_at.is_(None))
+        .values(revoked_at=now)
+    )
+    await session.flush()
+
+    return RedirectResponse(url="/ui/agents", status_code=303)  # type: ignore[return-value]
+
+
 async def _render_agent_detail(
     request: Request,
     session: DBSession,
@@ -1887,6 +1944,101 @@ async def _render_agent_detail(
         },
         status_code=status_code,
     )
+
+
+@router.get("/agents/new", response_class=HTMLResponse)
+@limiter.limit("60/minute")
+async def ui_agent_new(
+    request: Request,
+    session: DBSession,
+    purpose: str = "benchmark",
+) -> HTMLResponse:
+    """Render the agent-registration form.
+
+    Reachable from the "Register benchmark agent" / "Register tournament
+    agent" buttons on ``/ui/agents``. Must be declared BEFORE
+    ``/agents/{agent_id}`` below — FastAPI route matching is
+    declaration-order, and ``"new"`` would fail the
+    ``agent_id: int`` coercion otherwise (this was the QA-blocking
+    422 bug surfaced on prod).
+    """
+    user = await _get_ui_user(request, session)
+    if not user:
+        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+    if purpose not in ("benchmark", "tournament"):
+        purpose = "benchmark"
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/agent_new.html",
+        context={
+            "active_page": "agents",
+            "user": user,
+            "purpose": purpose,
+            "error": None,
+        },
+    )
+
+
+@router.post("/agents/new", response_class=HTMLResponse)
+@limiter.limit("30/minute")
+async def ui_agent_new_submit(
+    request: Request,
+    session: DBSession,
+) -> HTMLResponse:
+    """Create an agent from the UI form; redirect to /ui/agents on success."""
+    user = await _get_ui_user(request, session)
+    if not user:
+        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+    form = await request.form()
+    name = str(form.get("name", "")).strip()
+    agent_type = str(form.get("agent_type", "mcp")).strip()
+    purpose = str(form.get("purpose", "benchmark")).strip()
+    description = str(form.get("description", "")).strip() or None
+
+    if purpose not in ("benchmark", "tournament"):
+        purpose = "benchmark"
+
+    error: str | None = None
+    if not name:
+        error = "Name is required."
+
+    if error is None:
+        from atp.dashboard.v2.routes.agent_management_api import (
+            create_agent_for_user,
+        )
+
+        try:
+            await create_agent_for_user(
+                session=session,
+                user=user,
+                name=name,
+                version="latest",
+                agent_type=agent_type,
+                description=description,
+                config=None,
+                purpose=purpose,
+            )
+        except HTTPException as exc:
+            error = str(exc.detail)
+        except Exception as exc:  # pragma: no cover - defensive
+            error = str(exc)
+
+    if error is not None:
+        return _templates(request).TemplateResponse(
+            request=request,
+            name="ui/agent_new.html",
+            context={
+                "active_page": "agents",
+                "user": user,
+                "purpose": purpose,
+                "form_name": name,
+                "form_agent_type": agent_type,
+                "form_description": description or "",
+                "error": error,
+            },
+            status_code=400,
+        )
+    return RedirectResponse(url="/ui/agents", status_code=303)  # type: ignore[return-value]
 
 
 @router.get("/agents/{agent_id}", response_class=HTMLResponse)

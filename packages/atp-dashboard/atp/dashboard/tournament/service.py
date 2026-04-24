@@ -313,13 +313,18 @@ class TournamentService:
                     Agent.deleted_at.is_(None),
                 )
             )
-            has_agent = bool(creator_tournament_agents or 0)
+            agent_count = int(creator_tournament_agents or 0)
+            has_agent = agent_count > 0
             roster_fills_all = len(roster) >= num_players
             if not has_agent and not roster_fills_all:
+                missing = num_players - len(roster)
                 raise RosterValidationError(
-                    "private tournament needs at least one participant: "
-                    "register a tournament-purpose agent or provide a "
-                    "full builtin roster"
+                    f"private tournament needs {num_players} participants; "
+                    f"you have {agent_count} tournament agents and "
+                    f"{len(roster)} builtin(s), leaving {missing} slot(s) "
+                    "unfilled. Register a tournament-purpose agent via "
+                    "/ui/agents, or extend the builtin roster until "
+                    f"len(roster) == num_players ({num_players})."
                 )
 
         # --- LABS-TSA PR-4: concurrent-private cap ---
