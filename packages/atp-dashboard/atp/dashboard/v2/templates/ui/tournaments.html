@@ -3,8 +3,16 @@
 {% block title %}Tournaments - ATP Platform{% endblock %}
 
 {% block content %}
-<h2>Tournaments</h2>
+<div style="display:flex;align-items:baseline;justify-content:space-between;gap:1rem;">
+  <h2 style="margin:0;">Tournaments</h2>
+  {% if user %}
+  <a href="/ui/tournaments/new" role="button">Create tournament</a>
+  {% endif %}
+</div>
 <p>{{ total }} tournament{{ "s" if total != 1 else "" }}</p>
+{% if user and not user.is_admin %}
+<p><small>Non-admins create <em>private</em> tournaments only. Share the join token with your bots.</small></p>
+{% endif %}
 
 <table>
     <thead>

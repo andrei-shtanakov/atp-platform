@@ -154,6 +154,55 @@ async def test_admin_tournaments_list_renders_for_admin(admin_ui_ctx):
 
 
 @pytest.mark.anyio
+async def test_admin_tournaments_list_cancel_button_only_for_live(admin_ui_ctx):
+    """Live (pending/active) rows expose the HTMX Cancel button.
+
+    Post-mortem rows (completed/cancelled) must NOT render the button,
+    otherwise admins could accidentally fire a cancel against a
+    finished tournament (the API returns 409 but the UI should not
+    invite the click).
+    """
+    client = admin_ui_ctx["client"]
+    db = admin_ui_ctx["db"]
+    admin_id = admin_ui_ctx["admin_id"]
+
+    async with db.session() as session:
+        pending = Tournament(
+            game_type="el_farol",
+            num_players=3,
+            total_rounds=2,
+            round_deadline_s=30,
+            status=TournamentStatus.PENDING,
+            created_by=admin_id,
+            config={"name": "cancel test pending"},
+            pending_deadline=datetime.now() + timedelta(minutes=5),
+        )
+        completed = Tournament(
+            game_type="el_farol",
+            num_players=3,
+            total_rounds=2,
+            round_deadline_s=30,
+            status=TournamentStatus.COMPLETED,
+            created_by=admin_id,
+            config={"name": "cancel test completed"},
+        )
+        session.add_all([pending, completed])
+        await session.commit()
+        await session.refresh(pending)
+        await session.refresh(completed)
+
+    resp = await client.get(
+        "/ui/admin/tournaments", headers=admin_ui_ctx["admin_headers"]
+    )
+    assert resp.status_code == 200
+
+    pending_cancel = f'hx-post="/api/v1/tournaments/{pending.id}/cancel"'
+    completed_cancel = f'hx-post="/api/v1/tournaments/{completed.id}/cancel"'
+    assert pending_cancel in resp.text
+    assert completed_cancel not in resp.text
+
+
+@pytest.mark.anyio
 async def test_admin_new_tournament_form_renders(admin_ui_ctx):
     client = admin_ui_ctx["client"]
     resp = await client.get(
@@ -674,3 +723,154 @@ async def test_admin_create_tournament_rejects_invalid_input(admin_ui_ctx):
         or "Validation" in resp.text
         or "el_farol" in resp.text
     )
+
+
+# ---------------------------------------------------------------------------
+# /ui/admin/users
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_admin_users_list_rejects_anonymous(admin_ui_ctx):
+    client = admin_ui_ctx["client"]
+    resp = await client.get("/ui/admin/users")
+    assert resp.status_code == 401
+
+
+@pytest.mark.anyio
+async def test_admin_users_list_rejects_regular_user(admin_ui_ctx):
+    client = admin_ui_ctx["client"]
+    resp = await client.get("/ui/admin/users", headers=admin_ui_ctx["regular_headers"])
+    assert resp.status_code == 403
+
+
+@pytest.mark.anyio
+async def test_admin_users_list_renders_zero_activity(admin_ui_ctx):
+    """Fresh users with no tournaments/agents render with zero counters."""
+    client = admin_ui_ctx["client"]
+    resp = await client.get("/ui/admin/users", headers=admin_ui_ctx["admin_headers"])
+    assert resp.status_code == 200
+    assert "admin_ui_test" in resp.text
+    assert "regular_ui_test" in resp.text
+    # Both users are seeded without any associated tournaments/agents
+    # so every counter column should render zero. Count the zero-cells
+    # conservatively: 2 users × 3 counters = at least 6 occurrences of
+    # ">0<" in the HTML.
+    assert resp.text.count(">0<") >= 6
+
+
+@pytest.mark.anyio
+async def test_admin_users_list_counts_activity(admin_ui_ctx):
+    """Counters include tournaments_created, tournaments_joined, agents_owned."""
+    client = admin_ui_ctx["client"]
+    db = admin_ui_ctx["db"]
+    regular_id = admin_ui_ctx["regular_id"]
+
+    async with db.session() as session:
+        agent = Agent(
+            name="qa-bot",
+            agent_type="http",
+            owner_id=regular_id,
+            config={},
+        )
+        session.add(agent)
+        await session.flush()
+
+        tournament = Tournament(
+            game_type="el_farol",
+            num_players=3,
+            total_rounds=2,
+            round_deadline_s=30,
+            status=TournamentStatus.PENDING,
+            created_by=regular_id,
+            config={"name": "activity test"},
+            pending_deadline=datetime.now() + timedelta(minutes=5),
+        )
+        session.add(tournament)
+        await session.flush()
+
+        # ck_participants_agent_xor_builtin requires exactly one of
+        # agent_id / builtin_strategy, so link to the agent just seeded.
+        session.add(
+            Participant(
+                tournament_id=tournament.id,
+                user_id=regular_id,
+                agent_name="qa-bot",
+                agent_id=agent.id,
+            )
+        )
+        await session.commit()
+
+    resp = await client.get("/ui/admin/users", headers=admin_ui_ctx["admin_headers"])
+    assert resp.status_code == 200
+    # Locate the regular user's row and verify each counter column shows
+    # 1 (one tournament created, one participation, one agent). The
+    # admin row is still all zeros so we can't just search for ">1<"
+    # globally.
+    row_start = resp.text.index("regular_ui_test")
+    row_end = resp.text.index("</tr>", row_start)
+    row = resp.text[row_start:row_end]
+    assert row.count(">1<") == 3
+
+
+@pytest.mark.anyio
+async def test_admin_users_list_counts_distinct_tournaments(admin_ui_ctx):
+    """Multi-agent participation in one tournament counts as 1 joined.
+
+    A user with two agents in the same private tournament has two
+    ``tournament_participants`` rows. ``tournaments_joined`` must
+    count distinct tournaments (one), not raw participant rows (two);
+    otherwise admins see inflated activity numbers.
+    """
+    client = admin_ui_ctx["client"]
+    db = admin_ui_ctx["db"]
+    regular_id = admin_ui_ctx["regular_id"]
+
+    async with db.session() as session:
+        agent_a = Agent(name="bot-a", agent_type="http", owner_id=regular_id, config={})
+        agent_b = Agent(name="bot-b", agent_type="http", owner_id=regular_id, config={})
+        session.add_all([agent_a, agent_b])
+        await session.flush()
+
+        tournament = Tournament(
+            game_type="el_farol",
+            num_players=4,
+            total_rounds=2,
+            round_deadline_s=30,
+            status=TournamentStatus.PENDING,
+            created_by=regular_id,
+            config={"name": "distinct test"},
+            pending_deadline=datetime.now() + timedelta(minutes=5),
+        )
+        session.add(tournament)
+        await session.flush()
+
+        session.add_all(
+            [
+                Participant(
+                    tournament_id=tournament.id,
+                    user_id=regular_id,
+                    agent_name="bot-a",
+                    agent_id=agent_a.id,
+                ),
+                Participant(
+                    tournament_id=tournament.id,
+                    user_id=regular_id,
+                    agent_name="bot-b",
+                    agent_id=agent_b.id,
+                ),
+            ]
+        )
+        await session.commit()
+
+    resp = await client.get("/ui/admin/users", headers=admin_ui_ctx["admin_headers"])
+    assert resp.status_code == 200
+    row_start = resp.text.index("regular_ui_test")
+    row_end = resp.text.index("</tr>", row_start)
+    row = resp.text[row_start:row_end]
+    # Expected per-column values in this scenario:
+    #   agents_owned=2, tournaments_created=1, tournaments_joined=1.
+    # If the query regressed to COUNT(Participant.id), tournaments_joined
+    # would become 2 and this assertion would fail.
+    assert ">2<" in row  # agents_owned
+    assert row.count(">1<") == 2  # tournaments_created + tournaments_joined
