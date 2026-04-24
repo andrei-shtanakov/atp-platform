@@ -9,6 +9,25 @@ from pydantic import BaseModel, ConfigDict, Field
 _REASONING_MAX = int(os.environ.get("ATP_TOURNAMENT_REASONING_MAX_CHARS", "8000"))
 
 
+class ActionTelemetry(BaseModel):
+    """Optional agent-self-reported LLM telemetry attached to a move.
+
+    Agents that want their submission to show up in the dashboard's
+    DEBUG · OBSERVABILITY panel can populate these fields from their
+    LLM client's usage data (e.g. ``response.usage`` on OpenAI /
+    Anthropic SDKs). All fields are optional; unspecified ones render
+    as "—" on the drawer. ``extra="forbid"`` keeps the payload tight so
+    typos fail fast instead of silently dropping.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    model_id: str | None = Field(default=None, max_length=255)
+    tokens_in: int | None = Field(default=None, ge=0)
+    tokens_out: int | None = Field(default=None, ge=0)
+    cost_usd: float | None = Field(default=None, ge=0.0)
+
+
 class TournamentResponse(BaseModel):
     """Schema for returning a tournament."""
 
@@ -49,6 +68,7 @@ class PDAction(BaseModel):
     game_type: Literal["prisoners_dilemma"]
     choice: Literal["cooperate", "defect"]
     reasoning: str | None = Field(default=None, max_length=_REASONING_MAX)
+    telemetry: ActionTelemetry | None = None
 
 
 class ElFarolAction(BaseModel):
@@ -59,6 +79,7 @@ class ElFarolAction(BaseModel):
     game_type: Literal["el_farol"]
     slots: list[int] = Field(..., max_length=MAX_SLOTS_PER_DAY)
     reasoning: str | None = Field(default=None, max_length=_REASONING_MAX)
+    telemetry: ActionTelemetry | None = None
 
 
 class SHAction(BaseModel):
@@ -69,6 +90,7 @@ class SHAction(BaseModel):
     game_type: Literal["stag_hunt"]
     choice: Literal["stag", "hare"]
     reasoning: str | None = Field(default=None, max_length=_REASONING_MAX)
+    telemetry: ActionTelemetry | None = None
 
 
 class BoSAction(BaseModel):
@@ -80,6 +102,7 @@ class BoSAction(BaseModel):
     game_type: Literal["battle_of_sexes"]
     choice: Literal["A", "B"]
     reasoning: str | None = Field(default=None, max_length=_REASONING_MAX)
+    telemetry: ActionTelemetry | None = None
 
 
 class PGAction(BaseModel):
@@ -91,6 +114,7 @@ class PGAction(BaseModel):
     game_type: Literal["public_goods"]
     contribution: float = Field(..., ge=0.0)
     reasoning: str | None = Field(default=None, max_length=_REASONING_MAX)
+    telemetry: ActionTelemetry | None = None
 
 
 TournamentAction = Annotated[

@@ -362,6 +362,31 @@ class Action(Base):
 
     reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Runner-managed tier-2 fields — populated by submit_action /
+    # validator / round dispatcher in follow-up work. Nullable so old
+    # rows and unwired code paths stay valid; rendered as "—" on the
+    # dashboard drawer until capture lands.
+    retry_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    validation_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decide_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Agent-provided LLM telemetry — populated from the optional
+    # ``telemetry`` sub-object on the submitted action (see
+    # ``ActionTelemetry`` in schemas.py). Opt-in; zero impact if the
+    # agent omits it.
+    model_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    tokens_in: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tokens_out: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # W3C traceparent linkage — extracted from the incoming MCP request
+    # in a follow-up tracing middleware. Enables the drawer's
+    # "open in Langfuse" deep-link when ATP_LANGFUSE_BASE_URL is set.
+    trace_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    span_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
     # Relationships
     round: Mapped["Round"] = relationship(
         "Round",
