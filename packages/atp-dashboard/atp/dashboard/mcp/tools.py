@@ -34,9 +34,13 @@ async def _join_tournament_impl(
     agent_name: str,
     user: Any,
     service: TournamentService,
+    agent_id: int | None = None,
 ) -> dict[str, Any]:
     participant, is_new = await service.join(
-        tournament_id=tournament_id, user=user, agent_name=agent_name
+        tournament_id=tournament_id,
+        user=user,
+        agent_name=agent_name,
+        agent_id=agent_id,
     )
     return {
         "tournament_id": tournament_id,
@@ -54,12 +58,19 @@ async def join_tournament(
     tournament_id: int,
     agent_name: str,
     join_token: str | None = None,
+    agent_id: int | None = None,
 ) -> dict[str, Any]:
     """MCP tool handler: idempotent join with session_sync on every call.
 
     Called both from the FastMCP tool decorator shim and from integration
     tests. Extracting the body from the decorator makes it testable
     without a live MCP session.
+
+    LABS-TSA PR-6 (post-review): ``agent_id`` comes from the agent-scoped
+    token on the MCP transport. When provided, service.join() uses it
+    directly and skips the by-name auto-provision path — critical for
+    users running multiple agents, where name-only lookup cannot tell
+    the agents apart safely.
 
     session_sync is emitted on BOTH new-join (is_new=True) AND reconnect
     (is_new=False) so that the MCP client can catch up on state it missed
@@ -70,11 +81,14 @@ async def join_tournament(
         user=user,
         agent_name=agent_name,
         join_token=join_token,
+        agent_id=agent_id,
     )
     await service._session.commit()
 
     try:
-        state = await service.get_state_for(tournament_id=tournament_id, user=user)
+        state = await service.get_state_for(
+            tournament_id=tournament_id, user=user, agent_id=agent_id
+        )
         state_payload: dict[str, Any] = (
             state.to_dict() if hasattr(state, "to_dict") else state  # type: ignore[assignment]
         )
@@ -109,8 +123,9 @@ async def _get_current_state_impl(
     tournament_id: int,
     user: Any,
     service: TournamentService,
+    agent_id: int | None = None,
 ) -> dict[str, Any]:
-    state = await service.get_state_for(tournament_id, user)
+    state = await service.get_state_for(tournament_id, user, agent_id=agent_id)
     return state.to_dict()
 
 
@@ -120,8 +135,11 @@ async def _make_move_impl(
     action: dict[str, Any],
     user: Any,
     service: TournamentService,
+    agent_id: int | None = None,
 ) -> dict[str, Any]:
-    return await service.submit_action(tournament_id, user, action=action)
+    return await service.submit_action(
+        tournament_id, user, action=action, agent_id=agent_id
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -149,13 +167,15 @@ async def _join_tournament_mcp(
     """
     from atp.dashboard.mcp.notifications import (
         forward_events_to_session,
+        resolve_agent_id_from_ctx,
         resolve_user_from_ctx,
         with_service,
     )
 
     user = await resolve_user_from_ctx(ctx)
+    agent_id = resolve_agent_id_from_ctx(ctx)
 
-    await forward_events_to_session(ctx, tournament_id, user)
+    await forward_events_to_session(ctx, tournament_id, user, agent_id=agent_id)
     try:
         async with with_service(ctx, tournament_event_bus) as service:
             result = await join_tournament(
@@ -165,6 +185,7 @@ async def _join_tournament_mcp(
                 tournament_id=tournament_id,
                 agent_name=agent_name,
                 join_token=join_token,
+                agent_id=agent_id,
             )
     except Exception:
         # Join failed — cancel the orphan forwarder task so we don't
@@ -185,14 +206,19 @@ async def get_current_state(
 ) -> dict:
     """Return a player-private RoundState for the current round."""
     from atp.dashboard.mcp.notifications import (
+        resolve_agent_id_from_ctx,
         resolve_user_from_ctx,
         with_service,
     )
 
     user = await resolve_user_from_ctx(ctx)
+    agent_id = resolve_agent_id_from_ctx(ctx)
     async with with_service(ctx, tournament_event_bus) as service:
         return await _get_current_state_impl(
-            tournament_id=tournament_id, user=user, service=service
+            tournament_id=tournament_id,
+            user=user,
+            service=service,
+            agent_id=agent_id,
         )
 
 
@@ -235,17 +261,20 @@ async def make_move(
     game_type, the call is rejected (422).
     """
     from atp.dashboard.mcp.notifications import (
+        resolve_agent_id_from_ctx,
         resolve_user_from_ctx,
         with_service,
     )
 
     user = await resolve_user_from_ctx(ctx)
+    agent_id = resolve_agent_id_from_ctx(ctx)
     async with with_service(ctx, tournament_event_bus) as service:
         return await _make_move_impl(
             tournament_id=tournament_id,
             action=action,
             user=user,
             service=service,
+            agent_id=agent_id,
         )
 
 
@@ -259,14 +288,19 @@ async def leave_tournament(
     service: Any,
     user: Any,
     tournament_id: int,
+    agent_id: int | None = None,
 ) -> dict[str, Any]:
     """MCP tool: leave a tournament.
+
+    LABS-TSA PR-6 (post-review): ``agent_id`` routes the leave to the
+    caller's specific Participant when the user has multiple agents in
+    the tournament. MCP agent-scoped callers always pass it.
 
     Idempotent at the DB level — a retry after a successful-but-unacknowledged
     first call will return NotFoundError; SDK callers MUST treat that as
     success.
     """
-    await service.leave(tournament_id=tournament_id, user=user)
+    await service.leave(tournament_id=tournament_id, user=user, agent_id=agent_id)
     return {"left": True, "tournament_id": tournament_id}
 
 
@@ -373,14 +407,20 @@ async def mcp_leave_tournament(
 ) -> dict:
     """Leave a tournament. Idempotent."""
     from atp.dashboard.mcp.notifications import (
+        resolve_agent_id_from_ctx,
         resolve_user_from_ctx,
         with_service,
     )
 
     user = await resolve_user_from_ctx(ctx)
+    agent_id = resolve_agent_id_from_ctx(ctx)
     async with with_service(ctx, tournament_event_bus) as service:
         return await leave_tournament(
-            ctx=ctx, service=service, user=user, tournament_id=tournament_id
+            ctx=ctx,
+            service=service,
+            user=user,
+            tournament_id=tournament_id,
+            agent_id=agent_id,
         )
 
 

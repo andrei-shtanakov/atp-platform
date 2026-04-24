@@ -39,7 +39,9 @@ async def test_leave_tournament_calls_service():
     result = await leave_tournament(
         ctx=_ctx(), service=svc, user=_user(), tournament_id=1
     )
-    svc.leave.assert_awaited_once_with(tournament_id=1, user=_user_matcher())
+    svc.leave.assert_awaited_once_with(
+        tournament_id=1, user=_user_matcher(), agent_id=None
+    )
     assert result["left"] is True
 
 
