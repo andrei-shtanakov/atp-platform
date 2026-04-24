@@ -238,21 +238,29 @@ class Participant(Base):
     __table_args__ = (
         Index("idx_participant_tournament", "tournament_id"),
         Index("idx_participant_user", "user_id"),
-        UniqueConstraint(
-            "tournament_id",
-            "user_id",
-            name="uq_participant_tournament_user",
-        ),
+        # LABS-TSA PR-6: uniqueness is agent-keyed, not user-keyed. A
+        # single user may register multiple tournament agents and play
+        # them all in the same tournament. Builtins (agent_id IS NULL)
+        # remain unconstrained so a tournament can seat several of the
+        # same builtin strategy.
         Index(
             # uq_ prefix: semantically a unique constraint, implemented
             # as a partial unique index because UniqueConstraint does
             # not accept WHERE clauses and neither SQLite nor PostgreSQL
             # support partial UNIQUE in CREATE TABLE syntax.
-            "uq_participant_user_active",
-            "user_id",
+            "uq_participant_tournament_agent",
+            "tournament_id",
+            "agent_id",
             unique=True,
-            sqlite_where=text("user_id IS NOT NULL AND released_at IS NULL"),
-            postgresql_where=text("user_id IS NOT NULL AND released_at IS NULL"),
+            sqlite_where=text("agent_id IS NOT NULL"),
+            postgresql_where=text("agent_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_participant_agent_active",
+            "agent_id",
+            unique=True,
+            sqlite_where=text("agent_id IS NOT NULL AND released_at IS NULL"),
+            postgresql_where=text("agent_id IS NOT NULL AND released_at IS NULL"),
         ),
         # LABS-TSA PR-1
         Index(
