@@ -701,6 +701,8 @@ async def ui_match_detail(
         "back_link_label": back_link_label,
         "not_found": False,
         "predates_schema": False,
+        "tournament_backed": False,
+        "tournament_id": None,
         "in_progress": False,
         "status": None,
     }
@@ -711,7 +713,19 @@ async def ui_match_detail(
         context["in_progress"] = True
         context["status"] = row.status
     elif not row.actions_json or not row.day_aggregates_json:
-        context["predates_schema"] = True
+        # Two distinct cases share the "empty Phase-7 payload" shape:
+        # (a) tournament-backed matches — dual-write in
+        #     tournament.service._write_game_result_for_tournament still
+        #     leaves JSON blobs NULL pending the reshape follow-up;
+        #     per-round data lives on Round/Action and is viewable via
+        #     /ui/tournaments/{id}.
+        # (b) legacy CLI matches from before PR #63 introduced the
+        #     Phase-7 columns — those are genuinely unrecoverable.
+        if row.tournament_id is not None:
+            context["tournament_backed"] = True
+            context["tournament_id"] = row.tournament_id
+        else:
+            context["predates_schema"] = True
     else:
         payload = _reshape(row)
         context.update(

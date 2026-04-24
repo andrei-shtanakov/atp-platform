@@ -152,6 +152,54 @@ class TestMatchDetailUI:
         assert 'id="atp-el-farol"' not in html
 
     @pytest.mark.anyio
+    async def test_tournament_backed_row_points_to_tournament_detail(
+        self,
+        v2_app,
+        db_session: AsyncSession,
+        disable_dashboard_auth,
+    ) -> None:
+        """Tournament-backed GameResult rows ship with NULL Phase-7 JSON
+        (the reshape in _write_game_result_for_tournament is a deferred
+        follow-up). The match-detail view should route those to the
+        tournament dashboard instead of showing the misleading
+        'pre-Phase-7' message meant for legacy CLI runs.
+        """
+        from atp.dashboard.tournament.models import Tournament
+
+        t = Tournament(
+            game_type="el_farol",
+            num_players=2,
+            total_rounds=1,
+            status="completed",
+        )
+        db_session.add(t)
+        await db_session.commit()
+
+        db_session.add(
+            GameResult(
+                game_name="el_farol",
+                game_type="el_farol_interval",
+                num_players=2,
+                num_rounds=3,
+                status="completed",
+                match_id="m-tourney",
+                tournament_id=t.id,
+            )
+        )
+        await db_session.commit()
+
+        async with AsyncClient(
+            transport=ASGITransport(app=v2_app), base_url="http://test"
+        ) as client:
+            resp = await client.get("/ui/matches/m-tourney")
+
+        assert resp.status_code == 200
+        html = resp.text
+        assert "pre-Phase-7" not in html
+        assert f"/ui/tournaments/{t.id}" in html
+        assert "tournament replay not yet available" in html
+
+    @pytest.mark.anyio
     async def test_in_progress_row_shows_waiting_page(
         self,
         v2_app,
