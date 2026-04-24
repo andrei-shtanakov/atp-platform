@@ -483,9 +483,12 @@ async def test_reasoning_xss_is_escaped(client: AsyncClient):
 
 
 @pytest.mark.anyio
-async def test_reasoning_absent_when_field_none(client: AsyncClient):
-    """Even for a completed tournament, no 💭 icon is rendered on actions
-    that have no reasoning."""
+async def test_reasoning_empty_state_shows_placeholder(client: AsyncClient):
+    """For a completed tournament the caller is allowed to read
+    reasoning. When an agent didn't attach any, render an inline
+    placeholder so the feature stays discoverable instead of hiding
+    behind a missing icon.
+    """
     tid, _, _ = await _seed_pd_tournament_with_reasoning(
         client,
         tournament_status=TournamentStatus.COMPLETED,
@@ -494,4 +497,23 @@ async def test_reasoning_absent_when_field_none(client: AsyncClient):
     )
     resp = await client.get(f"/ui/tournaments/{tid}")
     assert resp.status_code == 200
-    assert "💭" not in resp.text
+    # 💭 icon still appears — now marking an empty-state placeholder.
+    assert "💭" in resp.text
+    assert "no reasoning" in resp.text
+
+
+@pytest.mark.anyio
+async def test_reasoning_placeholder_hidden_for_anon(client: AsyncClient):
+    """Anonymous callers on a live tournament must see neither the real
+    reasoning text nor the 'no reasoning' placeholder — otherwise the
+    feature's existence leaks to viewers the access gate rejects.
+    """
+    tid, _, _ = await _seed_pd_tournament_with_reasoning(
+        client,
+        tournament_status=TournamentStatus.ACTIVE,
+        reasoning_alice=None,
+        reasoning_bob=None,
+    )
+    resp = await client.get(f"/ui/tournaments/{tid}")
+    assert resp.status_code == 200
+    assert "no reasoning" not in resp.text

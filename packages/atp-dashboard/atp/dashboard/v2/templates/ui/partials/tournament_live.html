@@ -116,11 +116,26 @@
                         {% if is_admin and action.source == "timeout_default" %}
                         <span style="font-size:0.75rem;color:#999">(timeout)</span>
                         {% endif %}
-                        {% if action.reasoning and action.id in visible_reasoning_action_ids %}
-                        <details class="reasoning-details" style="margin-top:0.25rem">
-                            <summary title="reasoning" aria-label="Reasoning" style="cursor:pointer">💭</summary>
-                            <p style="font-size:0.8rem;color:#555;white-space:pre-wrap;margin:0.25rem 0 0 0">{{ action.reasoning }}</p>
-                        </details>
+                        {# Inline reasoning. Rendered for every action the
+                           caller is allowed to see reasoning for, even when
+                           the agent didn't attach any — an explicit empty
+                           placeholder makes the feature discoverable instead
+                           of hiding behind a missing 💭 icon. Timeout-default
+                           actions are server-generated and never carry
+                           reasoning, so we skip the placeholder for them to
+                           avoid visual noise. #}
+                        {% if action.id in visible_reasoning_action_ids %}
+                            {% if action.reasoning %}
+                            <div class="reasoning-inline"
+                                 style="font-size:0.8rem;color:#555;white-space:pre-wrap;margin-top:0.25rem;font-style:italic;">
+                                💭 {{ action.reasoning }}
+                            </div>
+                            {% elif action.source != "timeout_default" %}
+                            <div class="reasoning-inline reasoning-inline-empty"
+                                 style="font-size:0.75rem;color:#aaa;margin-top:0.25rem;font-style:italic;">
+                                💭 <span>no reasoning</span>
+                            </div>
+                            {% endif %}
                         {% endif %}
                     </td>
                 {% else %}
