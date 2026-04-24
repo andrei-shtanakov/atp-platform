@@ -26,13 +26,17 @@ async def test_migration_up_down_up_clean_sqlite() -> None:
         cols = {c["name"] for c in insp.get_columns("game_results")}
         assert "tournament_id" in cols
         eng.dispose()
-        # Downgrade two steps to drop the PR-4 CHECK + PR-3 column. The
-        # PR-4 revision (a9c4e81f3d2a) now sits atop PR-3 (52987a83afb7),
-        # so a single ``-1`` only strips the CHECK.
-        subprocess.check_call(["uv", "run", "alembic", "downgrade", "-2"], env=env)
+        # Downgrade to the PR-1 head (853688412c5b) — i.e. undo every
+        # migration stacked on top of PR-1 but keep PR-1's own columns.
+        # Explicit revision beats ``-N`` because the N keeps shifting
+        # as new migrations land (we are at PR-6 today, tomorrow maybe
+        # PR-7). The goal of this assertion is "PR-1 columns survive,
+        # PR-3's api_tokens.agent_purpose is gone".
+        subprocess.check_call(
+            ["uv", "run", "alembic", "downgrade", "853688412c5b"], env=env
+        )
         eng = create_engine(f"sqlite:///{dbpath}")
         insp = inspect(eng)
-        # PR-3 column gone, but PR-1 columns should remain
         assert "agent_purpose" not in {
             c["name"] for c in insp.get_columns("api_tokens")
         }

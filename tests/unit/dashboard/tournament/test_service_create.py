@@ -76,19 +76,31 @@ async def test_create_over_cap_raises_validation_error(monkeypatch):
 
 @pytest.mark.anyio
 async def test_create_private_returns_join_token(monkeypatch):
+    from atp.dashboard.v2.config import get_config
+
     monkeypatch.setenv("ATP_TOKEN_EXPIRE_MINUTES", "60")
-    svc = _make_service()
-    t, token = await svc.create_tournament(
-        creator=_make_user(),
-        name="private",
-        game_type="prisoners_dilemma",
-        num_players=2,
-        total_rounds=3,
-        round_deadline_s=30,
-        private=True,
-    )
-    assert token is not None
-    assert len(token) >= 32  # secrets.token_urlsafe(32) base64-ish
+    # The concurrent-private cap default tightened to 1 in LABS-TSA PR-6.
+    # The mocked session returns scalar=1 for both the agent-count and
+    # the active-tournaments count, so with cap=1 this test would trip
+    # the cap. Raise the cap for this specific test so we can exercise
+    # the happy path.
+    monkeypatch.setenv("ATP_MAX_CONCURRENT_PRIVATE_TOURNAMENTS_PER_USER", "3")
+    get_config.cache_clear()
+    try:
+        svc = _make_service()
+        t, token = await svc.create_tournament(
+            creator=_make_user(),
+            name="private",
+            game_type="prisoners_dilemma",
+            num_players=2,
+            total_rounds=3,
+            round_deadline_s=30,
+            private=True,
+        )
+        assert token is not None
+        assert len(token) >= 32  # secrets.token_urlsafe(32) base64-ish
+    finally:
+        get_config.cache_clear()
 
 
 @pytest.mark.anyio

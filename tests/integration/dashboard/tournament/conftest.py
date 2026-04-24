@@ -7,6 +7,15 @@ import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+# LABS-TSA PR-6 (post-review): TournamentService.join now calls
+# ``get_config()`` from the by-name auto-provision path to enforce the
+# per-user tournament-agent quota. ``DashboardConfig`` rejects empty
+# ATP_SECRET_KEY in non-debug mode — set a benign test secret here the
+# same way the unit-test conftest does so these integration tests can
+# run in a fresh shell.
+os.environ.setdefault("ATP_SECRET_KEY", "integration-test-secret-key")
+os.environ.setdefault("ATP_DEBUG", "true")
+
 
 @pytest.fixture
 def anyio_backend():

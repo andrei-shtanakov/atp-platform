@@ -63,6 +63,23 @@ async def resolve_user_from_ctx(ctx: Any) -> User:
         return user
 
 
+def resolve_agent_id_from_ctx(ctx: Any) -> int | None:
+    """Return ``request.state.agent_id`` for the current MCP call.
+
+    LABS-TSA PR-6 (post-review): ``MCPAuthMiddleware`` already rejects
+    non-agent-scoped tokens with 403, so on a successful tool call the
+    state dict always carries a concrete ``agent_id`` for ``atp_a_*``
+    tokens. Exposed as a helper so tool handlers can thread the id
+    through to the service layer without reaching into FastMCP
+    internals themselves.
+    """
+    from fastmcp.server.dependencies import get_http_request
+
+    request = get_http_request()
+    agent_id: int | None = getattr(request.state, "agent_id", None)
+    return agent_id
+
+
 @asynccontextmanager
 async def with_service(
     ctx: Any, bus: TournamentEventBus
@@ -86,12 +103,19 @@ async def _format_notification_for_user(
     event: AnyTournamentEvent,
     user: User,
     service: TournamentService,
+    *,
+    agent_id: int | None = None,
 ) -> dict[str, Any] | None:
     """Convert a TournamentEvent into a per-player MCP notifications/message.
 
     For ``round_started``, calls ``service.get_state_for`` to build the
     player-private RoundState. For ``tournament_completed`` the final
     scoreboard is global so no per-player call is needed.
+
+    LABS-TSA PR-6 (post-review): ``agent_id`` is the agent-scoped token's
+    owned Agent id, captured at subscription time. Without it a user
+    with multiple agents in the same tournament would always receive
+    the first-registered agent's state (see get_state_for comment).
 
     Returns the structured payload that the forwarder passes to
     ``session.send_log_message(..., data=payload)``. The wire-level
@@ -114,7 +138,9 @@ async def _format_notification_for_user(
 
     # From here on, event is narrowed to TournamentEvent.
     if event.event_type == "round_started":
-        state = await service.get_state_for(event.tournament_id, user)
+        state = await service.get_state_for(
+            event.tournament_id, user, agent_id=agent_id
+        )
         return {
             "method": "notifications/message",
             "params": {
@@ -144,10 +170,22 @@ async def _format_notification_for_user(
     return None
 
 
-async def forward_events_to_session(ctx: Any, tournament_id: int, user: User) -> None:
+async def forward_events_to_session(
+    ctx: Any,
+    tournament_id: int,
+    user: User,
+    *,
+    agent_id: int | None = None,
+) -> None:
     """Spawn a background task that forwards bus events for one
     tournament to one MCP session. The task is cancelled when the
     session disconnects or leaves the tournament.
+
+    LABS-TSA PR-6 (post-review): ``agent_id`` is captured here (while
+    the HTTP request state is still accessible) and threaded into the
+    per-event formatter so ``round_started`` notifications carry the
+    right per-agent state when one user has multiple agents in the
+    tournament.
     """
     from atp.dashboard.mcp import tournament_event_bus
 
@@ -168,7 +206,7 @@ async def forward_events_to_session(ctx: Any, tournament_id: int, user: User) ->
                     async with db.session() as db_session:
                         service = TournamentService(db_session, tournament_event_bus)
                         notification = await _format_notification_for_user(
-                            event, user, service
+                            event, user, service, agent_id=agent_id
                         )
                     if notification is None:
                         continue

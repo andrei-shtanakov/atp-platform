@@ -151,9 +151,13 @@ class DashboardConfig(BaseSettings):
         validation_alias="ATP_MAX_TOURNAMENT_AGENTS_PER_USER",
     )
     max_concurrent_private_tournaments_per_user: int = Field(
-        default=3,
+        default=1,
         ge=1,
-        description="Max pending+active private tournaments per user",
+        description=(
+            "Max pending+active private tournaments per user. LABS-TSA PR-6 "
+            "tightened this to 1 to enforce 'one private tournament per user "
+            "at a time'; tests that need a larger cap override via the env var."
+        ),
         validation_alias="ATP_MAX_CONCURRENT_PRIVATE_TOURNAMENTS_PER_USER",
     )
     max_tokens_per_agent: int = Field(

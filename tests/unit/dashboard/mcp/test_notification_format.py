@@ -30,7 +30,7 @@ async def test_format_round_started_calls_get_state_for_and_wraps_payload() -> N
 
     notification = await _format_notification_for_user(event, fake_user, fake_service)
 
-    fake_service.get_state_for.assert_awaited_once_with(7, fake_user)
+    fake_service.get_state_for.assert_awaited_once_with(7, fake_user, agent_id=None)
     assert notification is not None
     assert notification["method"] == "notifications/message"
     assert notification["params"]["data"]["event"] == "round_started"
