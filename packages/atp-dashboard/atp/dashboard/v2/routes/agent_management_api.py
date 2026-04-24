@@ -5,6 +5,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from atp.dashboard.auth import require_user_level_token
@@ -90,8 +91,27 @@ async def create_agent_for_user(
         owner_id=user.id,
         purpose=purpose,
     )
-    session.add(agent)
-    await session.flush()
+    # The COUNT-based quota check and the owner-scoped duplicate check
+    # above filter on ``deleted_at IS NULL``, but the DB's unique
+    # constraints don't. A soft-deleted row with the same name+version
+    # (or a legacy pre-ownership schema that still carries a
+    # ``(tenant_id, name)`` unique) manifests here as IntegrityError.
+    # Wrap session.add + flush in a SAVEPOINT so failure rolls back only
+    # the failed INSERT — the caller's outer transaction (and any ORM
+    # instances loaded through it, e.g. the ``user`` row referenced by
+    # the UI error-template render) stays live.
+    try:
+        async with session.begin_nested():
+            session.add(agent)
+            await session.flush()
+    except IntegrityError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Agent '{name}' version '{version}' already exists "
+                "(possibly soft-deleted; pick a different name)"
+            ),
+        ) from exc
     await session.refresh(agent)
     return agent
 
