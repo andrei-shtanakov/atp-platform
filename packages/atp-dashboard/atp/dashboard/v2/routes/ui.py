@@ -1646,7 +1646,15 @@ async def ui_analytics(request: Request, session: DBSession) -> HTMLResponse:
 @router.get("/agents", response_class=HTMLResponse)
 @limiter.limit("120/minute")
 async def ui_agents(request: Request, session: DBSession) -> HTMLResponse:
-    """My Agents page."""
+    """My Agents page.
+
+    LABS-TSA PR-5: adds a per-purpose quota strip (benchmark + tournament
+    agent counts vs. their configured caps) and surfaces ``purpose`` as a
+    table column. ``counts`` and ``quota`` are keyed by the two
+    ``Agent.purpose`` values.
+    """
+    from atp.dashboard.v2.config import get_config
+
     user = await _get_ui_user(request, session)
     if not user:
         return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
@@ -1673,11 +1681,32 @@ async def ui_agents(request: Request, session: DBSession) -> HTMLResponse:
             name=a.name,
             version=a.version,
             agent_type=a.agent_type,
+            purpose=a.purpose,
             created_at=a.created_at,
             token_count=tc,
         )
         for a, tc in result.all()
     ]
+
+    # Per-purpose counts for the quota strip. Exclude soft-deleted agents
+    # so the UI matches the enforcement logic in create_agent_for_user.
+    counts: dict[str, int] = {}
+    for purpose in ("benchmark", "tournament"):
+        counts[purpose] = (
+            await session.scalar(
+                select(func.count(Agent.id)).where(
+                    Agent.owner_id == user.id,
+                    Agent.purpose == purpose,
+                    Agent.deleted_at.is_(None),
+                )
+            )
+            or 0
+        )
+    cfg = get_config()
+    quota = {
+        "benchmark": cfg.max_benchmark_agents_per_user,
+        "tournament": cfg.max_tournament_agents_per_user,
+    }
 
     error = request.query_params.get("error")
     return _templates(request).TemplateResponse(
@@ -1687,6 +1716,8 @@ async def ui_agents(request: Request, session: DBSession) -> HTMLResponse:
             "active_page": "agents",
             "user": user,
             "agents": agents,
+            "counts": counts,
+            "quota": quota,
             "error": error,
         },
     )
