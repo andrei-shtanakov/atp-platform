@@ -2019,6 +2019,9 @@ async def ui_agent_new_submit(
                 purpose=purpose,
             )
         except HTTPException as exc:
+            # create_agent_for_user uses a SAVEPOINT around the INSERT, so
+            # the outer transaction (and the ORM-loaded ``user`` instance
+            # the template lazy-loads) stays live — no rollback needed here.
             error = str(exc.detail)
         except Exception as exc:  # pragma: no cover - defensive
             error = str(exc)

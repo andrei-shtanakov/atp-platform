@@ -125,6 +125,52 @@ class TestAgentNewSubmit:
         assert agent.agent_type == "mcp"
 
     @pytest.mark.anyio
+    async def test_post_conflict_with_soft_deleted_returns_400_not_500(
+        self, v2_app, db_session: AsyncSession, owner_cookies
+    ) -> None:
+        """Regression: before the fix, IntegrityError escaped as a 500 and
+        the error-template render tripped on user.is_admin lazy-load
+        (PendingRollbackError). Now the failed INSERT is scoped by a
+        SAVEPOINT — only that SAVEPOINT rolls back while the outer
+        session/transaction stays live — and a friendly 409 message is
+        rendered at status 400."""
+        user, cookies = owner_cookies
+
+        # Seed a soft-deleted agent with the same (owner, name, version)
+        # the user will try to create below. The owner-scoped existing
+        # check filters on deleted_at IS NULL so the app-layer guard
+        # misses it; the DB-level unique constraint catches it and
+        # raises IntegrityError.
+        from datetime import datetime
+
+        ghost = Agent(
+            name="ghost-bot",
+            version="latest",
+            owner_id=user.id,
+            agent_type="mcp",
+            purpose="tournament",
+            deleted_at=datetime.now(),
+        )
+        db_session.add(ghost)
+        await db_session.commit()
+
+        async with AsyncClient(
+            transport=ASGITransport(app=v2_app),
+            base_url="http://test",
+            cookies=cookies,
+        ) as client:
+            resp = await client.post(
+                "/ui/agents/new",
+                data={
+                    "name": "ghost-bot",
+                    "agent_type": "mcp",
+                    "purpose": "tournament",
+                },
+            )
+        assert resp.status_code == 400, resp.text
+        assert "already in use" in resp.text.lower()
+
+    @pytest.mark.anyio
     async def test_post_without_name_renders_error(self, v2_app, owner_cookies) -> None:
         _, cookies = owner_cookies
         async with AsyncClient(
