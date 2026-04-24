@@ -16,6 +16,7 @@ import logging
 import os
 import secrets
 import time
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -31,7 +32,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from atp.dashboard.models import DEFAULT_TENANT_ID, Agent, User
+from atp.dashboard.models import DEFAULT_TENANT_ID, Agent, GameResult, User
 from atp.dashboard.tournament.builtins import (
     BuiltinNotFoundError,
     resolve_builtin,
@@ -1217,10 +1218,26 @@ class TournamentService:
         and they are free to join another tournament. Mirrors the release
         step in ``_cancel_impl``; without it, natural completion would
         leave users "stuck" active forever.
+
+        LABS-TSA PR-5: writes a companion ``GameResult`` row with a fresh
+        UUID ``match_id`` and ``tournament_id = tournament.id`` so
+        ``/ui/matches`` can surface tournament outcomes. The UNIQUE
+        partial index on ``game_results.tournament_id`` plus a SAVEPOINT
+        around the insert make the dual-write idempotent — a second
+        completion attempt hits IntegrityError and is absorbed silently.
+        The JSON blobs (``actions_json`` etc.) are left as empty lists
+        in this PR; a follow-up ticket will port the full Phase-7
+        reshape from ``atp/cli/commands/game.py::_build_game_result_kwargs``.
         """
         now = _utc_now()
         tournament.status = TournamentStatus.COMPLETED
         tournament.ends_at = now
+
+        # Dual-write a GameResult row linked to this tournament. Must run
+        # before the per-participant release loop so an IntegrityError
+        # from a duplicate completion only rolls back the SAVEPOINT, not
+        # the outer transaction flipping tournament.status.
+        await self._write_game_result_for_tournament(tournament)
 
         participants = (
             (
@@ -1254,6 +1271,57 @@ class TournamentService:
                 timestamp=_utc_now(),
             )
         )
+
+    async def _write_game_result_for_tournament(self, tournament: Tournament) -> None:
+        """Dual-write a ``GameResult`` row linked to this tournament.
+
+        LABS-TSA PR-5. Populates the scalar fields plus empty-list JSON
+        blobs; a follow-up ticket will port the full Phase-7 reshape of
+        Round/Action rows from ``atp/cli/commands/game.py``.
+
+        ``match_id`` is a fresh UUID — **never** the tournament's
+        ``join_token`` (that's a secret the creator must share with
+        agents out-of-band).
+
+        Wrapped in ``session.begin_nested()`` so the UNIQUE partial
+        index ``uq_game_results_tournament_id`` converts a duplicate
+        completion into a silent no-op instead of crashing the outer
+        transaction that just flipped ``tournament.status``.
+        """
+        match_id = str(uuid.uuid4())
+        variant = (tournament.config or {}).get("variant", "tournament")
+        row = GameResult(
+            match_id=match_id,
+            game_name=tournament.game_type,
+            game_type=variant,
+            num_players=tournament.num_players,
+            num_rounds=tournament.total_rounds,
+            num_episodes=1,
+            status="completed",
+            completed_at=_utc_now(),
+            tournament_id=tournament.id,
+            # Phase-7 payload — empty-list placeholder, populated by a
+            # follow-up ticket that reshapes Round/Action rows.
+            actions_json=[],
+            day_aggregates_json=[],
+            round_payoffs_json=[],
+            agents_json=[],
+        )
+        try:
+            async with self._session.begin_nested():
+                self._session.add(row)
+                await self._session.flush()
+        except IntegrityError:
+            # Idempotency path — a previous completion already wrote the
+            # GameResult for this tournament_id (UNIQUE partial index
+            # ``uq_game_results_tournament_id``). Fall through silently.
+            logger.info(
+                "tournament._write_game_result.duplicate",
+                extra={
+                    "tournament_id": tournament.id,
+                    "event": "tournament_completion_dual_write_duplicate",
+                },
+            )
 
     async def leave(self, tournament_id: int, user: User) -> None:
         """Mark the caller's Participant as released.
