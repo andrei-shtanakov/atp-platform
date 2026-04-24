@@ -762,16 +762,14 @@ async def ui_tournaments(
     )
 
 
-# Whitelist of game_types surfaced by the /ui/tournaments/new form.
-# Mirrors _SUPPORTED_GAMES in TournamentService.create_tournament so the
-# form only offers games that the service will actually accept.
-_TOURNAMENT_NEW_GAMES: list[str] = [
-    "el_farol",
-    "prisoners_dilemma",
-    "stag_hunt",
-    "battle_of_sexes",
-    "public_goods",
-]
+# Whitelist of game_types surfaced by the /ui/tournaments/new form —
+# derived from TournamentService.SUPPORTED_GAMES so the UI cannot drift
+# from the service-level validator.
+from atp.dashboard.tournament.service import (  # noqa: E402
+    SUPPORTED_GAMES as _TOURNAMENT_SUPPORTED_GAMES,
+)
+
+_TOURNAMENT_NEW_GAMES: list[str] = sorted(_TOURNAMENT_SUPPORTED_GAMES)
 
 
 def _resolve_form_user(request: Request, session_user: User | None) -> int | None:

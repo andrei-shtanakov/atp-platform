@@ -113,11 +113,14 @@ class TestDualWrite:
         assert row.game_name == "el_farol"
         assert row.num_players == 2
         assert row.num_rounds == 1
-        # JSON blobs are empty lists for this PR; full reshape is a follow-up.
-        assert row.actions_json == []
-        assert row.day_aggregates_json == []
-        assert row.round_payoffs_json == []
-        assert row.agents_json == []
+        # Phase-7 JSON columns are NULL placeholders until a follow-up
+        # ticket ports the full Round/Action reshape. NULL (not empty
+        # list) keeps these rows out of the /ui/matches renderability
+        # filter so they don't show up as "pre-Phase-7" on detail.
+        assert row.actions_json is None
+        assert row.day_aggregates_json is None
+        assert row.round_payoffs_json is None
+        assert row.agents_json is None
 
     @pytest.mark.anyio
     async def test_idempotent_on_double_completion(

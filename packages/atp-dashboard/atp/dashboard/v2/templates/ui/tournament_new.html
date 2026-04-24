@@ -12,12 +12,18 @@
   {% endif %}
   <form method="post" action="/ui/tournaments/new">
     <label>Game
-      <select name="game_type" id="game_type">
+      <select
+        name="game_type"
+        id="game_type"
+        onchange="window.location.assign('/ui/tournaments/new?game_type=' + encodeURIComponent(this.value))">
         {% for game in games %}
         <option value="{{ game }}"{% if game == selected_game %} selected{% endif %}>{{ game }}</option>
         {% endfor %}
       </select>
     </label>
+    <p style="color:#666; margin:4px 0 12px; font-size:0.9em">
+      Changing the game reloads the page to refresh the builtin roster below.
+    </p>
 
     <fieldset>
       <legend>Visibility</legend>

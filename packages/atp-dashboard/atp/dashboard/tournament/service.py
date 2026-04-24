@@ -87,7 +87,7 @@ TOURNAMENT_PENDING_MAX_WAIT_S: int = int(
     os.environ.get("ATP_TOURNAMENT_PENDING_MAX_WAIT_S", "300")
 )
 
-_SUPPORTED_GAMES = frozenset(
+SUPPORTED_GAMES: frozenset[str] = frozenset(
     {
         "prisoners_dilemma",
         "el_farol",
@@ -96,6 +96,9 @@ _SUPPORTED_GAMES = frozenset(
         "public_goods",
     }
 )
+# Back-compat alias for private usage within this module; external
+# callers should import ``SUPPORTED_GAMES`` instead.
+_SUPPORTED_GAMES = SUPPORTED_GAMES
 
 _PD_SINGLETON: PrisonersDilemma = PrisonersDilemma()
 _SH_SINGLETON: StagHunt = StagHunt()
@@ -1300,12 +1303,18 @@ class TournamentService:
             status="completed",
             completed_at=_utc_now(),
             tournament_id=tournament.id,
-            # Phase-7 payload — empty-list placeholder, populated by a
-            # follow-up ticket that reshapes Round/Action rows.
-            actions_json=[],
-            day_aggregates_json=[],
-            round_payoffs_json=[],
-            agents_json=[],
+            # Phase-7 payload — NULL placeholder, populated by a
+            # follow-up ticket that reshapes Round/Action rows. NULL
+            # (not empty list) keeps these tournament-backed rows out
+            # of the /ui/matches renderability filter
+            # (``actions_json IS NOT NULL``) until the reshape lands —
+            # otherwise they would show up in the listing but render
+            # as "predates_schema" on detail because the Cards payload
+            # treats empty lists as missing data.
+            actions_json=None,
+            day_aggregates_json=None,
+            round_payoffs_json=None,
+            agents_json=None,
         )
         try:
             async with self._session.begin_nested():

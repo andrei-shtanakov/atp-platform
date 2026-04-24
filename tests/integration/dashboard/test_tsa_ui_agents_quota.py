@@ -7,86 +7,77 @@ two register links (one per purpose).
 
 from __future__ import annotations
 
-import os
+from collections.abc import AsyncGenerator
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from atp.dashboard.auth import create_access_token, get_password_hash
-from atp.dashboard.database import Database, set_database
-from atp.dashboard.models import Agent, Base, User
-from atp.dashboard.v2.config import DashboardConfig, get_config
-from atp.dashboard.v2.factory import create_app
+from atp.dashboard.auth import create_access_token
+from atp.dashboard.database import Database
+from atp.dashboard.models import Agent, User
+from atp.dashboard.v2.dependencies import get_db_session
+from atp.dashboard.v2.factory import create_test_app
 
 
 @pytest.fixture
-async def app_with_cookie():
-    os.environ["ATP_SECRET_KEY"] = "test-secret"
-    os.environ["ATP_DISABLE_AUTH"] = "false"
-    os.environ["ATP_RATE_LIMIT_ENABLED"] = "false"
-    get_config.cache_clear()
+def v2_app(test_database: Database):
+    app = create_test_app(use_v2_routes=True)
 
-    db = Database(url="sqlite+aiosqlite:///:memory:", echo=False)
-    async with db.engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    set_database(db)
+    async def override_get_session() -> AsyncGenerator[AsyncSession, None]:
+        async with test_database.session_factory() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
 
-    config = DashboardConfig(
-        database_url="sqlite+aiosqlite:///:memory:",
-        debug=True,
-        secret_key="test-secret",
-        disable_auth=False,
-        rate_limit_enabled=False,
-    )
-    app = create_app(config=config)
-
-    async with db.session() as session:
-        user = User(
-            username="owner",
-            email="owner@test.com",
-            hashed_password=get_password_hash("pass"),
-            is_active=True,
-        )
-        session.add(user)
-        await session.commit()
-        await session.refresh(user)
-
-    jwt = create_access_token(data={"sub": user.username, "user_id": user.id})
-    cookies = {"atp_token": jwt}
-
-    yield app, cookies, user, db
-
-    await db.close()
-    set_database(None)  # type: ignore[arg-type]
-    get_config.cache_clear()
+    app.dependency_overrides[get_db_session] = override_get_session
+    return app
 
 
 @pytest.mark.anyio
 async def test_agents_page_shows_quota_strip_and_purpose_column(
-    app_with_cookie,
+    v2_app,
+    db_session: AsyncSession,
 ) -> None:
-    app, cookies, user, db = app_with_cookie
-    async with db.session() as session:
-        session.add(
+    # Seed a user + one agent of each purpose via the same session the
+    # handler will read from (dependency override above keeps the
+    # session factory consistent across fixture and request).
+    user = User(
+        username="owner",
+        email="owner@test.com",
+        hashed_password="x",
+        is_active=True,
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+
+    db_session.add_all(
+        [
             Agent(
                 name="bench-1",
                 agent_type="http",
                 owner_id=user.id,
                 purpose="benchmark",
-            )
-        )
-        session.add(
+            ),
             Agent(
                 name="tourn-1",
                 agent_type="mcp",
                 owner_id=user.id,
                 purpose="tournament",
-            )
-        )
-        await session.commit()
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    jwt = create_access_token(data={"sub": user.username, "user_id": user.id})
+    cookies = {"atp_token": jwt}
 
     async with AsyncClient(
-        transport=ASGITransport(app=app),
+        transport=ASGITransport(app=v2_app),
         base_url="http://test",
         cookies=cookies,
     ) as client:
