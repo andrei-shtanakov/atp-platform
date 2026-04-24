@@ -10,7 +10,7 @@ from httpx import ASGITransport, AsyncClient
 from atp.dashboard.auth import get_password_hash
 from atp.dashboard.benchmark.models import Benchmark, Run, RunStatus
 from atp.dashboard.database import Database, set_database
-from atp.dashboard.models import Base, User
+from atp.dashboard.models import Agent, Base, User
 from atp.dashboard.tournament.models import Participant, TournamentStatus
 from atp.dashboard.tournament.models import Tournament as TournamentModel
 from atp.dashboard.v2.config import DashboardConfig, get_config
@@ -141,23 +141,46 @@ async def test_tournament_leaderboard_aggregates_by_game_type(
         session.add_all([t1, t2])
         await session.flush()
 
+        # LABS-TSA PR-4: non-builtin Participant rows need agent_id. Register
+        # one owned agent per (user_id, agent_name) pairing used below.
+        agents: dict[tuple[int, str], int] = {}
+        for user_id, agent_name in (
+            (1, "cooperator"),
+            (2, "cooperator"),
+            (3, "defector"),
+        ):
+            ag = Agent(
+                tenant_id="default",
+                name=f"{agent_name}-u{user_id}",
+                agent_type="mcp",
+                owner_id=user_id,
+                config={},
+                purpose="tournament",
+            )
+            session.add(ag)
+            await session.flush()
+            agents[(user_id, agent_name)] = ag.id
+
         session.add_all(
             [
                 Participant(
                     tournament_id=t1.id,
                     user_id=1,
+                    agent_id=agents[(1, "cooperator")],
                     agent_name="cooperator",
                     total_score=90.0,
                 ),
                 Participant(
                     tournament_id=t2.id,
                     user_id=2,
+                    agent_id=agents[(2, "cooperator")],
                     agent_name="cooperator",
                     total_score=85.0,
                 ),
                 Participant(
                     tournament_id=t1.id,
                     user_id=3,
+                    agent_id=agents[(3, "defector")],
                     agent_name="defector",
                     total_score=40.0,
                 ),

@@ -198,7 +198,11 @@ class TestSoftDelete:
 class TestAgentLimit:
     @pytest.mark.anyio
     async def test_agent_limit_enforced(self, app_with_db: tuple) -> None:
-        """10 agents OK, 11th returns 409 (default max_agents_per_user=10)."""
+        """10 benchmark agents OK, 11th returns 429.
+
+        (LABS-TSA PR-2: per-purpose quota, default
+        max_benchmark_agents_per_user=10.)
+        """
         app, headers, _user, _db = app_with_db
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -215,7 +219,7 @@ class TestAgentLimit:
                 json={"name": "limit-agent-overflow", "agent_type": "cli"},
                 headers=headers,
             )
-        assert eleventh.status_code == 409, eleventh.text
+        assert eleventh.status_code == 429, eleventh.text
 
 
 class TestGetAndUpdateAgent:

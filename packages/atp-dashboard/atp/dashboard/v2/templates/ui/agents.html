@@ -5,31 +5,26 @@
 {% block content %}
 <h1>My Agents</h1>
 
+{# LABS-TSA PR-5: quota strip + per-purpose register buttons. ``counts``
+   and ``quota`` are keyed by the two Agent.purpose values and fall back
+   to zeros when absent so this block is safe to render before the PR-2
+   quota config lands everywhere. #}
+{% if counts is defined and quota is defined %}
+<div class="quota-strip" style="padding:8px 12px; background:#f4f4f5; border-radius:4px; margin:12px 0;">
+  Tournament agents: {{ counts.get('tournament', 0) }}/{{ quota.get('tournament', 0) }}
+  · Benchmark agents: {{ counts.get('benchmark', 0) }}/{{ quota.get('benchmark', 0) }}
+</div>
+<div class="register-buttons" style="display:flex; gap:8px; margin-bottom:12px;">
+  <a href="/ui/agents/new?purpose=benchmark" role="button" class="outline">Register benchmark agent</a>
+  <a href="/ui/agents/new?purpose=tournament" role="button" class="outline">Register tournament agent</a>
+</div>
+{% endif %}
+
 {% if error %}
 <article style="background-color: #fde2e2; border-color: #c62828; color: #8b0000;">
     <strong>Error:</strong> {{ error }}
 </article>
 {% endif %}
-
-<details id="new-agent-form"{% if error %} open{% endif %}>
-    <summary role="button" class="outline">New Agent</summary>
-    <form method="post" action="/ui/agents">
-        <div class="grid">
-            <label>Name <input type="text" name="name" required></label>
-            <label>Version <input type="text" name="version" value="latest"></label>
-            <label>Type
-                <select name="agent_type">
-                    <option value="http">HTTP</option>
-                    <option value="mcp">MCP</option>
-                    <option value="cli">CLI</option>
-                    <option value="container">Container</option>
-                </select>
-            </label>
-        </div>
-        <label>Description <input type="text" name="description"></label>
-        <button type="submit">Create Agent</button>
-    </form>
-</details>
 
 <div id="agents-table">
 {% if agents %}
@@ -40,6 +35,7 @@
             <th>Name</th>
             <th>Version</th>
             <th>Type</th>
+            <th>Purpose</th>
             <th>Active Tokens</th>
             <th>Created</th>
             <th>Actions</th>
@@ -51,10 +47,16 @@
             <td><a href="/ui/agents/{{ agent.id }}">{{ agent.name }}</a></td>
             <td><code>{{ agent.version }}</code></td>
             <td>{{ agent.agent_type }}</td>
+            <td>{{ agent.purpose }}</td>
             <td>{{ agent.token_count }}</td>
             <td>{{ agent.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
             <td>
                 <a href="/ui/agents/{{ agent.id }}">View</a>
+                <form method="post" action="/ui/agents/{{ agent.id }}/delete"
+                      style="display:inline; margin-left:8px"
+                      onsubmit="return confirm('Delete agent {{ agent.name }}? This revokes all its tokens.');">
+                    <button type="submit" class="outline" style="padding:2px 8px; color:#c62828; border-color:#c62828;">Delete</button>
+                </form>
             </td>
         </tr>
         {% endfor %}
@@ -62,7 +64,7 @@
 </table>
 </figure>
 {% else %}
-<p>No agents yet. Create your first agent above.</p>
+<p>No agents yet. Use one of the Register buttons above to create your first agent.</p>
 {% endif %}
 </div>
 {% endblock %}

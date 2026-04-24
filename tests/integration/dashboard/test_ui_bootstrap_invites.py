@@ -95,7 +95,9 @@ async def test_about_page_is_public(empty_app: tuple) -> None:
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.get("/ui/about")
     assert resp.status_code == 200
-    assert "About ATP Platform" in resp.text
+    # PR #34 rewrote the About page; title is "About — ATP Platform".
+    # Match that (stable) rather than any body copy we might reshuffle.
+    assert "About — ATP Platform" in resp.text
     assert "github.com/andrei-shtanakov/atp-platform" in resp.text
 
 

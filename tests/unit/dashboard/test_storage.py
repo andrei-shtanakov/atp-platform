@@ -1,12 +1,16 @@
 """Tests for ATP Dashboard storage module."""
 
+from collections.abc import AsyncGenerator
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from atp.dashboard.database import Database
 from atp.dashboard.models import (
     Agent,
+    Base,
     SuiteExecution,
     TestExecution,
 )
@@ -47,6 +51,7 @@ class TestResultStorageAgent:
             name="existing-agent",
             agent_type="http",
             config={},
+            owner_id=1,
         )
 
         mock_session = AsyncMock()
@@ -71,6 +76,7 @@ class TestResultStorageAgent:
             name="test-agent",
             agent_type="http",
             config={},
+            owner_id=1,
         )
 
         mock_session = AsyncMock()
@@ -88,8 +94,8 @@ class TestResultStorageAgent:
     async def test_list_agents(self) -> None:
         """Test listing all agents."""
         agents = [
-            Agent(id=1, name="agent-1", agent_type="http", config={}),
-            Agent(id=2, name="agent-2", agent_type="cli", config={}),
+            Agent(id=1, name="agent-1", agent_type="http", config={}, owner_id=1),
+            Agent(id=2, name="agent-2", agent_type="cli", config={}, owner_id=1),
         ]
 
         mock_session = AsyncMock()
@@ -105,6 +111,22 @@ class TestResultStorageAgent:
         assert len(result) == 2
         assert result[0].name == "agent-1"
 
+    @pytest.mark.anyio
+    async def test_create_suite_execution_by_name_no_agent_row(self) -> None:
+        """CLI flow: create SuiteExecution with agent_name, no Agent row."""
+        mock_session = AsyncMock()
+        storage = ResultStorage(mock_session)
+
+        execution = await storage.create_suite_execution_by_name(
+            suite_name="test-suite",
+            agent_name="cli-http-agent",
+            runs_per_test=1,
+        )
+
+        assert execution.agent_name == "cli-http-agent"
+        assert execution.agent_id is None
+        mock_session.add.assert_called_once()
+
 
 class TestResultStorageSuiteExecution:
     """Tests for suite execution operations."""
@@ -112,7 +134,7 @@ class TestResultStorageSuiteExecution:
     @pytest.mark.anyio
     async def test_create_suite_execution(self) -> None:
         """Test creating a suite execution."""
-        agent = Agent(id=1, name="test-agent", agent_type="http", config={})
+        agent = Agent(id=1, name="test-agent", agent_type="http", config={}, owner_id=1)
         now = datetime.now()
 
         mock_session = AsyncMock()
@@ -448,3 +470,85 @@ class TestResultStorageQueries:
 
         assert "agent-1" in result
         assert "agent-2" in result
+
+
+class TestResultStorageAgentlessQueries:
+    """Integration tests exercising agent_name-based query paths (LABS-54).
+
+    These use a real in-memory SQLite DB so that WHERE clauses are
+    executed against actual rows rather than mocked out. The fix under
+    test rewires get_historical_executions / get_test_history /
+    compare_agents from .join(Agent).where(Agent.name == ...) to
+    .where(SuiteExecution.agent_name == ...), so CLI-produced rows
+    with agent_id=NULL are discoverable.
+    """
+
+    @pytest.fixture
+    async def session(self) -> AsyncGenerator[AsyncSession, None]:
+        db = Database(url="sqlite+aiosqlite:///:memory:", echo=False)
+        async with db.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        async with db.session() as s:
+            yield s
+        await db.close()
+
+    @pytest.mark.anyio
+    async def test_get_historical_executions_finds_agentless_rows(
+        self, session: AsyncSession
+    ) -> None:
+        """get_historical_executions(agent_name=...) returns agentless rows.
+
+        Regression guard for the LABS-54 fix: rows created via
+        create_suite_execution_by_name have agent_id=NULL, so the old
+        .join(Agent) path skipped them entirely. The new
+        .where(SuiteExecution.agent_name == ...) path must match them.
+        """
+        storage = ResultStorage(session)
+
+        # Row with NULL agent_id, agent_name="cli-agent" (the CLI path)
+        await storage.create_suite_execution_by_name(
+            suite_name="my-suite",
+            agent_name="cli-agent",
+        )
+        # Row for a different agent that must NOT match the filter
+        await storage.create_suite_execution_by_name(
+            suite_name="my-suite",
+            agent_name="other-agent",
+        )
+        await session.commit()
+
+        results = await storage.get_historical_executions(
+            suite_name="my-suite",
+            agent_name="cli-agent",
+        )
+
+        assert len(results) == 1
+        assert results[0].agent_name == "cli-agent"
+        assert results[0].agent_id is None
+
+    @pytest.mark.anyio
+    async def test_compare_agents_finds_agentless_rows(
+        self, session: AsyncSession
+    ) -> None:
+        """compare_agents maps agent_name -> agentless SuiteExecution rows."""
+        storage = ResultStorage(session)
+
+        await storage.create_suite_execution_by_name(
+            suite_name="my-suite",
+            agent_name="agent-a",
+        )
+        await storage.create_suite_execution_by_name(
+            suite_name="my-suite",
+            agent_name="agent-b",
+        )
+        await session.commit()
+
+        result = await storage.compare_agents(
+            suite_name="my-suite",
+            agent_names=["agent-a", "agent-b"],
+        )
+
+        assert len(result["agent-a"]) == 1
+        assert len(result["agent-b"]) == 1
+        assert result["agent-a"][0].agent_id is None
+        assert result["agent-b"][0].agent_id is None

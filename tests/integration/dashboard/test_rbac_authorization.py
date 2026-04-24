@@ -287,52 +287,31 @@ class TestAgentEndpointAuthorization:
             assert response.status_code == 200
 
     @pytest.mark.anyio
-    async def test_create_agent_forbidden_for_viewer(
-        self, v2_app, user_with_viewer_role, viewer_token
-    ):
-        """Test viewer cannot create agents (no AGENTS_WRITE)."""
-        async with AsyncClient(
-            transport=ASGITransport(app=v2_app), base_url="http://test"
-        ) as client:
-            response = await client.post(
-                "/api/agents",
-                json={"name": "test-agent", "agent_type": "http"},
-                headers={"Authorization": f"Bearer {viewer_token}"},
-            )
-            assert response.status_code == 403
-
-    @pytest.mark.anyio
-    async def test_create_agent_allowed_for_developer(
-        self, v2_app, user_with_developer_role, developer_token
-    ):
-        """Test developer can create agents (has AGENTS_WRITE)."""
-        async with AsyncClient(
-            transport=ASGITransport(app=v2_app), base_url="http://test"
-        ) as client:
-            response = await client.post(
-                "/api/agents",
-                json={"name": "test-agent", "agent_type": "http"},
-                headers={"Authorization": f"Bearer {developer_token}"},
-            )
-            assert response.status_code == 201
-
-    @pytest.mark.anyio
     async def test_delete_agent_forbidden_for_developer(
-        self, v2_app, user_with_developer_role, developer_token, admin_token
+        self,
+        v2_app,
+        async_session: AsyncSession,
+        admin_user: User,
+        user_with_developer_role,
+        developer_token,
     ):
         """Test developer cannot delete agents (no AGENTS_DELETE)."""
-        # First create an agent as admin
+        from atp.dashboard.models import Agent
+
+        agent = Agent(
+            name="to-delete",
+            agent_type="http",
+            config={},
+            owner_id=admin_user.id,
+        )
+        async_session.add(agent)
+        await async_session.commit()
+        await async_session.refresh(agent)
+        agent_id = agent.id
+
         async with AsyncClient(
             transport=ASGITransport(app=v2_app), base_url="http://test"
         ) as client:
-            create_response = await client.post(
-                "/api/agents",
-                json={"name": "to-delete", "agent_type": "http"},
-                headers={"Authorization": f"Bearer {admin_token}"},
-            )
-            agent_id = create_response.json()["id"]
-
-            # Try to delete as developer
             response = await client.delete(
                 f"/api/agents/{agent_id}",
                 headers={"Authorization": f"Bearer {developer_token}"},
@@ -341,21 +320,29 @@ class TestAgentEndpointAuthorization:
 
     @pytest.mark.anyio
     async def test_delete_agent_allowed_for_admin(
-        self, v2_app, admin_user, admin_token
+        self,
+        v2_app,
+        async_session: AsyncSession,
+        admin_user: User,
+        admin_token,
     ):
         """Test admin can delete agents."""
+        from atp.dashboard.models import Agent
+
+        agent = Agent(
+            name="to-delete",
+            agent_type="http",
+            config={},
+            owner_id=admin_user.id,
+        )
+        async_session.add(agent)
+        await async_session.commit()
+        await async_session.refresh(agent)
+        agent_id = agent.id
+
         async with AsyncClient(
             transport=ASGITransport(app=v2_app), base_url="http://test"
         ) as client:
-            # Create an agent
-            create_response = await client.post(
-                "/api/agents",
-                json={"name": "to-delete", "agent_type": "http"},
-                headers={"Authorization": f"Bearer {admin_token}"},
-            )
-            agent_id = create_response.json()["id"]
-
-            # Delete as admin
             response = await client.delete(
                 f"/api/agents/{agent_id}",
                 headers={"Authorization": f"Bearer {admin_token}"},

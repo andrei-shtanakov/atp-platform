@@ -40,11 +40,24 @@ async def _setup_round_with_one_action_pending(session) -> None:
             "'active', 2, 3, 30, CURRENT_TIMESTAMP, 1, CURRENT_TIMESTAMP)"
         )
     )
+    # LABS-TSA PR-4: agent-xor-builtin CHECK requires agent_id.
+    await session.execute(
+        text(
+            "INSERT INTO agents "
+            "(id, tenant_id, name, agent_type, purpose, config, owner_id, "
+            "created_at, updated_at) "
+            "VALUES "
+            "(1, 'default', 'a', 'mcp', 'tournament', '{}', 1, "
+            "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP), "
+            "(2, 'default', 'b', 'mcp', 'tournament', '{}', 2, "
+            "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+        )
+    )
     await session.execute(
         text(
             "INSERT INTO tournament_participants "
-            "(tournament_id, user_id, agent_name, joined_at) VALUES "
-            "(1, 1, 'a', CURRENT_TIMESTAMP), (1, 2, 'b', CURRENT_TIMESTAMP)"
+            "(tournament_id, user_id, agent_id, agent_name, joined_at) VALUES "
+            "(1, 1, 1, 'a', CURRENT_TIMESTAMP), (1, 2, 2, 'b', CURRENT_TIMESTAMP)"
         )
     )
     await session.execute(

@@ -81,6 +81,7 @@ async def test_data(async_session: AsyncSession) -> dict:
         agent_type="http",
         config={"endpoint": "http://localhost:8001"},
         description="Alpha agent for testing",
+        owner_id=1,
     )
     async_session.add(agent)
     await async_session.flush()
@@ -90,6 +91,7 @@ async def test_data(async_session: AsyncSession) -> dict:
     suite = SuiteExecution(
         suite_name="benchmark-suite",
         agent_id=agent.id,
+        agent_name=agent.name,
         started_at=now - timedelta(hours=2),
         completed_at=now - timedelta(hours=1),
         duration_seconds=3600.0,
@@ -512,6 +514,7 @@ class TestTimelineEventsEdgeCases:
             name="agent-empty",
             agent_type="http",
             config={},
+            owner_id=1,
         )
         async_session.add(agent)
         await async_session.flush()
@@ -520,6 +523,7 @@ class TestTimelineEventsEdgeCases:
         suite = SuiteExecution(
             suite_name="empty-suite",
             agent_id=agent.id,
+            agent_name=agent.name,
             started_at=now,
             completed_at=now,
             duration_seconds=100.0,
@@ -602,6 +606,7 @@ class TestTimelineEventsEdgeCases:
             name="agent-no-run",
             agent_type="http",
             config={},
+            owner_id=1,
         )
         async_session.add(agent)
         await async_session.flush()
@@ -610,6 +615,7 @@ class TestTimelineEventsEdgeCases:
         suite = SuiteExecution(
             suite_name="no-run-suite",
             agent_id=agent.id,
+            agent_name=agent.name,
             started_at=now,
             completed_at=now,
             duration_seconds=100.0,
@@ -678,6 +684,7 @@ class TestTimelineEventsEdgeCases:
             name="agent-duration",
             agent_type="http",
             config={},
+            owner_id=1,
         )
         async_session.add(agent)
         await async_session.flush()
@@ -686,6 +693,7 @@ class TestTimelineEventsEdgeCases:
         suite = SuiteExecution(
             suite_name="duration-suite",
             agent_id=agent.id,
+            agent_name=agent.name,
             started_at=now,
             completed_at=now,
             duration_seconds=100.0,

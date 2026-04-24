@@ -94,6 +94,7 @@ async def test_data(test_database: Database) -> dict:
             name="test-agent",
             agent_type="cli",
             config={},
+            owner_id=1,
         )
         session.add(agent)
         await session.flush()
@@ -104,6 +105,7 @@ async def test_data(test_database: Database) -> dict:
             suite = SuiteExecution(
                 suite_name="test-suite",
                 agent_id=agent.id,
+                agent_name=agent.name,
                 started_at=now - timedelta(days=10 - i),
                 completed_at=now - timedelta(days=10 - i) + timedelta(hours=1),
                 status="completed",

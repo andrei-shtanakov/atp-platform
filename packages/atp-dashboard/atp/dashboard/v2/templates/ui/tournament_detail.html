@@ -7,6 +7,16 @@
 
 {% block content %}
 <h2>{{ name }}</h2>
+{# LABS-TSA PR-5: one-time join_token reveal. Only rendered when the
+   POST handler passes ``join_token_once``; a normal GET never sets this
+   so the token is shown exactly once, in the response body for the
+   create form submit. #}
+{% if join_token_once %}
+<div class="cancel-box" style="background:#fffbe6;color:#333;padding:12px;margin:12px 0;border-radius:4px">
+  <strong>Share this join_token with your tournament agents — it is shown once.</strong>
+  <input type="text" readonly value="{{ join_token_once }}" onclick="this.select()" style="width:100%;font-family:monospace">
+</div>
+{% endif %}
 <div class="tournament-meta">
     {% if t.status == "completed" %}
     <span class="status-badge" style="background:#28a745">completed</span>
@@ -19,6 +29,9 @@
     {% endif %}
     <span>{{ t.game_type }}</span>
     <span>by {{ creator_name }}</span>
+    {% if t.game_type == "el_farol" %}
+    <span><a href="/ui/matches">Browse El Farol matches →</a></span>
+    {% endif %}
     <span>
         {% if t.status == "completed" and t.starts_at and t.ends_at %}
         {{ t.starts_at.strftime("%b %d, %H:%M") }} — {{ t.ends_at.strftime("%H:%M") }}

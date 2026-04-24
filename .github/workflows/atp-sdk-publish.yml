@@ -31,3 +31,6 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: packages/atp-sdk/dist/
+          # Idempotent: re-pushing an existing tag (e.g. retroactive tagging
+          # of an already-published version) must not fail the workflow.
+          skip-existing: true

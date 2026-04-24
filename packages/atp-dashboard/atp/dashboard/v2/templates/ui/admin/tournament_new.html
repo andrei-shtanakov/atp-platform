@@ -1,0 +1,54 @@
+{% extends "ui/base_ui.html" %}
+
+{% block title %}New tournament - Admin - ATP Platform{% endblock %}
+
+{% block content %}
+<h1>New tournament</h1>
+
+{% if error %}
+<article style="background:#fee;border:1px solid #c44;padding:0.5rem 1rem;">
+  <strong>Could not create tournament:</strong> {{ error }}
+</article>
+{% endif %}
+
+<form method="post" action="/ui/admin/tournaments/new">
+  <label>
+    Name
+    <input type="text" name="name" value="El Farol smoke" required maxlength="200">
+  </label>
+
+  <label>
+    Game
+    <select name="game_type" required>
+      <option value="el_farol" selected>El Farol Bar</option>
+    </select>
+    <small>Only El Farol is exposed in MVP. Other registered games
+    can still be created via the REST API.</small>
+  </label>
+
+  <label>
+    Number of players
+    <input type="number" name="num_players" value="6" min="2" max="20" required>
+    <small>El Farol tournament bound: 2..20 players.</small>
+  </label>
+
+  <label>
+    Total rounds
+    <input type="number" name="total_rounds" value="12" min="1" max="500" required>
+  </label>
+
+  <label>
+    Round deadline (seconds)
+    <input type="number" name="round_deadline_s" value="30" min="1" max="3600" required>
+    <small>Bots must submit each round within this many seconds;
+    timeouts get the default "stay home" action.</small>
+  </label>
+
+  <p><small>The El Farol <code>capacity_threshold</code> is derived
+  from the number of players (≈ half) inside the service; it is not
+  directly configurable from this form.</small></p>
+
+  <button type="submit">Create tournament</button>
+  <a href="/ui/admin/tournaments" role="button" class="secondary">Cancel</a>
+</form>
+{% endblock %}

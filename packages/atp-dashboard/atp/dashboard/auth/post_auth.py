@@ -6,15 +6,12 @@ Handles: provision user -> assign roles -> create ATP token.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from atp.dashboard.auth import (
-    ACCESS_TOKEN_EXPIRE_MINUTES,
-    create_access_token,
-)
+from atp.dashboard.auth import create_access_token
 from atp.dashboard.models import User
 from atp.dashboard.schemas import Token
 
@@ -52,7 +49,7 @@ async def complete_auth(
 
         access_token = create_access_token(
             data={"sub": user.username, "user_id": user.id},
-            expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+            is_admin=user.is_admin,
         )
         return Token(access_token=access_token)
 

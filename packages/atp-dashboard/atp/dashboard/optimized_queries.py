@@ -42,50 +42,48 @@ async def get_agents_by_names(
 async def get_suite_executions_for_agents(
     session: AsyncSession,
     suite_name: str,
-    agent_ids: list[int],
+    agent_names: list[str],
     limit_per_agent: int = 5,
 ) -> list[SuiteExecution]:
     """Get recent suite executions for multiple agents in a single query.
 
-    Uses a subquery with ROW_NUMBER to get the most recent N executions
-    per agent efficiently.
+    Filters by SuiteExecution.agent_name so CLI-produced rows (agent_id
+    IS NULL) are included. Keeps only the most recent N executions per
+    agent, sliced in Python after the bulk fetch.
 
     Args:
         session: Database session.
         suite_name: Name of the test suite.
-        agent_ids: List of agent IDs to query.
+        agent_names: List of agent names to query.
         limit_per_agent: Maximum executions per agent.
 
     Returns:
         List of SuiteExecution objects with test_executions loaded.
     """
-    if not agent_ids:
+    if not agent_names:
         return []
 
-    # For better compatibility, we'll use a simpler approach:
-    # Get all relevant executions and filter in Python
-    # This is still better than N+1 queries
     stmt = (
         select(SuiteExecution)
         .where(
             SuiteExecution.suite_name == suite_name,
-            SuiteExecution.agent_id.in_(agent_ids),
+            SuiteExecution.agent_name.in_(agent_names),
         )
         .options(selectinload(SuiteExecution.test_executions))
-        .order_by(SuiteExecution.agent_id, SuiteExecution.started_at.desc())
+        .order_by(SuiteExecution.agent_name, SuiteExecution.started_at.desc())
     )
 
     result = await session.execute(stmt)
     all_executions = list(result.scalars().all())
 
     # Filter to keep only the most recent N per agent
-    agent_counts: dict[int, int] = {}
+    agent_counts: dict[str, int] = {}
     filtered: list[SuiteExecution] = []
     for exec in all_executions:
-        count = agent_counts.get(exec.agent_id, 0)
+        count = agent_counts.get(exec.agent_name, 0)
         if count < limit_per_agent:
             filtered.append(exec)
-            agent_counts[exec.agent_id] = count + 1
+            agent_counts[exec.agent_name] = count + 1
 
     return filtered
 
@@ -128,51 +126,43 @@ async def get_run_results_for_test_executions(
 async def get_aggregated_metrics_for_suite(
     session: AsyncSession,
     suite_name: str,
-    agent_ids: list[int],
+    agent_names: list[str],
     limit_per_agent: int = 5,
-) -> dict[int, dict[str, Any]]:
+) -> dict[str, dict[str, Any]]:
     """Get aggregated metrics (tokens, cost) for agents in a single query.
 
     Uses SQL aggregation to compute totals instead of loading all records.
+    Keys results by agent_name so CLI-produced rows (agent_id IS NULL)
+    are included.
 
     Args:
         session: Database session.
         suite_name: Name of the test suite.
-        agent_ids: List of agent IDs.
+        agent_names: List of agent names.
         limit_per_agent: Maximum executions per agent to consider.
 
     Returns:
-        Dictionary mapping agent_id to metrics dict with tokens and cost.
+        Dictionary mapping agent_name to metrics dict with tokens and cost.
     """
-    if not agent_ids:
+    if not agent_names:
         return {}
 
     # First get the relevant suite execution IDs (most recent per agent)
-    # We need to get IDs first, then aggregate
     executions = await get_suite_executions_for_agents(
-        session, suite_name, agent_ids, limit_per_agent
+        session, suite_name, agent_names, limit_per_agent
     )
 
     suite_exec_ids = [e.id for e in executions]
+    empty_metrics: dict[str, dict[str, Any]] = {
+        name: {"total_tokens": 0, "total_cost": 0.0} for name in agent_names
+    }
     if not suite_exec_ids:
-        return {aid: {"total_tokens": 0, "total_cost": 0.0} for aid in agent_ids}
+        return empty_metrics
 
-    # Get test execution IDs
-    test_exec_ids = []
-    agent_to_suite_execs: dict[int, list[int]] = {}
-    for exec in executions:
-        if exec.agent_id not in agent_to_suite_execs:
-            agent_to_suite_execs[exec.agent_id] = []
-        agent_to_suite_execs[exec.agent_id].append(exec.id)
-        test_exec_ids.extend([te.id for te in exec.test_executions])
-
-    if not test_exec_ids:
-        return {aid: {"total_tokens": 0, "total_cost": 0.0} for aid in agent_ids}
-
-    # Aggregate metrics in a single query
+    # Aggregate metrics in a single query, grouped by agent_name.
     stmt = (
         select(
-            SuiteExecution.agent_id,
+            SuiteExecution.agent_name,
             func.coalesce(func.sum(RunResult.total_tokens), 0).label("total_tokens"),
             func.coalesce(func.sum(RunResult.cost_usd), 0.0).label("total_cost"),
         )
@@ -182,20 +172,17 @@ async def get_aggregated_metrics_for_suite(
         .where(
             SuiteExecution.id.in_(suite_exec_ids),
         )
-        .group_by(SuiteExecution.agent_id)
+        .group_by(SuiteExecution.agent_name)
     )
 
     result = await session.execute(stmt)
     rows = result.all()
 
-    # Build result dict
-    metrics: dict[int, dict[str, Any]] = {
-        aid: {"total_tokens": 0, "total_cost": 0.0} for aid in agent_ids
-    }
+    metrics = empty_metrics
     for row in rows:
-        agent_id = row.agent_id
-        if agent_id in metrics:
-            metrics[agent_id] = {
+        name = row.agent_name
+        if name in metrics:
+            metrics[name] = {
                 "total_tokens": int(row.total_tokens or 0),
                 "total_cost": float(row.total_cost or 0.0),
             }
@@ -216,10 +203,13 @@ async def build_leaderboard_data(
 ]:
     """Build leaderboard data efficiently using bulk queries.
 
-    This replaces the N+1 query pattern with a more efficient approach:
-    1. Single query to get all agents
-    2. Single query to get all recent suite executions with test_executions
-    3. Aggregation queries for metrics
+    Reads agent_name directly off SuiteExecution so CLI-produced rows
+    (agent_id IS NULL) surface on the leaderboard. No Agent table
+    lookup is required — the denormalized column is authoritative.
+
+    Pipeline:
+    1. One query for all recent suite executions (with test_executions).
+    2. One query for run results of the collected test executions.
 
     Args:
         session: Database session.
@@ -243,17 +233,10 @@ async def build_leaderboard_data(
     if not agent_names:
         return test_data, test_names, test_tags, agent_metrics
 
-    # Get agents
-    agents = await get_agents_by_names(session, agent_names)
-    if not agents:
-        return test_data, test_names, test_tags, agent_metrics
-
-    agent_id_to_name = {a.id: a.name for a in agents}
-    agent_ids = [a.id for a in agents]
-
-    # Get all suite executions in one query
+    # Get all suite executions in one query, filtering by agent_name so
+    # CLI-produced rows (agent_id IS NULL) are included.
     executions = await get_suite_executions_for_agents(
-        session, suite_name, agent_ids, limit_executions
+        session, suite_name, agent_names, limit_executions
     )
 
     # Collect all test execution IDs for metrics query
@@ -268,8 +251,9 @@ async def build_leaderboard_data(
 
     # Process executions and build data structures
     for exec in executions:
-        agent_name = agent_id_to_name.get(exec.agent_id)
-        if not agent_name:
+        agent_name = exec.agent_name
+        if agent_name not in agent_metrics:
+            # Defensive: stray agent that wasn't in the caller's list.
             continue
 
         for test in exec.test_executions:

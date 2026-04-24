@@ -16,6 +16,9 @@ from atp.protocol.models import (
 logger = logging.getLogger(__name__)
 
 
+_INTENT_MAX_CHARS = 500
+
+
 @dataclass
 class GameAction:
     """Action extracted from an ATP response.
@@ -24,13 +27,41 @@ class GameAction:
         action: The game action value.
         message: Optional message from the agent.
         reasoning: Optional reasoning explanation.
+        intent: Optional free-text Tier-1 self-report from the agent
+            (max 500 chars after stripping; None when absent or invalid).
         raw_response: The original response data.
     """
 
     action: Any
     message: str | None = None
     reasoning: str | None = None
+    intent: str | None = None
     raw_response: dict[str, Any] = field(default_factory=dict)
+
+
+def _sanitize_intent(value: Any) -> str | None:
+    """Return a cleaned intent string or None.
+
+    Rules (applied in order):
+      * non-string types return None (with a debug log — never a raise)
+      * strip surrounding whitespace
+      * empty-after-strip returns None
+      * longer than 500 chars is truncated to 500 (not rejected)
+    """
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        logger.warning(
+            "intent field has unexpected type %s; ignoring",
+            type(value).__name__,
+        )
+        return None
+    stripped = value.strip()
+    if not stripped:
+        return None
+    if len(stripped) > _INTENT_MAX_CHARS:
+        return stripped[:_INTENT_MAX_CHARS]
+    return stripped
 
 
 class ActionMapper:
@@ -66,6 +97,7 @@ class ActionMapper:
                         action=data["action"],
                         message=data.get("message"),
                         reasoning=data.get("reasoning"),
+                        intent=_sanitize_intent(data.get("intent")),
                         raw_response=data,
                     )
 
@@ -78,6 +110,7 @@ class ActionMapper:
                         action=parsed["action"],
                         message=parsed.get("message"),
                         reasoning=parsed.get("reasoning"),
+                        intent=_sanitize_intent(parsed.get("intent")),
                         raw_response=parsed,
                     )
 

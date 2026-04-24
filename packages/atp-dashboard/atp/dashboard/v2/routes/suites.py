@@ -52,7 +52,7 @@ async def list_suite_executions(
         Paginated list of suite executions.
     """
     # Build query
-    stmt = select(SuiteExecution).options(selectinload(SuiteExecution.agent))
+    stmt = select(SuiteExecution)
     if suite_name:
         stmt = stmt.where(SuiteExecution.suite_name == suite_name)
     if agent_id:
@@ -70,7 +70,7 @@ async def list_suite_executions(
     items = []
     for exec in executions:
         summary = SuiteExecutionSummary.model_validate(exec)
-        summary.agent_name = exec.agent.name if exec.agent else None
+        summary.agent_name = exec.agent_name
         items.append(summary)
 
     return SuiteExecutionList(
@@ -126,10 +126,7 @@ async def get_suite_execution(
     stmt = (
         select(SuiteExecution)
         .where(SuiteExecution.id == execution_id)
-        .options(
-            selectinload(SuiteExecution.agent),
-            selectinload(SuiteExecution.test_executions),
-        )
+        .options(selectinload(SuiteExecution.test_executions))
     )
     result = await session.execute(stmt)
     execution = result.scalar_one_or_none()
@@ -141,7 +138,7 @@ async def get_suite_execution(
         )
 
     detail = SuiteExecutionDetail.model_validate(execution)
-    detail.agent_name = execution.agent.name if execution.agent else None
+    detail.agent_name = execution.agent_name
     detail.tests = [
         TestExecutionSummary.model_validate(t) for t in execution.test_executions
     ]

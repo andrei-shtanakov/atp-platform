@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
@@ -82,8 +83,8 @@ class Agent(Base):
     )
 
     # Ownership fields (Scope #2)
-    owner_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id"), nullable=True
+    owner_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=False
     )
     # server_default mirrors the Alembic migration d7f3a2b1c4e5, so ORM
     # create_all() and raw SQL inserts (tenancy migration tests) both see
@@ -93,6 +94,18 @@ class Agent(Base):
         String(50), nullable=False, default="latest", server_default="latest"
     )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # LABS-TSA PR-1: agent purpose classification.
+    # Benchmark agents run suite evaluations; tournament agents connect to
+    # /mcp for game-theoretic tournaments. The CHECK constraint is added
+    # explicitly in the Alembic migration — ORM-side the string is
+    # validated by Pydantic layer (PR-2) plus pyrefly Literal types.
+    purpose: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="benchmark",
+        server_default="benchmark",
+    )
 
     # Relationships
     suite_executions: Mapped[list["SuiteExecution"]] = relationship(
@@ -108,23 +121,15 @@ class Agent(Base):
             "version",
             name="uq_agent_tenant_owner_name_version",
         ),
-        # Partial unique index for ownerless (legacy) agents: SQL treats
-        # NULL != NULL in unique constraints, so the UniqueConstraint above
-        # does NOT prevent duplicates when owner_id IS NULL. This index
-        # enforces uniqueness on (tenant_id, name, version) for that slice.
-        # LABS-54 tracks the long-term fix (deprecate ownerless agents).
-        Index(
-            "uq_agent_ownerless_tenant_name_version",
-            "tenant_id",
-            "name",
-            "version",
-            unique=True,
-            sqlite_where=text("owner_id IS NULL"),
-            postgresql_where=text("owner_id IS NULL"),
-        ),
         Index("idx_agent_name", "name"),
         Index("idx_agent_tenant", "tenant_id"),
         Index("idx_agent_owner", "owner_id"),
+        # LABS-TSA PR-1
+        Index("idx_agents_owner_purpose", "owner_id", "purpose"),
+        CheckConstraint(
+            "purpose IN ('benchmark','tournament')",
+            name="ck_agents_purpose",
+        ),
     )
 
     def __repr__(self) -> str:
@@ -141,8 +146,17 @@ class SuiteExecution(Base):
         String(100), nullable=False, default=DEFAULT_TENANT_ID, index=True
     )
     suite_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    agent_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("agents.id"), nullable=False
+    # Nullable: CLI-produced executions write only agent_name; ownership is
+    # out of scope here (LABS-54 Phase 1).
+    agent_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("agents.id"), nullable=True
+    )
+    # server_default="" so _add_missing_columns can add the column as NOT NULL
+    # on pre-migration SQLite DBs without a downgrade-to-nullable fallback.
+    # The Alembic migration a7b8c9d0e1f2 still owns the real backfill from
+    # agents.name before enforcing NOT NULL on existing rows.
+    agent_name: Mapped[str] = mapped_column(
+        String(100), nullable=False, server_default=""
     )
 
     # Execution metadata
@@ -166,7 +180,7 @@ class SuiteExecution(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Relationships
-    agent: Mapped["Agent"] = relationship(back_populates="suite_executions")
+    agent: Mapped["Agent | None"] = relationship(back_populates="suite_executions")
     test_executions: Mapped[list["TestExecution"]] = relationship(
         back_populates="suite_execution", cascade="all, delete-orphan"
     )
@@ -177,12 +191,13 @@ class SuiteExecution(Base):
         Index("idx_suite_started", "suite_name", "started_at"),
         Index("idx_agent_started", "agent_id", "started_at"),
         Index("idx_suite_tenant", "tenant_id"),
+        Index("idx_suite_agent_name", "agent_name"),
     )
 
     def __repr__(self) -> str:
         return (
             f"SuiteExecution(id={self.id}, suite={self.suite_name!r}, "
-            f"agent_id={self.agent_id})"
+            f"agent={self.agent_name!r})"
         )
 
 
@@ -1006,6 +1021,41 @@ class GameResult(Base):
     )
     metadata_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
+    # El Farol dashboard additive columns (Phase 7). All nullable so legacy
+    # rows stay readable; writers populate them from the typed in-memory
+    # models.
+    match_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    game_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    num_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    num_slots: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_intervals: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_total_slots: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    capacity_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
+    capacity_threshold: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    actions_json: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSON, nullable=True
+    )
+    day_aggregates_json: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSON, nullable=True
+    )
+    round_payoffs_json: Mapped[list[dict[str, float]] | None] = mapped_column(
+        JSON, nullable=True
+    )
+    agents_json: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSON, nullable=True
+    )
+
+    # LABS-TSA PR-1: link to the tournament that produced this match.
+    # NULL for CLI standalone runs. UNIQUE partial index below enforces
+    # at-most-one GameResult per tournament so the dual-write from the
+    # tournament completion hook is idempotent without TOCTOU races.
+    tournament_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("tournaments.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     # Indexes
     __table_args__ = (
         Index("idx_game_result_name", "game_name"),
@@ -1013,6 +1063,20 @@ class GameResult(Base):
         Index("idx_game_result_status", "status"),
         Index("idx_game_result_created", "created_at"),
         Index("idx_game_result_tenant", "tenant_id"),
+        Index("idx_game_result_match", "match_id"),
+        Index("idx_game_result_game_completed", "game_name", "completed_at"),
+        # LABS-TSA PR-1
+        Index(
+            "idx_game_results_tournament",
+            "tournament_id",
+        ),
+        Index(
+            "uq_game_results_tournament_id",
+            "tournament_id",
+            unique=True,
+            sqlite_where=text("tournament_id IS NOT NULL"),
+            postgresql_where=text("tournament_id IS NOT NULL"),
+        ),
     )
 
     def __repr__(self) -> str:

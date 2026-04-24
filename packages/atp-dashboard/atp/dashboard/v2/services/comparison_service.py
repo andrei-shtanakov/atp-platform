@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from atp.dashboard.models import (
-    Agent,
     SuiteExecution,
     TestExecution,
 )
@@ -68,10 +67,9 @@ class ComparisonService:
             # Get agent's executions
             stmt = (
                 select(SuiteExecution)
-                .join(Agent)
                 .where(
                     SuiteExecution.suite_name == suite_name,
-                    Agent.name == agent_name,
+                    SuiteExecution.agent_name == agent_name,
                 )
                 .options(selectinload(SuiteExecution.test_executions))
                 .order_by(SuiteExecution.started_at.desc())
@@ -206,11 +204,10 @@ class ComparisonService:
             stmt = (
                 select(TestExecution)
                 .join(SuiteExecution)
-                .join(Agent)
                 .where(
                     SuiteExecution.suite_name == suite_name,
                     TestExecution.test_id == test_id,
-                    Agent.name == agent_name,
+                    SuiteExecution.agent_name == agent_name,
                 )
                 .options(selectinload(TestExecution.run_results))
                 .order_by(TestExecution.started_at.desc())
@@ -301,11 +298,10 @@ class ComparisonService:
         stmt = (
             select(TestExecution)
             .join(SuiteExecution)
-            .join(Agent)
             .where(
                 SuiteExecution.suite_name == suite_name,
                 TestExecution.test_id == test_id,
-                Agent.name == agent_name,
+                SuiteExecution.agent_name == agent_name,
             )
             .options(selectinload(TestExecution.run_results))
             .order_by(TestExecution.started_at.desc())
@@ -389,11 +385,10 @@ class ComparisonService:
             stmt = (
                 select(TestExecution)
                 .join(SuiteExecution)
-                .join(Agent)
                 .where(
                     SuiteExecution.suite_name == suite_name,
                     TestExecution.test_id == test_id,
-                    Agent.name == agent_name,
+                    SuiteExecution.agent_name == agent_name,
                 )
                 .options(selectinload(TestExecution.run_results))
                 .order_by(TestExecution.started_at.desc())

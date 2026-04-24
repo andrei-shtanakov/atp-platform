@@ -40,6 +40,29 @@ if not SECRET_KEY:
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ATP_TOKEN_EXPIRE_MINUTES", "60"))
 
+
+def _read_admin_ttl() -> int:
+    """Read the admin-token TTL (minutes) from the environment.
+
+    Kept as a function (not a module-level constant) so tests can
+    monkeypatch ``ATP_ADMIN_TOKEN_EXPIRE_MINUTES`` and call it
+    afresh. The default of 720 minutes (12 hours) covers a typical
+    multi-tournament monitoring session without requiring admins
+    to re-authenticate mid-way.
+    """
+    return int(os.getenv("ATP_ADMIN_TOKEN_EXPIRE_MINUTES", "720"))
+
+
+def access_token_ttl(is_admin: bool) -> timedelta:
+    """Return the access-token TTL appropriate for this user class.
+
+    Admins get the longer ``ATP_ADMIN_TOKEN_EXPIRE_MINUTES`` so a
+    multi-hour tournament-monitoring session does not drop.
+    """
+    minutes = _read_admin_ttl() if is_admin else ACCESS_TOKEN_EXPIRE_MINUTES
+    return timedelta(minutes=minutes)
+
+
 # OAuth2 scheme
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token", auto_error=False)
 
@@ -72,21 +95,30 @@ def get_password_hash(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
 
 
-def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
+def create_access_token(
+    data: dict,
+    expires_delta: timedelta | None = None,
+    *,
+    is_admin: bool = False,
+) -> str:
     """Create a JWT access token.
 
     Args:
-        data: Data to encode in the token.
-        expires_delta: Token expiration time.
+        data: Claims to encode in the token.
+        expires_delta: Explicit TTL. If provided, wins over ``is_admin``.
+        is_admin: When True and ``expires_delta`` is None, use the
+            admin-token TTL (``ATP_ADMIN_TOKEN_EXPIRE_MINUTES``, default
+            720 min) instead of the regular one. Callers that know the
+            user's admin flag should pass it.
 
     Returns:
-        Encoded JWT token.
+        Encoded JWT string.
     """
     to_encode = data.copy()
-    if expires_delta:
+    if expires_delta is not None:
         expire = datetime.now(tz=UTC) + expires_delta
     else:
-        expire = datetime.now(tz=UTC) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(tz=UTC) + access_token_ttl(is_admin)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
@@ -315,6 +347,8 @@ __all__ = [
     "ACCESS_TOKEN_EXPIRE_MINUTES",
     "ALGORITHM",
     "SECRET_KEY",
+    "_read_admin_ttl",
+    "access_token_ttl",
     "authenticate_user",
     "create_access_token",
     "create_user",

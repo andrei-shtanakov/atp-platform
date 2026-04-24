@@ -52,12 +52,18 @@ from atp.dashboard.v2.routes.benchmark_api import (
     router as benchmark_api_router,
 )
 from atp.dashboard.v2.routes.budgets import router as budgets_router
+from atp.dashboard.v2.routes.builtins_api import (
+    router as builtins_api_router,
+)
 from atp.dashboard.v2.routes.catalog import router as catalog_router
 from atp.dashboard.v2.routes.comparison import router as comparison_router
 from atp.dashboard.v2.routes.costs import router as costs_router
 from atp.dashboard.v2.routes.definitions import router as definitions_router
 from atp.dashboard.v2.routes.device_auth import (
     router as device_auth_router,
+)
+from atp.dashboard.v2.routes.el_farol_dashboard import (
+    router as el_farol_dashboard_router,
 )
 from atp.dashboard.v2.routes.experiments import router as experiments_router
 from atp.dashboard.v2.routes.games import router as games_router
@@ -113,6 +119,7 @@ router.include_router(budgets_router)
 router.include_router(analytics_router)
 router.include_router(experiments_router)
 router.include_router(games_router)
+router.include_router(el_farol_dashboard_router)
 router.include_router(tenants_router)
 router.include_router(roles_router)
 router.include_router(sso_router)
@@ -127,6 +134,7 @@ router.include_router(tournament_api_router)
 router.include_router(token_api_router)
 router.include_router(agent_management_api_router)
 router.include_router(invite_api_router)
+router.include_router(builtins_api_router)
 
 __all__ = [
     "router",
@@ -143,6 +151,7 @@ __all__ = [
     "costs_router",
     "definitions_router",
     "upload_router",
+    "el_farol_dashboard_router",
     "experiments_router",
     "games_router",
     "home_router",
@@ -166,4 +175,5 @@ __all__ = [
     "token_api_router",
     "agent_management_api_router",
     "invite_api_router",
+    "builtins_api_router",
 ]

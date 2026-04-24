@@ -16,7 +16,6 @@ from atp.dashboard.models import (
     TestExecution,
 )
 from atp.dashboard.schemas import (
-    AgentCreate,
     AgentUpdate,
 )
 from atp.dashboard.v2.services.agent_service import AgentService
@@ -42,6 +41,7 @@ def _make_agent(
         description=description,
         created_at=now,
         updated_at=now,
+        owner_id=1,
     )
 
 
@@ -49,6 +49,7 @@ def _make_suite_execution(
     id: int = 1,
     suite_name: str = "test-suite",
     agent_id: int = 1,
+    agent_name: str = "test-agent",
     started_at: datetime | None = None,
     completed_at: datetime | None = None,
     duration_seconds: float | None = None,
@@ -65,6 +66,7 @@ def _make_suite_execution(
         id=id,
         suite_name=suite_name,
         agent_id=agent_id,
+        agent_name=agent_name,
         started_at=started_at or now,
         completed_at=completed_at,
         duration_seconds=duration_seconds,
@@ -184,61 +186,6 @@ class TestAgentService:
 
         assert result is not None
         assert result.name == "test-agent"
-
-    @pytest.mark.anyio
-    async def test_create_agent(self) -> None:
-        """Test creating a new agent."""
-        now = datetime.now()
-        mock_session = AsyncMock()
-        # Return None for existence check
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
-        mock_session.execute.return_value = mock_result
-
-        # Mock refresh to set the datetime fields on the agent
-        async def mock_refresh(agent: Agent) -> None:
-            agent.id = 1
-            agent.created_at = now
-            agent.updated_at = now
-
-        mock_session.refresh = mock_refresh
-
-        agent_data = AgentCreate(
-            name="new-agent",
-            agent_type="http",
-            config={"endpoint": "http://localhost:8000"},
-            description="New test agent",
-        )
-
-        service = AgentService(mock_session)
-        result = await service.create_agent(agent_data)
-
-        assert result is not None
-        assert result.name == "new-agent"
-        mock_session.add.assert_called_once()
-        mock_session.flush.assert_called_once()
-
-    @pytest.mark.anyio
-    async def test_create_agent_duplicate_name(self) -> None:
-        """Test creating agent with duplicate name returns None."""
-        existing_agent = _make_agent(id=1, name="existing-agent", agent_type="http")
-
-        mock_session = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = existing_agent
-        mock_session.execute.return_value = mock_result
-
-        agent_data = AgentCreate(
-            name="existing-agent",
-            agent_type="http",
-            config={},
-        )
-
-        service = AgentService(mock_session)
-        result = await service.create_agent(agent_data)
-
-        assert result is None
-        mock_session.add.assert_not_called()
 
     @pytest.mark.anyio
     async def test_update_agent(self) -> None:
@@ -880,16 +827,6 @@ class TestDependencyInjection:
         service = await get_test_service(mock_session)
 
         assert isinstance(service, TestService)
-
-    @pytest.mark.anyio
-    async def test_get_agent_service(self) -> None:
-        """Test getting AgentService via dependency injection."""
-        from atp.dashboard.v2.dependencies import get_agent_service
-
-        mock_session = AsyncMock()
-        service = await get_agent_service(mock_session)
-
-        assert isinstance(service, AgentService)
 
     @pytest.mark.anyio
     async def test_get_comparison_service(self) -> None:

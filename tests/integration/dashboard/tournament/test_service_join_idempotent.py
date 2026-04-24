@@ -91,7 +91,9 @@ async def test_sc4_two_concurrent_joins_different_tournaments_one_wins(
     session_factory,
 ):
     """SC-4: same user joining two different tournaments concurrently
-    → one success + one ConflictError via uq_participant_user_active."""
+    with the SAME agent_name → one success + one ConflictError via
+    uq_participant_agent_active (LABS-TSA PR-6 renamed the active-
+    per-player partial unique index from user_id to agent_id)."""
     async with session_factory() as setup:
         await _seed_user(setup, user_id=1, username="alice")
         await _seed_tournament(setup, tournament_id=1)

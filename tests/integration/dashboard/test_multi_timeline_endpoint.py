@@ -85,6 +85,7 @@ async def multi_agent_data(async_session: AsyncSession) -> dict:
             agent_type="http",
             config={"endpoint": f"http://localhost:800{len(agents) + 1}"},
             description=f"{name.title()} agent for testing",
+            owner_id=1,
         )
         async_session.add(agent)
         agents.append(agent)
@@ -102,6 +103,7 @@ async def multi_agent_data(async_session: AsyncSession) -> dict:
         suite = SuiteExecution(
             suite_name="benchmark-suite",
             agent_id=agent.id,
+            agent_name=agent.name,
             started_at=now - start_offset,
             completed_at=now - start_offset + timedelta(hours=1),
             duration_seconds=3600.0,
@@ -485,11 +487,13 @@ class TestMultiTimelineEdgeCases:
             name="agent-with-events",
             agent_type="http",
             config={},
+            owner_id=1,
         )
         agent2 = Agent(
             name="agent-no-events",
             agent_type="http",
             config={},
+            owner_id=1,
         )
         async_session.add_all([agent1, agent2])
         await async_session.flush()
@@ -501,6 +505,7 @@ class TestMultiTimelineEdgeCases:
             suite = SuiteExecution(
                 suite_name="empty-test-suite",
                 agent_id=agent.id,
+                agent_name=agent.name,
                 started_at=now,
                 completed_at=now,
                 duration_seconds=100.0,

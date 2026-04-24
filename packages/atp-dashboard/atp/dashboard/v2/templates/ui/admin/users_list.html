@@ -1,0 +1,43 @@
+{% extends "ui/base_ui.html" %}
+
+{% block title %}Users (admin) - ATP Platform{% endblock %}
+
+{% block content %}
+<header style="display:flex;justify-content:space-between;align-items:baseline;">
+  <h1>Users (admin)</h1>
+  <p style="margin:0;"><small>{{ users|length }} user{{ "s" if users|length != 1 else "" }}</small></p>
+</header>
+
+<table>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Username</th>
+      <th>Email</th>
+      <th>Role</th>
+      <th>Active</th>
+      <th>Registered</th>
+      <th>Agents</th>
+      <th>T. created</th>
+      <th>T. joined</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for u in users %}
+    <tr>
+      <td>#{{ u.id }}</td>
+      <td>{{ u.username }}</td>
+      <td>{{ u.email }}</td>
+      <td>{% if u.is_admin %}<mark>admin</mark>{% else %}user{% endif %}</td>
+      <td>{% if u.is_active %}yes{% else %}<em>disabled</em>{% endif %}</td>
+      <td>{{ u.created_at.strftime("%Y-%m-%d") }}</td>
+      <td>{{ u.agents_owned }}</td>
+      <td>{{ u.tournaments_created }}</td>
+      <td>{{ u.tournaments_joined }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="9"><em>No users.</em></td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

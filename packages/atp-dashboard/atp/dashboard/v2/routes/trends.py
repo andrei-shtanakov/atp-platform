@@ -12,9 +12,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 
-from atp.dashboard.models import Agent, SuiteExecution, TestExecution
+from atp.dashboard.models import SuiteExecution, TestExecution
 from atp.dashboard.rbac import Permission, require_permission
 from atp.dashboard.schemas import (
     SuiteTrend,
@@ -56,12 +55,11 @@ async def get_suite_trends(
     stmt = (
         select(SuiteExecution)
         .where(SuiteExecution.suite_name == suite_name)
-        .options(selectinload(SuiteExecution.agent))
         .order_by(SuiteExecution.started_at.desc())
         .limit(limit)
     )
     if agent_name:
-        stmt = stmt.join(Agent).where(Agent.name == agent_name)
+        stmt = stmt.where(SuiteExecution.agent_name == agent_name)
 
     result = await session.execute(stmt)
     executions = result.scalars().all()
@@ -139,7 +137,7 @@ async def get_test_trends(
         .limit(limit)
     )
     if agent_name:
-        stmt = stmt.join(Agent).where(Agent.name == agent_name)
+        stmt = stmt.where(SuiteExecution.agent_name == agent_name)
 
     result = await session.execute(stmt)
     executions = result.scalars().all()

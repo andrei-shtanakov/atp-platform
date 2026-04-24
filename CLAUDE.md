@@ -2,6 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Active Work & Roadmap
+
+- **Current task list:** `./TODO.md` — read it at the start of every session (ecosystem section at top)
+- **Ecosystem roadmap (strategic):** `../_cowork_output/roadmap/ecosystem-roadmap.md` — R-01…R-16 across Maestro / arbiter / ATP / spec-runner
+- **Latest weekly status:** `../_cowork_output/status/2026-04-10-status.md`
+- **Sibling projects** (reference only): `../Maestro/`, `../arbiter/`, `../spec-runner/`, `../proctor-a/`
+
+ATP's role in the ecosystem: task validation for Maestro (`validation_cmd`) and eval-driven learning for arbiter. Active work: R-06a (CLI quick win support) and R-13 (guardrails normalization with arbiter). Deep integration (R-06b, R-07) is blocked on Maestro R-03.
+
 ## Project Overview
 
 ATP (Agent Test Platform) is a framework-agnostic platform for testing and evaluating AI agents. It provides a unified protocol and infrastructure for testing agents regardless of their implementation framework (LangGraph, CrewAI, AutoGen, custom, etc.).
@@ -89,19 +98,20 @@ uv run atp sync                    # Sync local YAML suites with remote server
 8. **SDK** (`packages/atp-sdk/`) - Python SDK v2.0.0 for benchmark participants (`AsyncATPClient` + sync `ATPClient` wrapper, `BenchmarkRun` async/sync iteration, `next_batch(n)`, sync methods `submit_sync()`/`status_sync()`/`cancel_sync()`/`leaderboard_sync()`/`next_batch_sync()`/`emit_sync()`, `emit()` for event streaming, exponential-backoff retry). PyPI package name: `atp-platform-sdk`
 9. **Auth** (`atp/dashboard/auth/`) - Authentication system with GitHub OAuth (OIDC), Device Flow for CLI login, JWT tokens
 10. **RBAC** (`atp/dashboard/rbac/`) - Role-based access control with auto-admin for first user
-11. **Dashboard UI** (`atp/dashboard/v2/routes/ui.py`) - HTMX + Pico CSS frontend served at `/ui/` (login, benchmarks, games, runs + run detail `/ui/runs/{id}`, leaderboard, suites, analytics)
-21. **Token Self-Service** (`atp/dashboard/tokens.py`, `atp/dashboard/v2/routes/token_api.py`) - APIToken and Invite ORM models; API endpoints `POST/GET/DELETE /api/v1/tokens`, invite-gated registration; agent-scoped tokens (prefix `atp_a_`) and user-level tokens (prefix `atp_u_`)
-22. **Agent Ownership** (`atp/dashboard/v2/routes/agent_management_api.py`) - Agent CRUD with ownership checks; `POST/GET/DELETE /api/v1/agents`; per-user agent quota enforced via `ATP_MAX_AGENTS_PER_USER`
-23. **Invite System** (`atp/dashboard/v2/routes/invite_api.py`) - Admin-only invite code management; `POST/GET/DELETE /api/v1/invites`; controls registration when `ATP_REGISTRATION_MODE=invite`
-12. **YAML Upload** (`POST /api/suite-definitions/upload`) - Upload YAML test suites to the server; used by `atp push`
-13. **Trend Analysis** (`atp/analytics/trend.py`) - Cross-run trend analysis detecting gradual success_rate drift via OLS slope
-14. **Rate Limiting** (`atp/dashboard/v2/rate_limit.py`) - Per-endpoint HTTP rate limiting via slowapi, keyed by JWT user_id or client IP, configurable via `ATP_RATE_LIMIT_*` env vars
-15. **Webhooks** (`atp/dashboard/webhook.py`) - Webhook delivery for benchmark run notifications with SSRF protection, retry with backoff; `webhook_url` field on Benchmark model
-16. **Event Streaming** (`POST /api/v1/runs/{id}/events`) - Append events to running benchmark runs; SDK `emit()`/`emit_sync()` methods; max 1000 events per run
-17. **Container Isolation** (`atp/evaluators/container.py`) - Docker/Podman container runtime for isolated code execution with resource limits (memory, CPU)
-18. **Auth State Store** (`atp/dashboard/auth/state_store.py`) - Unified transient auth state store (InMemory, protocol-based) replacing per-module session dicts; used by SSO, SAML, DeviceFlow
-19. **Post-Auth Pipeline** (`atp/dashboard/auth/post_auth.py`) - Shared `complete_auth()` pipeline for user provisioning, role assignment, and token issuance
-20. **Shared Result Models** (`atp/core/results.py`) - EvalCheck, EvalResult, TestResult etc. shared across evaluators, runner, reporters, and dashboard storage
+11. **Dashboard UI** (`atp/dashboard/v2/routes/ui.py`) - HTMX + Pico CSS frontend served at `/ui/` (home activity feed, login, register, about, agents, tokens, invites, admin, tournaments, benchmarks, games, runs + run detail `/ui/runs/{id}`, leaderboard, suites, analytics)
+12. **Token Self-Service** (`atp/dashboard/tokens.py`, `atp/dashboard/v2/routes/token_api.py`) - APIToken and Invite ORM models; API endpoints `POST/GET/DELETE /api/v1/tokens`, invite-gated registration; agent-scoped tokens (prefix `atp_a_`) and user-level tokens (prefix `atp_u_`)
+13. **Agent Ownership** (`atp/dashboard/v2/routes/agent_management_api.py`) - Agent CRUD with ownership checks; `POST/GET/DELETE /api/v1/agents`; per-user agent quota enforced via `ATP_MAX_AGENTS_PER_USER`
+14. **Invite System** (`atp/dashboard/v2/routes/invite_api.py`) - Admin-only invite code management; `POST/GET/DELETE /api/v1/invites`; controls registration when `ATP_REGISTRATION_MODE=invite`
+15. **YAML Upload** (`POST /api/suite-definitions/upload`) - Upload YAML test suites to the server; used by `atp push`
+16. **Trend Analysis** (`atp/analytics/trend.py`) - Cross-run trend analysis detecting gradual success_rate drift via OLS slope
+17. **Rate Limiting** (`atp/dashboard/v2/rate_limit.py`) - Per-endpoint HTTP rate limiting via slowapi, keyed by JWT user_id or client IP, configurable via `ATP_RATE_LIMIT_*` env vars
+18. **Webhooks** (`atp/dashboard/webhook.py`) - Webhook delivery for benchmark run notifications with SSRF protection, retry with backoff; `webhook_url` field on Benchmark model
+19. **Event Streaming** (`POST /api/v1/runs/{id}/events`) - Append events to running benchmark runs; SDK `emit()`/`emit_sync()` methods; max 1000 events per run
+20. **Container Isolation** (`atp/evaluators/container.py`) - Docker/Podman container runtime for isolated code execution with resource limits (memory, CPU)
+21. **Auth State Store** (`atp/dashboard/auth/state_store.py`) - Unified transient auth state store (InMemory, protocol-based) replacing per-module session dicts; used by SSO, SAML, DeviceFlow
+22. **Post-Auth Pipeline** (`atp/dashboard/auth/post_auth.py`) - Shared `complete_auth()` pipeline for user provisioning, role assignment, and token issuance
+23. **Shared Result Models** (`atp/core/results.py`) - EvalCheck, EvalResult, TestResult etc. shared across evaluators, runner, reporters, and dashboard storage
+24. **MCP Tournament Server** (`atp/dashboard/mcp/`) - FastMCP server mounted at `/mcp` exposing tournament tools (`join_tournament`, `make_move`, `get_current_state`, `list_tournaments`, `get_tournament`, `get_history`, `leave_tournament`) via SSE. Auth via `MCPAuthMiddleware` (rejects 401 without `user_id` in request state)
 
 ### Data Flow
 
@@ -170,13 +180,15 @@ Key environment variables for the dashboard and SDK:
 
 - `ATP_SECRET_KEY` - JWT signing secret for auth tokens (required in production)
 - `ATP_DATABASE_URL` - Database connection string (default: SQLite)
+- `ATP_DATABASE_ECHO` - Echo SQL statements for debugging (default: false)
 - `ATP_DEBUG` - Enable debug mode (default: false)
 - `ATP_HOST` - Server host address (default: "127.0.0.1")
 - `ATP_PORT` - Server port (default: 8080)
 - `ATP_DISABLE_AUTH` - Disable authentication (default: false, dev only!)
 - `ATP_GITHUB_CLIENT_ID` - GitHub OAuth App client ID (required for GitHub login)
 - `ATP_GITHUB_CLIENT_SECRET` - GitHub OAuth App client secret (required for GitHub login)
-- `ATP_TOKEN_EXPIRE_MINUTES` - JWT token expiration in minutes (default: 60)
+- `ATP_TOKEN_EXPIRE_MINUTES` - JWT token expiration in minutes for regular users (default: 60)
+- `ATP_ADMIN_TOKEN_EXPIRE_MINUTES` - JWT expiration in minutes for admin users (default: 720 = 12 h). Applied at token issuance when `User.is_admin=True`; non-admins keep `ATP_TOKEN_EXPIRE_MINUTES`. Set higher so admins can monitor multi-hour tournaments without re-authenticating.
 - `ATP_CORS_ORIGINS` - Comma-separated CORS origins (default: empty)
 - `ATP_RATE_LIMIT_ENABLED` - Enable HTTP rate limiting (default: true)
 - `ATP_RATE_LIMIT_DEFAULT` - Default rate limit (default: "60/minute")

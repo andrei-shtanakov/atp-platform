@@ -92,11 +92,35 @@
             {% for p in sorted_participants %}
                 {% set action = r.actions | selectattr("participant_id", "equalto", p.id) | first %}
                 {% if action %}
-                    {% set choice = (action.action_data or {}).get("choice", "—") %}
                     <td>
-                        <span class="{{ 'cooperate' if choice == 'cooperate' else 'defect' }}">{{ choice }}</span>
-                        {% if is_admin and action.source == "TIMEOUT_DEFAULT" %}
+                        {% if t.game_type == "prisoners_dilemma" %}
+                            {% set choice = (action.action_data or {}).get("choice", "—") %}
+                            <span class="{{ 'cooperate' if choice == 'cooperate' else 'defect' }}">{{ choice }}</span>
+                        {% elif t.game_type == "el_farol" %}
+                            {% set slots = (action.action_data or {}).get("slots", []) %}
+                            {% if slots %}
+                                <span class="score-pair">{{ slots | join(", ") }}</span>
+                            {% else %}
+                                <span style="color:#999">stay home</span>
+                            {% endif %}
+                        {% elif t.game_type == "public_goods" %}
+                            {% set contrib = (action.action_data or {}).get("contribution") %}
+                            {% if contrib is not none %}
+                                <span class="score-pair">{{ "%.2f"|format(contrib) }}</span>
+                            {% else %}
+                                <span style="color:#999">—</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="score-pair">{{ action.action_data | tojson }}</span>
+                        {% endif %}
+                        {% if is_admin and action.source == "timeout_default" %}
                         <span style="font-size:0.75rem;color:#999">(timeout)</span>
+                        {% endif %}
+                        {% if action.reasoning and action.id in visible_reasoning_action_ids %}
+                        <details class="reasoning-details" style="margin-top:0.25rem">
+                            <summary title="reasoning" aria-label="Reasoning" style="cursor:pointer">💭</summary>
+                            <p style="font-size:0.8rem;color:#555;white-space:pre-wrap;margin:0.25rem 0 0 0">{{ action.reasoning }}</p>
+                        </details>
                         {% endif %}
                     </td>
                 {% else %}

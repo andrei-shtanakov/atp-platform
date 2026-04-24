@@ -68,7 +68,7 @@ async def test_create_tournament_rejects_invalid_num_players(
     from atp.dashboard.tournament.service import TournamentService
 
     svc = TournamentService(session, event_bus)
-    with pytest.raises(ValidationError, match="num_players"):
+    with pytest.raises(ValidationError, match="exactly 2 players"):
         await svc.create_tournament(
             creator=admin_user,
             name="single-player-pd",
@@ -167,11 +167,17 @@ async def test_join_populates_agent_id_from_owned_agent(
     from atp.dashboard.tournament.models import Participant
     from atp.dashboard.tournament.service import TournamentService
 
+    # LABS-TSA PR-4: join() looks up by
+    # (owner_id, name, purpose='tournament'), so a benchmark-purpose
+    # agent with the same name no longer satisfies the "owned agent"
+    # linkage contract. The test's intent is "tournament agent owned
+    # by the joining user" — set the purpose accordingly.
     alice_agent = Agent(
         name="alice-bot",
         agent_type="cli",
         owner_id=alice.id,
         version="v1",
+        purpose="tournament",
     )
     session.add(alice_agent)
     await session.commit()
@@ -202,7 +208,11 @@ async def test_join_populates_agent_id_from_owned_agent(
     )
     by_user = {p.user_id: p for p in participants}
     assert by_user[alice.id].agent_id == alice_agent.id
-    assert by_user[bob.id].agent_id is None
+    # LABS-TSA PR-4: join() now auto-provisions a tournament-purpose
+    # Agent when the user has none, so agent_id is always populated
+    # (required by the new agent-xor-builtin CHECK). bob's Participant
+    # is therefore linked to a freshly-minted Agent, not NULL.
+    assert by_user[bob.id].agent_id is not None
 
 
 @pytest.mark.anyio
@@ -248,4 +258,9 @@ async def test_join_ignores_soft_deleted_owned_agent(
         .where(Participant.user_id == alice.id)
     )
     assert alice_participant is not None
-    assert alice_participant.agent_id is None
+    # LABS-TSA PR-4: the soft-deleted agent must still be ignored, but
+    # join() now auto-provisions a fresh tournament-purpose Agent in
+    # its place (required by the agent-xor-builtin CHECK). Verify the
+    # linked agent is NOT the soft-deleted one.
+    assert alice_participant.agent_id is not None
+    assert alice_participant.agent_id != dead_agent.id
