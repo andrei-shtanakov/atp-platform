@@ -15,7 +15,7 @@ from typing import Any
 
 from fastapi import APIRouter, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -1816,6 +1816,63 @@ async def ui_create_agent(
         return RedirectResponse(  # type: ignore[return-value]
             url=f"/ui/agents?error={quote(detail)}", status_code=303
         )
+
+    return RedirectResponse(url="/ui/agents", status_code=303)  # type: ignore[return-value]
+
+
+@router.post("/agents/{agent_id}/delete", response_class=HTMLResponse)
+@limiter.limit("10/minute")
+async def ui_delete_agent(
+    request: Request,
+    session: DBSession,
+    agent_id: int,
+) -> HTMLResponse:
+    """Soft-delete an agent via the cookie-auth UI.
+
+    Mirrors ``DELETE /api/v1/agents/{id}`` but accepts a form POST so
+    the agents table can expose a Delete button without JavaScript.
+    """
+    from urllib.parse import quote
+
+    user = await _get_ui_user(request, session)
+    if not user:
+        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+
+    agent = await session.get(Agent, agent_id)
+    if agent is None or agent.deleted_at is not None:
+        return RedirectResponse(  # type: ignore[return-value]
+            url="/ui/agents?error=Agent+not+found", status_code=303
+        )
+    if agent.owner_id != user.id and not user.is_admin:
+        return RedirectResponse(  # type: ignore[return-value]
+            url="/ui/agents?error=You+don%27t+own+this+agent", status_code=303
+        )
+
+    active = await session.execute(
+        select(Participant.id)
+        .join(TournamentModel, Participant.tournament_id == TournamentModel.id)
+        .where(
+            Participant.agent_id == agent_id,
+            Participant.released_at.is_(None),
+            TournamentModel.status.in_(
+                [TournamentStatus.PENDING, TournamentStatus.ACTIVE]
+            ),
+        )
+    )
+    if active.scalar_one_or_none() is not None:
+        return RedirectResponse(  # type: ignore[return-value]
+            url=f"/ui/agents?error={quote('Agent is in an active tournament')}",
+            status_code=303,
+        )
+
+    now = datetime.now()
+    agent.deleted_at = now
+    await session.execute(
+        update(APIToken)
+        .where(APIToken.agent_id == agent_id, APIToken.revoked_at.is_(None))
+        .values(revoked_at=now)
+    )
+    await session.flush()
 
     return RedirectResponse(url="/ui/agents", status_code=303)  # type: ignore[return-value]
 

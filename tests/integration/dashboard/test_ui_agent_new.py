@@ -138,3 +138,89 @@ class TestAgentNewSubmit:
             )
         assert resp.status_code == 400
         assert "Error" in resp.text
+
+
+class TestAgentDelete:
+    """POST /ui/agents/{id}/delete soft-deletes agent + redirects to list."""
+
+    @pytest.mark.anyio
+    async def test_delete_soft_deletes_and_redirects(
+        self, v2_app, db_session: AsyncSession, owner_cookies
+    ) -> None:
+        user, cookies = owner_cookies
+        agent = Agent(
+            name="to-delete",
+            owner_id=user.id,
+            agent_type="mcp",
+            purpose="benchmark",
+            version="latest",
+        )
+        db_session.add(agent)
+        await db_session.commit()
+        await db_session.refresh(agent)
+        agent_id = agent.id
+
+        async with AsyncClient(
+            transport=ASGITransport(app=v2_app),
+            base_url="http://test",
+            cookies=cookies,
+        ) as client:
+            resp = await client.post(
+                f"/ui/agents/{agent_id}/delete", follow_redirects=False
+            )
+        assert resp.status_code == 303, resp.text
+        assert resp.headers["location"] == "/ui/agents"
+
+        await db_session.refresh(agent)
+        assert agent.deleted_at is not None
+
+    @pytest.mark.anyio
+    async def test_delete_foreign_agent_redirects_with_error(
+        self, v2_app, db_session: AsyncSession, owner_cookies
+    ) -> None:
+        _, cookies = owner_cookies
+        other = User(
+            username="other",
+            email="other@t.com",
+            hashed_password=get_password_hash("pass"),
+            is_active=True,
+        )
+        db_session.add(other)
+        await db_session.commit()
+        await db_session.refresh(other)
+        foreign = Agent(
+            name="not-mine",
+            owner_id=other.id,
+            agent_type="mcp",
+            purpose="benchmark",
+            version="latest",
+        )
+        db_session.add(foreign)
+        await db_session.commit()
+        await db_session.refresh(foreign)
+
+        async with AsyncClient(
+            transport=ASGITransport(app=v2_app),
+            base_url="http://test",
+            cookies=cookies,
+        ) as client:
+            resp = await client.post(
+                f"/ui/agents/{foreign.id}/delete", follow_redirects=False
+            )
+        assert resp.status_code == 303
+        assert resp.headers["location"].startswith("/ui/agents?error=")
+
+        await db_session.refresh(foreign)
+        assert foreign.deleted_at is None
+
+    @pytest.mark.anyio
+    async def test_delete_unauthenticated_redirects_to_login(
+        self, v2_app, db_session: AsyncSession
+    ) -> None:
+        async with AsyncClient(
+            transport=ASGITransport(app=v2_app),
+            base_url="http://test",
+        ) as client:
+            resp = await client.post("/ui/agents/999/delete", follow_redirects=False)
+        assert resp.status_code == 302
+        assert resp.headers["location"].startswith("/ui/login")
