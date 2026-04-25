@@ -11,8 +11,10 @@ from atp.dashboard.tournament.models import (
     Round,
     Tournament,
 )
+from atp.dashboard.v2.routes.el_farol_dashboard import DashboardAgent
 from atp.dashboard.v2.routes.el_farol_from_tournament import (
     _build_agents_from_participants,
+    _build_rounds_from_actions,
     _reshape_from_tournament,
 )
 
@@ -112,3 +114,43 @@ def test_build_agents_mixes_builtins_and_users() -> None:
     assert agents[1].user == "42"
     assert agents[0].color == "#6e7781"
     assert agents[1].color == "#6e7781"
+
+
+def test_build_rounds_computes_slot_attendance_and_over_slots() -> None:
+    """3 participants — 2 pick slot 0, 1 picks slot 5. Capacity
+    threshold 2 → slot 0 is at threshold (renders -1 per the canonical
+    rule att < threshold → +1), slot 5 is under (+1). over_slots
+    counts slots where att >= threshold: one slot.
+    """
+    agents = [
+        DashboardAgent(id=f"a{i}", color="#6e7781", user="unknown") for i in range(1, 4)
+    ]
+
+    actions_by_round: dict[int, list[tuple[int, dict, float | None]]] = {
+        1: [
+            (0, {"slots": [0]}, 1.0),
+            (1, {"slots": [0]}, -1.0),
+            (2, {"slots": [5]}, 1.0),
+        ],
+    }
+
+    rounds = _build_rounds_from_actions(
+        actions_by_round=actions_by_round,
+        agents=agents,
+        num_slots=16,
+        capacity_threshold=2,
+    )
+
+    assert len(rounds) == 1
+    day1 = rounds[0]
+    assert day1.round == 1
+    expected_attendance = [0] * 16
+    expected_attendance[0] = 2
+    expected_attendance[5] = 1
+    assert day1.slotAttendance == expected_attendance
+    assert day1.overSlots == 1
+    decs = {d.agent: d for d in day1.decisions}
+    assert decs["a1"].picks == [0]
+    assert decs["a1"].slotPayoffs[0].attendance == 2
+    assert decs["a1"].slotPayoffs[0].payoff == -1
+    assert decs["a3"].slotPayoffs[0].payoff == 1
