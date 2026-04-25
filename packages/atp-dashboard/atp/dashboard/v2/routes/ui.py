@@ -15,7 +15,7 @@ from typing import Any
 
 from fastapi import APIRouter, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -519,17 +519,28 @@ async def ui_matches(
     request: Request,
     session: DBSession,
 ) -> HTMLResponse:
-    """List El Farol matches that have the Phase-7 dashboard payload.
+    """List El Farol matches that ``/ui/matches/{id}`` can render.
 
-    Filters match the renderability criteria in :func:`ui_match_detail`:
-    ``status == 'completed'`` plus both ``actions_json`` and
-    ``day_aggregates_json`` populated. These Phase-7 JSON columns are
-    only written by the CLI writer for El Farol-shaped games (see
-    ``atp/cli/commands/game.py``), so the renderability filter
-    implicitly selects El Farol without matching on ``game_name`` —
-    the engine's pretty name
-    (``"El Farol Bar (n=6, threshold=4, days=30)"``) would not match a
-    literal ``"el_farol"`` anyway.
+    Two render paths feed the listing (mirroring the dispatch in
+    :func:`ui_match_detail`):
+
+      * **CLI matches** — ``status == 'completed'`` plus both
+        ``actions_json`` and ``day_aggregates_json`` populated. These
+        Phase-7 JSON columns are only written by the CLI writer for
+        El Farol-shaped games (see ``atp/cli/commands/game.py``), so
+        the populated-JSON filter implicitly selects El Farol without
+        matching on ``game_name`` — the engine's pretty name
+        (``"El Farol Bar (n=6, threshold=4, days=30)"``) would not
+        match a literal ``"el_farol"`` anyway.
+      * **Tournament-backed matches** — ``tournament_id IS NOT NULL``
+        and ``game_name == 'el_farol'``. Tournament writes leave the
+        Phase-7 JSON columns ``NULL`` on purpose; the dashboard is
+        reshaped at read time from authoritative ``Round``/``Action``
+        ORM rows (LABS-106). The ``el_farol`` literal works here
+        because :func:`TournamentService._write_game_result_for_tournament`
+        sets ``GameResult.game_name = tournament.game_type``, and the
+        only tournament game with a working detail page today is El
+        Farol.
     """
     from atp.dashboard.models import GameResult
     from atp.dashboard.tournament.models import Participant
@@ -540,8 +551,16 @@ async def ui_matches(
 
     renderable_filters = [
         GameResult.status == "completed",
-        GameResult.actions_json.is_not(None),
-        GameResult.day_aggregates_json.is_not(None),
+        or_(
+            and_(
+                GameResult.actions_json.is_not(None),
+                GameResult.day_aggregates_json.is_not(None),
+            ),
+            and_(
+                GameResult.tournament_id.is_not(None),
+                GameResult.game_name == "el_farol",
+            ),
+        ),
     ]
 
     def _apply_visibility(stmt):  # type: ignore[no-untyped-def]

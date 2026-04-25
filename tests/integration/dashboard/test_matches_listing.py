@@ -106,6 +106,109 @@ class TestMatchesListing:
         assert "1 completed El Farol matches" in html or ">1 completed" in html
 
     @pytest.mark.anyio
+    async def test_lists_tournament_backed_el_farol_match(
+        self,
+        v2_app,
+        db_session: AsyncSession,
+        disable_dashboard_auth,
+    ) -> None:
+        """Tournament-backed El Farol matches have NULL Phase-7 JSON
+        columns by design (LABS-106 reshapes them at read time from
+        Round/Action ORM rows). The listing must surface them anyway,
+        otherwise the row is reachable only via the
+        /ui/tournaments/{id} cross-link.
+        """
+        from atp.dashboard.tournament.models import Tournament
+
+        t = Tournament(
+            game_type="el_farol",
+            num_players=2,
+            total_rounds=1,
+            status="completed",
+        )
+        db_session.add(t)
+        await db_session.flush()
+
+        db_session.add(
+            GameResult(
+                game_name="el_farol",
+                # Production writer sets ``game_type=variant`` from
+                # ``tournament.config`` (default "tournament"), not the
+                # tournament's game_type. The listing filter keys off
+                # ``game_name``, not ``game_type``, so this is fine —
+                # but the fixture mirrors prod for less surprise.
+                game_type="tournament",
+                num_players=2,
+                num_rounds=1,
+                status="completed",
+                completed_at=datetime(2026, 4, 25, 12, 0),
+                match_id="m-tourney-listed",
+                tournament_id=t.id,
+                # actions_json / day_aggregates_json deliberately NULL —
+                # the tournament writer does not populate them.
+            )
+        )
+        await db_session.commit()
+
+        async with AsyncClient(
+            transport=ASGITransport(app=v2_app), base_url="http://test"
+        ) as client:
+            resp = await client.get("/ui/matches")
+
+        assert resp.status_code == 200
+        html = resp.text
+        assert "m-tourney-listed" in html
+        assert "/ui/matches/m-tourney-listed" in html
+
+    @pytest.mark.anyio
+    async def test_excludes_non_el_farol_tournament_match(
+        self,
+        v2_app,
+        db_session: AsyncSession,
+        disable_dashboard_auth,
+    ) -> None:
+        """A Prisoner's Dilemma tournament also writes a GameResult row
+        with NULL Phase-7 JSON, but /ui/matches/{id} is an El Farol-only
+        dashboard. Listing such a row would only let the user click
+        through to a placeholder, which is worse than hiding it.
+        """
+        from atp.dashboard.tournament.models import Tournament
+
+        t = Tournament(
+            game_type="prisoners_dilemma",
+            num_players=2,
+            total_rounds=1,
+            status="completed",
+        )
+        db_session.add(t)
+        await db_session.flush()
+
+        db_session.add(
+            GameResult(
+                # game_name = tournament.game_type per the prod writer
+                # (TournamentService._write_game_result_for_tournament).
+                # game_type = variant default ("tournament").
+                game_name="prisoners_dilemma",
+                game_type="tournament",
+                num_players=2,
+                num_rounds=1,
+                status="completed",
+                completed_at=datetime(2026, 4, 25, 12, 0),
+                match_id="m-pd-tourney",
+                tournament_id=t.id,
+            )
+        )
+        await db_session.commit()
+
+        async with AsyncClient(
+            transport=ASGITransport(app=v2_app), base_url="http://test"
+        ) as client:
+            resp = await client.get("/ui/matches")
+
+        assert resp.status_code == 200
+        assert "m-pd-tourney" not in resp.text
+
+    @pytest.mark.anyio
     async def test_excludes_rows_that_would_not_render(
         self,
         v2_app,
