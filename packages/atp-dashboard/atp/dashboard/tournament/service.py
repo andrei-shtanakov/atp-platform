@@ -1449,9 +1449,13 @@ class TournamentService:
     async def _write_game_result_for_tournament(self, tournament: Tournament) -> None:
         """Dual-write a ``GameResult`` row linked to this tournament.
 
-        LABS-TSA PR-5. Populates the scalar fields plus empty-list JSON
-        blobs; a follow-up ticket will port the full Phase-7 reshape of
-        Round/Action rows from ``atp/cli/commands/game.py``.
+        LABS-TSA PR-5. Populates the scalar fields only; the four
+        Phase-7 JSON columns stay NULL because LABS-106 reshapes the
+        dashboard payload at read time from ``Round``/``Action`` ORM
+        rows (see ``el_farol_from_tournament._reshape_from_tournament``).
+        ``Round``/``Action`` are the single source of truth for
+        tournament-produced data — duplicating into JSON blobs would
+        only invite consistency drift.
 
         ``match_id`` is a fresh UUID — **never** the tournament's
         ``join_token`` (that's a secret the creator must share with
@@ -1474,14 +1478,12 @@ class TournamentService:
             status="completed",
             completed_at=_utc_now(),
             tournament_id=tournament.id,
-            # Phase-7 payload — NULL placeholder, populated by a
-            # follow-up ticket that reshapes Round/Action rows. NULL
-            # (not empty list) keeps these tournament-backed rows out
-            # of the /ui/matches renderability filter
-            # (``actions_json IS NOT NULL``) until the reshape lands —
-            # otherwise they would show up in the listing but render
-            # as "predates_schema" on detail because the Cards payload
-            # treats empty lists as missing data.
+            # Phase-7 JSON columns stay NULL on purpose — LABS-106
+            # reshapes the dashboard payload at read time from
+            # Round/Action ORM rows. The /ui/matches listing accepts
+            # these rows via the (tournament_id IS NOT NULL AND
+            # game_name == "el_farol") branch in renderable_filters
+            # (LABS-104, ui.py::ui_matches).
             actions_json=None,
             day_aggregates_json=None,
             round_payoffs_json=None,

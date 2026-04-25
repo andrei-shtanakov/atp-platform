@@ -132,7 +132,12 @@ class TestMatchesListing:
         db_session.add(
             GameResult(
                 game_name="el_farol",
-                game_type="el_farol_interval",
+                # Production writer sets ``game_type=variant`` from
+                # ``tournament.config`` (default "tournament"), not the
+                # tournament's game_type. The listing filter keys off
+                # ``game_name``, not ``game_type``, so this is fine —
+                # but the fixture mirrors prod for less surprise.
+                game_type="tournament",
                 num_players=2,
                 num_rounds=1,
                 status="completed",
@@ -180,8 +185,11 @@ class TestMatchesListing:
 
         db_session.add(
             GameResult(
+                # game_name = tournament.game_type per the prod writer
+                # (TournamentService._write_game_result_for_tournament).
+                # game_type = variant default ("tournament").
                 game_name="prisoners_dilemma",
-                game_type="prisoners_dilemma",
+                game_type="tournament",
                 num_players=2,
                 num_rounds=1,
                 status="completed",
