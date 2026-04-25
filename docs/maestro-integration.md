@@ -39,10 +39,11 @@ Constants are defined at
 
 ## Recommended `validation_cmd` shapes
 
-ATP supports two equivalent entry points — `atp test` and `atp run`. Use `atp
-run` in Maestro task specs for two reasons: it reads as an action ("run the
-suite"), and the name is stable (`atp test` is also kept for backward
-compatibility but reads ambiguously next to `pytest`).
+ATP exposes two equivalent entry points: `atp test` is the canonical command,
+`atp run` is an alias kept around because the verb often reads better in task
+specs (`validation_cmd: "atp run …"` parses as action). They accept the same
+flags and exit codes; pick whichever fits your task spec — Maestro doesn't
+care.
 
 ```yaml
 # Maestro task definition — minimal
@@ -79,19 +80,24 @@ cheap "is the suite still valid" smoke before a heavier task.
 
 ATP writes:
 
-- **`stdout`** — human-readable progress + the chosen reporter's output. With
-  `--output=json` (default `--output=text`) the JSON reporter writes a single
-  parseable document; otherwise expect rich console formatting.
-- **`stderr`** — log lines (loguru), plus a final `Error: ...` line on exit
-  code `2`.
+- **`stdout`** — human-readable progress plus the selected reporter output.
+  `atp test` / `atp run` accept `--output=console|json|junit` with `console`
+  as the default. `console` prints the rich terminal view including a compact
+  failure summary; `json` writes a single parseable JSON document; `junit`
+  writes JUnit XML.
+- **`stderr`** — log lines emitted via Python's stdlib `logging`, plus a
+  final `Error: ...` line on exit code `2`.
 
 Maestro logs both streams verbatim. If you want Maestro to surface the failed
-test list in the task log without spelunking, prefer `--output=text` (default)
-which prints a compact failure summary at the end.
+test list in the task log without spelunking, the default `--output=console`
+already includes that summary at the end.
 
-For machine-readable artefacts, use `--output-file=path.json --output=json` —
-the file is written even on non-zero exits, so Maestro can attach it as a task
-artefact regardless of pass/fail.
+For machine-readable artefacts, use `--output-file=path --output=json` (or
+`--output=junit`). The file is written when the suite runs to completion,
+including when tests fail (exit code `1`), so Maestro can attach it as a task
+artefact on any pass/fail outcome. **It is not guaranteed on exit code `2`
+paths** — those are pre-suite-execution errors (config invalid, file missing,
+runtime exception during loading) where ATP exits before report generation.
 
 ## Working directory and config
 
@@ -100,11 +106,11 @@ directory**. Maestro runs `validation_cmd` with `workdir` set to the task's
 `workdir` field (defaults to the project root). Place suite files at a stable
 path inside the repo and reference them relatively.
 
-ATP looks for `atp.yaml` / `atp.toml` in the same directory tree (Click
-`config_ctx`) — Maestro does not need to set anything special. If you want
-Maestro to override the agent at call time, prefer CLI flags (`--agent-name`,
-`--adapter`, `--adapter-config k=v`) over editing the config file from inside
-the task.
+ATP looks for `atp.config.yaml` / `atp.config.yml` walking up from the cwd
+(`ConfigContext.load_config` in `atp/cli/main.py`) — Maestro does not need to
+set anything special. If you want Maestro to override the agent at call time,
+prefer CLI flags (`--agent-name`, `--adapter`, `--adapter-config k=v`) over
+editing the config file from inside the task.
 
 ## Timeouts
 
@@ -142,7 +148,7 @@ If you ever want to confirm the contract without running a full suite:
 
 ```bash
 # Should exit 0
-atp run tests/some_suite.yaml --list-only && echo "ok=$?"
+atp run tests/some_suite.yaml --list-only; echo "ok=$?"
 
 # Should exit 2 (file missing)
 atp run /no/such/file.yaml; echo "missing=$?"
@@ -150,6 +156,9 @@ atp run /no/such/file.yaml; echo "missing=$?"
 # Should exit 0
 atp version; echo "version=$?"
 ```
+
+`;` rather than `&&` so the `echo` runs regardless of outcome — the goal here
+is to inspect the exit code, not to chain on success.
 
 These three checks are enough to be sure ATP is wired into the Maestro host
 correctly before pushing a real `validation_cmd` task.
