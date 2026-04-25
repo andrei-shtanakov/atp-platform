@@ -162,6 +162,7 @@ class TestAddTestScreenIntegration:
 
             # Now press 'a' for add test
             await pilot.press("a")
+            await pilot.pause()  # let AddTestScreen finish mounting
 
             # Should be on AddTestScreen
             assert isinstance(pilot.app.screen, AddTestScreen)
@@ -179,6 +180,7 @@ class TestAddTestScreenIntegration:
             main_screen.set_suite(suite)
 
             await pilot.press("a")
+            await pilot.pause()  # let AddTestScreen finish mounting
             screen = pilot.app.screen
             assert isinstance(screen, AddTestScreen)
 
@@ -227,6 +229,7 @@ class TestAddTestScreenIntegration:
             main_screen.set_suite(suite)
 
             await pilot.press("a")
+            await pilot.pause()  # let AddTestScreen finish mounting
             screen = pilot.app.screen
             assert isinstance(screen, AddTestScreen)
 
@@ -249,6 +252,7 @@ class TestAddTestScreenIntegration:
             main_screen.set_suite(suite)
 
             await pilot.press("a")
+            await pilot.pause()  # let AddTestScreen finish mounting
             screen = pilot.app.screen
             assert isinstance(screen, AddTestScreen)
 
@@ -272,9 +276,11 @@ class TestAddTestScreenIntegration:
             main_screen.set_suite(suite)
 
             await pilot.press("a")
+            await pilot.pause()  # let AddTestScreen finish mounting
             assert isinstance(pilot.app.screen, AddTestScreen)
 
             await pilot.press("escape")
+            await pilot.pause()  # let dismiss propagate before asserting
             assert isinstance(pilot.app.screen, MainScreen)
 
     async def test_add_test_with_valid_data(self) -> None:
