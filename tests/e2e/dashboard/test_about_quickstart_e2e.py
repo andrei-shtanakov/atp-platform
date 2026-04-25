@@ -35,6 +35,7 @@ import httpx
 import pytest
 
 from atp.adapters.mcp import MCPAdapter, MCPAdapterConfig
+from atp.dashboard.tournament.service import SUPPORTED_GAMES
 
 # tournament_uvicorn + _mint_jwt come from the sibling conftest.py,
 # which re-exports them from the SC-1 tournament e2e module.
@@ -69,11 +70,43 @@ _EXPECTED_MCP_TOOLS = frozenset(
 _EXPECTED_UI_LINKS = frozenset({"/ui/login", "/ui/agents", "/ui/tokens"})
 
 
-# Games the About page lists as available (not greyed-out "coming soon").
-# Adding one requires matching server-side dispatcher support first.
+# Games the About page lists as available. Must mirror the
+# module-level ``SUPPORTED_GAMES`` constant in
+# ``atp.dashboard.tournament.service`` — adding one requires matching
+# server-side dispatcher support first. The template no longer carries
+# any "coming soon" stub cards (removed in LABS-77).
+#
+# Frozen as a literal here so a regression on either side trips a
+# concrete diff. ``test_expected_games_match_supported_games`` below
+# asserts equality with the live ``SUPPORTED_GAMES`` so the two cannot
+# silently drift apart again (the public_goods drift caught in LABS-77
+# is what motivates the equality check).
 _EXPECTED_AVAILABLE_GAMES = frozenset(
-    {"prisoners_dilemma", "el_farol", "stag_hunt", "battle_of_sexes"}
+    {
+        "prisoners_dilemma",
+        "el_farol",
+        "stag_hunt",
+        "battle_of_sexes",
+        "public_goods",
+    }
 )
+
+
+def test_expected_games_match_supported_games() -> None:
+    """The About anti-drift literal must equal the live tournament
+    service's ``SUPPORTED_GAMES``. If a new game ships without updating
+    both this set and the About template, this test fails first and
+    points at the mismatch — preventing the silent drift that left
+    public_goods uncovered for ~10 days after PR #50.
+    """
+    assert _EXPECTED_AVAILABLE_GAMES == SUPPORTED_GAMES, (
+        f"_EXPECTED_AVAILABLE_GAMES has drifted from "
+        f"atp.dashboard.tournament.service.SUPPORTED_GAMES. "
+        f"In literal but not in SUPPORTED_GAMES: "
+        f"{_EXPECTED_AVAILABLE_GAMES - SUPPORTED_GAMES}. "
+        f"In SUPPORTED_GAMES but not in literal: "
+        f"{SUPPORTED_GAMES - _EXPECTED_AVAILABLE_GAMES}."
+    )
 
 
 def _extract_internal_links(html: str) -> set[str]:
