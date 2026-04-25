@@ -30,7 +30,11 @@
     <span>{{ t.game_type }}</span>
     <span>by {{ creator_name }}</span>
     {% if t.game_type == "el_farol" %}
-    <span><a href="/ui/matches">Browse El Farol matches →</a></span>
+      {% if cards_match_id %}
+      <span><a href="/ui/matches/{{ cards_match_id }}">Cards replay →</a></span>
+      {% else %}
+      <span><a href="/ui/matches">Browse El Farol matches →</a></span>
+      {% endif %}
     {% endif %}
     <span>
         {% if t.status == "completed" and t.starts_at and t.ends_at %}

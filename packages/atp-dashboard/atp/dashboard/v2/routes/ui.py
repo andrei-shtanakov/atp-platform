@@ -1191,6 +1191,17 @@ async def ui_tournament_detail(
         )
     }
 
+    # Cards-replay cross-link (LABS-106): only completed tournaments have
+    # a GameResult row written by _write_game_result_for_tournament; for
+    # in-flight or cancelled ones the link falls back to the listing.
+    from atp.dashboard.models import GameResult
+
+    cards_match_id: str | None = None
+    if tournament.status == "completed":
+        cards_match_id = await session.scalar(
+            select(GameResult.match_id).where(GameResult.tournament_id == tournament.id)
+        )
+
     context = {
         "active_page": "tournaments",
         "tournament": tournament,
@@ -1204,6 +1215,7 @@ async def ui_tournament_detail(
         "timeline": timeline,
         "user": user,
         "visible_reasoning_action_ids": visible_reasoning_action_ids,
+        "cards_match_id": cards_match_id,
     }
 
     partial = request.query_params.get("partial")
