@@ -74,6 +74,7 @@ class TestNewSuiteScreenIntegration:
 
             # Press 'n' for new suite
             await pilot.press("n")
+            await pilot.pause()  # let NewSuiteScreen finish mounting
 
             # Should now be on NewSuiteScreen
             assert isinstance(pilot.app.screen, NewSuiteScreen)
@@ -131,33 +132,28 @@ class TestNewSuiteScreenIntegration:
         async with app.run_test(size=(100, 50)) as pilot:
             await pilot.press("m")
             await pilot.press("n")
+            await pilot.pause()  # let NewSuiteScreen finish mounting
             assert isinstance(pilot.app.screen, NewSuiteScreen)
 
             # Click cancel
             await pilot.click("#cancel-btn")
+            await pilot.pause()  # let dismiss propagate before asserting
 
             # Should be back on main screen
             assert isinstance(pilot.app.screen, MainScreen)
 
-    @pytest.mark.slow
     async def test_escape_key_dismisses_screen(self) -> None:
-        """Test that Escape key dismisses the screen.
-
-        Flaky on shared CI runners: Textual's Pilot.press sometimes races
-        the screen transition and the assertion fires before the
-        escape-key action has been consumed. Marked slow to match the
-        precedent set by test_ctrl_s_submits_form (756e70a), which
-        excludes it from the fast-path CI step but still runs in the
-        Integration CI matrix.
-        """
+        """Test that Escape key dismisses the screen."""
         app = ATPTUI()
         async with app.run_test() as pilot:
             await pilot.press("m")
             await pilot.press("n")
+            await pilot.pause()  # let NewSuiteScreen finish mounting
             assert isinstance(pilot.app.screen, NewSuiteScreen)
 
             # Press escape
             await pilot.press("escape")
+            await pilot.pause()  # let dismiss propagate before asserting
 
             # Should be back on main screen
             assert isinstance(pilot.app.screen, MainScreen)
@@ -168,6 +164,7 @@ class TestNewSuiteScreenIntegration:
         async with app.run_test(size=(100, 50)) as pilot:
             await pilot.press("m")
             await pilot.press("n")
+            await pilot.pause()  # let NewSuiteScreen finish mounting
 
             screen = pilot.app.screen
             assert isinstance(screen, NewSuiteScreen)
@@ -198,23 +195,25 @@ class TestNewSuiteScreenIntegration:
         async with app.run_test(size=(100, 50)) as pilot:
             await pilot.press("m")
             await pilot.press("n")
+            await pilot.pause()  # let NewSuiteScreen finish mounting
 
             screen = pilot.app.screen
             assert isinstance(screen, NewSuiteScreen)
 
             # Try to create without filling name
             await pilot.click("#create-btn")
+            await pilot.pause()  # let validation handler complete
 
             # Should still be on NewSuiteScreen (validation failed)
             assert isinstance(pilot.app.screen, NewSuiteScreen)
 
-    @pytest.mark.slow
     async def test_ctrl_s_submits_form(self) -> None:
         """Test that Ctrl+S submits the form."""
         app = ATPTUI()
         async with app.run_test() as pilot:
             await pilot.press("m")
             await pilot.press("n")
+            await pilot.pause()  # let NewSuiteScreen finish mounting
 
             screen = pilot.app.screen
             assert isinstance(screen, NewSuiteScreen)
@@ -225,6 +224,7 @@ class TestNewSuiteScreenIntegration:
 
             # Press Ctrl+S
             await pilot.press("ctrl+s")
+            await pilot.pause()  # let submit handler dismiss the screen
 
             # Should be on main screen with suite loaded
             assert isinstance(pilot.app.screen, MainScreen)
