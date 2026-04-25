@@ -12,6 +12,7 @@ from atp.dashboard.tournament.models import (
     Tournament,
 )
 from atp.dashboard.v2.routes.el_farol_from_tournament import (
+    _build_agents_from_participants,
     _reshape_from_tournament,
 )
 
@@ -83,3 +84,31 @@ async def test_single_round_two_builtins(db_session: AsyncSession) -> None:
         "traditionalist": [0, 1],
         "random": [1, 2],
     }
+
+
+def test_build_agents_mixes_builtins_and_users() -> None:
+    p_builtin = Participant(
+        id=1,
+        tournament_id=99,
+        agent_name="traditionalist",
+        builtin_strategy="el_farol/traditionalist",
+        user_id=None,
+    )
+    p_user = Participant(
+        id=2,
+        tournament_id=99,
+        agent_name="my-agent",
+        builtin_strategy=None,
+        user_id=42,
+        agent_id=7,
+    )
+
+    agents = _build_agents_from_participants([p_builtin, p_user])
+
+    assert [a.id for a in agents] == ["traditionalist", "my-agent"]
+    assert agents[0].profile == "traditionalist"
+    assert agents[0].user == "unknown"
+    assert agents[1].profile == ""
+    assert agents[1].user == "42"
+    assert agents[0].color == "#6e7781"
+    assert agents[1].color == "#6e7781"

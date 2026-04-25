@@ -1,7 +1,7 @@
 """Shared fixtures for dashboard unit tests."""
 
 import os
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncIterator, Generator
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -47,7 +47,7 @@ def disable_dashboard_auth() -> Generator[None, None, None]:
 
 
 @pytest.fixture
-async def db_session() -> AsyncGenerator[AsyncSession, None]:
+async def db_session() -> AsyncIterator[AsyncSession]:
     """Fresh in-memory SQLite + all tables, one per test.
 
     Mirrors the fixture in tests/unit/dashboard/tournament/conftest.py
