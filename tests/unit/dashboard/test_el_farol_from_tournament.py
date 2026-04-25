@@ -154,3 +154,76 @@ def test_build_rounds_computes_slot_attendance_and_over_slots() -> None:
     assert decs["a1"].slotPayoffs[0].attendance == 2
     assert decs["a1"].slotPayoffs[0].payoff == -1
     assert decs["a3"].slotPayoffs[0].payoff == 1
+
+
+@pytest.mark.anyio
+async def test_tournament_with_no_rounds_returns_empty_data(
+    db_session: AsyncSession,
+) -> None:
+    t = Tournament(
+        game_type="el_farol",
+        num_players=2,
+        total_rounds=5,
+        status="cancelled",
+    )
+    db_session.add(t)
+    await db_session.flush()
+    db_session.add_all(
+        [
+            Participant(
+                tournament_id=t.id,
+                agent_name="a",
+                builtin_strategy="el_farol/a",
+            ),
+            Participant(
+                tournament_id=t.id,
+                agent_name="b",
+                builtin_strategy="el_farol/b",
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    payload = await _reshape_from_tournament(t.id, db_session)
+
+    assert payload.DATA == []
+    assert payload.NUM_DAYS == 5
+    assert len(payload.AGENTS) == 2
+
+
+@pytest.mark.anyio
+async def test_incomplete_round_is_skipped(db_session: AsyncSession) -> None:
+    t = Tournament(game_type="el_farol", num_players=2, total_rounds=2, status="active")
+    db_session.add(t)
+    await db_session.flush()
+    p1 = Participant(tournament_id=t.id, agent_name="a", builtin_strategy="el_farol/a")
+    p2 = Participant(tournament_id=t.id, agent_name="b", builtin_strategy="el_farol/b")
+    db_session.add_all([p1, p2])
+    await db_session.flush()
+
+    r_done = Round(tournament_id=t.id, round_number=1, status="completed")
+    r_pending = Round(tournament_id=t.id, round_number=2, status="pending")
+    db_session.add_all([r_done, r_pending])
+    await db_session.flush()
+    db_session.add_all(
+        [
+            Action(
+                round_id=r_done.id,
+                participant_id=p1.id,
+                action_data={"slots": [0]},
+                payoff=1.0,
+            ),
+            Action(
+                round_id=r_done.id,
+                participant_id=p2.id,
+                action_data={"slots": [1]},
+                payoff=1.0,
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    payload = await _reshape_from_tournament(t.id, db_session)
+
+    assert len(payload.DATA) == 1
+    assert payload.DATA[0].round == 1
