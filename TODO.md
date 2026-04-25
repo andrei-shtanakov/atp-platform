@@ -8,16 +8,25 @@
 
 ### Активные кросс-проектные задачи
 
-- [ ] **R-06a: Поддержать Maestro CLI quick win** (effort S)
-  - Maestro добавит пример `validation_cmd: "atp run <suite.yaml>"` — проверить, что `atp run` стабильно работает как validation_cmd
-  - Документ: `docs/maestro-integration.md` — как ATP вызывается из Maestro (exit codes, вывод)
-  - Гарантировать стабильность CLI-интерфейса (semver)
+- [x] **R-06a: Поддержать Maestro CLI quick win** (effort S) ✅ 2026-04-25
+  - Документ написан: [`docs/maestro-integration.md`](docs/maestro-integration.md) —
+    exit codes (0/1/2), `atp run` контракт, рекомендованные `validation_cmd` patterns,
+    semver-обязательства по флагам.
+  - `atp run` экзит-коды verified end-to-end (0=pass, 1=fail, 2=error).
 
-- [ ] **R-13: Нормализация guardrails с arbiter** (effort M)
-  - Текущее состояние: `atp/evaluators/guardrails.py` — 3 правила "inspired by arbiter", у arbiter — 10 invariants
-  - Совместно с `../arbiter/`: задокументировать семантический маппинг правил
-  - Решение: shared-типы через JSON Schema из arbiter, или выровнять naming/семантику
-  - Reference: `../arbiter/arbiter-core/src/invariant/`
+- [x] **R-13: Нормализация guardrails с arbiter** (effort M) ✅ 2026-04-25
+  - arbiter-команда написала маппинг: [`../arbiter/docs/guardrails-atp-mapping.md`](../arbiter/docs/guardrails-atp-mapping.md)
+    (2026-04-17). Вывод: 0 правил перекрываются семантически, 2 разделяют **концепт**
+    (бюджет, время) на разных осях; **не** объединяем структурно (shared types — over-engineering
+    для 15 строк), сохраняем разные имена, выравниваем описания.
+  - ATP-сторона:
+    - Module docstring `atp/evaluators/guardrails.py:1-27` уточнён под фразу "post-execution,
+      pre-evaluation gate" + ссылка на mapping (rec #2).
+    - `check_timeout_not_exceeded` / `check_within_budget` docstrings проясняют axis
+      (measurement vs. estimate, per-test vs. system-wide) — rec #3.
+  - Не делаем (по совместному решению):
+    - Shared types через FFI / JSON Schema (rec #1, "revisit only if a third project pulls in").
+    - Re-naming правил под канон arbiter — это бы скрыло реальное разделение фаз.
 
 ### Готовы предоставить (ждём запроса от Maestro)
 

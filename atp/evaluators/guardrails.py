@@ -70,7 +70,13 @@ def check_not_silently_failed(response: ATPResponse) -> CheckResult:
 def check_timeout_not_exceeded(
     test: TestDefinition, response: ATPResponse
 ) -> CheckResult:
-    """Skip evaluation if the agent timed out."""
+    """Skip evaluation if the agent timed out.
+
+    Post-execution, per-test **measurement** of ``response.status``.
+    Distinct from arbiter's ``sla_feasible``, which is a pre-dispatch
+    **estimate** (`agent.avg_duration × buffer ≤ task.sla`) on a
+    different axis. See ``arbiter/docs/guardrails-atp-mapping.md``.
+    """
     if response.status == ResponseStatus.TIMEOUT:
         return CheckResult(
             name="timeout_not_exceeded",
@@ -81,7 +87,14 @@ def check_timeout_not_exceeded(
 
 
 def check_within_budget(test: TestDefinition, response: ATPResponse) -> CheckResult:
-    """Skip evaluation if the agent exceeded its budget."""
+    """Skip evaluation if the agent exceeded its budget.
+
+    Post-execution, per-test **measurement** of
+    ``response.metrics.cost_usd`` against ``test.constraints.budget_usd``.
+    Distinct from arbiter's ``budget_remaining``, which is a
+    pre-dispatch **estimate** against a system-wide remaining-budget
+    pool. See ``arbiter/docs/guardrails-atp-mapping.md``.
+    """
     budget = test.constraints.budget_usd
     if budget is None:
         return CheckResult(name="within_budget", passed=True, reason="")
