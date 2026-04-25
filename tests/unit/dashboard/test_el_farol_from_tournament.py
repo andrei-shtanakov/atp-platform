@@ -186,9 +186,40 @@ async def test_tournament_with_no_rounds_returns_empty_data(
 
     payload = await _reshape_from_tournament(t.id, db_session)
 
+    # NUM_DAYS must equal len(DATA) — Cards JS indexes DATA[d] for
+    # every d < NUM_DAYS, so padding from total_rounds would crash
+    # the scrubber.
     assert payload.DATA == []
-    assert payload.NUM_DAYS == 5
+    assert payload.NUM_DAYS == 0
     assert len(payload.AGENTS) == 2
+
+
+@pytest.mark.anyio
+async def test_match_id_is_threaded_into_payload(
+    db_session: AsyncSession,
+) -> None:
+    """The Cards JS keys per-match localStorage off
+    ``window.__ATP_MATCH__.match_id``, so the payload's match id has
+    to match the ``/ui/matches/{id}`` URL the user is viewing.
+    Falls back to a tournament-id surrogate only when no match_id is
+    supplied (e.g. unit tests with no GameResult row).
+    """
+    t = Tournament(
+        game_type="el_farol",
+        num_players=2,
+        total_rounds=1,
+        status="completed",
+    )
+    db_session.add(t)
+    await db_session.commit()
+
+    payload_with_match = await _reshape_from_tournament(
+        t.id, db_session, match_id="m-real-id"
+    )
+    payload_default = await _reshape_from_tournament(t.id, db_session)
+
+    assert payload_with_match.match_id == "m-real-id"
+    assert payload_default.match_id == f"tournament-{t.id}"
 
 
 @pytest.mark.anyio

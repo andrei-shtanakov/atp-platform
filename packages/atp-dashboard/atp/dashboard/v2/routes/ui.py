@@ -715,16 +715,21 @@ async def ui_match_detail(
         context["status"] = row.status
     else:
         # Three render paths share the completed-match branch:
-        # (a) tournament-backed matches → reshape from authoritative
-        #     Round/Action ORM rows (LABS-106).
+        # (a) tournament-backed El Farol matches → reshape from
+        #     authoritative Round/Action ORM rows (LABS-106).  Other
+        #     game types are gated out — /ui/matches/{id} is an El
+        #     Farol-only dashboard and the helper hard-codes 16 slots
+        #     plus the el_farol/ builtin prefix, so a PD or
+        #     public_goods tournament would render nonsense.
         # (b) Phase-7 CLI matches → existing reshape from
         #     actions_json/day_aggregates_json columns.
-        # (c) legacy CLI matches from before PR #63 introduced those
-        #     columns — genuinely unrecoverable, surface a friendly
-        #     placeholder.
+        # (c) legacy CLI matches (pre PR #63) and non–El Farol
+        #     tournament matches → friendly placeholder.
         payload = None
-        if row.tournament_id is not None:
-            payload = await _reshape_from_tournament(row.tournament_id, session)
+        if row.tournament_id is not None and row.game_name == "el_farol":
+            payload = await _reshape_from_tournament(
+                row.tournament_id, session, match_id=row.match_id
+            )
         elif not row.actions_json or not row.day_aggregates_json:
             context["predates_schema"] = True
         else:

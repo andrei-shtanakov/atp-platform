@@ -241,6 +241,56 @@ class TestMatchDetailUI:
         assert "window.__ATP_MATCH__" in html
         assert "pre-Phase-7" not in html
         assert "tournament replay not yet available" not in html
+        # Payload's match_id must match the URL — Cards JS keys
+        # per-match localStorage off window.__ATP_MATCH__.match_id.
+        assert '"match_id":"m-tourney"' in html
+
+    @pytest.mark.anyio
+    async def test_non_el_farol_tournament_match_falls_back_to_placeholder(
+        self,
+        v2_app,
+        db_session: AsyncSession,
+        disable_dashboard_auth,
+    ) -> None:
+        """``/ui/matches/{id}`` is an El Farol-only dashboard. A PD or
+        public_goods tournament match must not be force-rendered through
+        the El Farol reshape (it would produce nonsense — 16-slot grid,
+        wrong builtin prefix, etc.). It should fall through to the
+        legacy ``predates_schema`` placeholder instead.
+        """
+        from atp.dashboard.tournament.models import Tournament
+
+        t = Tournament(
+            game_type="prisoners_dilemma",
+            num_players=2,
+            total_rounds=1,
+            status="completed",
+        )
+        db_session.add(t)
+        await db_session.flush()
+
+        db_session.add(
+            GameResult(
+                game_name="prisoners_dilemma",
+                game_type="prisoners_dilemma",
+                num_players=2,
+                num_rounds=1,
+                status="completed",
+                match_id="m-pd-tourney",
+                tournament_id=t.id,
+            )
+        )
+        await db_session.commit()
+
+        async with AsyncClient(
+            transport=ASGITransport(app=v2_app), base_url="http://test"
+        ) as client:
+            resp = await client.get("/ui/matches/m-pd-tourney")
+
+        assert resp.status_code == 200
+        html = resp.text
+        assert 'id="atp-el-farol"' not in html
+        assert "pre-Phase-7" in html
 
     @pytest.mark.anyio
     async def test_in_progress_row_shows_waiting_page(

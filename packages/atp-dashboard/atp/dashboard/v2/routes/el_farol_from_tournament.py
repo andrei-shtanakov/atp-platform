@@ -154,6 +154,7 @@ def _build_rounds_from_actions(
 async def _reshape_from_tournament(
     tournament_id: int,
     session: AsyncSession,
+    match_id: str | None = None,
 ) -> DashboardPayload:
     """Project a tournament's ORM graph into the El Farol DashboardPayload.
 
@@ -162,6 +163,13 @@ async def _reshape_from_tournament(
     ``actions_json`` / ``day_aggregates_json`` columns of ``GameResult``).
     Pending or otherwise non-completed rounds are skipped so an in-flight
     tournament still renders the rounds resolved so far.
+
+    ``match_id`` should be the ``GameResult.match_id`` of the row being
+    rendered.  The dashboard JS keys per-match localStorage off
+    ``window.__ATP_MATCH__.match_id``, so the payload's match id has to
+    match the ``/ui/matches/{id}`` URL — otherwise the scrubber and
+    pinned-cards state get split across surrogate ids.  Defaults to a
+    surrogate when no match row is available (e.g. unit tests).
     """
     tournament = await session.get(Tournament, tournament_id)
     if tournament is None:
@@ -210,7 +218,7 @@ async def _reshape_from_tournament(
     )
 
     return DashboardPayload(
-        match_id=f"tournament-{tournament_id}",
+        match_id=match_id or f"tournament-{tournament_id}",
         game_version=None,
         AGENTS=agents,
         NUM_SLOTS=_NUM_SLOTS,
@@ -218,6 +226,10 @@ async def _reshape_from_tournament(
         MAX_INTERVALS=0,
         CAPACITY=capacity_threshold,
         CAPACITY_RATIO=_CAPACITY_RATIO,
-        NUM_DAYS=max(len(data_rounds), tournament.total_rounds or 0),
+        # NUM_DAYS must equal len(DATA) — the dashboard JS indexes
+        # DATA[d] for every d < NUM_DAYS, so any padding from
+        # tournament.total_rounds would crash the scrubber for
+        # cancelled / in-flight tournaments.
+        NUM_DAYS=len(data_rounds),
         DATA=data_rounds,
     )
