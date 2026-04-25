@@ -1,10 +1,13 @@
 """Shared fixtures for dashboard unit tests."""
 
 import os
-from collections.abc import Generator
+from collections.abc import AsyncGenerator, Generator
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+import atp.dashboard.tournament.models  # noqa: F401  (ensure model registration)
+from atp.dashboard.models import Base
 from atp.dashboard.v2.config import get_config
 
 # Ensure test env vars are set for entire unit test session.
@@ -41,3 +44,19 @@ def disable_dashboard_auth() -> Generator[None, None, None]:
             os.environ.pop(key, None)
         else:
             os.environ[key] = old_val
+
+
+@pytest.fixture
+async def db_session() -> AsyncGenerator[AsyncSession, None]:
+    """Fresh in-memory SQLite + all tables, one per test.
+
+    Mirrors the fixture in tests/unit/dashboard/tournament/conftest.py
+    for test modules that live directly under tests/unit/dashboard/.
+    """
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    session_local = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_local() as sess:
+        yield sess
+    await engine.dispose()

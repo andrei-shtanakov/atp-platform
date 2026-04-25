@@ -15,7 +15,7 @@ EXIT_SUCCESS = 0
 EXIT_ERROR = 2
 
 # Agent type configurations
-AGENT_TYPES = {
+AGENT_TYPES: dict[str, dict[str, Any]] = {
     "http": {
         "description": "HTTP/REST API adapter for agents with web endpoints",
         "required_fields": ["endpoint"],
