@@ -69,10 +69,18 @@ _EXPECTED_MCP_TOOLS = frozenset(
 _EXPECTED_UI_LINKS = frozenset({"/ui/login", "/ui/agents", "/ui/tokens"})
 
 
-# Games the About page lists as available (not greyed-out "coming soon").
-# Adding one requires matching server-side dispatcher support first.
+# Games the About page lists as available. Must mirror
+# ``TournamentService.SUPPORTED_GAMES`` — adding one requires matching
+# server-side dispatcher support first. The template no longer carries
+# any "coming soon" stub cards (removed in LABS-77).
 _EXPECTED_AVAILABLE_GAMES = frozenset(
-    {"prisoners_dilemma", "el_farol", "stag_hunt", "battle_of_sexes"}
+    {
+        "prisoners_dilemma",
+        "el_farol",
+        "stag_hunt",
+        "battle_of_sexes",
+        "public_goods",
+    }
 )
 
 
