@@ -659,6 +659,9 @@ async def ui_match_detail(
 
     from atp.dashboard.models import GameResult
     from atp.dashboard.v2.routes.el_farol_dashboard import _reshape
+    from atp.dashboard.v2.routes.el_farol_from_tournament import (
+        _reshape_from_tournament,
+    )
 
     user = await _get_ui_user(request, session)
 
@@ -701,8 +704,6 @@ async def ui_match_detail(
         "back_link_label": back_link_label,
         "not_found": False,
         "predates_schema": False,
-        "tournament_backed": False,
-        "tournament_id": None,
         "in_progress": False,
         "status": None,
     }
@@ -712,32 +713,36 @@ async def ui_match_detail(
     elif row.status and row.status != "completed":
         context["in_progress"] = True
         context["status"] = row.status
-    elif not row.actions_json or not row.day_aggregates_json:
-        # Two distinct cases share the "empty Phase-7 payload" shape:
-        # (a) tournament-backed matches — dual-write in
-        #     tournament.service._write_game_result_for_tournament still
-        #     leaves JSON blobs NULL pending the reshape follow-up;
-        #     per-round data lives on Round/Action and is viewable via
-        #     /ui/tournaments/{id}.
-        # (b) legacy CLI matches from before PR #63 introduced the
-        #     Phase-7 columns — those are genuinely unrecoverable.
-        if row.tournament_id is not None:
-            context["tournament_backed"] = True
-            context["tournament_id"] = row.tournament_id
-        else:
-            context["predates_schema"] = True
     else:
-        payload = _reshape(row)
-        context.update(
-            {
-                "payload_json": json.dumps(payload.model_dump(), separators=(",", ":")),
-                "num_agents": len(payload.AGENTS),
-                "num_days": payload.NUM_DAYS,
-                "num_slots": payload.NUM_SLOTS,
-                "capacity": payload.CAPACITY,
-                "langfuse_base": os.environ.get("ATP_LANGFUSE_BASE_URL", ""),
-            }
-        )
+        # Three render paths share the completed-match branch:
+        # (a) tournament-backed matches → reshape from authoritative
+        #     Round/Action ORM rows (LABS-106).
+        # (b) Phase-7 CLI matches → existing reshape from
+        #     actions_json/day_aggregates_json columns.
+        # (c) legacy CLI matches from before PR #63 introduced those
+        #     columns — genuinely unrecoverable, surface a friendly
+        #     placeholder.
+        payload = None
+        if row.tournament_id is not None:
+            payload = await _reshape_from_tournament(row.tournament_id, session)
+        elif not row.actions_json or not row.day_aggregates_json:
+            context["predates_schema"] = True
+        else:
+            payload = _reshape(row)
+
+        if payload is not None:
+            context.update(
+                {
+                    "payload_json": json.dumps(
+                        payload.model_dump(), separators=(",", ":")
+                    ),
+                    "num_agents": len(payload.AGENTS),
+                    "num_days": payload.NUM_DAYS,
+                    "num_slots": payload.NUM_SLOTS,
+                    "capacity": payload.CAPACITY,
+                    "langfuse_base": os.environ.get("ATP_LANGFUSE_BASE_URL", ""),
+                }
+            )
 
     return _templates(request).TemplateResponse(
         request=request,
