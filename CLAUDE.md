@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Latest weekly status:** `../_cowork_output/status/2026-04-10-status.md`
 - **Sibling projects** (reference only): `../Maestro/`, `../arbiter/`, `../spec-runner/`, `../proctor-a/`
 
-ATP's role in the ecosystem: task validation for Maestro (`validation_cmd`) and eval-driven learning for arbiter. Active work: R-06a (CLI quick win support) and R-13 (guardrails normalization with arbiter). Deep integration (R-06b, R-07) is blocked on Maestro R-03.
+ATP's role in the ecosystem: task validation for Maestro (`validation_cmd` — see `docs/maestro-integration.md`) and eval-driven learning for arbiter (ATP guardrails relate to arbiter invariants as separate lifecycle phases — see `../arbiter/docs/guardrails-atp-mapping.md`). R-06a and R-13 closed 2026-04-25; deep integration (R-06b, R-07) remains blocked on Maestro R-03.
 
 ## Project Overview
 
