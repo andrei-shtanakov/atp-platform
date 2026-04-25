@@ -152,19 +152,23 @@ class TestMatchDetailUI:
         assert 'id="atp-el-farol"' not in html
 
     @pytest.mark.anyio
-    async def test_tournament_backed_row_points_to_tournament_detail(
+    async def test_tournament_backed_row_renders_cards_dashboard(
         self,
         v2_app,
         db_session: AsyncSession,
         disable_dashboard_auth,
     ) -> None:
-        """Tournament-backed GameResult rows ship with NULL Phase-7 JSON
-        (the reshape in _write_game_result_for_tournament is a deferred
-        follow-up). The match-detail view should route those to the
-        tournament dashboard instead of showing the misleading
-        'pre-Phase-7' message meant for legacy CLI runs.
+        """Tournament-backed GameResult rows are rendered by reading the
+        authoritative Round/Action/Participant ORM rows (LABS-106). The
+        old stopgap that punted to /ui/tournaments/{id} is gone — the
+        same /ui/matches/{id} URL now serves the full Cards dashboard.
         """
-        from atp.dashboard.tournament.models import Tournament
+        from atp.dashboard.tournament.models import (
+            Action,
+            Participant,
+            Round,
+            Tournament,
+        )
 
         t = Tournament(
             game_type="el_farol",
@@ -173,14 +177,52 @@ class TestMatchDetailUI:
             status="completed",
         )
         db_session.add(t)
-        await db_session.commit()
+        await db_session.flush()
+
+        p1 = Participant(
+            tournament_id=t.id,
+            agent_name="a1",
+            builtin_strategy="el_farol/a1",
+        )
+        p2 = Participant(
+            tournament_id=t.id,
+            agent_name="a2",
+            builtin_strategy="el_farol/a2",
+        )
+        db_session.add_all([p1, p2])
+        await db_session.flush()
+
+        r = Round(
+            tournament_id=t.id,
+            round_number=1,
+            status="completed",
+        )
+        db_session.add(r)
+        await db_session.flush()
+
+        db_session.add_all(
+            [
+                Action(
+                    round_id=r.id,
+                    participant_id=p1.id,
+                    action_data={"slots": [0, 1]},
+                    payoff=2.0,
+                ),
+                Action(
+                    round_id=r.id,
+                    participant_id=p2.id,
+                    action_data={"slots": [2, 3]},
+                    payoff=2.0,
+                ),
+            ]
+        )
 
         db_session.add(
             GameResult(
                 game_name="el_farol",
                 game_type="el_farol_interval",
                 num_players=2,
-                num_rounds=3,
+                num_rounds=1,
                 status="completed",
                 match_id="m-tourney",
                 tournament_id=t.id,
@@ -195,9 +237,10 @@ class TestMatchDetailUI:
 
         assert resp.status_code == 200
         html = resp.text
+        assert 'id="atp-el-farol"' in html
+        assert "window.__ATP_MATCH__" in html
         assert "pre-Phase-7" not in html
-        assert f"/ui/tournaments/{t.id}" in html
-        assert "tournament replay not yet available" in html
+        assert "tournament replay not yet available" not in html
 
     @pytest.mark.anyio
     async def test_in_progress_row_shows_waiting_page(
