@@ -13,15 +13,6 @@
     <p>The match id was not present in the dashboard database. It may have
        been deleted, or the URL may be stale.</p>
   </article>
-{% elif tournament_backed %}
-  <article style="padding:24px">
-    <h2>Match <code>{{ match_id }}</code> — tournament replay not yet available here</h2>
-    <p>This match was produced by a tournament. Per-round replay for
-       tournament matches on the <code>/ui/matches</code> page is still
-       on the roadmap — the tournament dashboard already shows the
-       full per-round data today.</p>
-    <p>→ <a href="/ui/tournaments/{{ tournament_id }}">Open tournament #{{ tournament_id }}</a></p>
-  </article>
 {% elif predates_schema %}
   <article style="padding:24px">
     <h2>Match <code>{{ match_id }}</code> is from a pre-Phase-7 run</h2>
