@@ -8,10 +8,11 @@
 
 ### Активные кросс-проектные задачи
 
-- [ ] **R-06a: Поддержать Maestro CLI quick win** (effort S)
-  - Maestro добавит пример `validation_cmd: "atp run <suite.yaml>"` — проверить, что `atp run` стабильно работает как validation_cmd
-  - Документ: `docs/maestro-integration.md` — как ATP вызывается из Maestro (exit codes, вывод)
-  - Гарантировать стабильность CLI-интерфейса (semver)
+- [x] **R-06a: Поддержать Maestro CLI quick win** (effort S) ✅ 2026-04-25
+  - Документ написан: [`docs/maestro-integration.md`](docs/maestro-integration.md) —
+    exit codes (0/1/2), `atp run` контракт, рекомендованные `validation_cmd` patterns,
+    semver-обязательства по флагам.
+  - `atp run` экзит-коды verified end-to-end (0=pass, 1=fail, 2=error).
 
 - [ ] **R-13: Нормализация guardrails с arbiter** (effort M)
   - Текущее состояние: `atp/evaluators/guardrails.py` — 3 правила "inspired by arbiter", у arbiter — 10 invariants
