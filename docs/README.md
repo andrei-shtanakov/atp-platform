@@ -427,9 +427,9 @@ We welcome documentation improvements!
 
 **How to Contribute**:
 
-1. **Report Issues**: Found a typo or error? [Open an issue](https://github.com/yourusername/atp-platform-ru/issues)
+1. **Report Issues**: Found a typo or error? [Open an issue](https://github.com/andrei-shtanakov/atp-platform/issues)
 
-2. **Suggest Improvements**: Have ideas for better documentation? Start a [discussion](https://github.com/yourusername/atp-platform-ru/discussions)
+2. **Suggest Improvements**: Have ideas for better documentation? Start a [discussion](https://github.com/andrei-shtanakov/atp-platform/discussions)
 
 3. **Submit Changes**:
    - Fork the repository
@@ -461,9 +461,9 @@ Documentation is updated:
 ### Feedback
 
 Help us improve documentation:
-- [Report documentation issues](https://github.com/yourusername/atp-platform-ru/issues)
-- [Suggest improvements](https://github.com/yourusername/atp-platform-ru/discussions)
-- [Contribute examples](https://github.com/yourusername/atp-platform-ru/pulls)
+- [Report documentation issues](https://github.com/andrei-shtanakov/atp-platform/issues)
+- [Suggest improvements](https://github.com/andrei-shtanakov/atp-platform/discussions)
+- [Contribute examples](https://github.com/andrei-shtanakov/atp-platform/pulls)
 
 ---
 
@@ -471,9 +471,9 @@ Help us improve documentation:
 
 ### Community
 
-- **GitHub**: [atp-platform-ru](https://github.com/yourusername/atp-platform-ru)
-- **Issues**: [Bug reports and feature requests](https://github.com/yourusername/atp-platform-ru/issues)
-- **Discussions**: [Q&A and community](https://github.com/yourusername/atp-platform-ru/discussions)
+- **GitHub**: [atp-platform](https://github.com/andrei-shtanakov/atp-platform)
+- **Issues**: [Bug reports and feature requests](https://github.com/andrei-shtanakov/atp-platform/issues)
+- **Discussions**: [Q&A and community](https://github.com/andrei-shtanakov/atp-platform/discussions)
 
 ### Related Projects
 
@@ -534,7 +534,7 @@ uv run atp list-agents
 ### File Locations
 
 ```
-atp-platform-ru/
+atp-platform/
 ├── docs/              # This documentation
 ├── examples/          # Example code and test suites
 │   ├── test_suites/   # Sample YAML test suites
@@ -585,8 +585,8 @@ atp-platform-ru/
 
 1. **Documentation**: Start here - most questions are answered
 2. **FAQ**: Check [FAQ](reference/faq.md) for common questions
-3. **GitHub Issues**: [Report bugs](https://github.com/yourusername/atp-platform-ru/issues)
-4. **GitHub Discussions**: [Ask questions](https://github.com/yourusername/atp-platform-ru/discussions)
+3. **GitHub Issues**: [Report bugs](https://github.com/andrei-shtanakov/atp-platform/issues)
+4. **GitHub Discussions**: [Ask questions](https://github.com/andrei-shtanakov/atp-platform/discussions)
 
 ---
 

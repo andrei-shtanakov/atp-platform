@@ -14,8 +14,8 @@ This document provides detailed API documentation for all public classes, functi
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/atp-platform-ru.git
-cd atp-platform-ru
+git clone https://github.com/andrei-shtanakov/atp-platform.git
+cd atp-platform
 
 # Install dependencies (requires uv)
 uv sync

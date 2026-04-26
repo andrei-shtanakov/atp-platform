@@ -607,7 +607,7 @@ uv sync --reinstall
    - [Test Format Reference](test-format.md)
 
 2. **Search existing issues**:
-   - [GitHub Issues](https://github.com/yourusername/atp-platform-ru/issues)
+   - [GitHub Issues](https://github.com/andrei-shtanakov/atp-platform/issues)
 
 3. **Create new issue**:
    Include:
@@ -654,4 +654,4 @@ uv sync --reinstall
 - [Test Format Reference](test-format.md) - Complete YAML specification
 - [Usage Guide](../guides/usage.md) - Common workflows
 - [Examples](../../examples/test_suites/) - Working examples
-- [GitHub Issues](https://github.com/yourusername/atp-platform-ru/issues) - Known issues
+- [GitHub Issues](https://github.com/andrei-shtanakov/atp-platform/issues) - Known issues
