@@ -4,7 +4,7 @@ import os
 from typing import Annotated, Any, Literal
 
 from game_envs.games.el_farol import MAX_SLOTS_PER_DAY
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 _MAX_INTERVALS_PER_DAY = 2
 
@@ -85,6 +85,13 @@ class ElFarolAction(BaseModel):
     slots in total. The empty list ``[]`` is the canonical "stay home"
     action. Pair shape matches the preferred form accepted by
     ``game_envs.games.el_farol.ElFarolActionSpace``.
+
+    For backwards compatibility with clients built against the pre-1704d
+    ``slots`` wire format, a ``{"slots": list[int]}`` payload is accepted
+    and run-length-encoded into intervals before field validation. Slot
+    patterns that cannot be expressed as ``<= _MAX_INTERVALS_PER_DAY``
+    non-adjacent runs (e.g. ``[0, 2, 4]``) get a clean intervals
+    validation error rather than silent acceptance.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -97,6 +104,45 @@ class ElFarolAction(BaseModel):
     )
     reasoning: str | None = Field(default=None, max_length=_REASONING_MAX)
     telemetry: ActionTelemetry | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_legacy_slots(cls, data: Any) -> Any:
+        """Convert the legacy ``{"slots": [...]}`` wire shape to intervals.
+
+        Runs *before* field validation (and before ``extra="forbid"``)
+        so the slot list never reaches the unknown-field check. Sorts
+        and dedupes input slots, then run-length-encodes consecutive
+        integers into ``[start, end]`` pairs. The resulting intervals
+        list is then validated by the standard pipeline — over-budget
+        or non-adjacent-violating inputs surface the normal error.
+        """
+        if not isinstance(data, dict):
+            return data
+        if "intervals" in data or "slots" not in data:
+            return data
+        raw_slots = data.get("slots")
+        if not isinstance(raw_slots, list):
+            return data
+        try:
+            slots = sorted({int(s) for s in raw_slots})
+        except (TypeError, ValueError):
+            # Defer to standard validation — malformed slot list will
+            # fail loudly with a more useful error than we'd produce.
+            return data
+        intervals: list[list[int]] = []
+        if slots:
+            start = end = slots[0]
+            for s in slots[1:]:
+                if s == end + 1:
+                    end = s
+                else:
+                    intervals.append([start, end])
+                    start = end = s
+            intervals.append([start, end])
+        new_data = {k: v for k, v in data.items() if k != "slots"}
+        new_data["intervals"] = intervals
+        return new_data
 
     @field_validator("intervals")
     @classmethod

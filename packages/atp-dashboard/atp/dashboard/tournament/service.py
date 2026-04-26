@@ -842,6 +842,32 @@ class TournamentService:
             cumulative_scores=cumulative_scores,
         )
 
+        # Wire-layer override: the El Farol game-env still advertises the
+        # canonical slot-list schema (correct for that layer — its
+        # ``validate_action`` accepts ``{"slots": [...]}``), but the
+        # tournament wire contract switched to intervals (commit 1704da7
+        # — see ``ElFarolAction`` in schemas.py). Replace the advertised
+        # schema with the intervals shape so clients building submissions
+        # from ``state.action_schema`` produce payloads that pass the
+        # ``ElFarolAction`` validator. Game-env contract stays unchanged.
+        if tournament.game_type == "el_farol":
+            num_slots = formatted.get("num_slots", 0)
+            formatted["action_schema"] = {
+                "type": "list[list[int]]",
+                "description": (
+                    "list of inclusive [start, end] interval pairs; "
+                    "[] means stay home"
+                ),
+                "max_intervals": 2,
+                "max_slots_total": 8,
+                "value_range": [0, max(0, int(num_slots) - 1)],
+                "constraints": [
+                    "non-overlapping",
+                    "non-adjacent (>= 1 empty slot between runs)",
+                    "0 <= start <= end",
+                ],
+            }
+
         # Compute submission state for the active round by inspecting
         # the already-loaded rounds+actions (no extra DB round-trip).
         my_participant_id = participants[my_idx].id
