@@ -31,7 +31,7 @@ This guide will help you install and set up the ATP Platform on your system.
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/atp-platform.git
+git clone https://github.com/andrei-shtanakov/atp-platform.git
 cd atp-platform
 ```
 
@@ -249,5 +249,5 @@ rm -rf atp-platform
 ## Getting Help
 
 - **Documentation**: [docs/](../)
-- **Issues**: [GitHub Issues](https://github.com/yourusername/atp-platform/issues)
+- **Issues**: [GitHub Issues](https://github.com/andrei-shtanakov/atp-platform/issues)
 - **Examples**: [examples/](../../examples/)

@@ -379,4 +379,4 @@ Have a useful test suite example? Contribute by:
 ## Support
 
 - **Documentation**: [docs/](../../docs/)
-- **Issues**: [GitHub Issues](https://github.com/yourusername/atp-platform-ru/issues)
+- **Issues**: [GitHub Issues](https://github.com/andrei-shtanakov/atp-platform/issues)

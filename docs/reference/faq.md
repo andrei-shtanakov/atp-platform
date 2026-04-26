@@ -69,7 +69,7 @@ See [Roadmap](../07-roadmap.md) for development timeline.
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/atp-platform.git
+git clone https://github.com/andrei-shtanakov/atp-platform.git
 cd atp-platform
 
 # Install with uv (recommended)
@@ -697,8 +697,8 @@ See [CI/CD Integration Guide](../guides/best-practices.md#cicd-integration).
 
 - **Documentation**: [docs/](.)
 - **Examples**: [examples/](../../examples/)
-- **Issues**: [GitHub Issues](https://github.com/yourusername/atp-platform/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/atp-platform/discussions)
+- **Issues**: [GitHub Issues](https://github.com/andrei-shtanakov/atp-platform/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/andrei-shtanakov/atp-platform/discussions)
 
 ---
 
@@ -793,7 +793,7 @@ See [Roadmap](../07-roadmap.md) for:
 - Check [Troubleshooting Guide](troubleshooting.md)
 - See [Best Practices](../guides/best-practices.md)
 - Browse [Examples](../../examples/)
-- Open an [Issue](https://github.com/yourusername/atp-platform/issues)
+- Open an [Issue](https://github.com/andrei-shtanakov/atp-platform/issues)
 
 ---
 
