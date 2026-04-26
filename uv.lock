@@ -420,6 +420,7 @@ vertex = [
 dev = [
     { name = "alembic" },
     { name = "anthropic" },
+    { name = "atp-dashboard" },
     { name = "atp-games" },
     { name = "atp-platform-sdk" },
     { name = "fastapi" },
@@ -490,6 +491,7 @@ provides-extras = ["dev", "tui", "cloud", "bedrock", "vertex", "azure-openai", "
 dev = [
     { name = "alembic", specifier = ">=1.18.4" },
     { name = "anthropic", specifier = ">=0.76.0" },
+    { name = "atp-dashboard", editable = "packages/atp-dashboard" },
     { name = "atp-games", editable = "atp-games" },
     { name = "atp-platform-sdk", editable = "packages/atp-sdk" },
     { name = "fastapi", specifier = ">=0.128.0" },

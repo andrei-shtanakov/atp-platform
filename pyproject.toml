@@ -242,6 +242,7 @@ dev = [
     "game-environments",
     "python3-saml>=1.16.0",
     "atp-platform-sdk",
+    "atp-dashboard",
     "openpyxl>=3.1.5",
     "slowapi>=0.1.9",
 ]
