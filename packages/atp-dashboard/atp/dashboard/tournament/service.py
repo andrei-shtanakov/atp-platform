@@ -1038,11 +1038,37 @@ class TournamentService:
                 f"{current_round.round_number}"
             )
 
+        # Tier-2 telemetry capture (LABS observability).
+        # ``ActionTelemetry`` is opt-in on the wire — agents that omit
+        # it leave model_id/tokens/cost as NULL (drawer renders "—").
+        # ``decide_ms`` falls back to a server-side measurement so it
+        # is always populated; agent self-report wins when present
+        # because the agent has zero clock skew.
+        tel = getattr(typed, "telemetry", None)
+        tel_model_id = tel.model_id if tel is not None else None
+        tel_tokens_in = tel.tokens_in if tel is not None else None
+        tel_tokens_out = tel.tokens_out if tel is not None else None
+        tel_cost_usd = tel.cost_usd if tel is not None else None
+        tel_decide_ms = tel.decide_ms if tel is not None else None
+        if tel_decide_ms is None and current_round.started_at is not None:
+            elapsed_ms = (
+                _utc_now() - current_round.started_at
+            ).total_seconds() * 1000.0
+            # Negative is impossible in practice (started_at is set on
+            # round open, before any submit can race in) but clamp
+            # defensively against clock-skew edge cases.
+            tel_decide_ms = max(0, int(elapsed_ms))
+
         new_action = Action(
             round_id=current_round.id,
             participant_id=my_participant.id,
             action_data=canonical,
             reasoning=reasoning,
+            model_id=tel_model_id,
+            tokens_in=tel_tokens_in,
+            tokens_out=tel_tokens_out,
+            cost_usd=tel_cost_usd,
+            decide_ms=tel_decide_ms,
         )
         self._session.add(new_action)
         await self._session.flush()

@@ -28,6 +28,10 @@ class ActionTelemetry(BaseModel):
     tokens_in: int | None = Field(default=None, ge=0)
     tokens_out: int | None = Field(default=None, ge=0)
     cost_usd: float | None = Field(default=None, ge=0.0)
+    # Wall-clock milliseconds spent inside the agent's decide loop. When
+    # omitted, ``submit_action`` falls back to ``(now - round.started_at)``
+    # so the dashboard always has *something* — see service.submit_action.
+    decide_ms: int | None = Field(default=None, ge=0)
 
 
 class TournamentResponse(BaseModel):
