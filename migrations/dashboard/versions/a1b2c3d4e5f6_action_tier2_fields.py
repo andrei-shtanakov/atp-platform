@@ -18,7 +18,7 @@ Grouped by capture owner:
   Langfuse from the drawer.
 
 Revision ID: a1b2c3d4e5f6
-Revises: f1a2b3c4d5e6
+Revises: d2e5a1c7f3b8
 Create Date: 2026-04-24
 
 """
@@ -29,7 +29,12 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "a1b2c3d4e5f6"
-down_revision: str | Sequence[str] | None = "f1a2b3c4d5e6"
+# Rebased onto the current dashboard head (was f1a2b3c4d5e6, which had
+# already split — the a7b8c9d0e1f2 → … → d2e5a1c7f3b8 chain landed
+# concurrently). Pointing at d2e5a1c7f3b8 collapses the two heads back
+# into a single linear history so ``alembic -n dashboard upgrade head``
+# applies these columns deterministically on fresh DBs and in CI.
+down_revision: str | Sequence[str] | None = "d2e5a1c7f3b8"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
