@@ -16,6 +16,29 @@ os.environ.setdefault("ATP_SECRET_KEY", "unit-test-secret-key")
 os.environ.setdefault("ATP_DEBUG", "true")
 
 
+@pytest.fixture(autouse=True)
+def _clear_token_caches() -> Generator[None, None, None]:
+    """Clear in-process token caches between tests.
+
+    ``JWTUserStateMiddleware`` keeps two module-level caches
+    (``_legacy_purpose_cache`` for legacy agent_purpose lookups and
+    ``_token_auth_cache`` for the full resolved triple). Without
+    isolation, a test that mints token X and resolves it leaks the
+    cached entry into the next test, hiding DB-state changes such
+    as revocation or purpose updates.
+    """
+    from atp.dashboard.v2.rate_limit import (
+        _legacy_purpose_cache,
+        _token_auth_cache,
+    )
+
+    _legacy_purpose_cache.clear()
+    _token_auth_cache.clear()
+    yield
+    _legacy_purpose_cache.clear()
+    _token_auth_cache.clear()
+
+
 @pytest.fixture
 def disable_dashboard_auth() -> Generator[None, None, None]:
     """Disable authentication for dashboard tests.
