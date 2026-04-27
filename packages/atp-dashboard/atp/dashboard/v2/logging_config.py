@@ -22,6 +22,7 @@ test imports of ``factory``) do not duplicate output.
 from __future__ import annotations
 
 import logging
+import sys
 
 # These attributes are set by the standard library on every
 # ``LogRecord``. We exclude them from the "extras" rendering so the
@@ -56,6 +57,14 @@ _STANDARD_LOG_RECORD_ATTRS = frozenset(
     }
 )
 
+# ``event`` is callers' convention for tagging structured emits (see
+# ``atp.dashboard.mcp.observability``). It always equals ``record.msg``
+# at emit time, so rendering it as a tail key=value pair would
+# duplicate the event name on every line. Keep it on the record so
+# tests / filters can read ``record.event`` directly, but skip it in
+# the formatted output.
+_EXTRAS_RENDER_SKIP = frozenset({"event"})
+
 
 class ExtrasFormatter(logging.Formatter):
     """Logging formatter that appends ``extra`` fields after the message.
@@ -72,17 +81,32 @@ class ExtrasFormatter(logging.Formatter):
     nested structures stay disambiguable in plain text. Operators can
     grep by either field name or event name; downstream JSON
     aggregators can be added later without breaking this format.
+
+    The reserved attribute ``event`` (set by ``observability.emit_event``)
+    is NOT rendered — it always equals ``record.msg`` and would
+    otherwise duplicate the event name on every line. It stays
+    available on the record for tests / filters via ``record.event``.
     """
 
     def __init__(self) -> None:
-        super().__init__("%(asctime)s %(levelname)s %(name)s %(message)s")
+        # Explicit ``datefmt`` strips the default millisecond suffix
+        # (``,mmm``) so log lines stay grep-friendly and match the
+        # examples in the runbook. Sub-second granularity is available
+        # via the ``duration_ms`` field on observability events when
+        # actually needed.
+        super().__init__(
+            fmt="%(asctime)s %(levelname)s %(name)s %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
 
     def format(self, record: logging.LogRecord) -> str:
         base = super().format(record)
         extras = {
             k: v
             for k, v in record.__dict__.items()
-            if k not in _STANDARD_LOG_RECORD_ATTRS and not k.startswith("_")
+            if k not in _STANDARD_LOG_RECORD_ATTRS
+            and k not in _EXTRAS_RENDER_SKIP
+            and not k.startswith("_")
         }
         if not extras:
             return base
@@ -113,7 +137,10 @@ def configure_app_logging(level: int = logging.INFO) -> None:
     if already_attached:
         return
 
-    handler = logging.StreamHandler()
+    # Explicit stdout stream: ``StreamHandler()`` defaults to stderr,
+    # which docker captures but separates from stdout in some pipelines.
+    # Uvicorn's access logs already go to stdout; co-locate ours.
+    handler = logging.StreamHandler(stream=sys.stdout)
     handler.setFormatter(ExtrasFormatter())
     atp_logger.addHandler(handler)
     # ``propagate=True`` (default) is intentional. Uvicorn's default

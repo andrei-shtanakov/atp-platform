@@ -10,6 +10,7 @@ plan) are silently dropped by uvicorn's default config.
 from __future__ import annotations
 
 import logging
+import sys
 
 import pytest
 
@@ -106,6 +107,43 @@ def test_extras_formatter_skips_underscore_prefixed_attrs() -> None:
     assert "_internal" not in output
 
 
+def test_extras_formatter_does_not_duplicate_event_field() -> None:
+    """``emit_event`` passes ``extra={"event": <name>, ...}`` so the
+    name is available on the record for filtering. The formatter must
+    not render it as a tail key=value because the same string is
+    already the message body — without this skip, every line shows
+    the event name twice (Copilot review on PR #102)."""
+    formatter = ExtrasFormatter()
+    record = _build_record(
+        "mcp_handshake_started",
+        event="mcp_handshake_started",
+        request_id="rid",
+    )
+
+    output = formatter.format(record)
+
+    # Message body present, request_id rendered, no second copy of the
+    # event name as ``event='...'``.
+    assert "mcp_handshake_started" in output
+    assert "request_id='rid'" in output
+    assert "event=" not in output
+
+
+def test_extras_formatter_strips_default_millisecond_asctime() -> None:
+    """Default ``%(asctime)s`` includes ``,mmm`` ms suffix; we use an
+    explicit ``datefmt`` so log lines stay grep-friendly. Pin that —
+    tooling assumes the documented shape."""
+    formatter = ExtrasFormatter()
+    record = _build_record("evt")
+
+    output = formatter.format(record)
+
+    timestamp = output.split(" ", 1)[0]
+    # ``YYYY-MM-DD`` then a space, then ``HH:MM:SS`` — no comma, no
+    # millisecond suffix.
+    assert "," not in timestamp + output.split(" ", 2)[1]
+
+
 # ---------------------------------------------------------------------------
 # configure_app_logging
 # ---------------------------------------------------------------------------
@@ -120,6 +158,10 @@ def test_configure_attaches_handler_with_extras_formatter() -> None:
     ]
     assert len(handlers_with_extras) == 1
     assert atp_logger.level == logging.INFO
+    # Pin the stdout target — ``StreamHandler()`` with no args defaults
+    # to stderr, which gets split from stdout in some log pipelines.
+    # Co-locate with uvicorn's access logs (also stdout).
+    assert handlers_with_extras[0].stream is sys.stdout
 
 
 def test_configure_is_idempotent() -> None:
