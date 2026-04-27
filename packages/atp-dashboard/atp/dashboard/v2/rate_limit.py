@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 import jwt
+from cachetools import TTLCache
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from jwt.exceptions import InvalidTokenError
@@ -97,6 +98,32 @@ _API_TOKEN_PREFIXES = ("atp_u_", "atp_a_")
 # unbounded: each legacy token contributes one small string; once all
 # legacy tokens are rotated, nothing new enters this dict.
 _legacy_purpose_cache: dict[str, str] = {}
+
+
+# MCP reliability plan Task 1 (2026-04-27): in-process LRU cache for the
+# JWTUserStateMiddleware._resolve_api_token DB SELECT path. Without it,
+# every MCP request — including SSE keepalives and rapid handshake
+# bursts — costs one ``api_tokens`` SELECT plus a debounced UPDATE. With
+# 30 s TTL, the same token used repeatedly skips the SELECT entirely.
+#
+# Keyed by token_hash (sha256 hex). Value = (user_id, agent_id,
+# agent_purpose) — the triple needed to populate request.state. The
+# cache stores only resolved successes; misses (revoked / expired /
+# unknown tokens) are not cached so retries always re-check the DB.
+#
+# Bounded at 1024 entries to cap RAM under token churn (~200 B/entry
+# worst case = ~200 KB). Single-worker assumption (see factory.py
+# ``assert_single_worker``) keeps cache coherent without locks.
+#
+# Token-revocation propagation is bounded by the TTL: an admin who
+# revokes a token via ``DELETE /api/v1/tokens`` may still see it
+# resolve for up to 30 s. Acceptable pre-1.0; revisit if/when a
+# customer requires sub-second revocation.
+_TOKEN_AUTH_CACHE_TTL_S = 30.0
+_TOKEN_AUTH_CACHE_MAX = 1024
+_token_auth_cache: TTLCache[str, tuple[int, int | None, str | None]] = TTLCache(
+    maxsize=_TOKEN_AUTH_CACHE_MAX, ttl=_TOKEN_AUTH_CACHE_TTL_S
+)
 
 
 class JWTUserStateMiddleware:
@@ -197,6 +224,10 @@ class JWTUserStateMiddleware:
         ``last_used_at`` atomically with a WHERE-clause debounce to avoid
         races.  Silently skips on any error (DB not ready, token not found,
         token revoked/expired).
+
+        Hot-path optimisation: ``_token_auth_cache`` (TTL 30 s) skips the
+        SELECT for tokens used repeatedly within the window — see the
+        cache definition above for revocation-lag tradeoffs.
         """
         from sqlalchemy import select, update
 
@@ -204,6 +235,15 @@ class JWTUserStateMiddleware:
         from atp.dashboard.tokens import APIToken
 
         token_hash = hashlib.sha256(token.encode()).hexdigest()
+
+        cached = _token_auth_cache.get(token_hash)
+        if cached is not None:
+            user_id, agent_id, agent_purpose = cached
+            state["user_id"] = user_id
+            state["agent_id"] = agent_id
+            state["agent_purpose"] = agent_purpose
+            state["token_type"] = "api"
+            return
 
         try:
             db = get_database()
@@ -247,6 +287,15 @@ class JWTUserStateMiddleware:
                                 purpose = agent.purpose
                                 _legacy_purpose_cache[token_hash] = purpose
                     state["agent_purpose"] = purpose
+
+                # Populate the hot-path cache with the resolved triple.
+                # Done before the UPDATE so a debounce-related exception
+                # below does not leave the cache empty for the next call.
+                _token_auth_cache[token_hash] = (
+                    api_token.user_id,
+                    api_token.agent_id,
+                    state.get("agent_purpose"),
+                )
 
                 # Debounced last_used_at: skip if updated within last 60s
                 now = datetime.now()

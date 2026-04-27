@@ -280,10 +280,14 @@ class TestLegacyTokenLookup:
         )
         await db_session.commit()
 
-        # Clear any cached fallback so the test exercises the lookup path.
-        from atp.dashboard.v2.rate_limit import _legacy_purpose_cache
+        # Clear any cached resolution so the test exercises the lookup path.
+        from atp.dashboard.v2.rate_limit import (
+            _legacy_purpose_cache,
+            _token_auth_cache,
+        )
 
         _legacy_purpose_cache.clear()
+        _token_auth_cache.clear()
 
         async with AsyncClient(
             transport=ASGITransport(app=v2_app), base_url="http://test"

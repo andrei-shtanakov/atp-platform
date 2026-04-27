@@ -17,6 +17,7 @@ dependencies = [
     "opentelemetry-instrumentation-fastapi>=0.60b1",
     "slowapi>=0.1.9",
     "fastmcp>=3.0",
+    "cachetools>=7.0.5",
     "game-environments>=1.0.0",
     # Runtime dependency: migrations/dashboard/versions/*.py are applied
     # in prod via `alembic upgrade head`. Previously this was only in the
