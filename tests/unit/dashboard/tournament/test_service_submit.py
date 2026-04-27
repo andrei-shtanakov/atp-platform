@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,8 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from atp.dashboard.models import User
 from atp.dashboard.tournament.errors import ValidationError
 from atp.dashboard.tournament.events import TournamentEventBus
-from atp.dashboard.tournament.models import Action, Participant
-from atp.dashboard.tournament.service import TournamentService
+from atp.dashboard.tournament.models import Action, Participant, Round
+from atp.dashboard.tournament.service import TournamentService, _utc_now
 
 
 async def _make_pd(svc: TournamentService, admin: User, a: User, b: User) -> object:
@@ -89,7 +91,7 @@ async def test_pd_action_to_el_farol_tournament_error_has_hint(
         await svc.submit_action(t.id, alice, action={"choice": "cooperate"})
     text = str(exc.value)
     assert "el_farol" in text
-    assert "slots" in text
+    assert "intervals" in text
 
 
 @pytest.mark.anyio
@@ -102,7 +104,9 @@ async def test_el_farol_submit_happy(
 ) -> None:
     svc = TournamentService(session, event_bus)
     t = await _make_el_farol(svc, admin_user, alice, bob)
-    result = await svc.submit_action(t.id, alice, action={"slots": [0, 3]})
+    result = await svc.submit_action(
+        t.id, alice, action={"intervals": [[0, 0], [3, 3]]}
+    )
     assert result["status"] == "waiting"
 
 
@@ -210,7 +214,7 @@ async def test_reasoning_persists_el_farol(
     await svc.submit_action(
         t.id,
         alice,
-        action={"slots": [0, 3], "reasoning": "non-crowded window"},
+        action={"intervals": [[0, 0], [3, 3]], "reasoning": "non-crowded window"},
     )
     a = await _alice_action(session, alice.id)
     assert a.reasoning == "non-crowded window"
@@ -285,3 +289,145 @@ async def test_reasoning_unicode_roundtrip(
     )
     a = await _alice_action(session, alice.id)
     assert a.reasoning == text
+
+
+# ---------------------------------------------------------------------------
+# Tier-2 telemetry capture (LABS observability)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_submit_action_persists_full_telemetry_block(
+    session: AsyncSession,
+    admin_user: User,
+    alice: User,
+    bob: User,
+    event_bus: TournamentEventBus,
+) -> None:
+    """Agent self-reports all five tier-2 fields → all five must land
+    on the Action row verbatim."""
+    # GIVEN an active El Farol tournament
+    svc = TournamentService(session, event_bus)
+    t = await _make_el_farol(svc, admin_user, alice, bob)
+
+    # WHEN alice submits with a fully populated telemetry block
+    await svc.submit_action(
+        t.id,
+        alice,
+        action={
+            "intervals": [[0, 0]],
+            "telemetry": {
+                "model_id": "gpt-4o-mini-2024-07-18",
+                "tokens_in": 512,
+                "tokens_out": 128,
+                "cost_usd": 0.000234,
+                "decide_ms": 874,
+            },
+        },
+    )
+
+    # THEN every tier-2 column on the Action row matches the wire payload
+    a = await _alice_action(session, alice.id)
+    assert a.model_id == "gpt-4o-mini-2024-07-18"
+    assert a.tokens_in == 512
+    assert a.tokens_out == 128
+    assert a.cost_usd == 0.000234
+    assert a.decide_ms == 874
+
+
+@pytest.mark.anyio
+async def test_submit_action_omitted_telemetry_falls_back_for_decide_ms(
+    session: AsyncSession,
+    admin_user: User,
+    alice: User,
+    bob: User,
+    event_bus: TournamentEventBus,
+) -> None:
+    """No telemetry block on the wire → model_id/tokens/cost stay NULL,
+    but decide_ms is back-filled from the server-side measurement
+    ``(now - round.started_at)`` so the dashboard always shows *some*
+    timing data."""
+    # GIVEN an active El Farol tournament with a round opened in the past
+    svc = TournamentService(session, event_bus)
+    t = await _make_el_farol(svc, admin_user, alice, bob)
+    # Pin the round's started_at well in the past so the fallback yields
+    # a deterministic non-trivial value (avoids flake on a 0-elapsed
+    # measurement).
+    round_row = (
+        (
+            await session.execute(
+                select(Round)
+                .where(Round.tournament_id == t.id)
+                .order_by(Round.id.desc())
+            )
+        )
+        .scalars()
+        .first()
+    )
+    assert round_row is not None
+    round_row.started_at = _utc_now() - timedelta(seconds=2)
+    await session.flush()
+
+    # WHEN alice submits without any telemetry block
+    await svc.submit_action(t.id, alice, action={"intervals": [[0, 0]]})
+
+    # THEN the optional self-reported fields stay NULL
+    a = await _alice_action(session, alice.id)
+    assert a.model_id is None
+    assert a.tokens_in is None
+    assert a.tokens_out is None
+    assert a.cost_usd is None
+    # AND decide_ms is server-measured: ~2000 ms with generous bounds
+    # for scheduling jitter on shared CI runners.
+    assert a.decide_ms is not None
+    assert 1500 <= a.decide_ms < 10_000
+
+
+@pytest.mark.anyio
+async def test_submit_action_agent_reported_decide_ms_wins_over_fallback(
+    session: AsyncSession,
+    admin_user: User,
+    alice: User,
+    bob: User,
+    event_bus: TournamentEventBus,
+) -> None:
+    """Telemetry block carries decide_ms=1234 → row stores exactly 1234,
+    not the server-side fallback. The agent has zero clock skew vs its
+    own decode loop, so its self-report is authoritative."""
+    # GIVEN a round opened ~2 s ago (so the fallback would be ~2000 ms)
+    svc = TournamentService(session, event_bus)
+    t = await _make_el_farol(svc, admin_user, alice, bob)
+    round_row = (
+        (
+            await session.execute(
+                select(Round)
+                .where(Round.tournament_id == t.id)
+                .order_by(Round.id.desc())
+            )
+        )
+        .scalars()
+        .first()
+    )
+    assert round_row is not None
+    round_row.started_at = _utc_now() - timedelta(seconds=2)
+    await session.flush()
+
+    # WHEN alice submits with only decide_ms set (no other telemetry)
+    await svc.submit_action(
+        t.id,
+        alice,
+        action={
+            "intervals": [[0, 0]],
+            "telemetry": {"decide_ms": 1234},
+        },
+    )
+
+    # THEN decide_ms is exactly the agent-reported value (not the
+    # ~2000 ms fallback)
+    a = await _alice_action(session, alice.id)
+    assert a.decide_ms == 1234
+    # AND the unset telemetry fields stay NULL
+    assert a.model_id is None
+    assert a.tokens_in is None
+    assert a.tokens_out is None
+    assert a.cost_usd is None

@@ -307,8 +307,8 @@ async def test_el_farol_resolve_round_writes_payoffs(
 
     # Both players attend slot 0 — with capacity_threshold = max(1, int(0.6*2)) = 1,
     # slot 0 will be crowded (count >= threshold) → each gets 0 happy - 1 crowded = -1.
-    await svc.submit_action(t.id, alice, action={"slots": [0]})
-    result = await svc.submit_action(t.id, bob, action={"slots": [0]})
+    await svc.submit_action(t.id, alice, action={"intervals": [[0, 0]]})
+    result = await svc.submit_action(t.id, bob, action={"intervals": [[0, 0]]})
 
     assert result["status"] == "round_resolved"
     assert result["round_number"] == 1
@@ -348,9 +348,9 @@ async def test_el_farol_resolve_round_payoffs_differ_on_choice(
     await svc.join(t.id, bob, "bob")
 
     # Alice picks slot 0 alone (count=1, threshold=1 → CROWDED → -1 payoff)
-    # Bob stays home (slots=[] → 0 payoff)
-    await svc.submit_action(t.id, alice, action={"slots": [0]})
-    await svc.submit_action(t.id, bob, action={"slots": []})
+    # Bob stays home (intervals=[] → 0 payoff)
+    await svc.submit_action(t.id, alice, action={"intervals": [[0, 0]]})
+    await svc.submit_action(t.id, bob, action={"intervals": []})
 
     # Look up participant → action mapping
     participants = (
@@ -410,8 +410,8 @@ async def test_resolve_round_logs_structured_fields(
     await svc.join(t.id, bob, "bob")
 
     with caplog.at_level(logging.INFO, logger="atp.dashboard.tournament.service"):
-        await svc.submit_action(t.id, alice, action={"slots": [0]})
-        await svc.submit_action(t.id, bob, action={"slots": [0]})
+        await svc.submit_action(t.id, alice, action={"intervals": [[0, 0]]})
+        await svc.submit_action(t.id, bob, action={"intervals": [[0, 0]]})
 
     rec = next(
         r for r in caplog.records if getattr(r, "event", None) == "round_resolved"

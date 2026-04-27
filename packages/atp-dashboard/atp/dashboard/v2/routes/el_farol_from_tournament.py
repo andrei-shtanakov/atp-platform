@@ -13,13 +13,12 @@ here automatically.
 
 from __future__ import annotations
 
-from typing import Any
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from atp.dashboard.tournament.models import (
+    Action,
     Participant,
     Round,
     Tournament,
@@ -66,8 +65,7 @@ def _build_agents_from_participants(
 
 def _build_decision_from_action(
     agent_id: str,
-    action_data: dict[str, Any],
-    payoff: float | None,
+    action: Action,
     slot_attendance: list[int],
     capacity_threshold: int,
 ) -> DashboardDecision:
@@ -76,8 +74,15 @@ def _build_decision_from_action(
     Applies the canonical El Farol payoff rule:
     ``attendance < capacity_threshold`` → +1 (under-cap),
     ``attendance >= capacity_threshold`` → −1 (over-cap).
+
+    Forwards tier-2 telemetry columns (model_id / tokens / cost_usd /
+    decide_ms) verbatim so the drawer's DEBUG · OBSERVABILITY panel
+    surfaces real values when ``submit_action`` captured them — agent
+    self-reported via ``ActionTelemetry`` for tokens/cost/model_id, with
+    a server-side fallback for decide_ms (see service.submit_action).
     """
-    picks = [int(s) for s in (action_data or {}).get("slots") or []]
+    action_data = action.action_data or {}
+    picks = [int(s) for s in action_data.get("slots") or []]
     slot_payoffs = [
         SlotPayoff(
             slot=slot,
@@ -103,42 +108,48 @@ def _build_decision_from_action(
         intent="",
         slotPayoffs=slot_payoffs,
         intervalPayoffs=[],
-        payoff=float(payoff) if payoff is not None else 0.0,
+        payoff=float(action.payoff) if action.payoff is not None else 0.0,
         numOver=num_over,
         numUnder=num_under,
+        model_id=action.model_id,
+        tokens_in=action.tokens_in,
+        tokens_out=action.tokens_out,
+        cost_usd=action.cost_usd,
+        decide_ms=action.decide_ms,
     )
 
 
 def _build_rounds_from_actions(
-    actions_by_round: dict[int, list[tuple[int, dict[str, Any], float | None]]],
+    actions_by_round: dict[int, list[tuple[int, Action]]],
     agents: list[DashboardAgent],
     num_slots: int,
     capacity_threshold: int,
 ) -> list[DashboardRound]:
-    """Convert per-round action triples into DashboardRound entries.
+    """Convert per-round action pairs into DashboardRound entries.
 
-    Each triple is ``(agent_roster_index, action_data, payoff)``.  Slot
-    attendance and over-cap counts are computed first so every
-    per-decision payoff is consistent with the canonical rule.
+    Each pair is ``(agent_roster_index, Action)``.  Slot attendance and
+    over-cap counts are computed first so every per-decision payoff is
+    consistent with the canonical rule.  The full ``Action`` row is
+    threaded through so the decision projection can read tier-2
+    telemetry columns (model_id, tokens_in/out, cost_usd, decide_ms).
     """
     rounds: list[DashboardRound] = []
     for round_number in sorted(actions_by_round):
-        triples = actions_by_round[round_number]
+        pairs = actions_by_round[round_number]
         slot_attendance = [0] * num_slots
-        for _, action_data, _ in triples:
-            for s in (action_data or {}).get("slots") or []:
+        for _, action in pairs:
+            for s in (action.action_data or {}).get("slots") or []:
                 if 0 <= int(s) < num_slots:
                     slot_attendance[int(s)] += 1
         over_slots = sum(1 for c in slot_attendance if c >= capacity_threshold)
         decisions = [
             _build_decision_from_action(
                 agent_id=agents[agent_idx].id,
-                action_data=action_data,
-                payoff=payoff,
+                action=action,
                 slot_attendance=slot_attendance,
                 capacity_threshold=capacity_threshold,
             )
-            for agent_idx, action_data, payoff in triples
+            for agent_idx, action in pairs
         ]
         rounds.append(
             DashboardRound(
@@ -193,17 +204,13 @@ async def _reshape_from_tournament(
     )
     rounds_orm = list((await session.execute(round_stmt)).scalars().all())
 
-    actions_by_round: dict[int, list[tuple[int, dict[str, Any], float | None]]] = {}
+    actions_by_round: dict[int, list[tuple[int, Action]]] = {}
     for r in rounds_orm:
         sorted_actions = sorted(
             r.actions, key=lambda a: pidx_by_pid.get(a.participant_id, 10_000)
         )
         actions_by_round[r.round_number] = [
-            (
-                pidx_by_pid[a.participant_id],
-                a.action_data or {},
-                a.payoff,
-            )
+            (pidx_by_pid[a.participant_id], a)
             for a in sorted_actions
             if a.participant_id in pidx_by_pid
         ]

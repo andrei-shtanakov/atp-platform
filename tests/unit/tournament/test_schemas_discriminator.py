@@ -25,9 +25,11 @@ def test_parses_pd_action():
 
 
 def test_parses_el_farol_action():
-    result = ADAPTER.validate_python({"game_type": "el_farol", "slots": [0, 3]})
+    result = ADAPTER.validate_python(
+        {"game_type": "el_farol", "intervals": [[0, 0], [3, 3]]}
+    )
     assert isinstance(result, ElFarolAction)
-    assert result.slots == [0, 3]
+    assert result.intervals == [[0, 0], [3, 3]]
 
 
 def test_pd_missing_choice_rejected():
@@ -39,10 +41,12 @@ def test_pd_missing_choice_rejected():
 def test_pd_discriminator_with_el_farol_fields_rejected():
     """Case 4: extra='forbid' surfaces BOTH missing and extra fields."""
     with pytest.raises(ValidationError) as exc:
-        ADAPTER.validate_python({"game_type": "prisoners_dilemma", "slots": [0]})
+        ADAPTER.validate_python(
+            {"game_type": "prisoners_dilemma", "intervals": [[0, 0]]}
+        )
     text = str(exc.value)
     assert "choice" in text
-    assert "slots" in text
+    assert "intervals" in text
 
 
 def test_unknown_game_type_rejected():
@@ -57,7 +61,7 @@ def test_pd_roundtrip():
 
 
 def test_el_farol_roundtrip():
-    a = ADAPTER.validate_python({"game_type": "el_farol", "slots": [1, 2]})
+    a = ADAPTER.validate_python({"game_type": "el_farol", "intervals": [[1, 2]]})
     assert ADAPTER.validate_python(a.model_dump()) == a
 
 

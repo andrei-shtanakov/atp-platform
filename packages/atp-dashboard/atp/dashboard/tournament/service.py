@@ -61,6 +61,7 @@ from atp.dashboard.tournament.models import (
 from atp.dashboard.tournament.reasons import CancelReason
 from atp.dashboard.tournament.schemas import (
     BoSRoundState,
+    ElFarolAction,
     ElFarolRoundState,
     PDRoundState,
     PGRoundState,
@@ -178,8 +179,9 @@ def _action_hint_for(game_type: str) -> str:
         return "{choice: 'A' | 'B'}"
     if game_type == "el_farol":
         return (
-            "{slots: list[int], values in [0, num_slots-1], "
-            f"unique, max {MAX_SLOTS_PER_DAY} entries}}"
+            "{intervals: list[[start, end]], up to 2 non-adjacent inclusive "
+            f"pairs with 0 <= start <= end < num_slots, max {MAX_SLOTS_PER_DAY} "
+            "slots total; [] = stay home}"
         )
     if game_type == "public_goods":
         return "{contribution: float in [0, endowment]}"
@@ -840,6 +842,31 @@ class TournamentService:
             cumulative_scores=cumulative_scores,
         )
 
+        # Wire-layer override: the El Farol game-env still advertises the
+        # canonical slot-list schema (correct for that layer — its
+        # ``validate_action`` accepts ``{"slots": [...]}``), but the
+        # tournament wire contract switched to intervals (commit 1704da7
+        # — see ``ElFarolAction`` in schemas.py). Replace the advertised
+        # schema with the intervals shape so clients building submissions
+        # from ``state.action_schema`` produce payloads that pass the
+        # ``ElFarolAction`` validator. Game-env contract stays unchanged.
+        if tournament.game_type == "el_farol":
+            num_slots = formatted.get("num_slots", 0)
+            formatted["action_schema"] = {
+                "type": "list[list[int]]",
+                "description": (
+                    "list of inclusive [start, end] interval pairs; [] means stay home"
+                ),
+                "max_intervals": 2,
+                "max_slots_total": 8,
+                "value_range": [0, max(0, int(num_slots) - 1)],
+                "constraints": [
+                    "non-overlapping",
+                    "non-adjacent (>= 1 empty slot between runs)",
+                    "0 <= start <= end",
+                ],
+            }
+
         # Compute submission state for the active round by inspecting
         # the already-loaded rounds+actions (no extra DB round-trip).
         my_participant_id = participants[my_idx].id
@@ -1011,9 +1038,16 @@ class TournamentService:
         reasoning = reasoning or None  # "" / whitespace-only → None
 
         game = _game_for(tournament)
-        canonical = game.validate_action(
-            typed.model_dump(exclude={"game_type", "reasoning"})
-        )
+        # El Farol wire format is intervals; the game-env strict path
+        # (validate_action) expects flat slots. Bridge here so the
+        # game-env contract stays unchanged.
+        if isinstance(typed, ElFarolAction):
+            game_payload: dict[str, Any] = {"slots": typed.to_slots()}
+        else:
+            game_payload = typed.model_dump(
+                exclude={"game_type", "reasoning", "telemetry"}
+            )
+        canonical = game.validate_action(game_payload)
 
         existing = (
             await self._session.execute(
@@ -1029,11 +1063,37 @@ class TournamentService:
                 f"{current_round.round_number}"
             )
 
+        # Tier-2 telemetry capture (LABS observability).
+        # ``ActionTelemetry`` is opt-in on the wire — agents that omit
+        # it leave model_id/tokens/cost as NULL (drawer renders "—").
+        # ``decide_ms`` falls back to a server-side measurement so it
+        # is always populated; agent self-report wins when present
+        # because the agent has zero clock skew.
+        tel = getattr(typed, "telemetry", None)
+        tel_model_id = tel.model_id if tel is not None else None
+        tel_tokens_in = tel.tokens_in if tel is not None else None
+        tel_tokens_out = tel.tokens_out if tel is not None else None
+        tel_cost_usd = tel.cost_usd if tel is not None else None
+        tel_decide_ms = tel.decide_ms if tel is not None else None
+        if tel_decide_ms is None and current_round.started_at is not None:
+            elapsed_ms = (
+                _utc_now() - current_round.started_at
+            ).total_seconds() * 1000.0
+            # Negative is impossible in practice (started_at is set on
+            # round open, before any submit can race in) but clamp
+            # defensively against clock-skew edge cases.
+            tel_decide_ms = max(0, int(elapsed_ms))
+
         new_action = Action(
             round_id=current_round.id,
             participant_id=my_participant.id,
             action_data=canonical,
             reasoning=reasoning,
+            model_id=tel_model_id,
+            tokens_in=tel_tokens_in,
+            tokens_out=tel_tokens_out,
+            cost_usd=tel_cost_usd,
+            decide_ms=tel_decide_ms,
         )
         self._session.add(new_action)
         await self._session.flush()

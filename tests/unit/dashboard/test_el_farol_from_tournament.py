@@ -14,6 +14,7 @@ from atp.dashboard.tournament.models import (
 from atp.dashboard.v2.routes.el_farol_dashboard import DashboardAgent
 from atp.dashboard.v2.routes.el_farol_from_tournament import (
     _build_agents_from_participants,
+    _build_decision_from_action,
     _build_rounds_from_actions,
     _reshape_from_tournament,
 )
@@ -126,11 +127,14 @@ def test_build_rounds_computes_slot_attendance_and_over_slots() -> None:
         DashboardAgent(id=f"a{i}", color="#6e7781", user="unknown") for i in range(1, 4)
     ]
 
-    actions_by_round: dict[int, list[tuple[int, dict, float | None]]] = {
+    # Pair shape is (agent_roster_index, Action ORM row). Action columns
+    # are all nullable / have defaults so kwargs-only construction is
+    # safe outside a session — no DB binding required.
+    actions_by_round: dict[int, list[tuple[int, Action]]] = {
         1: [
-            (0, {"slots": [0]}, 1.0),
-            (1, {"slots": [0]}, -1.0),
-            (2, {"slots": [5]}, 1.0),
+            (0, Action(action_data={"slots": [0]}, payoff=1.0)),
+            (1, Action(action_data={"slots": [0]}, payoff=-1.0)),
+            (2, Action(action_data={"slots": [5]}, payoff=1.0)),
         ],
     }
 
@@ -154,6 +158,130 @@ def test_build_rounds_computes_slot_attendance_and_over_slots() -> None:
     assert decs["a1"].slotPayoffs[0].attendance == 2
     assert decs["a1"].slotPayoffs[0].payoff == -1
     assert decs["a3"].slotPayoffs[0].payoff == 1
+
+
+# ---------------------------------------------------------------------------
+# Tier-2 telemetry projection (LABS observability)
+# ---------------------------------------------------------------------------
+
+
+def test_build_decision_forwards_all_tier2_telemetry_fields() -> None:
+    """All five tier-2 fields on the Action row must round-trip onto the
+    DashboardDecision verbatim — the drawer's DEBUG · OBSERVABILITY panel
+    reads them directly off the projection.
+    """
+    # GIVEN an Action carrying every tier-2 telemetry column
+    action = Action(
+        action_data={"slots": [3]},
+        payoff=1.0,
+        model_id="gpt-4o-mini-2024-07-18",
+        tokens_in=512,
+        tokens_out=128,
+        cost_usd=0.000234,
+        decide_ms=874,
+    )
+
+    # WHEN we project it to a DashboardDecision (slot 3 alone, under cap)
+    decision = _build_decision_from_action(
+        agent_id="alice",
+        action=action,
+        slot_attendance=[0, 0, 0, 1, 0],
+        capacity_threshold=2,
+    )
+
+    # THEN every tier-2 field flows through unchanged
+    assert decision.agent == "alice"
+    assert decision.picks == [3]
+    assert decision.payoff == 1.0
+    assert decision.model_id == "gpt-4o-mini-2024-07-18"
+    assert decision.tokens_in == 512
+    assert decision.tokens_out == 128
+    assert decision.cost_usd == 0.000234
+    assert decision.decide_ms == 874
+
+
+def test_build_decision_preserves_none_for_unset_telemetry() -> None:
+    """When the Action has no telemetry captured (NULL columns), the
+    DashboardDecision keeps them as ``None`` — must not coerce to 0 / "",
+    because the drawer differentiates "—" (missing) from "0" (measured).
+    """
+    # GIVEN an Action with telemetry columns left NULL
+    action = Action(action_data={"slots": [0]}, payoff=-1.0)
+
+    # WHEN we project it
+    decision = _build_decision_from_action(
+        agent_id="bob",
+        action=action,
+        slot_attendance=[2],
+        capacity_threshold=2,
+    )
+
+    # THEN the tier-2 fields stay None (not 0 / "")
+    assert decision.model_id is None
+    assert decision.tokens_in is None
+    assert decision.tokens_out is None
+    assert decision.cost_usd is None
+    assert decision.decide_ms is None
+
+
+def test_build_rounds_threads_telemetry_through_to_decisions() -> None:
+    """End-to-end check at the rounds level: telemetry on the Action
+    must surface on the per-decision projection inside the DashboardRound.
+    """
+    # GIVEN two agents with distinct telemetry payloads in the same round
+    agents = [
+        DashboardAgent(id="a1", color="#6e7781", user="unknown"),
+        DashboardAgent(id="a2", color="#6e7781", user="unknown"),
+    ]
+    actions_by_round: dict[int, list[tuple[int, Action]]] = {
+        1: [
+            (
+                0,
+                Action(
+                    action_data={"slots": [1]},
+                    payoff=1.0,
+                    model_id="gpt-4o",
+                    tokens_in=100,
+                    tokens_out=50,
+                    cost_usd=0.01,
+                    decide_ms=200,
+                ),
+            ),
+            (
+                1,
+                Action(
+                    action_data={"slots": [2]},
+                    payoff=1.0,
+                    model_id="claude-3-5-sonnet",
+                    tokens_in=300,
+                    tokens_out=75,
+                    cost_usd=0.02,
+                    decide_ms=450,
+                ),
+            ),
+        ],
+    }
+
+    # WHEN we build rounds from those pairs
+    rounds = _build_rounds_from_actions(
+        actions_by_round=actions_by_round,
+        agents=agents,
+        num_slots=16,
+        capacity_threshold=2,
+    )
+
+    # THEN each decision carries the originating Action's telemetry
+    decs = {d.agent: d for d in rounds[0].decisions}
+    assert decs["a1"].model_id == "gpt-4o"
+    assert decs["a1"].tokens_in == 100
+    assert decs["a1"].tokens_out == 50
+    assert decs["a1"].cost_usd == 0.01
+    assert decs["a1"].decide_ms == 200
+    assert decs["a2"].model_id == "claude-3-5-sonnet"
+    assert decs["a2"].tokens_in == 300
+    assert decs["a2"].tokens_out == 75
+    assert decs["a2"].cost_usd == 0.02
+    assert decs["a2"].decide_ms == 450
 
 
 @pytest.mark.anyio
