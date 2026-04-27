@@ -13,6 +13,7 @@ wrappers below.
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from typing import Any
 
 from fastmcp import Context
@@ -142,6 +143,27 @@ async def _make_move_impl(
     )
 
 
+async def _ping_impl() -> dict[str, Any]:
+    """Pure-impl helper for the ``ping`` tool.
+
+    No DB access, no service dependency — the response is built from
+    in-process state only. Designed as a connectivity warm-up that
+    SDK clients can call before issuing real tournament operations:
+    if ``ping`` is missing from the tool list or returns 401, the
+    SSE handshake hasn't completed tool registration / auth yet, and
+    the client should retry the connection rather than attempt real
+    work. See docs/superpowers/plans/2026-04-27-mcp-server-reliability.md
+    Task 3 for the broader context.
+    """
+    from atp.dashboard.v2.config import get_config
+
+    return {
+        "ok": True,
+        "server_version": get_config().version,
+        "ts": datetime.now(UTC).isoformat(),
+    }
+
+
 # ---------------------------------------------------------------------------
 # FastMCP-registered tool entry points
 # ---------------------------------------------------------------------------
@@ -220,6 +242,24 @@ async def get_current_state(
             service=service,
             agent_id=agent_id,
         )
+
+
+@mcp_server.tool()
+async def ping(ctx: Context) -> dict:
+    """Cheap connectivity probe — no DB access, no auth lookup beyond
+    what ``MCPAuthMiddleware`` already enforced.
+
+    Use this as a warm-up before issuing real tournament operations.
+    If ``ping`` is missing from the discovered tool list or returns a
+    transport-level error, the SSE handshake hasn't finished
+    registering tools yet — retry the connection rather than calling
+    ``join_tournament`` / ``make_move`` and racing the registration.
+
+    Returns:
+        ``{"ok": True, "server_version": "<dashboard version>", "ts": "<iso8601 UTC>"}``
+    """
+    del ctx  # auth was checked at the ASGI layer; no per-tool work needed
+    return await _ping_impl()
 
 
 @mcp_server.tool()
