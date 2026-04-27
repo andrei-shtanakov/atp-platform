@@ -354,10 +354,16 @@ async def test_submit_action_omitted_telemetry_falls_back_for_decide_ms(
     # a deterministic non-trivial value (avoids flake on a 0-elapsed
     # measurement).
     round_row = (
-        await session.execute(
-            select(Round).where(Round.tournament_id == t.id).order_by(Round.id.desc())
+        (
+            await session.execute(
+                select(Round)
+                .where(Round.tournament_id == t.id)
+                .order_by(Round.id.desc())
+            )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     assert round_row is not None
     round_row.started_at = _utc_now() - timedelta(seconds=2)
     await session.flush()
@@ -392,10 +398,16 @@ async def test_submit_action_agent_reported_decide_ms_wins_over_fallback(
     svc = TournamentService(session, event_bus)
     t = await _make_el_farol(svc, admin_user, alice, bob)
     round_row = (
-        await session.execute(
-            select(Round).where(Round.tournament_id == t.id).order_by(Round.id.desc())
+        (
+            await session.execute(
+                select(Round)
+                .where(Round.tournament_id == t.id)
+                .order_by(Round.id.desc())
+            )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     assert round_row is not None
     round_row.started_at = _utc_now() - timedelta(seconds=2)
     await session.flush()

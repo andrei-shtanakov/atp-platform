@@ -233,7 +233,7 @@ async def test_get_state_for_el_farol_value_range_reflects_num_slots(
     """
     from atp.dashboard.tournament.service import TournamentService
 
-    # GIVEN an active el_farol tournament (default num_slots=16 via _EL_FAROL_V1_NUM_SLOTS)
+    # GIVEN an active el_farol tournament (default num_slots=16)
     svc = TournamentService(session, event_bus)
     t, _ = await svc.create_tournament(
         creator=admin_user,
@@ -283,7 +283,7 @@ async def test_get_state_for_prisoners_dilemma_action_schema_unchanged(
     # WHEN we fetch the state
     state = await svc.get_state_for(t.id, alice)
 
-    # THEN action_schema is the PD discrete-choice schema, NOT the el_farol intervals shape
+    # THEN action_schema is the PD discrete-choice schema, NOT the el_farol shape
     schema = state.action_schema
     assert "max_intervals" not in schema
     assert "max_slots_total" not in schema

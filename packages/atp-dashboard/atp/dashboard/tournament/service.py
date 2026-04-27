@@ -855,8 +855,7 @@ class TournamentService:
             formatted["action_schema"] = {
                 "type": "list[list[int]]",
                 "description": (
-                    "list of inclusive [start, end] interval pairs; "
-                    "[] means stay home"
+                    "list of inclusive [start, end] interval pairs; [] means stay home"
                 ),
                 "max_intervals": 2,
                 "max_slots_total": 8,

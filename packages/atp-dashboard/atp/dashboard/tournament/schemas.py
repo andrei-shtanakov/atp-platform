@@ -167,9 +167,7 @@ class ElFarolAction(BaseModel):
         ordered = sorted(pairs, key=lambda p: p[0])
         for prev, nxt in zip(ordered, ordered[1:]):
             if nxt[0] <= prev[1] + 1:
-                raise ValueError(
-                    f"intervals {prev} and {nxt} overlap or are adjacent"
-                )
+                raise ValueError(f"intervals {prev} and {nxt} overlap or are adjacent")
         return pairs
 
     def to_slots(self) -> list[int]:
@@ -181,7 +179,9 @@ class ElFarolAction(BaseModel):
         service uses this helper to bridge the two without touching the
         game-env contract.
         """
-        return sorted({s for start, end in self.intervals for s in range(start, end + 1)})
+        return sorted(
+            {s for start, end in self.intervals for s in range(start, end + 1)}
+        )
 
 
 class SHAction(BaseModel):

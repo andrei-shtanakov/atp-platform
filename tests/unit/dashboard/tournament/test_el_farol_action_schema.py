@@ -23,7 +23,6 @@ from pydantic import ValidationError
 
 from atp.dashboard.tournament.schemas import ActionTelemetry, ElFarolAction
 
-
 # ---------------------------------------------------------------------------
 # Happy-path normalization: slots -> intervals
 # ---------------------------------------------------------------------------
@@ -33,9 +32,7 @@ def test_legacy_slots_two_consecutive_become_single_interval() -> None:
     """``[0, 1]`` is one run of two slots -> one ``[0, 1]`` pair."""
     # GIVEN a legacy slots payload with two consecutive slots
     # WHEN we instantiate ElFarolAction
-    action = ElFarolAction.model_validate(
-        {"game_type": "el_farol", "slots": [0, 1]}
-    )
+    action = ElFarolAction.model_validate({"game_type": "el_farol", "slots": [0, 1]})
 
     # THEN the normalizer produces a single inclusive interval
     assert action.intervals == [[0, 1]]
@@ -45,9 +42,7 @@ def test_legacy_slots_single_slot_becomes_single_point_interval() -> None:
     """A single slot ``[0]`` is a degenerate run of length 1 -> ``[0, 0]``."""
     # GIVEN one slot
     # WHEN we validate
-    action = ElFarolAction.model_validate(
-        {"game_type": "el_farol", "slots": [0]}
-    )
+    action = ElFarolAction.model_validate({"game_type": "el_farol", "slots": [0]})
 
     # THEN we get a single-point interval (start == end)
     assert action.intervals == [[0, 0]]
@@ -57,9 +52,7 @@ def test_legacy_slots_empty_list_means_stay_home() -> None:
     """Empty slots ``[]`` is the canonical "stay home" action -> ``intervals=[]``."""
     # GIVEN an empty slot list
     # WHEN we validate
-    action = ElFarolAction.model_validate(
-        {"game_type": "el_farol", "slots": []}
-    )
+    action = ElFarolAction.model_validate({"game_type": "el_farol", "slots": []})
 
     # THEN intervals is empty (the canonical stay-home shape)
     assert action.intervals == []
@@ -102,9 +95,7 @@ def test_legacy_slots_too_many_runs_fails_intervals_validation() -> None:
     # WHEN we validate
     # THEN the standard intervals validator rejects it
     with pytest.raises(ValidationError):
-        ElFarolAction.model_validate(
-            {"game_type": "el_farol", "slots": [0, 2, 4]}
-        )
+        ElFarolAction.model_validate({"game_type": "el_farol", "slots": [0, 2, 4]})
 
 
 def test_legacy_slots_exceeds_max_slots_per_day_fails_validation() -> None:
@@ -169,9 +160,7 @@ def test_legacy_slots_non_list_falls_through_to_standard_error() -> None:
     # WHEN we validate
     # THEN the normalizer falls through and intervals is reported missing
     with pytest.raises(ValidationError) as exc:
-        ElFarolAction.model_validate(
-            {"game_type": "el_farol", "slots": "not a list"}
-        )
+        ElFarolAction.model_validate({"game_type": "el_farol", "slots": "not a list"})
     msg = str(exc.value).lower()
     assert "intervals" in msg
 
@@ -184,9 +173,7 @@ def test_legacy_slots_with_non_int_values_falls_through_to_standard_error() -> N
     # WHEN we validate
     # THEN the normalizer falls through and intervals is reported missing
     with pytest.raises(ValidationError) as exc:
-        ElFarolAction.model_validate(
-            {"game_type": "el_farol", "slots": [0, "x"]}
-        )
+        ElFarolAction.model_validate({"game_type": "el_farol", "slots": [0, "x"]})
     msg = str(exc.value).lower()
     assert "intervals" in msg
 
