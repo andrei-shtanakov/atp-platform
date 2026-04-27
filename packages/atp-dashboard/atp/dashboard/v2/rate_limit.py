@@ -119,11 +119,24 @@ _legacy_purpose_cache: dict[str, str] = {}
 # revokes a token via ``DELETE /api/v1/tokens`` may still see it
 # resolve for up to 30 s. Acceptable pre-1.0; revisit if/when a
 # customer requires sub-second revocation.
+#
+# ``last_used_at`` cadence note: the column is updated only on cache
+# misses (the SELECT/UPDATE path). With a 30 s TTL and a 60 s update
+# debounce, a continuously-used token still records ``last_used_at``
+# every ~60 s. A bursty token may lag up to TTL+debounce ≈ 90 s
+# behind real activity. ``last_used_at`` is an audit/cleanup field;
+# the lag is acceptable. If sub-minute precision is ever needed,
+# fire a debounced UPDATE on cache hit (no SELECT required since the
+# UPDATE has its own WHERE-clause debounce).
 _TOKEN_AUTH_CACHE_TTL_S = 30.0
 _TOKEN_AUTH_CACHE_MAX = 1024
-_token_auth_cache: TTLCache[str, tuple[int, int | None, str | None]] = TTLCache(
-    maxsize=_TOKEN_AUTH_CACHE_MAX, ttl=_TOKEN_AUTH_CACHE_TTL_S
-)
+# Cached value: (user_id, agent_id, agent_purpose, expires_at). Storing
+# ``expires_at`` lets cache hits enforce expiry without a DB roundtrip
+# — otherwise a token that expires after caching could resolve for up
+# to TTL seconds past its actual expiry.
+_token_auth_cache: TTLCache[
+    str, tuple[int, int | None, str | None, datetime | None]
+] = TTLCache(maxsize=_TOKEN_AUTH_CACHE_MAX, ttl=_TOKEN_AUTH_CACHE_TTL_S)
 
 
 class JWTUserStateMiddleware:
@@ -238,12 +251,19 @@ class JWTUserStateMiddleware:
 
         cached = _token_auth_cache.get(token_hash)
         if cached is not None:
-            user_id, agent_id, agent_purpose = cached
-            state["user_id"] = user_id
-            state["agent_id"] = agent_id
-            state["agent_purpose"] = agent_purpose
-            state["token_type"] = "api"
-            return
+            user_id, agent_id, agent_purpose, cached_expires_at = cached
+            if cached_expires_at is not None and cached_expires_at < datetime.now():
+                # Token expired since caching — evict and re-resolve via DB so
+                # the SELECT/expiry block returns ``None`` properly. Keeping
+                # the stale entry would let it resolve for up to TTL seconds
+                # past actual expiry.
+                _token_auth_cache.pop(token_hash, None)
+            else:
+                state["user_id"] = user_id
+                state["agent_id"] = agent_id
+                state["agent_purpose"] = agent_purpose
+                state["token_type"] = "api"
+                return
 
         try:
             db = get_database()
@@ -288,13 +308,16 @@ class JWTUserStateMiddleware:
                                 _legacy_purpose_cache[token_hash] = purpose
                     state["agent_purpose"] = purpose
 
-                # Populate the hot-path cache with the resolved triple.
+                # Populate the hot-path cache with the resolved tuple.
                 # Done before the UPDATE so a debounce-related exception
                 # below does not leave the cache empty for the next call.
+                # ``expires_at`` is included so a future cache hit can
+                # enforce expiry locally without a DB roundtrip.
                 _token_auth_cache[token_hash] = (
                     api_token.user_id,
                     api_token.agent_id,
                     state.get("agent_purpose"),
+                    api_token.expires_at,
                 )
 
                 # Debounced last_used_at: skip if updated within last 60s

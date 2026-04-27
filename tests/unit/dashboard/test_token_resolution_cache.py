@@ -108,17 +108,27 @@ async def _seed_user_and_token(
 
 
 @pytest.mark.anyio
-async def test_cache_hit_skips_db() -> None:
+async def test_cache_hit_skips_db(monkeypatch: pytest.MonkeyPatch) -> None:
     """A pre-populated cache entry resolves the token without any DB
-    access. ``get_database()`` is left unset on purpose — if the
-    implementation regresses to a SELECT, it will raise instead of
-    silently returning."""
+    access. We monkeypatch ``get_database`` to fail loudly so a
+    regression that introduces a DB call cannot silently pass on a
+    test that happens to inherit a configured global ``Database``
+    from prior test order."""
+    db_calls: list[str] = []
+
+    def _fail_db() -> Any:
+        db_calls.append("get_database called on cache hit")
+        raise RuntimeError("DB must not be touched on cache hit")
+
+    monkeypatch.setattr("atp.dashboard.database.get_database", _fail_db)
+
     token = "atp_a_cache_hit_only"
-    _token_auth_cache[_hash(token)] = (42, 7, "tournament")
+    _token_auth_cache[_hash(token)] = (42, 7, "tournament", None)
 
     state = _empty_state()
     await JWTUserStateMiddleware._resolve_api_token(state, token)
 
+    assert db_calls == [], "_resolve_api_token must not touch DB on cache hit"
     assert state["user_id"] == 42
     assert state["agent_id"] == 7
     assert state["agent_purpose"] == "tournament"
@@ -126,11 +136,19 @@ async def test_cache_hit_skips_db() -> None:
 
 
 @pytest.mark.anyio
-async def test_cache_hit_for_user_token_with_no_agent() -> None:
+async def test_cache_hit_for_user_token_with_no_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """User-level tokens (agent_id=None, agent_purpose=None) round-trip
-    through the cache correctly."""
+    through the cache correctly without DB access."""
+
+    def _fail_db() -> Any:
+        raise RuntimeError("DB must not be touched on cache hit")
+
+    monkeypatch.setattr("atp.dashboard.database.get_database", _fail_db)
+
     token = "atp_u_user_level"
-    _token_auth_cache[_hash(token)] = (101, None, None)
+    _token_auth_cache[_hash(token)] = (101, None, None, None)
 
     state = _empty_state()
     await JWTUserStateMiddleware._resolve_api_token(state, token)
@@ -139,6 +157,34 @@ async def test_cache_hit_for_user_token_with_no_agent() -> None:
     assert state["agent_id"] is None
     assert state["agent_purpose"] is None
     assert state["token_type"] == "api"
+
+
+@pytest.mark.anyio
+async def test_cached_entry_past_expires_at_is_evicted(
+    configured_db: Database,
+) -> None:
+    """A cache entry whose ``expires_at`` already passed must be
+    evicted on hit and force a fresh DB lookup. Without this guard,
+    a token that expires within the TTL window would keep resolving
+    for up to ~30 s past actual expiry — see Copilot review on PR #99.
+    """
+    token = "atp_a_cached_then_expired"
+    # Pre-seed the cache with an entry whose expires_at is in the past
+    # but is otherwise plausible. The DB row does not exist (token was
+    # not inserted), so re-resolution must yield empty state.
+    _token_auth_cache[_hash(token)] = (
+        7,
+        99,
+        "tournament",
+        datetime.now() - timedelta(seconds=1),
+    )
+
+    state = _empty_state()
+    await JWTUserStateMiddleware._resolve_api_token(state, token)
+
+    # Cache evicted, DB had no matching row → state stays empty.
+    assert state["user_id"] is None
+    assert _token_auth_cache.get(_hash(token)) is None
 
 
 # ---------------------------------------------------------------------------
@@ -170,7 +216,8 @@ async def test_cache_miss_falls_through_to_db_and_populates(
     assert state["token_type"] == "api"
 
     cached = _token_auth_cache.get(_hash(token))
-    assert cached == (11, 3, "tournament")
+    # Tokens seeded without expires_at → cached as None.
+    assert cached == (11, 3, "tournament", None)
 
 
 @pytest.mark.anyio
@@ -290,4 +337,4 @@ async def test_clear_invalidates_subsequent_calls(
     state2 = _empty_state()
     await JWTUserStateMiddleware._resolve_api_token(state2, token)
     assert state2["user_id"] == 31
-    assert _token_auth_cache.get(_hash(token)) == (31, 9, "tournament")
+    assert _token_auth_cache.get(_hash(token)) == (31, 9, "tournament", None)

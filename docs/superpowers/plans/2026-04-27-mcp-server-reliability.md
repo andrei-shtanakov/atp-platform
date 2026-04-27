@@ -36,9 +36,9 @@
 
 Run:
 ```bash
-cd /Users/Andrei_Shtanakov/labs/all_ai_orchestrators/atp-platform
-git fetch github main
-git log -1 --format='%h %s' github/main
+cd <repo-root>
+git fetch origin main
+git log -1 --format='%h %s' origin/main
 ```
 
 Expected: top commit on main is `1e9d285 Wire El Farol tournament telemetry end-to-end (#98)` or later.
@@ -69,8 +69,8 @@ Expected: `fastmcp v3.2.3`. If a newer version is available, note it for Task 6 
 
 Run:
 ```bash
-git fetch github main
-git checkout -b feat/mcp-cache-token-resolution github/main
+git fetch origin main
+git checkout -b feat/mcp-cache-token-resolution origin/main
 uv sync --group dev
 ```
 
@@ -142,7 +142,7 @@ Expected: pass. These cover the JWT/MCPAuth chain that wraps the cache.
 ```bash
 git add -A
 git commit -m "feat(auth): in-process LRU cache for API-token resolution"
-git push -u github HEAD
+git push -u origin HEAD
 gh pr create --base main --title "feat(auth): in-process LRU cache for API-token resolution" --body "..."
 ```
 
