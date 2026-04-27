@@ -16,7 +16,7 @@
 - DB pool: `pool_size=5, max_overflow=10` (`packages/atp-dashboard/atp/dashboard/database.py:70-71`).
 - Existing in-process cache pattern: `_legacy_purpose_cache` (`rate_limit.py:241`).
 - MCP tools registered via `@mcp_server.tool()` decorators in `packages/atp-dashboard/atp/dashboard/mcp/tools.py` (no `ping` tool exists today).
-- `join_tournament` is **not** idempotent: re-issuing for an already-joined `(tournament_id, agent_name)` returns a server error.
+- `join_tournament` was originally believed to be non-idempotent (which motivated drafting Task 2). 2026-04-27 investigation against `service.py:405-654` corrected that: `TournamentService.join` is already fully idempotent for active rejoin (returns `(participant, is_new=False)`), and the MCP shim already surfaces `is_new`. Only the intentional rejoin-after-leave case still raises `ConflictError`. See Task 2 below for the closing note.
 - No structured metrics on MCP handshake; only ad-hoc `logger.info` lines in `MCPAuthMiddleware`.
 - `claude_el_farol_3bots.py` (driver, lives in `../agents-for-game/`) ships with its own retry-on-failed-join workaround (`JOIN_RETRY_ATTEMPTS = 3`); this plan reduces the need for that workaround on the server side.
 
@@ -57,7 +57,11 @@ Expected: `fastmcp v3.2.3`. If a newer version is available, note it for Task 6 
 
 ---
 
-## Task 1: Cache API token resolution (high priority, low risk)
+## Task 1: Cache API token resolution (high priority, low risk) ✅
+
+**Status (2026-04-27): COMPLETE.** Shipped via PR #99 (commit `dea05c1`). The implementation also includes Copilot-review follow-ups: cache value carries `expires_at` so hits enforce expiry locally, and a `last_used_at` cadence note in the code documents the new update timing.
+
+
 
 **PR scope:** One merged PR titled `feat(auth): in-process LRU cache for API-token resolution`. Eliminates the per-request DB SELECT in `JWTUserStateMiddleware._resolve_api_token` for the hot path: same token used repeatedly within 30 seconds (e.g. SSE keepalives, polling clients, multi-handshake bursts).
 
@@ -150,7 +154,19 @@ PR body must include: motivation (MCP cold-start race, tournament 30 incident on
 
 ---
 
-## Task 2: Make `join_tournament` idempotent (high priority, low risk)
+## Task 2: Make `join_tournament` idempotent (high priority, low risk) ✅
+
+**Status (2026-04-27): NO CODE CHANGE NEEDED — investigated and closed.** `TournamentService.join` (`packages/atp-dashboard/atp/dashboard/tournament/service.py`) was already fully idempotent at PR #99 baseline:
+
+- Idempotent pre-check returns `(existing_participant, is_new=False)` when the same agent already has an active row.
+- IntegrityError handling on the INSERT path correctly classifies `uq_participant_tournament_agent` and `uq_participant_agent_active` races into either idempotent return or a precise 409 conflict.
+- Only non-idempotent path is `released_at is not None` (terminal "leave"), which is intentional.
+
+The MCP shim `tools.py:join_tournament` already surfaces the `is_new: bool` flag — functionally equivalent to the originally-proposed `status: "joined" | "already_joined"`. No public REST `/api/v1/tournaments/{id}/join` endpoint exists; MCP is the only join surface.
+
+The original task description is preserved below for traceability.
+
+
 
 **PR scope:** `feat(tournament): make join_tournament idempotent`. Re-issuing `join_tournament` for an `(tournament_id, agent_name)` pair that is already joined by the same owner returns the existing participant row with a `status: "already_joined"` field instead of erroring. Reduces blast radius of client-side retry loops.
 
@@ -173,6 +189,10 @@ PR body must include: motivation (MCP cold-start race, tournament 30 incident on
 ---
 
 ## Task 3: Add `mcp__atp-tournaments__ping` tool (high priority, low risk)
+
+**Status (2026-04-27): IN-FLIGHT** — implemented on branch `feat/mcp-ping-tool` (PR #100). Response shape `{"ok": True, "server_version": ..., "ts": <iso8601 UTC>}`; testability split between `_ping_impl` (no DB, no Context) and the `@mcp_server.tool()` wrapper. Replace `IN-FLIGHT` with ✅ + the merged commit SHA after this PR merges.
+
+
 
 **PR scope:** `feat(mcp): add ping tool for client warmup gating`. Lets clients (Claude SDK, raw `mcp` lib, or anything else) call a trivial DB-free tool first to confirm tool registration succeeded before issuing real ops. Cold-start clients can `ping` then proceed; if `ping` is missing from the tool list, MCP transport is broken and the client knows to retry the handshake instead of attempting real operations.
 
