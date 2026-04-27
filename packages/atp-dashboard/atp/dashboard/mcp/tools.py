@@ -147,12 +147,22 @@ async def _ping_impl() -> dict[str, Any]:
     """Pure-impl helper for the ``ping`` tool.
 
     No DB access, no service dependency — the response is built from
-    in-process state only. Designed as a connectivity warm-up that
-    SDK clients can call before issuing real tournament operations:
-    if ``ping`` is missing from the tool list or returns 401, the
-    SSE handshake hasn't completed tool registration / auth yet, and
-    the client should retry the connection rather than attempt real
-    work. See docs/superpowers/plans/2026-04-27-mcp-server-reliability.md
+    in-process state only. Designed as a connectivity warm-up SDK
+    clients can call before issuing real tournament operations.
+
+    Diagnostic interpretation of failure modes:
+
+    - ``ping`` missing from the advertised tool list (or any
+      transport-level error returned by the SSE handshake itself):
+      tool registration / handshake has not completed yet — the
+      client should retry the SSE connection before attempting real
+      operations.
+    - ``401 Unauthorized``: an authentication problem (missing,
+      invalid, or expired token / wrong token purpose). This is NOT
+      a handshake-retry signal; the client should fix or refresh
+      credentials rather than reconnect in a loop.
+
+    See docs/superpowers/plans/2026-04-27-mcp-server-reliability.md
     Task 3 for the broader context.
     """
     from atp.dashboard.v2.config import get_config
@@ -250,10 +260,15 @@ async def ping(ctx: Context) -> dict:
     what ``MCPAuthMiddleware`` already enforced.
 
     Use this as a warm-up before issuing real tournament operations.
-    If ``ping`` is missing from the discovered tool list or returns a
-    transport-level error, the SSE handshake hasn't finished
-    registering tools yet — retry the connection rather than calling
-    ``join_tournament`` / ``make_move`` and racing the registration.
+    If ``ping`` is missing from the discovered tool list or the SSE
+    handshake itself surfaces a transport-level error, tool
+    registration hasn't finished — retry the connection rather than
+    calling ``join_tournament`` / ``make_move`` and racing the
+    registration.
+
+    A 401 here means the credentials are bad (missing, invalid, or
+    wrong purpose), not that the handshake is incomplete; clients
+    should refresh credentials, not reconnect in a loop.
 
     Returns:
         ``{"ok": True, "server_version": "<dashboard version>", "ts": "<iso8601 UTC>"}``

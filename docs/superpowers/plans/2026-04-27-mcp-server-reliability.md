@@ -16,7 +16,7 @@
 - DB pool: `pool_size=5, max_overflow=10` (`packages/atp-dashboard/atp/dashboard/database.py:70-71`).
 - Existing in-process cache pattern: `_legacy_purpose_cache` (`rate_limit.py:241`).
 - MCP tools registered via `@mcp_server.tool()` decorators in `packages/atp-dashboard/atp/dashboard/mcp/tools.py` (no `ping` tool exists today).
-- `join_tournament` is **not** idempotent: re-issuing for an already-joined `(tournament_id, agent_name)` returns a server error.
+- `join_tournament` was originally believed to be non-idempotent (which motivated drafting Task 2). 2026-04-27 investigation against `service.py:405-654` corrected that: `TournamentService.join` is already fully idempotent for active rejoin (returns `(participant, is_new=False)`), and the MCP shim already surfaces `is_new`. Only the intentional rejoin-after-leave case still raises `ConflictError`. See Task 2 below for the closing note.
 - No structured metrics on MCP handshake; only ad-hoc `logger.info` lines in `MCPAuthMiddleware`.
 - `claude_el_farol_3bots.py` (driver, lives in `../agents-for-game/`) ships with its own retry-on-failed-join workaround (`JOIN_RETRY_ATTEMPTS = 3`); this plan reduces the need for that workaround on the server side.
 
@@ -188,9 +188,9 @@ The original task description is preserved below for traceability.
 
 ---
 
-## Task 3: Add `mcp__atp-tournaments__ping` tool (high priority, low risk) ✅
+## Task 3: Add `mcp__atp-tournaments__ping` tool (high priority, low risk)
 
-**Status (2026-04-27): IN-FLIGHT** — implemented on branch `feat/mcp-ping-tool`; see PR description for the response shape (`{"ok": True, "server_version": ..., "ts": <iso8601 UTC>}`) and the testability split between `_ping_impl` (no DB, no Context) and the `@mcp_server.tool()` wrapper. Mark complete after PR merges.
+**Status (2026-04-27): IN-FLIGHT** — implemented on branch `feat/mcp-ping-tool` (PR #100). Response shape `{"ok": True, "server_version": ..., "ts": <iso8601 UTC>}`; testability split between `_ping_impl` (no DB, no Context) and the `@mcp_server.tool()` wrapper. Replace `IN-FLIGHT` with ✅ + the merged commit SHA after this PR merges.
 
 
 
