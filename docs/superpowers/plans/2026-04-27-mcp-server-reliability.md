@@ -188,9 +188,9 @@ The original task description is preserved below for traceability.
 
 ---
 
-## Task 3: Add `mcp__atp-tournaments__ping` tool (high priority, low risk)
+## Task 3: Add `mcp__atp-tournaments__ping` tool (high priority, low risk) ✅
 
-**Status (2026-04-27): IN-FLIGHT** — implemented on branch `feat/mcp-ping-tool` (PR #100). Response shape `{"ok": True, "server_version": ..., "ts": <iso8601 UTC>}`; testability split between `_ping_impl` (no DB, no Context) and the `@mcp_server.tool()` wrapper. Replace `IN-FLIGHT` with ✅ + the merged commit SHA after this PR merges.
+**Status (2026-04-27): COMPLETE.** Shipped via PR #100 (commit `c10ceed`). Response shape `{"ok": True, "server_version": ..., "ts": <iso8601 UTC>}`; testability split between `_ping_impl` (no DB, no Context) and the `@mcp_server.tool()` wrapper.
 
 
 
@@ -211,6 +211,9 @@ The original task description is preserved below for traceability.
 ---
 
 ## Task 4: MCP handshake metrics (medium priority, medium effort)
+
+**Status (2026-04-27): IN-FLIGHT** — implemented on branch `feat/mcp-handshake-metrics`. Four events (`mcp_handshake_started`, `mcp_handshake_authorized`, `mcp_handshake_rejected`, `mcp_first_tool_call`) emitted from `MCPAuthMiddleware` and tool wrappers, correlated by per-request `request_id` (uuid4 hex slice) plus per-session `session_id` (`ctx.session_id`). Schema documented in `docs/runbooks/mcp-observability.md`. The `mcp_tools_list_responded` event from the original plan is deferred to a follow-up — FastMCP exposes no public hook, would require ASGI response peeking. Replace `IN-FLIGHT` with ✅ + the merged commit SHA after this PR merges.
+
 
 **PR scope:** `feat(mcp): structured handshake observability`. Emit structured log events for the SSE handshake lifecycle so future cold-start incidents can be diagnosed from logs alone. No metrics backend dependency — start with structured `logger.info` (already using `structlog`).
 

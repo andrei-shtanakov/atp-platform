@@ -19,6 +19,7 @@ from typing import Any
 from fastmcp import Context
 
 from atp.dashboard.mcp import mcp_server, tournament_event_bus
+from atp.dashboard.mcp.observability import emit_tool_call
 from atp.dashboard.tournament.service import TournamentService
 
 logger = logging.getLogger("atp.dashboard.mcp.tools")
@@ -204,6 +205,7 @@ async def _join_tournament_mcp(
         with_service,
     )
 
+    emit_tool_call(ctx, tool="join_tournament")
     user = await resolve_user_from_ctx(ctx)
     agent_id = resolve_agent_id_from_ctx(ctx)
 
@@ -243,6 +245,7 @@ async def get_current_state(
         with_service,
     )
 
+    emit_tool_call(ctx, tool="get_current_state")
     user = await resolve_user_from_ctx(ctx)
     agent_id = resolve_agent_id_from_ctx(ctx)
     async with with_service(ctx, tournament_event_bus) as service:
@@ -273,7 +276,7 @@ async def ping(ctx: Context) -> dict:
     Returns:
         ``{"ok": True, "server_version": "<dashboard version>", "ts": "<iso8601 UTC>"}``
     """
-    del ctx  # auth was checked at the ASGI layer; no per-tool work needed
+    emit_tool_call(ctx, tool="ping")
     return await _ping_impl()
 
 
@@ -321,6 +324,7 @@ async def make_move(
         with_service,
     )
 
+    emit_tool_call(ctx, tool="make_move")
     user = await resolve_user_from_ctx(ctx)
     agent_id = resolve_agent_id_from_ctx(ctx)
     async with with_service(ctx, tournament_event_bus) as service:
@@ -467,6 +471,7 @@ async def mcp_leave_tournament(
         with_service,
     )
 
+    emit_tool_call(ctx, tool="leave_tournament")
     user = await resolve_user_from_ctx(ctx)
     agent_id = resolve_agent_id_from_ctx(ctx)
     async with with_service(ctx, tournament_event_bus) as service:
@@ -491,6 +496,7 @@ async def mcp_get_history(
         with_service,
     )
 
+    emit_tool_call(ctx, tool="get_history")
     user = await resolve_user_from_ctx(ctx)
     async with with_service(ctx, tournament_event_bus) as service:
         return await get_history(
@@ -520,6 +526,7 @@ async def mcp_list_tournaments(
         with_service,
     )
 
+    emit_tool_call(ctx, tool="list_tournaments")
     user = await resolve_user_from_ctx(ctx)
     async with with_service(ctx, tournament_event_bus) as service:
         return await list_tournaments(
@@ -538,6 +545,7 @@ async def mcp_get_tournament(
         with_service,
     )
 
+    emit_tool_call(ctx, tool="get_tournament")
     user = await resolve_user_from_ctx(ctx)
     async with with_service(ctx, tournament_event_bus) as service:
         return await get_tournament(
@@ -557,6 +565,7 @@ async def mcp_cancel_tournament(
         with_service,
     )
 
+    emit_tool_call(ctx, tool="cancel_tournament")
     user = await resolve_user_from_ctx(ctx)
     async with with_service(ctx, tournament_event_bus) as service:
         return await cancel_tournament(
