@@ -80,22 +80,27 @@ event:mcp_handshake_authorized | timeshift -1h | aggregate avg(duration_ms)
 event:mcp_handshake_rejected | aggregate count by reason
 ```
 
-**Sessions that never made a tool call (truncated SDK init):**
+**Tool-call distribution across sessions:**
 
 ```
-SELECT session_id
-  FROM logs
- WHERE event = 'mcp_handshake_authorized'
-   AND request_id NOT IN (
-     SELECT request_id FROM logs WHERE event = 'mcp_first_tool_call'
-   )
+event:mcp_first_tool_call | aggregate count by tool
 ```
+
+**Cold-start latency proxy (per session):**
+
+```
+event:mcp_first_tool_call | percentiles(elapsed_since_session_start_ms, 50, 95, 99)
+```
+
+> **Limitation.** "Sessions authorized but never made a tool call" cannot be expressed today: the SSE-handshake `mcp_handshake_authorized` event fires on the GET /sse request, which has **no** FastMCP `session_id` yet (the id is assigned later, when the SSE channel is established). The first event that carries `session_id` is `mcp_first_tool_call`. Adding `session_id` to handshake events requires plumbing it from the URL `?session_id=` query param on the messages-POST path; tracked in the Known gaps section below.
 
 ## Known gaps
 
 - **`mcp_tools_list_responded`** is documented in the plan but not yet emitted. FastMCP handles `tools/list` internally and exposes no public hook; an in-PR proof-of-concept would need either an ASGI response middleware that peeks JSON-RPC bodies or a fork of the FastMCP transport. Deferred to a follow-up.
+- **Handshake events lack `session_id`.** The SSE handshake (GET /sse) reaches `MCPAuthMiddleware` before FastMCP has assigned a `session_id`, so `mcp_handshake_authorized` cannot include it. Adding it requires plumbing from the URL `?session_id=` query param on subsequent messages-POST requests (or honouring an `Mcp-Session-Id` header). Until that lands, queries that link handshake events to session-level outcomes (e.g. "sessions never made a first tool call") cannot be expressed.
 - **Per-session correlation across MCP transports** (streamable HTTP vs SSE) is not yet normalized — `session_id` shape may differ once Task 5 lands.
 - **Memory growth under attack** — `_first_tool_call_seen` is bounded at 4096 sessions / 1 h TTL. A flood of unique sessions could push older entries out, causing a re-emit of `mcp_first_tool_call` for the same session if it returns after eviction. Acceptable for diagnostics; tighten if it becomes ambiguous.
+- **Skipped emit when `ctx.session_id` missing.** `emit_tool_call` returns early if FastMCP didn't assign a session id, rather than fabricating one from `id(ctx)`. The latter would double-fire the "first" event because `id()` is not stable across calls. The skip path is silent in v1 — operators won't see "broken context" sessions until we add an `mcp_tool_call_skipped` event; deferred until we observe a real case in prod logs.
 
 ## Adding new events
 

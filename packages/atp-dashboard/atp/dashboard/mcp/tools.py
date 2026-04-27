@@ -471,7 +471,7 @@ async def mcp_leave_tournament(
         with_service,
     )
 
-    emit_tool_call(ctx, tool="leave_tournament")
+    emit_tool_call(ctx, tool="mcp_leave_tournament")
     user = await resolve_user_from_ctx(ctx)
     agent_id = resolve_agent_id_from_ctx(ctx)
     async with with_service(ctx, tournament_event_bus) as service:
@@ -496,7 +496,7 @@ async def mcp_get_history(
         with_service,
     )
 
-    emit_tool_call(ctx, tool="get_history")
+    emit_tool_call(ctx, tool="mcp_get_history")
     user = await resolve_user_from_ctx(ctx)
     async with with_service(ctx, tournament_event_bus) as service:
         return await get_history(
@@ -526,7 +526,7 @@ async def mcp_list_tournaments(
         with_service,
     )
 
-    emit_tool_call(ctx, tool="list_tournaments")
+    emit_tool_call(ctx, tool="mcp_list_tournaments")
     user = await resolve_user_from_ctx(ctx)
     async with with_service(ctx, tournament_event_bus) as service:
         return await list_tournaments(
@@ -545,7 +545,7 @@ async def mcp_get_tournament(
         with_service,
     )
 
-    emit_tool_call(ctx, tool="get_tournament")
+    emit_tool_call(ctx, tool="mcp_get_tournament")
     user = await resolve_user_from_ctx(ctx)
     async with with_service(ctx, tournament_event_bus) as service:
         return await get_tournament(
@@ -565,7 +565,7 @@ async def mcp_cancel_tournament(
         with_service,
     )
 
-    emit_tool_call(ctx, tool="cancel_tournament")
+    emit_tool_call(ctx, tool="mcp_cancel_tournament")
     user = await resolve_user_from_ctx(ctx)
     async with with_service(ctx, tournament_event_bus) as service:
         return await cancel_tournament(

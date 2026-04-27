@@ -128,10 +128,19 @@ def emit_tool_call(ctx: Any, *, tool: str) -> None:
     per-session ``MCP_FIRST_TOOL_CALL`` event and pulls correlation
     ids out of the FastMCP context plus the ASGI scope.
 
-    Tolerates missing context plumbing: if either ``request_id``
-    or ``session_id`` cannot be resolved, falls back to deterministic
-    placeholders so the event still emits but is clearly diagnosable.
+    If ``ctx.session_id`` is missing, the event is **skipped**: the
+    only stable per-session key on FastMCP's context is
+    ``session_id`` itself. Falling back to ``id(ctx)`` would defeat
+    the dedup contract because ``id()`` is not stable across calls
+    (FastMCP may construct a fresh ``Context`` per tool dispatch).
+    A skipped emit is preferable to a noisy one — the cold-start
+    metrics are diagnostic, not load-bearing.
     """
+    raw_session = getattr(ctx, "session_id", None)
+    if not raw_session:
+        return
+    session_id = str(raw_session)
+
     request_id = "no-request-id"
     try:
         from fastmcp.server.dependencies import get_http_request
@@ -146,6 +155,4 @@ def emit_tool_call(ctx: Any, *, tool: str) -> None:
         # fires and operators can see the gap in tooling.
         pass
 
-    raw_session = getattr(ctx, "session_id", None) or id(ctx)
-    session_id = str(raw_session)
     maybe_emit_first_tool_call(session_id=session_id, request_id=request_id, tool=tool)
