@@ -8,7 +8,15 @@ Task 4 of `docs/superpowers/plans/2026-04-27-mcp-server-reliability.md` adds fou
 
 ## Event schema
 
-All events log via the `atp.mcp.observability` logger at `INFO` level. Each record's `LogRecord.extra` carries the structured fields below; the message body is the event name (`record.message == record.event`).
+All events log via the `atp.mcp.observability` logger at `INFO` level. The structured fields below are passed through `logger.info(msg, extra={...})` and merged onto the resulting `LogRecord` as top-level attributes (e.g. `record.request_id`, `record.duration_ms`). The message body is the event name itself (`record.message == record.event`); tests and `caplog` assertions read both directly from the record.
+
+The `ExtrasFormatter` in `packages/atp-dashboard/atp/dashboard/v2/logging_config.py` renders these as `key='value'` pairs after the message, so a typical line in container stdout looks like:
+
+```
+2026-04-27 16:32:11 INFO atp.mcp.observability mcp_handshake_started request_id='abcd1234' client_ip='10.0.0.1' user_agent='pytest-client/1.0' path='/mcp/sse'
+```
+
+JSON output (e.g. for OpenTelemetry / Loki ingestion) is a follow-up.
 
 ### `mcp_handshake_started`
 

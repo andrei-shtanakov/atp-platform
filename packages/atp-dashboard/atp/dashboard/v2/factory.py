@@ -22,6 +22,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from atp.dashboard.database import init_database
 from atp.dashboard.tournament.deadlines import run_deadline_worker
 from atp.dashboard.v2.config import DashboardConfig, get_config
+from atp.dashboard.v2.logging_config import configure_app_logging
 from atp.dashboard.v2.rate_limit import (
     JWTUserStateMiddleware,
     create_limiter,
@@ -106,6 +107,12 @@ def create_app(
     """
     if config is None:
         config = get_config()
+
+    # Configure the ``atp.*`` logger hierarchy first so any subsequent
+    # imports / setup that emit at INFO are visible. Uvicorn's default
+    # config covers only its own loggers, leaving every ``logger.info``
+    # in app code silently dropped — see ``logging_config`` docstring.
+    configure_app_logging()
 
     # Set up the FastMCP sub-app first so its lifespan can be composed
     # into the outer FastAPI lifespan. Phase 0.2 verified that Starlette
