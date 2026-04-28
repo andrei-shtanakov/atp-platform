@@ -115,11 +115,15 @@ async def _run() -> int:
                 round_lats.append(time.perf_counter() - t0)
             latencies_per_round.append(round_lats)
 
-            # Each user submits a random slot list.
+            # Each user submits a random single-interval action.
             for u in users:
-                k = rng.randint(0, 8)
-                slots = sorted(rng.sample(range(NUM_SLOTS), k))
-                await svc.submit_action(t.id, u, action={"slots": slots})
+                length = rng.randint(0, 8)
+                if length == 0:
+                    intervals: list[list[int]] = []
+                else:
+                    start = rng.randint(0, NUM_SLOTS - length)
+                    intervals = [[start, start + length - 1]]
+                await svc.submit_action(t.id, u, action={"intervals": intervals})
             await session.commit()
 
     for r_idx, lats in enumerate(latencies_per_round):

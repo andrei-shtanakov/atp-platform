@@ -33,7 +33,7 @@ def _get_best_window(
     occupancy: list[float] | np.ndarray,
     length: int,
     find_max: bool = False,
-) -> list[int]:
+) -> list[list[int]]:
     """Find the contiguous window of `length` slots with min (or max) sum.
 
     Args:
@@ -42,7 +42,9 @@ def _get_best_window(
         find_max: If True, find the maximum-sum window instead.
 
     Returns:
-        List of slot indices forming the chosen window, or [] if impossible.
+        Single-interval action ``[[start, end]]`` (inclusive end), or
+        ``[]`` ("stay home") if a window of the requested length cannot
+        fit. Matches the canonical El Farol interval action shape.
     """
     data = list(occupancy)
     n = len(data)
@@ -61,7 +63,7 @@ def _get_best_window(
             best_sum = window_sum
             best_start = i
 
-    return list(range(best_start, best_start + length))
+    return [[best_start, best_start + length - 1]]
 
 
 def _history_arrays(observation: Observation) -> list[list[float]]:
@@ -104,6 +106,15 @@ class Traditionalist(Strategy):
         return _get_best_window(yesterday, self._window_size, find_max=False)
 
 
+def _midday_interval(num_slots: int, window_size: int) -> list[list[int]]:
+    """Single contiguous interval starting near midday."""
+    mid = num_slots // 4
+    end = min(mid + window_size, num_slots) - 1
+    if end < mid:
+        return []
+    return [[mid, end]]
+
+
 class TrendFollower(Strategy):
     """Choose the quietest window by moving average over the past week.
 
@@ -127,8 +138,7 @@ class TrendFollower(Strategy):
         history = _history_arrays(observation)
         slots = _num_slots(observation)
         if not history:
-            mid = slots // 4
-            return list(range(mid, mid + self._window_size))
+            return _midday_interval(slots, self._window_size)
         data = np.array(history[-self._lookback :])
         avg = np.mean(data, axis=0).tolist()
         return _get_best_window(avg, self._window_size, find_max=False)
@@ -157,7 +167,7 @@ class Contrarian(Strategy):
         if not history:
             # Default to evening on day 0
             start = max(0, slots - self._window_size)
-            return list(range(start, slots))
+            return [[start, slots - 1]]
         yesterday = history[-1]
         return _get_best_window(yesterday, self._window_size, find_max=True)
 
@@ -195,7 +205,10 @@ class Gambler(Strategy):
         length = self._rng.randint(self._min_window, self._max_window)
         max_start = max(0, slots - length)
         start = self._rng.randint(0, max_start)
-        return list(range(start, min(start + length, slots)))
+        end = min(start + length, slots) - 1
+        if end < start:
+            return []
+        return [[start, end]]
 
     def reset(self) -> None:
         self._rng = random.Random(self._seed)
@@ -229,8 +242,7 @@ class SmartPredictor(Strategy):
         slots = _num_slots(observation)
         if len(history) < 2:
             if not history:
-                mid = slots // 4
-                return list(range(mid, mid + self._window_size))
+                return _midday_interval(slots, self._window_size)
             return _get_best_window(history[-1], self._window_size, find_max=False)
 
         data = np.array(history[-self._lookback :])
@@ -285,35 +297,27 @@ class Scout(Strategy):
         hi = min(hi, slots - 1)
         recon_slot = self._rng.randint(lo, hi)
 
-        # --- Phase 1: always attend the recon slot ---
-        planned: list[int] = [recon_slot]
+        # Recon slot as a single-point interval [recon, recon].
+        intervals: list[list[int]] = [[recon_slot, recon_slot]]
 
-        # --- Phase 2: decide the main visit ---
         if history:
             yesterday_at_recon = history[-1][recon_slot]
             if yesterday_at_recon < self._threshold:
-                # Bar was quiet at recon time → plan a long main visit after recon
+                # Bar was quiet at recon time → plan a long main visit
+                # starting two slots after recon (one empty gap so the
+                # intervals stay non-adjacent).
                 start = recon_slot + 2
-                if start + self._main_window_size <= slots:
-                    planned.extend(range(start, start + self._main_window_size))
-                elif start < slots:
-                    planned.extend(range(start, slots))
+                end = min(start + self._main_window_size, slots) - 1
+                if start < slots and end >= start:
+                    intervals.append([start, end])
             else:
-                # Bar was crowded → sneak in only at the end
+                # Bar was crowded → sneak in only at the end.
                 tail = max(0, slots - 2)
-                planned.extend(range(tail, slots))
-        else:
-            # First day: no history, just attend the recon slot
-            pass
+                end = slots - 1
+                if tail > recon_slot + 1 and end >= tail:
+                    intervals.append([tail, end])
 
-        # Deduplicate while preserving order
-        seen: set[int] = set()
-        result: list[int] = []
-        for s in planned:
-            if s not in seen and 0 <= s < slots:
-                seen.add(s)
-                result.append(s)
-        return result
+        return intervals
 
     def reset(self) -> None:
         self._rng = random.Random(self._seed)

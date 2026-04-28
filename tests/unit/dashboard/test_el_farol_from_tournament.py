@@ -60,13 +60,13 @@ async def test_single_round_two_builtins(db_session: AsyncSession) -> None:
             Action(
                 round_id=r.id,
                 participant_id=p1.id,
-                action_data={"slots": [0, 1]},
+                action_data={"intervals": [[0, 1]]},
                 payoff=2.0,
             ),
             Action(
                 round_id=r.id,
                 participant_id=p2.id,
-                action_data={"slots": [1, 2]},
+                action_data={"intervals": [[1, 2]]},
                 payoff=1.0,
             ),
         ]
@@ -132,9 +132,9 @@ def test_build_rounds_computes_slot_attendance_and_over_slots() -> None:
     # safe outside a session — no DB binding required.
     actions_by_round: dict[int, list[tuple[int, Action]]] = {
         1: [
-            (0, Action(action_data={"slots": [0]}, payoff=1.0)),
-            (1, Action(action_data={"slots": [0]}, payoff=-1.0)),
-            (2, Action(action_data={"slots": [5]}, payoff=1.0)),
+            (0, Action(action_data={"intervals": [[0, 0]]}, payoff=1.0)),
+            (1, Action(action_data={"intervals": [[0, 0]]}, payoff=-1.0)),
+            (2, Action(action_data={"intervals": [[5, 5]]}, payoff=1.0)),
         ],
     }
 
@@ -172,7 +172,7 @@ def test_build_decision_forwards_all_tier2_telemetry_fields() -> None:
     """
     # GIVEN an Action carrying every tier-2 telemetry column
     action = Action(
-        action_data={"slots": [3]},
+        action_data={"intervals": [[3, 3]]},
         payoff=1.0,
         model_id="gpt-4o-mini-2024-07-18",
         tokens_in=512,
@@ -206,7 +206,7 @@ def test_build_decision_preserves_none_for_unset_telemetry() -> None:
     because the drawer differentiates "—" (missing) from "0" (measured).
     """
     # GIVEN an Action with telemetry columns left NULL
-    action = Action(action_data={"slots": [0]}, payoff=-1.0)
+    action = Action(action_data={"intervals": [[0, 0]]}, payoff=-1.0)
 
     # WHEN we project it
     decision = _build_decision_from_action(
@@ -238,7 +238,7 @@ def test_build_rounds_threads_telemetry_through_to_decisions() -> None:
             (
                 0,
                 Action(
-                    action_data={"slots": [1]},
+                    action_data={"intervals": [[1, 1]]},
                     payoff=1.0,
                     model_id="gpt-4o",
                     tokens_in=100,
@@ -250,7 +250,7 @@ def test_build_rounds_threads_telemetry_through_to_decisions() -> None:
             (
                 1,
                 Action(
-                    action_data={"slots": [2]},
+                    action_data={"intervals": [[2, 2]]},
                     payoff=1.0,
                     model_id="claude-3-5-sonnet",
                     tokens_in=300,
@@ -282,6 +282,70 @@ def test_build_rounds_threads_telemetry_through_to_decisions() -> None:
     assert decs["a2"].tokens_out == 75
     assert decs["a2"].cost_usd == 0.02
     assert decs["a2"].decide_ms == 450
+
+
+# ---------------------------------------------------------------------------
+# intervals projection (regression: drawer + make_move(...) example)
+# ---------------------------------------------------------------------------
+
+
+def test_build_decision_pads_single_interval_to_two_tuple() -> None:
+    """A single interval must round-trip and be padded to the documented
+    2-tuple shape — the drawer and generated ``make_move(...)`` example
+    read both slots off ``DashboardDecision.intervals``.
+    """
+    # GIVEN an Action with one interval
+    action = Action(action_data={"intervals": [[3, 6]]}, payoff=1.0)
+
+    # WHEN we project it
+    decision = _build_decision_from_action(
+        agent_id="alice",
+        action=action,
+        slot_attendance=[0] * 16,
+        capacity_threshold=2,
+    )
+
+    # THEN the single pair is preserved and the second slot is empty
+    assert decision.intervals == [[3, 6], []]
+
+
+def test_build_decision_preserves_two_intervals_in_order() -> None:
+    """Two intervals must round-trip verbatim and in original order."""
+    # GIVEN an Action with two distinct intervals
+    action = Action(
+        action_data={"intervals": [[0, 1], [10, 12]]},
+        payoff=1.0,
+    )
+
+    # WHEN we project it
+    decision = _build_decision_from_action(
+        agent_id="alice",
+        action=action,
+        slot_attendance=[0] * 16,
+        capacity_threshold=2,
+    )
+
+    # THEN both pairs land in the projection unchanged and in order
+    assert decision.intervals == [[0, 1], [10, 12]]
+
+
+def test_build_decision_empty_intervals_stays_empty() -> None:
+    """Stay-home (no intervals) must project to ``[[], []]`` so the
+    drawer renders an empty interval pair rather than a synthetic one.
+    """
+    # GIVEN an Action with no intervals (stay-home)
+    action = Action(action_data={"intervals": []}, payoff=0.0)
+
+    # WHEN we project it
+    decision = _build_decision_from_action(
+        agent_id="alice",
+        action=action,
+        slot_attendance=[0] * 16,
+        capacity_threshold=2,
+    )
+
+    # THEN the projection is the documented empty 2-tuple
+    assert decision.intervals == [[], []]
 
 
 @pytest.mark.anyio
@@ -369,13 +433,13 @@ async def test_incomplete_round_is_skipped(db_session: AsyncSession) -> None:
             Action(
                 round_id=r_done.id,
                 participant_id=p1.id,
-                action_data={"slots": [0]},
+                action_data={"intervals": [[0, 0]]},
                 payoff=1.0,
             ),
             Action(
                 round_id=r_done.id,
                 participant_id=p2.id,
-                action_data={"slots": [1]},
+                action_data={"intervals": [[1, 1]]},
                 payoff=1.0,
             ),
         ]

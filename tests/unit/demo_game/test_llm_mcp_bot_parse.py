@@ -49,14 +49,21 @@ def _bos_state(preferred: str = "B") -> dict:
     }
 
 
-def _el_farol_state(num_slots: int = 16, max_per_day: int = 8) -> dict:
+def _el_farol_state(
+    num_slots: int = 16,
+    max_total_slots: int = 8,
+    max_intervals: int = 2,
+) -> dict:
     return {
         "game_type": "el_farol",
         "round_number": 1,
         "total_rounds": 5,
         "your_history": [],
         "num_slots": num_slots,
-        "action_schema": {"max_length": max_per_day},
+        "action_schema": {
+            "max_intervals": max_intervals,
+            "max_total_slots": max_total_slots,
+        },
         "pending_submission": True,
     }
 
@@ -98,9 +105,22 @@ def test_prompt_bos_surfaces_your_preferred():
 def test_prompt_el_farol_mentions_slot_bounds():
     from bots.llm_prompts import build_user_prompt
 
-    prompt = build_user_prompt(_el_farol_state(num_slots=16, max_per_day=8))
+    prompt = build_user_prompt(
+        _el_farol_state(num_slots=16, max_total_slots=8, max_intervals=2)
+    )
+    # num_slots, max_total_slots, and max_intervals all surface in the prompt
     assert "16" in prompt
     assert "8" in prompt
+    assert "2" in prompt
+
+
+def test_prompt_el_farol_asks_for_intervals_shape():
+    from bots.llm_prompts import build_user_prompt
+
+    prompt = build_user_prompt(_el_farol_state())
+    # Prompt must instruct the LLM to use the canonical intervals shape.
+    assert "intervals" in prompt
+    assert "[start, end]" in prompt
 
 
 # ---- parse_llm_response ----
@@ -130,12 +150,38 @@ def test_parse_bos_accepts_either_letter():
     assert out == {"choice": "A", "reasoning": "yielding to partner"}
 
 
-def test_parse_el_farol_happy_slots_key():
+def test_parse_el_farol_happy_intervals_key():
     from bots.llm_prompts import parse_llm_response
 
-    raw = '{"slots": [0, 3, 7], "reasoning": "off-peak"}'
+    raw = '{"intervals": [[0, 2], [5, 7]], "reasoning": "off-peak"}'
     out = parse_llm_response(raw, _el_farol_state())
-    assert out == {"slots": [0, 3, 7], "reasoning": "off-peak"}
+    assert out == {"intervals": [[0, 2], [5, 7]], "reasoning": "off-peak"}
+
+
+def test_parse_el_farol_orders_intervals_by_start():
+    from bots.llm_prompts import parse_llm_response
+
+    # Out-of-order pairs are normalized to ascending start.
+    raw = '{"intervals": [[5, 7], [0, 2]]}'
+    out = parse_llm_response(raw, _el_farol_state())
+    assert out == {"intervals": [[0, 2], [5, 7]]}
+
+
+def test_parse_el_farol_empty_intervals_is_valid():
+    from bots.llm_prompts import parse_llm_response
+
+    # Stay-home is a valid action.
+    raw = '{"intervals": [], "reasoning": "stay home"}'
+    out = parse_llm_response(raw, _el_farol_state())
+    assert out == {"intervals": [], "reasoning": "stay home"}
+
+
+def test_parse_el_farol_legacy_slots_key_returns_none():
+    from bots.llm_prompts import parse_llm_response
+
+    # Legacy ``slots`` key has no fallback — hard cut.
+    raw = '{"slots": [0, 3, 7], "reasoning": "off-peak"}'
+    assert parse_llm_response(raw, _el_farol_state()) is None
 
 
 def test_parse_json_inside_markdown_fence():
@@ -166,26 +212,58 @@ def test_parse_missing_action_returns_none():
     assert parse_llm_response(raw, _pd_state()) is None
 
 
-def test_parse_el_farol_rejects_out_of_range_slot():
+def test_parse_el_farol_rejects_out_of_range_pair():
     from bots.llm_prompts import parse_llm_response
 
-    raw = '{"slots": [0, 99], "reasoning": "bad slot"}'
+    raw = '{"intervals": [[0, 99]], "reasoning": "bad slot"}'
     assert parse_llm_response(raw, _el_farol_state(num_slots=16)) is None
 
 
-def test_parse_el_farol_rejects_duplicate_slots():
+def test_parse_el_farol_rejects_overlapping_intervals():
     from bots.llm_prompts import parse_llm_response
 
-    raw = '{"slots": [0, 0, 3], "reasoning": "dup"}'
+    raw = '{"intervals": [[0, 4], [3, 7]], "reasoning": "overlap"}'
     assert parse_llm_response(raw, _el_farol_state()) is None
 
 
-def test_parse_el_farol_rejects_too_many_slots():
+def test_parse_el_farol_rejects_adjacent_intervals():
     from bots.llm_prompts import parse_llm_response
 
-    # max_per_day=8 → 9 slots must be rejected
-    raw = '{"slots": [0,1,2,3,4,5,6,7,8], "reasoning": "greedy"}'
-    assert parse_llm_response(raw, _el_farol_state(max_per_day=8)) is None
+    # [0,2] and [3,5] are adjacent (gap=0); must be rejected.
+    raw = '{"intervals": [[0, 2], [3, 5]], "reasoning": "adjacent"}'
+    assert parse_llm_response(raw, _el_farol_state()) is None
+
+
+def test_parse_el_farol_rejects_too_many_intervals():
+    from bots.llm_prompts import parse_llm_response
+
+    # max_intervals=2 → 3 intervals must be rejected.
+    raw = '{"intervals": [[0, 0], [2, 2], [4, 4]]}'
+    assert parse_llm_response(raw, _el_farol_state(max_intervals=2)) is None
+
+
+def test_parse_el_farol_rejects_too_many_total_slots():
+    from bots.llm_prompts import parse_llm_response
+
+    # max_total_slots=8 → covering 9 slots must be rejected.
+    raw = '{"intervals": [[0, 8]], "reasoning": "greedy"}'
+    assert parse_llm_response(raw, _el_farol_state(max_total_slots=8)) is None
+
+
+def test_parse_el_farol_rejects_reversed_pair():
+    from bots.llm_prompts import parse_llm_response
+
+    # end < start is invalid.
+    raw = '{"intervals": [[5, 2]]}'
+    assert parse_llm_response(raw, _el_farol_state()) is None
+
+
+def test_parse_el_farol_rejects_non_pair_shape():
+    from bots.llm_prompts import parse_llm_response
+
+    # Triple instead of [start, end] pair.
+    raw = '{"intervals": [[0, 1, 2]]}'
+    assert parse_llm_response(raw, _el_farol_state()) is None
 
 
 def test_parse_truncates_long_reasoning():
@@ -228,15 +306,22 @@ def test_random_action_pd_returns_valid_choice():
     assert "reasoning" not in out  # random fallback carries no rationale
 
 
-def test_random_action_el_farol_respects_bounds():
+def test_random_action_el_farol_returns_intervals_shape():
     from bots.llm_prompts import random_action
 
     rng = random.Random(42)
-    out = random_action(_el_farol_state(num_slots=16, max_per_day=8), rng)
-    assert "slots" in out
-    assert all(0 <= s < 16 for s in out["slots"])
-    assert len(out["slots"]) <= 8
-    assert len(set(out["slots"])) == len(out["slots"])  # unique
+    out = random_action(_el_farol_state(num_slots=16, max_total_slots=8), rng)
+    # Canonical shape: {"intervals": [[start, end]]} or {"intervals": []}
+    assert "intervals" in out
+    assert "slots" not in out
+    intervals = out["intervals"]
+    assert isinstance(intervals, list)
+    if intervals:
+        # At most one interval, bounded by num_slots and max_total_slots.
+        assert len(intervals) == 1
+        start, end = intervals[0]
+        assert 0 <= start <= end < 16
+        assert (end - start + 1) <= 8
 
 
 def test_random_action_unknown_game_type_raises():

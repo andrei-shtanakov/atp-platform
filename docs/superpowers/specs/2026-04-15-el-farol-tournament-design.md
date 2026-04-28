@@ -5,6 +5,12 @@
 **Context:** Brainstorm session 2026-04-15
 **Follow-up phase:** C — game-agnostic tournament refactor (out of scope here)
 
+> **Historical note (2026-04-28):** the wire and game-env contract for El
+> Farol moves was migrated to intervals only — `{"intervals": [[start,
+> end], ...]}`. The legacy flat slot list (`{"slots": [...]}`) shown in
+> code samples below is no longer accepted. See
+> `docs/games/rules/el-farol-bar.en.md` for the current contract.
+
 ## 1. Goal and sequencing
 
 Ship El Farol Bar Problem as the second `game_type` in the ATP MCP tournament

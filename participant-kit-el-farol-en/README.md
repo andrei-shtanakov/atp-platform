@@ -44,7 +44,8 @@ Fill `.env`:
    - Execute `./run.sh`.
    - You should see `joined:` and then per-round move logs.
 4. **Confirm action validity**
-   - Make sure submitted `slots` stay within allowed range.
+   - Submit moves as `{"intervals": [[start, end], ...]}` — up to two
+     non-overlapping, non-adjacent inclusive `[start, end]` pairs.
    - If you get `invalid action`, inspect `action_schema` from `get_current_state`.
 5. **Verify in UI**
    - In tournament details, your agent should appear in participants and round activity should update.
@@ -55,10 +56,11 @@ Fill `.env`:
 
 This bot uses a pure random strategy:
 
-1. Reads `num_slots` and `action_schema.max_length` from `get_current_state`.
-2. Picks a random number of visits between `0` and `max_length`.
-3. Samples unique random slots in range `[0, num_slots - 1]`.
-4. Submits `{"slots": [...]}` via `make_move`.
+1. Reads `num_slots`, `action_schema.max_intervals`, and
+   `action_schema.max_total_slots` from `get_current_state`.
+2. Picks 0, 1, or 2 random intervals respecting the schema's
+   `max_total_slots` cap and the non-adjacency constraint.
+3. Submits `{"intervals": [[start, end], ...]}` via `make_move`.
 
 This is useful as a baseline participant implementation.
 

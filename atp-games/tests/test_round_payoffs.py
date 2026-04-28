@@ -50,7 +50,7 @@ class MorningAttendee(Strategy):
         return "morning_attendee"
 
     def choose_action(self, observation: Observation) -> Any:
-        return [0, 1, 2]
+        return [[0, 2]]
 
 
 class EveningAttendee(Strategy):
@@ -61,7 +61,7 @@ class EveningAttendee(Strategy):
         return "evening_attendee"
 
     def choose_action(self, observation: Observation) -> Any:
-        return [13, 14, 15]
+        return [[13, 15]]
 
 
 # ---------------------------------------------------------------------------

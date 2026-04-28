@@ -21,11 +21,17 @@ In this codebase the game is **repeated** with **simultaneous** moves (`MoveOrde
 
 ## Action
 
-- Each day every player chooses a **list of slot indices** — integers in `[0, num_slots - 1]`.
-- Indices in the list must be **unique**.
-- At most **`MAX_SLOTS_PER_DAY = 8`** slots per day.
-- An empty list `[]` means “stay home” that day (no slot visited).
-- Invalid input is mapped to a safe list via `sanitize` (duplicates, out-of-range values, non-lists, etc.).
+- Each day every player submits `{"intervals": [[start, end], ...]}` —
+  a list of inclusive `[start, end]` slot-index pairs.
+- At most **2** intervals per day, covering at most
+  **`MAX_SLOTS_PER_DAY = 8`** slots in total.
+- Intervals must be **non-overlapping** and **non-adjacent** (at least
+  one empty slot between any two intervals).
+- Slot indices must lie in `[0, num_slots - 1]`.
+- An empty list `{"intervals": []}` (or bare `[]`) means “stay home” that
+  day (no slot visited).
+- The legacy flat-slot shape (`{"slots": [...]}`) is no longer accepted —
+  invalid input is mapped to a safe action via `sanitize`.
 
 Default config: `num_slots = 16`, `slot_duration = 0.5` h — i.e. sixteen half-hour slots per day (eight hours total) unless you change the config.
 

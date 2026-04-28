@@ -1,19 +1,14 @@
-"""Tests for ``ElFarolAction`` payload validation, including the
-legacy ``slots`` -> ``intervals`` normalizer.
+"""Tests for ``ElFarolAction`` payload validation.
 
-The ``_accept_legacy_slots`` model_validator runs BEFORE field validation
-(and crucially before ``extra='forbid'``) so pre-1704d clients sending
-``{"slots": [...]}`` continue to work after the wire-format flip to
-intervals (commit 1704da7). The normalizer:
+The legacy ``{"slots": [...]}`` wire shape is no longer accepted —
+``extra="forbid"`` rejects payloads carrying an unknown ``slots`` key.
 
-  * sorts + dedupes the input slot list,
-  * run-length-encodes consecutive integers into ``[start, end]`` pairs,
-  * drops the original ``slots`` key,
-  * passes the resulting intervals through the standard validation pipeline.
+Coverage focuses on the ``_validate_intervals`` field validator:
 
-When the input cannot be expressed as ``<= _MAX_INTERVALS_PER_DAY``
-non-adjacent runs (e.g. ``[0, 2, 4]``), the standard intervals validator
-surfaces a clean error rather than silently accepting bad data.
+  * total covered slots ``<= MAX_SLOTS_PER_DAY``
+  * each pair is well-formed ``[start, end]`` with ``0 <= start <= end``
+  * pairs are non-overlapping AND non-adjacent
+  * the normal happy paths (single pair, two-pair, empty list).
 """
 
 from __future__ import annotations
@@ -24,107 +19,23 @@ from pydantic import ValidationError
 from atp.dashboard.tournament.schemas import ActionTelemetry, ElFarolAction
 
 # ---------------------------------------------------------------------------
-# Happy-path normalization: slots -> intervals
+# Legacy "slots" payload is rejected as an unknown field
 # ---------------------------------------------------------------------------
 
 
-def test_legacy_slots_two_consecutive_become_single_interval() -> None:
-    """``[0, 1]`` is one run of two slots -> one ``[0, 1]`` pair."""
-    # GIVEN a legacy slots payload with two consecutive slots
-    # WHEN we instantiate ElFarolAction
-    action = ElFarolAction.model_validate({"game_type": "el_farol", "slots": [0, 1]})
-
-    # THEN the normalizer produces a single inclusive interval
-    assert action.intervals == [[0, 1]]
-
-
-def test_legacy_slots_single_slot_becomes_single_point_interval() -> None:
-    """A single slot ``[0]`` is a degenerate run of length 1 -> ``[0, 0]``."""
-    # GIVEN one slot
+def test_legacy_slots_payload_rejected_as_extra_field() -> None:
+    """``extra="forbid"`` must reject pre-cut clients that send ``slots``."""
+    # GIVEN a legacy slots payload (without intervals)
     # WHEN we validate
-    action = ElFarolAction.model_validate({"game_type": "el_farol", "slots": [0]})
-
-    # THEN we get a single-point interval (start == end)
-    assert action.intervals == [[0, 0]]
-
-
-def test_legacy_slots_empty_list_means_stay_home() -> None:
-    """Empty slots ``[]`` is the canonical "stay home" action -> ``intervals=[]``."""
-    # GIVEN an empty slot list
-    # WHEN we validate
-    action = ElFarolAction.model_validate({"game_type": "el_farol", "slots": []})
-
-    # THEN intervals is empty (the canonical stay-home shape)
-    assert action.intervals == []
+    # THEN ValidationError fires for the extra field
+    with pytest.raises(ValidationError) as exc:
+        ElFarolAction.model_validate({"game_type": "el_farol", "slots": [0, 1, 2]})
+    msg = str(exc.value).lower()
+    assert "extra" in msg or "forbid" in msg or "not permitted" in msg
 
 
-def test_legacy_slots_out_of_order_are_sorted_then_run_length_encoded() -> None:
-    """Unsorted input -> sorted ascending then RLE'd into multiple runs."""
-    # GIVEN slots given out of order with two distinct runs
-    # WHEN we validate
-    action = ElFarolAction.model_validate(
-        {"game_type": "el_farol", "slots": [4, 5, 0, 1]}
-    )
-
-    # THEN both runs are produced in ascending start order
-    assert action.intervals == [[0, 1], [4, 5]]
-
-
-def test_legacy_slots_duplicates_are_deduped_before_rle() -> None:
-    """Duplicate slots collapse — we dedupe via a set before encoding."""
-    # GIVEN slots with duplicates that would otherwise distort the RLE
-    # WHEN we validate
-    action = ElFarolAction.model_validate(
-        {"game_type": "el_farol", "slots": [0, 1, 1, 2]}
-    )
-
-    # THEN dedupe produces {0, 1, 2}, encoded as a single run
-    assert action.intervals == [[0, 2]]
-
-
-# ---------------------------------------------------------------------------
-# Errors propagate through the standard intervals validation pipeline
-# ---------------------------------------------------------------------------
-
-
-def test_legacy_slots_too_many_runs_fails_intervals_validation() -> None:
-    """``[0, 2, 4]`` requires three non-adjacent intervals — exceeds
-    ``_MAX_INTERVALS_PER_DAY=2``. The normalizer hands off to the
-    standard validator which surfaces a clean pydantic error."""
-    # GIVEN a slot pattern that produces 3 non-adjacent runs
-    # WHEN we validate
-    # THEN the standard intervals validator rejects it
-    with pytest.raises(ValidationError):
-        ElFarolAction.model_validate({"game_type": "el_farol", "slots": [0, 2, 4]})
-
-
-def test_legacy_slots_exceeds_max_slots_per_day_fails_validation() -> None:
-    """9 consecutive slots would RLE to a single interval covering 9
-    slots — over ``MAX_SLOTS_PER_DAY=8``. Standard validator catches it."""
-    # GIVEN 9 consecutive slots (over the per-day budget)
-    # WHEN we validate
-    # THEN intervals validation rejects (total slots > MAX_SLOTS_PER_DAY)
-    with pytest.raises(ValidationError):
-        ElFarolAction.model_validate(
-            {
-                "game_type": "el_farol",
-                "slots": [0, 1, 2, 3, 4, 5, 6, 7, 8],
-            }
-        )
-
-
-# ---------------------------------------------------------------------------
-# Pass-through cases: normalizer must not interfere
-# ---------------------------------------------------------------------------
-
-
-def test_both_intervals_and_slots_present_intervals_wins_then_extras_forbid() -> None:
-    """When ``intervals`` is already present the normalizer is a no-op,
-    leaving the spurious ``slots`` key behind. ``extra='forbid'`` then
-    rejects the payload — clients can't smuggle an extra key past us."""
-    # GIVEN both shapes in the same payload
-    # WHEN we validate
-    # THEN intervals is used, leftover ``slots`` triggers extras-forbid
+def test_intervals_plus_slots_rejected_as_extra_field() -> None:
+    """Even with valid intervals present, an extra ``slots`` key is rejected."""
     with pytest.raises(ValidationError) as exc:
         ElFarolAction.model_validate(
             {
@@ -133,65 +44,39 @@ def test_both_intervals_and_slots_present_intervals_wins_then_extras_forbid() ->
                 "slots": [3],
             }
         )
-    # Sanity: the failure is the extras-forbid, not an intervals-shape error
     msg = str(exc.value).lower()
     assert "extra" in msg or "forbid" in msg or "not permitted" in msg
 
 
-def test_native_intervals_unchanged_when_no_slots_key() -> None:
-    """If ``slots`` is absent the normalizer must be a strict no-op —
-    the native intervals path keeps working unchanged."""
-    # GIVEN a native intervals payload
-    # WHEN we validate
+# ---------------------------------------------------------------------------
+# Happy paths for the canonical intervals shape
+# ---------------------------------------------------------------------------
+
+
+def test_native_intervals_single_pair() -> None:
     action = ElFarolAction.model_validate(
         {"game_type": "el_farol", "intervals": [[0, 1]]}
     )
-
-    # THEN intervals are preserved verbatim
     assert action.intervals == [[0, 1]]
 
 
-def test_legacy_slots_non_list_falls_through_to_standard_error() -> None:
-    """Non-list ``slots`` (e.g. a string) means the normalizer can't
-    safely RLE — defer to the standard pipeline so the user sees the
-    canonical "intervals: Field required" error rather than a
-    misleading slot-coercion message."""
-    # GIVEN a malformed slots field (not a list)
-    # WHEN we validate
-    # THEN the normalizer falls through and intervals is reported missing
-    with pytest.raises(ValidationError) as exc:
-        ElFarolAction.model_validate({"game_type": "el_farol", "slots": "not a list"})
-    msg = str(exc.value).lower()
-    assert "intervals" in msg
+def test_native_intervals_two_non_adjacent_pairs() -> None:
+    action = ElFarolAction.model_validate(
+        {"game_type": "el_farol", "intervals": [[0, 1], [3, 4]]}
+    )
+    assert action.intervals == [[0, 1], [3, 4]]
 
 
-def test_legacy_slots_with_non_int_values_falls_through_to_standard_error() -> None:
-    """If any slot can't be coerced to int, defer to the standard
-    pipeline — the user gets the canonical pydantic error instead of
-    a half-converted intervals list."""
-    # GIVEN a slot list with a non-int element
-    # WHEN we validate
-    # THEN the normalizer falls through and intervals is reported missing
-    with pytest.raises(ValidationError) as exc:
-        ElFarolAction.model_validate({"game_type": "el_farol", "slots": [0, "x"]})
-    msg = str(exc.value).lower()
-    assert "intervals" in msg
+def test_native_intervals_empty_means_stay_home() -> None:
+    action = ElFarolAction.model_validate({"game_type": "el_farol", "intervals": []})
+    assert action.intervals == []
 
 
-# ---------------------------------------------------------------------------
-# Companion fields survive normalization
-# ---------------------------------------------------------------------------
-
-
-def test_legacy_slots_preserves_reasoning_and_telemetry_alongside() -> None:
-    """The normalizer must only touch ``slots`` -> ``intervals``;
-    ``reasoning`` and ``telemetry`` ride along untouched."""
-    # GIVEN a legacy slots payload bundled with reasoning + telemetry
-    # WHEN we validate
+def test_native_intervals_preserves_reasoning_and_telemetry() -> None:
     action = ElFarolAction.model_validate(
         {
             "game_type": "el_farol",
-            "slots": [0, 1],
+            "intervals": [[0, 1]],
             "reasoning": "hi",
             "telemetry": {
                 "model_id": "gpt-4o-mini",
@@ -202,10 +87,65 @@ def test_legacy_slots_preserves_reasoning_and_telemetry_alongside() -> None:
             },
         }
     )
-
-    # THEN intervals were produced AND companion fields are preserved
     assert action.intervals == [[0, 1]]
     assert action.reasoning == "hi"
     assert isinstance(action.telemetry, ActionTelemetry)
     assert action.telemetry.model_id == "gpt-4o-mini"
     assert action.telemetry.decide_ms == 234
+
+
+# ---------------------------------------------------------------------------
+# _validate_intervals: structural validation
+# ---------------------------------------------------------------------------
+
+
+def test_intervals_total_slots_over_max_rejected() -> None:
+    # GIVEN a single pair covering 9 consecutive slots > MAX_SLOTS_PER_DAY=8
+    with pytest.raises(ValidationError) as exc:
+        ElFarolAction.model_validate({"game_type": "el_farol", "intervals": [[0, 8]]})
+    assert "max is" in str(exc.value).lower() or "slots" in str(exc.value).lower()
+
+
+def test_intervals_adjacent_pairs_rejected() -> None:
+    # GIVEN two pairs with no empty slot between them
+    with pytest.raises(ValidationError) as exc:
+        ElFarolAction.model_validate(
+            {"game_type": "el_farol", "intervals": [[0, 1], [2, 3]]}
+        )
+    assert "overlap" in str(exc.value).lower() or "adjacent" in str(exc.value).lower()
+
+
+def test_intervals_overlapping_pairs_rejected() -> None:
+    with pytest.raises(ValidationError):
+        ElFarolAction.model_validate(
+            {"game_type": "el_farol", "intervals": [[0, 4], [3, 6]]}
+        )
+
+
+def test_intervals_start_after_end_rejected() -> None:
+    with pytest.raises(ValidationError):
+        ElFarolAction.model_validate({"game_type": "el_farol", "intervals": [[5, 2]]})
+
+
+def test_intervals_negative_start_rejected() -> None:
+    with pytest.raises(ValidationError):
+        ElFarolAction.model_validate({"game_type": "el_farol", "intervals": [[-1, 2]]})
+
+
+def test_intervals_too_many_pairs_rejected() -> None:
+    # GIVEN three intervals (max is _MAX_INTERVALS_PER_DAY=2)
+    with pytest.raises(ValidationError):
+        ElFarolAction.model_validate(
+            {
+                "game_type": "el_farol",
+                "intervals": [[0, 0], [2, 2], [4, 4]],
+            }
+        )
+
+
+def test_intervals_bad_pair_shape_rejected() -> None:
+    # GIVEN a triple instead of a [start, end] pair
+    with pytest.raises(ValidationError):
+        ElFarolAction.model_validate(
+            {"game_type": "el_farol", "intervals": [[0, 1, 2]]}
+        )

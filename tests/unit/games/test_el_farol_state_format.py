@@ -2,7 +2,7 @@
 
 import pytest
 from game_envs.core.errors import ValidationError
-from game_envs.games.el_farol import MAX_SLOTS_PER_DAY, ElFarolBar, ElFarolConfig
+from game_envs.games.el_farol import ElFarolBar, ElFarolConfig
 
 
 def _game(n: int = 5, num_slots: int = 16) -> ElFarolBar:
@@ -16,79 +16,68 @@ def _game(n: int = 5, num_slots: int = 16) -> ElFarolBar:
     )
 
 
-def test_validate_action_accepts_sorted_unique_slots():
+def test_validate_action_accepts_intervals():
     g = _game(num_slots=16)
-    assert g.validate_action({"slots": [3, 7, 0]}) == {"slots": [0, 3, 7]}
+    assert g.validate_action({"intervals": [[3, 7]]}) == {"intervals": [[3, 7]]}
 
 
-def test_validate_action_accepts_empty_list():
+def test_validate_action_orders_intervals():
+    g = _game(num_slots=16)
+    assert g.validate_action({"intervals": [[10, 12], [0, 1]]}) == {
+        "intervals": [[0, 1], [10, 12]]
+    }
+
+
+def test_validate_action_accepts_empty_intervals():
     g = _game()
-    assert g.validate_action({"slots": []}) == {"slots": []}
+    assert g.validate_action({"intervals": []}) == {"intervals": []}
 
 
-def test_validate_action_rejects_duplicates():
+def test_validate_action_rejects_overlapping_intervals():
     g = _game()
-    with pytest.raises(ValidationError, match="unique"):
-        g.validate_action({"slots": [1, 2, 2]})
+    with pytest.raises(ValidationError, match="overlap or are adjacent"):
+        g.validate_action({"intervals": [[0, 3], [2, 5]]})
+
+
+def test_validate_action_rejects_adjacent_intervals():
+    g = _game()
+    with pytest.raises(ValidationError, match="overlap or are adjacent"):
+        g.validate_action({"intervals": [[0, 2], [3, 5]]})
 
 
 def test_validate_action_rejects_out_of_range():
     g = _game(num_slots=16)
     with pytest.raises(ValidationError, match="out of range"):
-        g.validate_action({"slots": [16]})
+        g.validate_action({"intervals": [[0, 16]]})
 
 
 def test_validate_action_rejects_negative():
     g = _game(num_slots=16)
     with pytest.raises(ValidationError, match="out of range"):
-        g.validate_action({"slots": [-1]})
+        g.validate_action({"intervals": [[-1, 2]]})
 
 
-def test_validate_action_rejects_too_many():
-    g = _game(num_slots=16)
-    too_many = list(range(MAX_SLOTS_PER_DAY + 1))
-    with pytest.raises(ValidationError, match="at most"):
-        g.validate_action({"slots": too_many})
-
-
-def test_validate_action_rejects_non_list():
+def test_validate_action_rejects_legacy_slots_payload():
     g = _game()
-    with pytest.raises(ValidationError):
-        g.validate_action({"slots": "not-a-list"})
+    with pytest.raises(ValidationError, match="intervals"):
+        g.validate_action({"slots": [0, 1, 2]})
 
 
-def test_validate_action_rejects_missing_slots():
+def test_validate_action_rejects_missing_intervals_key():
     g = _game()
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="intervals"):
         g.validate_action({})
 
 
 def test_validate_action_rejects_non_dict():
     g = _game()
     with pytest.raises(ValidationError):
-        g.validate_action([0, 1])  # type: ignore[arg-type]
+        g.validate_action([[0, 1]])  # type: ignore[arg-type]
 
 
-def test_validate_action_rejects_bool_slots():
+def test_default_action_on_timeout_returns_empty_intervals():
     g = _game()
-    with pytest.raises(ValidationError, match="not an int"):
-        g.validate_action({"slots": [True, False]})
-    with pytest.raises(ValidationError, match="not an int"):
-        g.validate_action({"slots": [True, True]})
-
-
-def test_sanitize_is_permissive_where_validate_is_strict():
-    """Boundary check from spec §3.1."""
-    g = _game(num_slots=16)
-    cleaned = g.action_space("player_0").sanitize([1, 2, 2, 99, -1])
-    assert set(cleaned).issubset(range(16))
-    with pytest.raises(ValidationError):
-        g.validate_action({"slots": [1, 2, 2, 99, -1]})
-
-
-def test_default_action_on_timeout_returns_empty_slots():
-    g = _game()
-    assert g.default_action_on_timeout() == {"slots": []}
+    assert g.default_action_on_timeout() == {"intervals": []}
 
 
 def test_format_state_empty_history():
@@ -108,7 +97,12 @@ def test_format_state_empty_history():
     assert state["your_participant_idx"] == 0
     assert state["num_slots"] == 16
     assert state["capacity_threshold"] == 3  # from _game() fixture
-    assert "action_schema" in state
+    schema = state["action_schema"]
+    assert schema["type"] == "intervals"
+    assert schema["shape"] == '{"intervals": [[start, end], ...]}'
+    assert schema["max_intervals"] == 2
+    assert schema["max_total_slots"] == 8
+    assert schema["value_range"] == [0, 15]
     assert "pending_submission" not in state
 
 
@@ -118,17 +112,17 @@ def test_format_state_populated_history_aggregates_attendance():
         {
             "round": 1,
             "actions": {
-                0: {"slots": [0, 1]},
-                1: {"slots": [1, 2]},
-                2: {"slots": [0]},
+                0: {"intervals": [[0, 1]]},
+                1: {"intervals": [[1, 2]]},
+                2: {"intervals": [[0, 0]]},
             },
         },
         {
             "round": 2,
             "actions": {
-                0: {"slots": [3]},
-                1: {"slots": [3]},
-                2: {"slots": [3]},
+                0: {"intervals": [[3, 3]]},
+                1: {"intervals": [[3, 3]]},
+                2: {"intervals": [[3, 3]]},
             },
         },
     ]
@@ -147,9 +141,9 @@ def test_format_state_populated_history_aggregates_attendance():
 def test_compute_round_payoffs_happy_minus_crowded():
     g = _game(n=3, num_slots=4)
     actions = {
-        0: {"slots": [0, 1]},
-        1: {"slots": [1, 2]},
-        2: {"slots": [0, 1]},
+        0: {"intervals": [[0, 1]]},
+        1: {"intervals": [[1, 2]]},
+        2: {"intervals": [[0, 1]]},
     }
     payoffs = g.compute_round_payoffs(actions)
     # capacity_threshold=3 → slot 1 is crowded (3 attendees), others happy
@@ -165,9 +159,9 @@ def test_format_state_your_history_is_defensive_copy():
         {
             "round": 1,
             "actions": {
-                0: {"slots": [0, 1]},
-                1: {"slots": []},
-                2: {"slots": []},
+                0: {"intervals": [[0, 1]]},
+                1: {"intervals": []},
+                2: {"intervals": []},
             },
         }
     ]
@@ -180,4 +174,4 @@ def test_format_state_your_history_is_defensive_copy():
     )
     state["your_history"][0].append(99)
     # mutation must NOT leak into action_history
-    assert history[0]["actions"][0]["slots"] == [0, 1]
+    assert history[0]["actions"][0]["intervals"] == [[0, 1]]

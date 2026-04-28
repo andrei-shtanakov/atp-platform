@@ -89,7 +89,9 @@ async def _seed_live_el_farol(
             Action(
                 round_id=r1.id,
                 participant_id=p.id,
-                action_data={"slots": [0, 1] if not is_timeout else []},
+                action_data=(
+                    {"intervals": []} if is_timeout else {"intervals": [[0, 1]]}
+                ),
                 submitted_at=now - timedelta(minutes=1, seconds=35),
                 source=(
                     ActionSource.TIMEOUT_DEFAULT.value
@@ -115,7 +117,7 @@ async def _seed_live_el_farol(
         Action(
             round_id=r2.id,
             participant_id=participants[0].id,
-            action_data={"slots": [2, 3]},
+            action_data={"intervals": [[2, 3]]},
             submitted_at=now - timedelta(seconds=5),
             source=ActionSource.SUBMITTED.value,
         )

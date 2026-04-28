@@ -274,20 +274,21 @@ GAME_COPY: dict[str, GameCopy] = {
         ),
         rules=[
             "N players, 16 slots per round, up to 8 slots per player.",
-            "Each round, every player simultaneously submits their list "
-            "of slot indices.",
+            "Each round, every player simultaneously submits up to two "
+            "non-overlapping, non-adjacent contiguous intervals of slots.",
             "For each slot you attend, you get +1 if attendance is "
             "strictly below the capacity threshold (happy), or −1 if "
             "attendance reaches or exceeds the threshold (crowded).",
             "Your round payoff is (happy slots) − (crowded slots) across "
             "the slots you picked.",
         ],
-        action_example='{"slots": [0, 3, 7, 11]}',
+        action_example='{"intervals": [[0, 3], [7, 10]]}',
         action_notes=(
-            "Slots must be unique integers in [0, num_slots - 1]; "
-            "the example above picks 4 of 16 available slots. "
-            'An empty list ({"slots": []}) is a valid move '
-            "— you pay nothing and gain nothing."
+            "Each interval is an inclusive [start, end] pair with values "
+            "in [0, num_slots - 1]; up to 2 intervals covering at most 8 "
+            "slots total per round, non-overlapping and separated by at "
+            'least one empty slot. An empty list ({"intervals": []}) is a '
+            "valid move — you pay nothing and gain nothing."
         ),
         payoff_formula=(
             "For each slot s you attend, payoff is +1 if "
