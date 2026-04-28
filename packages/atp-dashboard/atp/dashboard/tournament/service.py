@@ -1351,7 +1351,18 @@ class TournamentService:
 
         if round_obj.round_number >= tournament.total_rounds:
             await self._complete_tournament(tournament)
-            await self._session.flush()
+            # Commit (not just flush) before logging / returning. The
+            # deadline worker calls force_resolve_round inside an
+            # ``async with session_factory() as session:`` block whose
+            # auto-rollback-on-exit otherwise reverts every status
+            # change made here — round.status=COMPLETED,
+            # tournament.status=COMPLETED, GameResult row, payoffs,
+            # released_at — leaving the round visible to the next
+            # tick as still WAITING_FOR_ACTIONS. The worker then
+            # re-resolves the same round every poll interval forever.
+            # Mirrors the explicit commit in the non-final-round
+            # branch below.
+            await self._session.commit()
             elapsed_ms = int((time.perf_counter() - start) * 1000)
             logger.info(
                 "round_resolved",
