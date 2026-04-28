@@ -174,10 +174,17 @@ async def _sse_event_generator(
     """Yield SSE chunks until the client disconnects or tournament ends."""
     bus = _bus_from_request(request)
 
-    initial = await _project_snapshot_fresh(tournament_id)
-    yield _format_sse("snapshot", initial.model_dump(mode="json"))
-
+    # Subscribe BEFORE projecting the initial snapshot. The bus is
+    # explicitly ephemeral — publishes that occur between snapshot read
+    # and queue creation have nowhere to land. With this ordering, an
+    # event fired while the initial snapshot is being rendered lands in
+    # our queue and is drained by the loop below, so a fast or one-round
+    # tournament still delivers its terminal frames instead of leaving
+    # the browser stuck on a stale "waiting" view until a manual reload.
     async with bus.subscribe(tournament_id) as queue:
+        initial = await _project_snapshot_fresh(tournament_id)
+        yield _format_sse("snapshot", initial.model_dump(mode="json"))
+
         while True:
             if await request.is_disconnected():
                 return
