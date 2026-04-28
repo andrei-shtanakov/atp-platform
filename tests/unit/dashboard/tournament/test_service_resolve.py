@@ -790,3 +790,101 @@ async def test_battle_of_sexes_state_exposes_your_preferred(
     bob_state = await svc.get_state_for(t.id, bob)
     assert alice_state.your_preferred == "A"
     assert bob_state.your_preferred == "B"
+
+
+@pytest.mark.anyio
+async def test_force_resolve_round_persists_final_round_across_sessions(
+    session: AsyncSession,
+    admin_user: User,
+    alice: User,
+    bob: User,
+    event_bus: TournamentEventBus,
+) -> None:
+    """Regression for prod tournament 50 (2026-04-28): the deadline
+    worker calls ``force_resolve_round`` inside a fresh
+    ``async with session_factory() as session:`` block whose
+    auto-rollback-on-exit reverted every change made by the
+    final-round resolution path because that branch only flushed,
+    never committed.
+
+    Symptom in prod: the worker emitted ``round_resolved`` events
+    for the same final round every poll interval forever; the
+    round stayed at ``WAITING_FOR_ACTIONS`` in the DB; the
+    tournament was stuck ``ACTIVE`` with no one able to play.
+
+    This test reproduces the exact lifecycle:
+
+    1. Setup a 1-round tournament in the fixture session and commit
+       so the data is visible across sessions.
+    2. Open a SEPARATE session, call ``force_resolve_round`` exactly
+       like the deadline worker does, and let the session context
+       manager exit without a manual commit.
+    3. Open a THIRD session and verify the round is actually
+       ``COMPLETED`` and the tournament is ``COMPLETED``. Pre-fix
+       both would still read as in-flight.
+    """
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from atp.dashboard.tournament.models import (
+        Round,
+        RoundStatus,
+        Tournament,
+        TournamentStatus,
+    )
+    from atp.dashboard.tournament.service import TournamentService
+
+    # --- Setup phase (fixture session) ---
+    svc = TournamentService(session, event_bus)
+    t, _ = await svc.create_tournament(
+        creator=admin_user,
+        name="t-final-round",
+        game_type="prisoners_dilemma",
+        num_players=2,
+        total_rounds=1,  # final round IS round 1
+        round_deadline_s=30,
+    )
+    await svc.join(t.id, alice, "alice")
+    await svc.join(t.id, bob, "bob")
+    # Alice submits, Bob does not — this is the round the deadline
+    # worker would force-resolve in prod.
+    await svc.submit_action(t.id, alice, action={"choice": "cooperate"})
+    round_one = (
+        await session.execute(
+            select(Round).where(Round.tournament_id == t.id, Round.round_number == 1)
+        )
+    ).scalar_one()
+    assert round_one.status == RoundStatus.WAITING_FOR_ACTIONS
+    round_id = round_one.id
+    tournament_id = t.id
+    # Make all setup state visible to other sessions.
+    await session.commit()
+
+    # --- Worker phase (fresh session, mirrors deadline_worker exactly) ---
+    engine = session.bind
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as worker_session:
+        worker_svc = TournamentService(worker_session, event_bus)
+        await worker_svc.force_resolve_round(round_id)
+        # Deliberately NO ``await worker_session.commit()`` here —
+        # this matches deadlines.py which relies on
+        # force_resolve_round to commit internally. Pre-fix the
+        # context manager exit would auto-rollback at this point.
+
+    # --- Verify phase (third session) ---
+    async with factory() as verify_session:
+        round_after = await verify_session.get(Round, round_id)
+        assert round_after is not None
+        assert round_after.status == RoundStatus.COMPLETED, (
+            "round.status must persist as COMPLETED across sessions; "
+            "pre-fix the worker's session exit auto-rolled back the "
+            "final-round resolution and the worker hot-looped on the "
+            "same round forever (see prod tournament 50, 2026-04-28)."
+        )
+
+        tournament_after = await verify_session.get(Tournament, tournament_id)
+        assert tournament_after is not None
+        assert tournament_after.status == TournamentStatus.COMPLETED, (
+            "tournament must transition to COMPLETED on final-round "
+            "resolution and that transition must persist."
+        )

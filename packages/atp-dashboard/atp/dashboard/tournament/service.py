@@ -1350,8 +1350,37 @@ class TournamentService:
         await self._session.flush()
 
         if round_obj.round_number >= tournament.total_rounds:
-            await self._complete_tournament(tournament)
-            await self._session.flush()
+            completion_event = await self._complete_tournament(tournament)
+            # Commit (not just flush) BEFORE publishing
+            # ``tournament_completed``. The deadline worker calls
+            # force_resolve_round inside an
+            # ``async with session_factory() as session:`` block whose
+            # auto-rollback-on-exit otherwise reverts every status
+            # change made here — round.status=COMPLETED,
+            # tournament.status=COMPLETED, GameResult row, payoffs,
+            # released_at — leaving the round visible to the next
+            # tick as still WAITING_FOR_ACTIONS. The worker then
+            # re-resolves the same round every poll interval forever.
+            #
+            # Order is also load-bearing for subscribers: publishing
+            # before commit would let them observe a completion event
+            # whose state never becomes durable if the commit later
+            # fails or the task is cancelled. Mirrors the
+            # commit-then-publish discipline of ``_cancel_impl`` and
+            # the non-final-round branch below.
+            await self._session.commit()
+            try:
+                await self._bus.publish(completion_event)
+            except Exception:
+                # Subscribers are best-effort. If publishing fails
+                # after commit, the tournament is still durably
+                # completed; just log and continue rather than
+                # surface a 500 to the caller (deadline worker, etc.).
+                logger.warning(
+                    "tournament.complete.publish_failed",
+                    extra={"tournament_id": tournament.id},
+                    exc_info=True,
+                )
             elapsed_ms = int((time.perf_counter() - start) * 1000)
             logger.info(
                 "round_resolved",
@@ -1416,7 +1445,7 @@ class TournamentService:
             "next_round_number": next_round.round_number,
         }
 
-    async def _complete_tournament(self, tournament: Tournament) -> None:
+    async def _complete_tournament(self, tournament: Tournament) -> TournamentEvent:
         """Mark tournament COMPLETED and write final per-participant scores.
 
         Also releases every participant (``released_at = now``) so their
@@ -1434,6 +1463,14 @@ class TournamentService:
         The JSON blobs (``actions_json`` etc.) are left as empty lists
         in this PR; a follow-up ticket will port the full Phase-7
         reshape from ``atp/cli/commands/game.py::_build_game_result_kwargs``.
+
+        Does NOT publish to the bus — builds and returns the
+        ``tournament_completed`` event for the caller to publish AFTER
+        committing the surrounding transaction. Mirrors the
+        commit-before-publish discipline of ``_cancel_impl``: with
+        publish-before-commit, a failed/cancelled commit (DB lock,
+        task cancel) would leave subscribers observing a completion
+        event for state that never became durable.
         """
         now = _utc_now()
         tournament.status = TournamentStatus.COMPLETED
@@ -1473,20 +1510,18 @@ class TournamentService:
         # (see tests/e2e/test_mcp_pd_tournament.py) get a malformed
         # event. Builtin scores are still available via the tournament
         # detail API for callers that need them.
-        await self._bus.publish(
-            TournamentEvent(
-                event_type="tournament_completed",
-                tournament_id=tournament.id,
-                round_number=None,
-                data={
-                    "final_scores": {
-                        p.user_id: p.total_score
-                        for p in participants
-                        if p.user_id is not None
-                    },
+        return TournamentEvent(
+            event_type="tournament_completed",
+            tournament_id=tournament.id,
+            round_number=None,
+            data={
+                "final_scores": {
+                    p.user_id: p.total_score
+                    for p in participants
+                    if p.user_id is not None
                 },
-                timestamp=_utc_now(),
-            )
+            },
+            timestamp=_utc_now(),
         )
 
     async def _write_game_result_for_tournament(self, tournament: Tournament) -> None:
