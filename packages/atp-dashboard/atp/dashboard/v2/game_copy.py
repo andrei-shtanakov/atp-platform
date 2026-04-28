@@ -282,7 +282,7 @@ GAME_COPY: dict[str, GameCopy] = {
             "Your round payoff is (happy slots) − (crowded slots) across "
             "the slots you picked.",
         ],
-        action_example='{"intervals": [[0, 3], [7, 11]]}',
+        action_example='{"intervals": [[0, 3], [7, 10]]}',
         action_notes=(
             "Each interval is an inclusive [start, end] pair with values "
             "in [0, num_slots - 1]; up to 2 intervals covering at most 8 "
