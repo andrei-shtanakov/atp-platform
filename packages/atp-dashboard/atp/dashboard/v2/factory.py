@@ -123,6 +123,13 @@ def create_app(
     from atp.dashboard.mcp.auth import MCPAuthMiddleware
 
     mcp_app = mcp_server.http_app(transport="sse")
+    # Spike: parallel streamable-HTTP mount at /mcp-http to test
+    # whether the cold-start race we observe on /mcp/sse is
+    # transport-specific or lives above transport. Same FastMCP
+    # instance, same tool registry — only the transport layer
+    # differs. Existing SSE mount stays intact so participant-kit
+    # bots are unaffected during the test.
+    mcp_http_app = mcp_server.http_app(transport="streamable-http")
 
     @asynccontextmanager
     async def _combined_lifespan(app_: FastAPI) -> AsyncGenerator[None, None]:
@@ -143,7 +150,8 @@ def create_app(
             )
             try:
                 async with mcp_app.router.lifespan_context(app_):
-                    yield
+                    async with mcp_http_app.router.lifespan_context(app_):
+                        yield
             finally:
                 shutdown_event.set()
                 worker_task.cancel()
@@ -184,6 +192,9 @@ def create_app(
         slowapi = SlowAPIMiddleware(inner_app)
 
         async def _asgi(scope: dict[str, Any], receive: Any, send: Any) -> None:
+            # ``startswith("/mcp")`` already covers both the existing
+            # ``/mcp`` (SSE) mount and the spike ``/mcp-http``
+            # streamable-HTTP mount — they're sibling prefixes.
             if scope.get("type") == "http" and scope.get("path", "").startswith("/mcp"):
                 await inner_app(scope, receive, send)
                 return
@@ -210,6 +221,14 @@ def create_app(
     # unauthenticated handshakes with 401.
     mcp_app.add_middleware(MCPAuthMiddleware)
     app.mount("/mcp", mcp_app)
+
+    # Spike: streamable-HTTP transport mounted as a sibling at
+    # /mcp-http. Same auth gating; same FastMCP instance underneath
+    # so tools registered via @mcp_server.tool() are visible from
+    # both transports. Lets bots opt into the alternate transport
+    # without affecting existing /mcp/sse traffic.
+    mcp_http_app.add_middleware(MCPAuthMiddleware)
+    app.mount("/mcp-http", mcp_http_app)
 
     # Mount API routes
     app.include_router(api_router, prefix="/api")
