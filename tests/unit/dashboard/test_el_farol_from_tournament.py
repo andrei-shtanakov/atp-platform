@@ -284,6 +284,70 @@ def test_build_rounds_threads_telemetry_through_to_decisions() -> None:
     assert decs["a2"].decide_ms == 450
 
 
+# ---------------------------------------------------------------------------
+# intervals projection (regression: drawer + make_move(...) example)
+# ---------------------------------------------------------------------------
+
+
+def test_build_decision_pads_single_interval_to_two_tuple() -> None:
+    """A single interval must round-trip and be padded to the documented
+    2-tuple shape — the drawer and generated ``make_move(...)`` example
+    read both slots off ``DashboardDecision.intervals``.
+    """
+    # GIVEN an Action with one interval
+    action = Action(action_data={"intervals": [[3, 6]]}, payoff=1.0)
+
+    # WHEN we project it
+    decision = _build_decision_from_action(
+        agent_id="alice",
+        action=action,
+        slot_attendance=[0] * 16,
+        capacity_threshold=2,
+    )
+
+    # THEN the single pair is preserved and the second slot is empty
+    assert decision.intervals == [[3, 6], []]
+
+
+def test_build_decision_preserves_two_intervals_in_order() -> None:
+    """Two intervals must round-trip verbatim and in original order."""
+    # GIVEN an Action with two distinct intervals
+    action = Action(
+        action_data={"intervals": [[0, 1], [10, 12]]},
+        payoff=1.0,
+    )
+
+    # WHEN we project it
+    decision = _build_decision_from_action(
+        agent_id="alice",
+        action=action,
+        slot_attendance=[0] * 16,
+        capacity_threshold=2,
+    )
+
+    # THEN both pairs land in the projection unchanged and in order
+    assert decision.intervals == [[0, 1], [10, 12]]
+
+
+def test_build_decision_empty_intervals_stays_empty() -> None:
+    """Stay-home (no intervals) must project to ``[[], []]`` so the
+    drawer renders an empty interval pair rather than a synthetic one.
+    """
+    # GIVEN an Action with no intervals (stay-home)
+    action = Action(action_data={"intervals": []}, payoff=0.0)
+
+    # WHEN we project it
+    decision = _build_decision_from_action(
+        agent_id="alice",
+        action=action,
+        slot_attendance=[0] * 16,
+        capacity_threshold=2,
+    )
+
+    # THEN the projection is the documented empty 2-tuple
+    assert decision.intervals == [[], []]
+
+
 @pytest.mark.anyio
 async def test_tournament_with_no_rounds_returns_empty_data(
     db_session: AsyncSession,

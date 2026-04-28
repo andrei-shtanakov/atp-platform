@@ -39,13 +39,17 @@ _NUM_SLOTS = 16
 _CAPACITY_RATIO = 0.6
 
 
-def _intervals_to_slots(
+def _normalised_intervals(
     action_data: dict | None, num_slots: int = _NUM_SLOTS
-) -> list[int]:
-    """Expand ``{"intervals": [[start, end], ...]}`` into bounded slot indices."""
+) -> list[list[int]]:
+    """Return up to two clamped ``[start, end]`` pairs from action_data.
+
+    Drops malformed pairs and pairs whose clamped range is empty. Order
+    is preserved (the tournament wire shape is already a list of pairs).
+    """
     if not action_data:
         return []
-    slots: list[int] = []
+    pairs: list[list[int]] = []
     for pair in action_data.get("intervals") or []:
         if not isinstance(pair, (list, tuple)) or len(pair) != 2:
             continue
@@ -55,8 +59,33 @@ def _intervals_to_slots(
         lo = max(0, int(start))
         hi = min(num_slots - 1, int(end))
         if lo <= hi:
-            slots.extend(range(lo, hi + 1))
-    return sorted(set(slots))
+            pairs.append([lo, hi])
+    return pairs
+
+
+def _intervals_to_slots(
+    action_data: dict | None, num_slots: int = _NUM_SLOTS
+) -> list[int]:
+    """Expand ``{"intervals": [[start, end], ...]}`` into bounded slot indices."""
+    slots: set[int] = set()
+    for lo, hi in _normalised_intervals(action_data, num_slots):
+        slots.update(range(lo, hi + 1))
+    return sorted(slots)
+
+
+def _intervals_for_dashboard(
+    action_data: dict | None, num_slots: int = _NUM_SLOTS
+) -> list[list[int]]:
+    """Pad normalised intervals to the dashboard's 2-tuple shape.
+
+    DashboardDecision.intervals is documented as a 2-tuple
+    (``[[start,end],[start,end]]`` or ``[[start,end],[]]``); the drawer
+    and the generated ``make_move(...)`` example read both slots.
+    """
+    pairs = _normalised_intervals(action_data, num_slots)[:2]
+    while len(pairs) < 2:
+        pairs.append([])
+    return pairs
 
 
 def _build_agents_from_participants(
@@ -122,7 +151,7 @@ def _build_decision_from_action(
     num_under = sum(1 for sp in slot_payoffs if sp.payoff == 1)
     return DashboardDecision(
         agent=agent_id,
-        intervals=[[], []],
+        intervals=_intervals_for_dashboard(action_data),
         picks=picks,
         numVisits=len(picks),
         intent="",
