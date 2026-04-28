@@ -532,9 +532,7 @@ class TestActionToIntervalPair:
 
     def test_empty_list_returns_empty_pair(self) -> None:
         # GIVEN an empty list (stay home)
-        result = _action_to_interval_pair(
-            [], num_slots=16, max_total_slots=8
-        )
+        result = _action_to_interval_pair([], num_slots=16, max_total_slots=8)
         # THEN the returned pair is empty but well-formed
         assert result is not None
         assert result.first == ()
@@ -544,9 +542,7 @@ class TestActionToIntervalPair:
 
     def test_single_pair_list(self) -> None:
         # GIVEN a single [start, end] pair
-        result = _action_to_interval_pair(
-            [[0, 2]], num_slots=16, max_total_slots=8
-        )
+        result = _action_to_interval_pair([[0, 2]], num_slots=16, max_total_slots=8)
         # THEN the IntervalPair holds that pair as ``first``
         assert result is not None
         assert result.first == (0, 2)
@@ -590,15 +586,11 @@ class TestActionToIntervalPair:
         assert result is None
 
     def test_none_input_returns_none(self) -> None:
-        result = _action_to_interval_pair(
-            None, num_slots=16, max_total_slots=8
-        )
+        result = _action_to_interval_pair(None, num_slots=16, max_total_slots=8)
         assert result is None
 
     def test_string_input_returns_none(self) -> None:
-        result = _action_to_interval_pair(
-            "cooperate", num_slots=16, max_total_slots=8
-        )
+        result = _action_to_interval_pair("cooperate", num_slots=16, max_total_slots=8)
         assert result is None
 
     def test_more_than_two_pairs_returns_none(self) -> None:
@@ -609,40 +601,30 @@ class TestActionToIntervalPair:
 
     def test_malformed_pair_shape_returns_none(self) -> None:
         # GIVEN a triple instead of a [start, end] pair
-        result = _action_to_interval_pair(
-            [[0, 1, 2]], num_slots=16, max_total_slots=8
-        )
+        result = _action_to_interval_pair([[0, 1, 2]], num_slots=16, max_total_slots=8)
         # THEN None
         assert result is None
 
     def test_non_int_bound_returns_none(self) -> None:
         # GIVEN a non-int bound
-        result = _action_to_interval_pair(
-            [["a", 2]], num_slots=16, max_total_slots=8
-        )
+        result = _action_to_interval_pair([["a", 2]], num_slots=16, max_total_slots=8)
         assert result is None
 
     def test_out_of_range_pair_returns_none(self) -> None:
         # GIVEN a pair that exceeds num_slots
-        result = _action_to_interval_pair(
-            [[0, 99]], num_slots=16, max_total_slots=8
-        )
+        result = _action_to_interval_pair([[0, 99]], num_slots=16, max_total_slots=8)
         # THEN IntervalPair raises and the helper swallows it as None
         assert result is None
 
     def test_exceeds_max_total_slots_returns_none(self) -> None:
         # GIVEN a pair covering 5 slots while max_total_slots=4
-        result = _action_to_interval_pair(
-            [[0, 4]], num_slots=16, max_total_slots=4
-        )
+        result = _action_to_interval_pair([[0, 4]], num_slots=16, max_total_slots=4)
         # THEN None
         assert result is None
 
     def test_max_total_slots_propagated(self) -> None:
         # GIVEN a custom cap
-        result = _action_to_interval_pair(
-            [[0, 1]], num_slots=16, max_total_slots=4
-        )
+        result = _action_to_interval_pair([[0, 1]], num_slots=16, max_total_slots=4)
         # THEN the cap is preserved on the returned IntervalPair
         assert result is not None
         assert result.max_total_slots == 4

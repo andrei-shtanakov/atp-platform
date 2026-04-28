@@ -472,9 +472,7 @@ class GameRunner:
         # canonical interval-shaped actions.
         max_slot = -1
         for action in actions.values():
-            payload = (
-                action.get("intervals") if isinstance(action, dict) else action
-            )
+            payload = action.get("intervals") if isinstance(action, dict) else action
             if not isinstance(payload, (list, tuple)):
                 continue
             for pair in payload:
