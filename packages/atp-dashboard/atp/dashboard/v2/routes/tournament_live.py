@@ -242,16 +242,22 @@ async def _sse_event_generator(
 async def stream_tournament_dashboard(
     tournament_id: int,
     request: Request,
-    session: DBSession,
     user: CurrentUser,
 ) -> StreamingResponse:
     """Open a Server-Sent Events stream for a live tournament.
 
-    Visibility is checked once at request time using a normal session;
-    the streaming generator then opens its own short-lived sessions so
-    the request session is released back to the pool after the gate.
+    Visibility is gated against a short-lived session opened locally and
+    closed before returning the StreamingResponse. We deliberately do
+    NOT inject ``DBSession`` here: FastAPI's request-scoped yield
+    dependency keeps the session checked out for the lifetime of the
+    response, and an SSE response can live for the full duration of a
+    tournament — a handful of long-lived spectators would exhaust a
+    normal-sized async pool. The streaming generator opens its own
+    short-lived sessions per snapshot via ``get_database()``.
     """
-    await _gate_tournament_access(session, tournament_id, user)
+    db = get_database()
+    async with db.session_factory() as gate_session:
+        await _gate_tournament_access(gate_session, tournament_id, user)
 
     headers = {
         "Cache-Control": "no-store",
