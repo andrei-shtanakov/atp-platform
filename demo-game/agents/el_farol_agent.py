@@ -219,7 +219,7 @@ async def handle_request(request: ATPRequest) -> ATPResponse:
             artifacts=[
                 StructuredArtifact(
                     data={
-                        "intervals": action,
+                        "action": {"intervals": action},
                         "reasoning": reasoning,
                     },
                 )
