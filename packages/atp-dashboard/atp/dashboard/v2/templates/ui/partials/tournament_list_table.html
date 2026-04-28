@@ -8,6 +8,12 @@
     <td>
         <a href="/ui/tournaments/{{ t.id }}" class="tournament-name">{{ name }}</a>
         <div class="game-type">{{ t.game_type }}</div>
+        {% if t.status in ("pending", "active") and t.game_type == "el_farol" %}
+        <a href="/ui/tournaments/{{ t.id }}/live" class="watch-live-link"
+           title="Open the live spectator view">
+            <span class="watch-live-dot"></span>Watch live
+        </a>
+        {% endif %}
     </td>
     <td>
         {% if t.status in ("pending", "active") %}
