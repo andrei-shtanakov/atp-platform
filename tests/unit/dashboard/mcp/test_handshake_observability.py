@@ -103,6 +103,149 @@ def test_maybe_emit_first_tool_call_dedupes_per_session(
 
 
 # ---------------------------------------------------------------------------
+# emit_tool_call — session-id sourcing (PR #102 follow-up)
+# ---------------------------------------------------------------------------
+
+
+class _FakeRequest:
+    """Mimics the surface of ``starlette.requests.Request`` that
+    ``emit_tool_call`` reads — ``state.mcp_request_id`` and
+    ``query_params.get(...)`` — without needing a real HTTP scope."""
+
+    def __init__(
+        self,
+        *,
+        request_id: str | None = None,
+        url_session_id: str | None = None,
+    ) -> None:
+        class _State:
+            pass
+
+        self.state = _State()
+        if request_id is not None:
+            self.state.mcp_request_id = request_id  # type: ignore[attr-defined]
+        self.query_params: dict[str, str] = (
+            {"session_id": url_session_id} if url_session_id is not None else {}
+        )
+
+
+class _FakeCtx:
+    def __init__(self, session_id: str | None = None) -> None:
+        if session_id is not None:
+            self.session_id = session_id
+
+
+def _patch_get_http_request(
+    monkeypatch: pytest.MonkeyPatch, request: _FakeRequest | Exception
+) -> None:
+    """Make ``fastmcp.server.dependencies.get_http_request`` return
+    ``request`` (or raise it, if an Exception). Tool wrappers import
+    the helper inside the function body, so module-level patching
+    via the original location works."""
+
+    def _fake() -> _FakeRequest:
+        if isinstance(request, Exception):
+            raise request
+        return request
+
+    import fastmcp.server.dependencies as deps
+
+    monkeypatch.setattr(deps, "get_http_request", _fake)
+
+
+def test_emit_tool_call_uses_url_session_id_when_present(
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Primary path: SSE messages-POST carries ``?session_id=`` on
+    the URL. ``emit_tool_call`` must dedup against that, not
+    ``ctx.session_id``."""
+    from atp.dashboard.mcp.observability import emit_tool_call
+
+    caplog.set_level(logging.INFO, logger="atp.mcp.observability")
+    _patch_get_http_request(
+        monkeypatch,
+        _FakeRequest(request_id="rid-1", url_session_id="sse-abc"),
+    )
+    # ctx.session_id deliberately set to a DIFFERENT value to prove
+    # the URL wins.
+    ctx = _FakeCtx(session_id="ctx-xyz")
+
+    emit_tool_call(ctx, tool="ping")
+    emit_tool_call(ctx, tool="get_current_state")  # second call → dedup
+
+    records = _records_for(caplog, MCP_FIRST_TOOL_CALL)
+    assert len(records) == 1
+    assert records[0].session_id == "sse-abc"  # type: ignore[attr-defined]
+    assert records[0].request_id == "rid-1"  # type: ignore[attr-defined]
+    assert records[0].tool == "ping"  # type: ignore[attr-defined]
+
+
+def test_emit_tool_call_falls_back_to_ctx_session_id(
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fallback path: URL has no session_id (e.g. a non-SSE transport
+    or a request shape we haven't seen yet). Use ``ctx.session_id``
+    when it's available."""
+    from atp.dashboard.mcp.observability import emit_tool_call
+
+    caplog.set_level(logging.INFO, logger="atp.mcp.observability")
+    _patch_get_http_request(
+        monkeypatch,
+        _FakeRequest(request_id="rid-2", url_session_id=None),
+    )
+    ctx = _FakeCtx(session_id="ctx-fallback")
+
+    emit_tool_call(ctx, tool="join_tournament")
+
+    records = _records_for(caplog, MCP_FIRST_TOOL_CALL)
+    assert len(records) == 1
+    assert records[0].session_id == "ctx-fallback"  # type: ignore[attr-defined]
+    assert records[0].request_id == "rid-2"  # type: ignore[attr-defined]
+
+
+def test_emit_tool_call_skips_when_neither_source_has_session_id(
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No URL query param, no ctx attribute → skip emit. Falling
+    back to ``id(ctx)`` would re-emit on every dispatch because
+    ``Context`` is reconstructed per call (Copilot review on PR #101)."""
+    from atp.dashboard.mcp.observability import emit_tool_call
+
+    caplog.set_level(logging.INFO, logger="atp.mcp.observability")
+    _patch_get_http_request(
+        monkeypatch,
+        _FakeRequest(request_id="rid-3", url_session_id=None),
+    )
+
+    emit_tool_call(_FakeCtx(session_id=None), tool="ping")
+
+    assert _records_for(caplog, MCP_FIRST_TOOL_CALL) == []
+
+
+def test_emit_tool_call_tolerates_get_http_request_raising(
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``get_http_request`` raises outside an HTTP-bound MCP call.
+    ``emit_tool_call`` must not propagate that and should still try
+    the ctx fallback."""
+    from atp.dashboard.mcp.observability import emit_tool_call
+
+    caplog.set_level(logging.INFO, logger="atp.mcp.observability")
+    _patch_get_http_request(monkeypatch, RuntimeError("no http context"))
+
+    emit_tool_call(_FakeCtx(session_id="ctx-only"), tool="make_move")
+
+    records = _records_for(caplog, MCP_FIRST_TOOL_CALL)
+    assert len(records) == 1
+    assert records[0].session_id == "ctx-only"  # type: ignore[attr-defined]
+    assert records[0].request_id == "no-request-id"  # type: ignore[attr-defined]
+
+
+# ---------------------------------------------------------------------------
 # MCPAuthMiddleware events
 # ---------------------------------------------------------------------------
 

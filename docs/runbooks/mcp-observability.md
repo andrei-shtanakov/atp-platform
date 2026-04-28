@@ -62,7 +62,12 @@ Common fields:
 
 ### `mcp_first_tool_call`
 
-Fires the first time a given FastMCP **session** invokes any tool. Subsequent calls within the same session do not re-emit. Session identity comes from `ctx.session_id` (FastMCP-assigned, stable across the SSE connection).
+Fires the first time a given FastMCP **session** invokes any tool. Subsequent calls within the same session do not re-emit. Session identity is resolved in this order (first hit wins):
+
+1. `?session_id=` query parameter on the messages-POST URL — the stable id FastMCP's SSE transport always carries on each tool dispatch. This is the path that fires in production.
+2. `ctx.session_id` — FastMCP attribute, populated on some code paths (e.g. forward-events subscription); accepted as a fallback.
+
+If neither is available the emit is silently skipped rather than falling back to `id(ctx)` (the `Context` object is reconstructed per dispatch, so `id()` would defeat the dedup contract).
 
 | Field | Type | Notes |
 |---|---|---|
