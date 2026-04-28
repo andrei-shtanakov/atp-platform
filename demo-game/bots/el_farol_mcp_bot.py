@@ -192,9 +192,7 @@ def _unwrap_tool_result(raw: dict[str, Any]) -> dict[str, Any]:
     return raw
 
 
-def _random_intervals(
-    state: dict[str, Any], rng: random.Random
-) -> list[list[int]]:
+def _random_intervals(state: dict[str, Any], rng: random.Random) -> list[list[int]]:
     """Pick a random El Farol action in canonical interval shape.
 
     Picks a single contiguous window of 0–``max_total_slots`` slots; if
@@ -204,9 +202,7 @@ def _random_intervals(
     """
     num_slots = int(state.get("num_slots", DEFAULT_NUM_SLOTS))
     schema = state.get("action_schema") or {}
-    max_total_slots = int(
-        schema.get("max_total_slots", DEFAULT_MAX_SLOTS_PER_DAY)
-    )
+    max_total_slots = int(schema.get("max_total_slots", DEFAULT_MAX_SLOTS_PER_DAY))
     max_total_slots = max(0, min(max_total_slots, num_slots))
     if max_total_slots == 0:
         return []

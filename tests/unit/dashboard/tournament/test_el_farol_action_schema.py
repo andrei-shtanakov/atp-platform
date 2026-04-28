@@ -18,7 +18,6 @@ from pydantic import ValidationError
 
 from atp.dashboard.tournament.schemas import ActionTelemetry, ElFarolAction
 
-
 # ---------------------------------------------------------------------------
 # Legacy "slots" payload is rejected as an unknown field
 # ---------------------------------------------------------------------------
@@ -69,9 +68,7 @@ def test_native_intervals_two_non_adjacent_pairs() -> None:
 
 
 def test_native_intervals_empty_means_stay_home() -> None:
-    action = ElFarolAction.model_validate(
-        {"game_type": "el_farol", "intervals": []}
-    )
+    action = ElFarolAction.model_validate({"game_type": "el_farol", "intervals": []})
     assert action.intervals == []
 
 
@@ -105,9 +102,7 @@ def test_native_intervals_preserves_reasoning_and_telemetry() -> None:
 def test_intervals_total_slots_over_max_rejected() -> None:
     # GIVEN a single pair covering 9 consecutive slots > MAX_SLOTS_PER_DAY=8
     with pytest.raises(ValidationError) as exc:
-        ElFarolAction.model_validate(
-            {"game_type": "el_farol", "intervals": [[0, 8]]}
-        )
+        ElFarolAction.model_validate({"game_type": "el_farol", "intervals": [[0, 8]]})
     assert "max is" in str(exc.value).lower() or "slots" in str(exc.value).lower()
 
 
@@ -129,16 +124,12 @@ def test_intervals_overlapping_pairs_rejected() -> None:
 
 def test_intervals_start_after_end_rejected() -> None:
     with pytest.raises(ValidationError):
-        ElFarolAction.model_validate(
-            {"game_type": "el_farol", "intervals": [[5, 2]]}
-        )
+        ElFarolAction.model_validate({"game_type": "el_farol", "intervals": [[5, 2]]})
 
 
 def test_intervals_negative_start_rejected() -> None:
     with pytest.raises(ValidationError):
-        ElFarolAction.model_validate(
-            {"game_type": "el_farol", "intervals": [[-1, 2]]}
-        )
+        ElFarolAction.model_validate({"game_type": "el_farol", "intervals": [[-1, 2]]})
 
 
 def test_intervals_too_many_pairs_rejected() -> None:

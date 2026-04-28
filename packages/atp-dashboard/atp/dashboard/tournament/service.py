@@ -1018,9 +1018,7 @@ class TournamentService:
         game = _game_for(tournament)
         # All games (including El Farol) now expose a single canonical
         # input shape; submit the typed payload directly.
-        game_payload = typed.model_dump(
-            exclude={"game_type", "reasoning", "telemetry"}
-        )
+        game_payload = typed.model_dump(exclude={"game_type", "reasoning", "telemetry"})
         canonical = game.validate_action(game_payload)
 
         existing = (

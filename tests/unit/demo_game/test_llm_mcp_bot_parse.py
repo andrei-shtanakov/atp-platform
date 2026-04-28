@@ -239,9 +239,7 @@ def test_parse_el_farol_rejects_too_many_intervals():
 
     # max_intervals=2 → 3 intervals must be rejected.
     raw = '{"intervals": [[0, 0], [2, 2], [4, 4]]}'
-    assert (
-        parse_llm_response(raw, _el_farol_state(max_intervals=2)) is None
-    )
+    assert parse_llm_response(raw, _el_farol_state(max_intervals=2)) is None
 
 
 def test_parse_el_farol_rejects_too_many_total_slots():
@@ -249,9 +247,7 @@ def test_parse_el_farol_rejects_too_many_total_slots():
 
     # max_total_slots=8 → covering 9 slots must be rejected.
     raw = '{"intervals": [[0, 8]], "reasoning": "greedy"}'
-    assert (
-        parse_llm_response(raw, _el_farol_state(max_total_slots=8)) is None
-    )
+    assert parse_llm_response(raw, _el_farol_state(max_total_slots=8)) is None
 
 
 def test_parse_el_farol_rejects_reversed_pair():
@@ -314,9 +310,7 @@ def test_random_action_el_farol_returns_intervals_shape():
     from bots.llm_prompts import random_action
 
     rng = random.Random(42)
-    out = random_action(
-        _el_farol_state(num_slots=16, max_total_slots=8), rng
-    )
+    out = random_action(_el_farol_state(num_slots=16, max_total_slots=8), rng)
     # Canonical shape: {"intervals": [[start, end]]} or {"intervals": []}
     assert "intervals" in out
     assert "slots" not in out

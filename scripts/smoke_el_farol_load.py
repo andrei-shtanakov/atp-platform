@@ -123,9 +123,7 @@ async def _run() -> int:
                 else:
                     start = rng.randint(0, NUM_SLOTS - length)
                     intervals = [[start, start + length - 1]]
-                await svc.submit_action(
-                    t.id, u, action={"intervals": intervals}
-                )
+                await svc.submit_action(t.id, u, action={"intervals": intervals})
             await session.commit()
 
     for r_idx, lats in enumerate(latencies_per_round):
