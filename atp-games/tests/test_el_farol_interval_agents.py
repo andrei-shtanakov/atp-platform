@@ -1,11 +1,11 @@
 """End-to-end interval-action support through the GameRunner.
 
-This is the Phase 5 test-sync: the runner and ElFarol action space
-already accept all three interval-action shapes (flat slot list,
-list-of-pairs, dict-with-intervals). These tests verify that agents
-submitting any of the three shapes produce correct ``ActionRecord``
-entries on ``EpisodeResult.actions`` after running through the full
-``GameRunner`` pipeline.
+The runner and ElFarol action space accept the canonical interval shape
+in two equivalent forms — list-of-pairs ``[[start, end], ...]`` and
+dict-with-intervals ``{"intervals": [[start, end], ...]}``. These tests
+verify that agents submitting either shape produce correct
+``ActionRecord`` entries on ``EpisodeResult.actions`` after running
+through the full ``GameRunner`` pipeline.
 
 Style mirrors ``test_runner_action_records.py`` — inline strategies
 for deterministic, contiguous picks and a small async helper that
@@ -208,7 +208,13 @@ class TestIntervalFormatsYieldActionRecords:
 
 class TestActionSpaceRejectsInvalidIntervalInput:
     """Invalid interval input is rejected by ``contains`` and the runner
-    falls back to a random default action after max_retries."""
+    falls back to a default action after max_retries.
+
+    ``ElFarolActionSpace.sample()`` now returns an interval-shaped action
+    (e.g. ``[[start, end]]``), so the fallback path is interval-convertible
+    and ActionRecords are produced for both players — even the one whose
+    original action was rejected.
+    """
 
     @pytest.mark.anyio
     async def test_too_many_intervals_triggers_retry_or_fallback(self) -> None:
@@ -223,14 +229,12 @@ class TestActionSpaceRejectsInvalidIntervalInput:
             num_slots=16,
         )
 
-        # THEN the match completes without raising and both agents have
-        # a record (the invalid agent gets a random fallback action,
-        # which ``sample`` always makes valid/representable as an interval).
+        # THEN the match completes; both players get an ActionRecord
+        # (1 day x 2 agents) — player_0's via the interval-shaped fallback.
+        assert len(ep.round_payoffs) == 1
         assert len(ep.actions) == 2
-        # Note: ``retry_count`` is not yet wired through to ActionRecord;
-        # this assertion is a regression guard — update when surfaced.
-        for record in ep.actions:
-            assert record.retry_count == 0
+        agent_ids = {r.agent_id for r in ep.actions}
+        assert agent_ids == {"player_0", "player_1"}
 
     @pytest.mark.anyio
     async def test_overlapping_intervals_rejected(self) -> None:
@@ -245,9 +249,12 @@ class TestActionSpaceRejectsInvalidIntervalInput:
             num_slots=16,
         )
 
-        # THEN the match completes and both agents get records — the
-        # invalid agent is replaced by the fallback default action.
+        # THEN the match completes; both players get an ActionRecord
+        # (1 day x 2 agents) — player_0's via the interval-shaped fallback.
+        assert len(ep.round_payoffs) == 1
         assert len(ep.actions) == 2
+        agent_ids = {r.agent_id for r in ep.actions}
+        assert agent_ids == {"player_0", "player_1"}
 
 
 # ---------------------------------------------------------------------------

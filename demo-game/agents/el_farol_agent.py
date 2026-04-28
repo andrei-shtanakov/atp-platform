@@ -47,18 +47,19 @@ You will receive:
 
 Respond with ONLY a valid JSON object:
 
-{"slots": [4, 5, 6, 7, 8],
- "action": [4, 5, 6, 7, 8],
+{"intervals": [[4, 8]],
  "reasoning": "<brief explanation>"}
 
-The "slots" and "action" fields MUST contain the SAME list of slot indices.
-
 Rules:
-- "slots" must be a list of integers (slot indices, 0-based).
-- Pick 4-8 slots that you predict will be least crowded.
+- "intervals" is a list of inclusive [start, end] pairs of 0-based
+  slot indices.
+- Submit at most 2 intervals covering at most 8 slots in total per day.
+- Intervals must be non-overlapping and non-adjacent (at least one
+  empty slot between them).
 - Use attendance history to predict which slots will be quiet.
 - Keep reasoning brief (1-2 sentences).
 - Do NOT add any text before or after the JSON.
+- ``{"intervals": []}`` means "stay home" (no slots attended).
 """
 
 
@@ -145,20 +146,35 @@ def extract_json(text: str) -> dict | None:
     return None
 
 
-def parse_action(parsed: dict | None, num_slots: int = 16) -> list[int]:
-    """Extract slot list from parsed JSON, with fallback.
+def parse_action(parsed: dict | None, num_slots: int = 16) -> list[list[int]]:
+    """Extract intervals from parsed JSON, with a safe fallback.
 
-    Prefers ``slots`` (live MCP tournament key) over ``action`` (legacy
-    simulation key). Both are accepted for back-compat.
+    Reads the canonical ``intervals`` key only; flat-slot legacy keys
+    (``slots`` / ``action``) are no longer accepted. Each interval is
+    clamped to ``[0, num_slots - 1]`` and dropped if malformed. Returns
+    a single mid-day fallback interval when nothing parseable is found.
     """
     if parsed:
-        for key in ("slots", "action"):
-            value = parsed.get(key)
-            if isinstance(value, list):
-                return [s for s in value if isinstance(s, int) and 0 <= s < num_slots]
-    # Fallback: middle slots
+        raw = parsed.get("intervals")
+        if isinstance(raw, list):
+            cleaned: list[list[int]] = []
+            for pair in raw:
+                if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+                    continue
+                start, end = pair[0], pair[1]
+                if not (isinstance(start, int) and isinstance(end, int)):
+                    continue
+                lo = max(0, int(start))
+                hi = min(num_slots - 1, int(end))
+                if lo <= hi:
+                    cleaned.append([lo, hi])
+            return cleaned
+    # Fallback: a single midday interval of 6 slots.
     mid = num_slots // 4
-    return list(range(mid, mid + 6))
+    end = min(mid + 5, num_slots - 1)
+    if end < mid:
+        return []
+    return [[mid, end]]
 
 
 def calculate_cost(input_tokens: int, output_tokens: int) -> float:
@@ -203,8 +219,7 @@ async def handle_request(request: ATPRequest) -> ATPResponse:
             artifacts=[
                 StructuredArtifact(
                     data={
-                        "action": action,  # back-compat (simulation pipeline)
-                        "slots": action,  # MCP wire shape
+                        "intervals": action,
                         "reasoning": reasoning,
                     },
                 )

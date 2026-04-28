@@ -138,7 +138,7 @@ class TestRunnerBranch:
             Action(
                 round_id=r.id,
                 participant_id=p_agent.id,
-                action_data={"slots": [0, 1, 2]},
+                action_data={"intervals": [[0, 2]]},
             )
         )
         await session.flush()

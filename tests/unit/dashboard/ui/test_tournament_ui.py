@@ -278,7 +278,7 @@ async def _seed_el_farol_tournament(client: AsyncClient) -> int:
             Action(
                 round_id=r.id,
                 participant_id=p1.id,
-                action_data={"slots": [0, 1, 2]},
+                action_data={"intervals": [[0, 2]]},
                 submitted_at=now,
                 payoff=2.0,
                 source=ActionSource.SUBMITTED,
@@ -288,7 +288,7 @@ async def _seed_el_farol_tournament(client: AsyncClient) -> int:
             Action(
                 round_id=r.id,
                 participant_id=p2.id,
-                action_data={"slots": []},
+                action_data={"intervals": []},
                 submitted_at=now,
                 payoff=0.0,
                 source=ActionSource.SUBMITTED,
@@ -299,11 +299,11 @@ async def _seed_el_farol_tournament(client: AsyncClient) -> int:
 
 
 @pytest.mark.anyio
-async def test_el_farol_round_history_shows_slots(client: AsyncClient):
+async def test_el_farol_round_history_shows_intervals(client: AsyncClient):
     tid = await _seed_el_farol_tournament(client)
     resp = await client.get(f"/ui/tournaments/{tid}")
     assert resp.status_code == 200
-    assert "0, 1, 2" in resp.text
+    assert "0–2" in resp.text
     assert "stay home" in resp.text
     # Must not fall back to the PD "—" placeholder for a matched action
     assert "cooperate" not in resp.text

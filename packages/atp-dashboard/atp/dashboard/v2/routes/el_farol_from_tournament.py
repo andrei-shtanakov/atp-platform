@@ -39,6 +39,26 @@ _NUM_SLOTS = 16
 _CAPACITY_RATIO = 0.6
 
 
+def _intervals_to_slots(
+    action_data: dict | None, num_slots: int = _NUM_SLOTS
+) -> list[int]:
+    """Expand ``{"intervals": [[start, end], ...]}`` into bounded slot indices."""
+    if not action_data:
+        return []
+    slots: list[int] = []
+    for pair in action_data.get("intervals") or []:
+        if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+            continue
+        start, end = pair[0], pair[1]
+        if not (isinstance(start, int) and isinstance(end, int)):
+            continue
+        lo = max(0, int(start))
+        hi = min(num_slots - 1, int(end))
+        if lo <= hi:
+            slots.extend(range(lo, hi + 1))
+    return sorted(set(slots))
+
+
 def _build_agents_from_participants(
     participants: list[Participant],
 ) -> list[DashboardAgent]:
@@ -82,7 +102,7 @@ def _build_decision_from_action(
     a server-side fallback for decide_ms (see service.submit_action).
     """
     action_data = action.action_data or {}
-    picks = [int(s) for s in action_data.get("slots") or []]
+    picks = _intervals_to_slots(action_data)
     slot_payoffs = [
         SlotPayoff(
             slot=slot,
@@ -138,9 +158,8 @@ def _build_rounds_from_actions(
         pairs = actions_by_round[round_number]
         slot_attendance = [0] * num_slots
         for _, action in pairs:
-            for s in (action.action_data or {}).get("slots") or []:
-                if 0 <= int(s) < num_slots:
-                    slot_attendance[int(s)] += 1
+            for s in _intervals_to_slots(action.action_data, num_slots):
+                slot_attendance[s] += 1
         over_slots = sum(1 for c in slot_attendance if c >= capacity_threshold)
         decisions = [
             _build_decision_from_action(

@@ -61,7 +61,6 @@ from atp.dashboard.tournament.models import (
 from atp.dashboard.tournament.reasons import CancelReason
 from atp.dashboard.tournament.schemas import (
     BoSRoundState,
-    ElFarolAction,
     ElFarolRoundState,
     PDRoundState,
     PGRoundState,
@@ -842,30 +841,9 @@ class TournamentService:
             cumulative_scores=cumulative_scores,
         )
 
-        # Wire-layer override: the El Farol game-env still advertises the
-        # canonical slot-list schema (correct for that layer — its
-        # ``validate_action`` accepts ``{"slots": [...]}``), but the
-        # tournament wire contract switched to intervals (commit 1704da7
-        # — see ``ElFarolAction`` in schemas.py). Replace the advertised
-        # schema with the intervals shape so clients building submissions
-        # from ``state.action_schema`` produce payloads that pass the
-        # ``ElFarolAction`` validator. Game-env contract stays unchanged.
-        if tournament.game_type == "el_farol":
-            num_slots = formatted.get("num_slots", 0)
-            formatted["action_schema"] = {
-                "type": "list[list[int]]",
-                "description": (
-                    "list of inclusive [start, end] interval pairs; [] means stay home"
-                ),
-                "max_intervals": 2,
-                "max_slots_total": 8,
-                "value_range": [0, max(0, int(num_slots) - 1)],
-                "constraints": [
-                    "non-overlapping",
-                    "non-adjacent (>= 1 empty slot between runs)",
-                    "0 <= start <= end",
-                ],
-            }
+        # Game-env's ``format_state_for_player`` already advertises the
+        # canonical interval action schema for El Farol — no wire-layer
+        # override needed.
 
         # Compute submission state for the active round by inspecting
         # the already-loaded rounds+actions (no extra DB round-trip).
@@ -1038,15 +1016,11 @@ class TournamentService:
         reasoning = reasoning or None  # "" / whitespace-only → None
 
         game = _game_for(tournament)
-        # El Farol wire format is intervals; the game-env strict path
-        # (validate_action) expects flat slots. Bridge here so the
-        # game-env contract stays unchanged.
-        if isinstance(typed, ElFarolAction):
-            game_payload: dict[str, Any] = {"slots": typed.to_slots()}
-        else:
-            game_payload = typed.model_dump(
-                exclude={"game_type", "reasoning", "telemetry"}
-            )
+        # All games (including El Farol) now expose a single canonical
+        # input shape; submit the typed payload directly.
+        game_payload = typed.model_dump(
+            exclude={"game_type", "reasoning", "telemetry"}
+        )
         canonical = game.validate_action(game_payload)
 
         existing = (
@@ -1187,8 +1161,15 @@ class TournamentService:
             for r in prior_rounds:
                 counts = [0] * num_slots
                 for a in r.actions:
-                    for s in (a.action_data or {}).get("slots", []):
-                        if 0 <= s < num_slots:
+                    for pair in (a.action_data or {}).get("intervals", []):
+                        if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+                            continue
+                        start, end = pair[0], pair[1]
+                        if not (isinstance(start, int) and isinstance(end, int)):
+                            continue
+                        lo = max(0, int(start))
+                        hi = min(num_slots - 1, int(end))
+                        for s in range(lo, hi + 1):
                             counts[s] += 1
                 attendance_history.append(counts)
             game_state = {
@@ -1217,19 +1198,23 @@ class TournamentService:
 
         Each game has a slightly different action payload shape:
         * PD / SH / BoS → ``{"choice": <str>}``
-        * El Farol → ``{"slots": [int, ...]}``
+        * El Farol → ``{"intervals": [[start, end], ...]}``
         * Public Goods → ``{"contribution": <float>}``
 
         Strategies return the bare value (e.g. ``"cooperate"``,
-        ``[0,1,2]``, ``5.0``) so we wrap it here.
+        ``[[0, 3]]``, ``5.0``) so we wrap it here.
         """
         if isinstance(raw, dict):
             return raw
         if game_type in ("prisoners_dilemma", "stag_hunt", "battle_of_sexes"):
             return {"choice": raw}
         if game_type == "el_farol":
-            slots = list(raw) if raw is not None else []
-            return {"slots": [int(s) for s in slots]}
+            intervals = list(raw) if raw is not None else []
+            normalised: list[list[int]] = []
+            for pair in intervals:
+                if isinstance(pair, (list, tuple)) and len(pair) == 2:
+                    normalised.append([int(pair[0]), int(pair[1])])
+            return {"intervals": normalised}
         if game_type == "public_goods":
             return {"contribution": float(raw)}
         # Best-effort fallback

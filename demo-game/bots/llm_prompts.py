@@ -32,13 +32,13 @@ Example shape:
 
     {"action": "<one of the valid options>", "reasoning": "<one sentence>"}
 
-For El Farol, use ``slots`` instead of ``action``:
+For El Farol, use ``intervals`` (a list of inclusive [start, end] pairs):
 
-    {"slots": [0, 3, 7], "reasoning": "<one sentence>"}
+    {"intervals": [[0, 2], [5, 7]], "reasoning": "<one sentence>"}
 
 Keep "reasoning" under 200 characters. Any non-JSON output, any unknown \
-action, or any out-of-range slot will be discarded and replaced with a \
-random move — losing you the round.
+action, or any out-of-range / overlapping / adjacent interval will be \
+discarded and replaced with a random move — losing you the round.
 """
 
 
@@ -67,7 +67,12 @@ def _pair_history_summary(
 
 
 def _el_farol_history_summary(your_history: list[list[int]] | None) -> str:
-    """Summarize a player's own El Farol attendance history."""
+    """Summarize a player's own El Farol attendance history.
+
+    The wire schema (``format_state_for_player``) emits ``your_history``
+    as a list of flat slot-index lists per round (computed from the
+    intervals submitted), which keeps the LLM-facing prompt compact.
+    """
     hist = your_history or []
     if not hist:
         return "no prior rounds"
@@ -117,16 +122,20 @@ def build_user_prompt(state: dict[str, Any]) -> str:
         )
     if game_type == "el_farol":
         num_slots = int(state.get("num_slots") or 16)
-        max_per_day = int((state.get("action_schema") or {}).get("max_length") or 8)
+        schema = state.get("action_schema") or {}
+        max_intervals = int(schema.get("max_intervals") or 2)
+        max_total = int(schema.get("max_total_slots") or 8)
         return (
             f"Game: El Farol Bar (N players, {num_slots} time slots per day).\n"
-            f"You choose up to {max_per_day} slots to attend, as integers in "
-            f"[0, {num_slots - 1}], unique. Empty list is valid.\n"
+            f"You choose up to {max_intervals} non-overlapping, "
+            f"non-adjacent contiguous intervals covering at most "
+            f"{max_total} slots in [0, {num_slots - 1}]. Empty list "
+            "is valid (stay home).\n"
             "Payoff per slot: +1 if attendance <= capacity, -1 if over.\n"
             f"Round {state.get('round_number')} of {state.get('total_rounds')}.\n"
             f"History: {_el_farol_history_summary(your_hist)}.\n"
             f"Respond with a JSON object: "
-            f'{{"slots": [ints], "reasoning": "..."}}'
+            f'{{"intervals": [[start, end], ...], "reasoning": "..."}}'
         )
     return (
         f"Unknown game_type={game_type!r}. "
@@ -196,7 +205,7 @@ def parse_llm_response(raw_text: str, state: dict[str, Any]) -> dict[str, Any] |
     if game_type == "battle_of_sexes":
         return _finalize_choice(parsed, _BOS_CHOICES, reasoning)
     if game_type == "el_farol":
-        return _finalize_slots(parsed, state, reasoning)
+        return _finalize_intervals(parsed, state, reasoning)
     return None
 
 
@@ -214,32 +223,42 @@ def _finalize_choice(
     return out
 
 
-def _finalize_slots(
+def _finalize_intervals(
     parsed: dict[str, Any],
     state: dict[str, Any],
     reasoning: str | None,
 ) -> dict[str, Any] | None:
-    slots = parsed.get("slots")
-    if slots is None and isinstance(parsed.get("action"), list):
-        slots = parsed["action"]
-    if not isinstance(slots, list):
+    intervals = parsed.get("intervals")
+    if not isinstance(intervals, list):
         return None
     num_slots = int(state.get("num_slots") or 16)
-    max_per_day = int((state.get("action_schema") or {}).get("max_length") or 8)
+    schema = state.get("action_schema") or {}
+    max_intervals = int(schema.get("max_intervals") or 2)
+    max_total = int(schema.get("max_total_slots") or 8)
 
-    cleaned: list[int] = []
-    for s in slots:
-        if not isinstance(s, int) or isinstance(s, bool):
+    cleaned: list[list[int]] = []
+    for pair in intervals:
+        if not isinstance(pair, (list, tuple)) or len(pair) != 2:
             return None
-        if s < 0 or s >= num_slots:
+        start, end = pair[0], pair[1]
+        if not (isinstance(start, int) and not isinstance(start, bool)):
             return None
-        cleaned.append(s)
-    if len(cleaned) != len(set(cleaned)):
+        if not (isinstance(end, int) and not isinstance(end, bool)):
+            return None
+        if start < 0 or end < start or end >= num_slots:
+            return None
+        cleaned.append([int(start), int(end)])
+    if len(cleaned) > max_intervals:
         return None
-    if len(cleaned) > max_per_day:
+    total = sum(e - s + 1 for s, e in cleaned)
+    if total > max_total:
         return None
+    ordered = sorted(cleaned, key=lambda p: p[0])
+    for prev, nxt in zip(ordered, ordered[1:]):
+        if nxt[0] <= prev[1] + 1:
+            return None  # overlap or adjacency
 
-    out: dict[str, Any] = {"slots": sorted(cleaned)}
+    out: dict[str, Any] = {"intervals": ordered}
     if reasoning:
         out["reasoning"] = reasoning
     return out
@@ -261,7 +280,14 @@ def random_action(state: dict[str, Any], rng: random.Random) -> dict[str, Any]:
         return {"choice": rng.choice(sorted(_BOS_CHOICES))}
     if game_type == "el_farol":
         num_slots = int(state.get("num_slots") or 16)
-        max_per_day = int((state.get("action_schema") or {}).get("max_length") or 8)
-        k = rng.randint(0, min(max_per_day, num_slots))
-        return {"slots": sorted(rng.sample(range(num_slots), k))}
+        schema = state.get("action_schema") or {}
+        max_total = int(schema.get("max_total_slots") or 8)
+        max_total = max(0, min(max_total, num_slots))
+        if max_total == 0:
+            return {"intervals": []}
+        length = rng.randint(0, max_total)
+        if length == 0:
+            return {"intervals": []}
+        start = rng.randint(0, num_slots - length)
+        return {"intervals": [[start, start + length - 1]]}
     raise ValueError(f"unknown game_type={game_type!r}")

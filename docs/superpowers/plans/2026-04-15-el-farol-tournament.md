@@ -1,5 +1,12 @@
 # El Farol Tournament Support Implementation Plan
 
+> **Historical note (2026-04-28):** This plan was written when the
+> El Farol move wire format was a flat slot list (`{"slots": [...]}`).
+> That format has since been removed. The current canonical shape is
+> `{"intervals": [[start, end], ...]}` only — see
+> `docs/games/rules/el-farol-bar.en.md`. All `{"slots": [...]}` examples
+> below should be read as historical context, not as current contract.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Ship El Farol Bar Problem as the second `game_type` in the MCP tournament service, on par with Prisoner's Dilemma, via two sequential PRs.

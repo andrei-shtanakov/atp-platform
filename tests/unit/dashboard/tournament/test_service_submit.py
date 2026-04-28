@@ -218,7 +218,7 @@ async def test_reasoning_persists_el_farol(
     )
     a = await _alice_action(session, alice.id)
     assert a.reasoning == "non-crowded window"
-    assert a.action_data == {"slots": [0, 3]}
+    assert a.action_data == {"intervals": [[0, 0], [3, 3]]}
 
 
 @pytest.mark.anyio

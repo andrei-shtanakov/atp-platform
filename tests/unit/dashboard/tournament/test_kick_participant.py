@@ -89,7 +89,7 @@ async def _seed_live_el_farol_with_stalled(
         Action(
             round_id=r2.id,
             participant_id=participants["alpha"].id,
-            action_data={"slots": [0, 1]},
+            action_data={"intervals": [[0, 1]]},
             submitted_at=now - timedelta(seconds=5),
             source=ActionSource.SUBMITTED.value,
         )
@@ -123,8 +123,8 @@ async def test_kick_inserts_timeout_action_for_missing_current_round_submission(
     rows = (await session.execute(stmt)).scalars().all()
     assert len(rows) == 1
     assert rows[0].source == ActionSource.TIMEOUT_DEFAULT.value
-    # For El Farol the default is {"slots": []}.
-    assert rows[0].action_data == {"slots": []}
+    # For El Farol the default is {"intervals": []}.
+    assert rows[0].action_data == {"intervals": []}
 
 
 @pytest.mark.anyio

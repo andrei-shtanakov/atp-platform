@@ -131,18 +131,21 @@ async def run_bot(
                 await asyncio.sleep(0.3)
                 continue
 
-            slots = _random_slots(state_body, rng)
+            intervals = _random_intervals(state_body, rng)
             move = await adapter.call_tool(
                 "make_move",
-                {"tournament_id": tournament_id, "action": {"slots": slots}},
+                {
+                    "tournament_id": tournament_id,
+                    "action": {"intervals": intervals},
+                },
             )
             rounds_played += 1
             last_round_played = round_number
             logger.info(
-                "[%s] r%s: slots=%s -> %s",
+                "[%s] r%s: intervals=%s -> %s",
                 agent_name,
                 round_number,
-                slots,
+                intervals,
                 _unwrap_tool_result(move).get("status"),
             )
         else:
@@ -189,11 +192,26 @@ def _unwrap_tool_result(raw: dict[str, Any]) -> dict[str, Any]:
     return raw
 
 
-def _random_slots(state: dict[str, Any], rng: random.Random) -> list[int]:
-    """Pick a valid random subset of slots per server constraints."""
+def _random_intervals(
+    state: dict[str, Any], rng: random.Random
+) -> list[list[int]]:
+    """Pick a random El Farol action in canonical interval shape.
+
+    Picks a single contiguous window of 0–``max_total_slots`` slots; if
+    length is 0, returns ``[]`` ("stay home"). Single-interval choices
+    are sufficient for a smoke bot — the schema permits up to two but
+    one keeps the implementation small.
+    """
     num_slots = int(state.get("num_slots", DEFAULT_NUM_SLOTS))
-    max_per_day = int(
-        (state.get("action_schema") or {}).get("max_length", DEFAULT_MAX_SLOTS_PER_DAY)
+    schema = state.get("action_schema") or {}
+    max_total_slots = int(
+        schema.get("max_total_slots", DEFAULT_MAX_SLOTS_PER_DAY)
     )
-    k = rng.randint(0, min(max_per_day, num_slots))
-    return sorted(rng.sample(range(num_slots), k))
+    max_total_slots = max(0, min(max_total_slots, num_slots))
+    if max_total_slots == 0:
+        return []
+    length = rng.randint(0, max_total_slots)
+    if length == 0:
+        return []
+    start = rng.randint(0, num_slots - length)
+    return [[start, start + length - 1]]

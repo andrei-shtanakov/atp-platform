@@ -387,7 +387,7 @@ async def _seed_live_el_farol_in_ctx(ctx: dict) -> int:
             Action(
                 round_id=r1.id,
                 participant_id=p_alpha.id,
-                action_data={"slots": [0]},
+                action_data={"intervals": [[0, 0]]},
                 submitted_at=now - timedelta(seconds=45),
                 source=ActionSource.SUBMITTED.value,
                 payoff=1.0,
@@ -397,7 +397,7 @@ async def _seed_live_el_farol_in_ctx(ctx: dict) -> int:
             Action(
                 round_id=r1.id,
                 participant_id=p_beta.id,
-                action_data={"slots": []},
+                action_data={"intervals": []},
                 submitted_at=now - timedelta(seconds=29),
                 source=ActionSource.TIMEOUT_DEFAULT.value,
                 payoff=0.0,
@@ -508,7 +508,7 @@ async def _seed_completed_el_farol_in_ctx(ctx: dict) -> int:
                     Action(
                         round_id=r.id,
                         participant_id=p.id,
-                        action_data={"slots": [0, 1]},
+                        action_data={"intervals": [[0, 1]]},
                         submitted_at=now - timedelta(minutes=5 - rn),
                         source=ActionSource.SUBMITTED.value,
                         payoff=1.0,

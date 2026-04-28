@@ -1,15 +1,16 @@
-"""Tests for the extended ``ElFarolActionSpace`` accepting interval shapes.
+"""Tests for ``ElFarolActionSpace`` interval-only contract.
 
-Covers the planned contract:
+Covers the canonical contract:
 
   - Constructor signature
     ``ElFarolActionSpace(num_slots=16, max_intervals=2, max_total_slots=8)``.
-  - ``contains(action)`` accepts three canonical shapes:
-      1. Flat slot list (legacy), e.g. ``[0, 1, 2, 6, 7, 8]``.
-      2. List of inclusive ``[start, end]`` pairs, e.g. ``[[0, 2], [6, 8]]``.
-      3. Dict with an ``"intervals"`` key, e.g. ``{"intervals": [[0, 2]]}``.
+  - ``contains(action)`` accepts only interval shapes:
+      1. List of inclusive ``[start, end]`` pairs, e.g. ``[[0, 2], [6, 8]]``.
+      2. Dict with an ``"intervals"`` key, e.g. ``{"intervals": [[0, 2]]}``.
+      3. The empty list ``[]`` / ``{"intervals": []}`` ("stay home").
   - ``sanitize(action)`` returns a sorted, deduped ``list[int]`` of slot
-    indices for valid input and ``[]`` for structurally invalid input.
+    indices for valid interval input and ``[]`` for anything else
+    (including flat slot lists, which are no longer accepted).
 
 Invariants:
   - Each ``[start, end]`` pair has ``start <= end`` and both in
@@ -57,11 +58,11 @@ class TestConstructorConfigurable:
 
 
 # ---------------------------------------------------------------------------
-# contains(): flat slot list shape
+# contains(): list-of-pairs shape
 # ---------------------------------------------------------------------------
 
 
-class TestContainsFlatSlotList:
+class TestContainsListOfPairs:
     def test_empty_list_valid(self) -> None:
         # GIVEN an empty list (stay home)
         aspace = ElFarolActionSpace()
@@ -69,63 +70,6 @@ class TestContainsFlatSlotList:
         # THEN True
         assert aspace.contains([]) is True
 
-    def test_single_contiguous_run_valid(self) -> None:
-        # GIVEN one contiguous run
-        aspace = ElFarolActionSpace()
-        # WHEN checking
-        # THEN True
-        assert aspace.contains([0, 1, 2]) is True
-
-    def test_two_runs_valid(self) -> None:
-        # GIVEN two runs with gap at 3-5
-        aspace = ElFarolActionSpace()
-        # WHEN checking
-        # THEN True (two runs fit max_intervals=2)
-        assert aspace.contains([0, 1, 2, 6, 7, 8]) is True
-
-    def test_three_runs_invalid(self) -> None:
-        # GIVEN three distinct runs
-        aspace = ElFarolActionSpace()
-        # WHEN checking
-        # THEN False (> max_intervals=2)
-        assert aspace.contains([0, 1, 4, 5, 10, 11]) is False
-
-    def test_unordered_slots_still_validate(self) -> None:
-        # GIVEN unsorted input that sorts into two runs
-        aspace = ElFarolActionSpace()
-        # WHEN checking
-        # THEN True (sort internally before classifying runs)
-        assert aspace.contains([8, 7, 0, 1, 2, 6]) is True
-
-    def test_duplicate_slots_invalid(self) -> None:
-        # GIVEN duplicates in flat form
-        aspace = ElFarolActionSpace()
-        # WHEN checking
-        # THEN False
-        assert aspace.contains([0, 0, 1, 2]) is False
-
-    def test_exceeds_max_total_slots_invalid(self) -> None:
-        # GIVEN a flat list longer than max_total_slots
-        aspace = ElFarolActionSpace(max_total_slots=4)
-        # WHEN checking
-        # THEN False (5 slots > 4)
-        assert aspace.contains([0, 1, 2, 6, 7]) is False
-
-    def test_out_of_range_slot_invalid(self) -> None:
-        # GIVEN out-of-range slot indices
-        aspace = ElFarolActionSpace()
-        # WHEN checking
-        # THEN False in both directions
-        assert aspace.contains([16]) is False
-        assert aspace.contains([-1]) is False
-
-
-# ---------------------------------------------------------------------------
-# contains(): list-of-pairs shape
-# ---------------------------------------------------------------------------
-
-
-class TestContainsListOfPairs:
     def test_single_pair_valid(self) -> None:
         # GIVEN one pair
         aspace = ElFarolActionSpace()
@@ -211,7 +155,7 @@ class TestContainsDictIntervals:
         assert aspace.contains({"intervals": []}) is True
 
     def test_dict_missing_intervals_key_invalid(self) -> None:
-        # GIVEN a dict without the "intervals" key
+        # GIVEN a dict without the "intervals" key (legacy "slots" payload)
         aspace = ElFarolActionSpace()
         # WHEN checking
         # THEN False
@@ -226,25 +170,27 @@ class TestContainsDictIntervals:
 
 
 # ---------------------------------------------------------------------------
+# contains(): legacy flat slot list is no longer accepted
+# ---------------------------------------------------------------------------
+
+
+class TestContainsRejectsFlatSlotList:
+    def test_flat_slot_list_invalid(self) -> None:
+        aspace = ElFarolActionSpace()
+        # Even a structurally tidy flat list of slot indices is now rejected.
+        assert aspace.contains([0, 1, 2]) is False
+
+    def test_flat_slot_list_two_runs_invalid(self) -> None:
+        aspace = ElFarolActionSpace()
+        assert aspace.contains([0, 1, 2, 6, 7, 8]) is False
+
+
+# ---------------------------------------------------------------------------
 # sanitize(): normalise to a flat list[int]
 # ---------------------------------------------------------------------------
 
 
 class TestSanitize:
-    def test_sanitize_flat_list_passthrough(self) -> None:
-        # GIVEN a valid flat list already sorted and unique
-        aspace = ElFarolActionSpace()
-        # WHEN sanitizing
-        # THEN passthrough
-        assert aspace.sanitize([0, 1, 2, 6, 7, 8]) == [0, 1, 2, 6, 7, 8]
-
-    def test_sanitize_flat_list_sorts_and_dedupes(self) -> None:
-        # GIVEN an unsorted flat list with duplicates
-        aspace = ElFarolActionSpace()
-        # WHEN sanitizing
-        # THEN result is sorted and deduplicated
-        assert aspace.sanitize([8, 0, 1, 1, 2]) == [0, 1, 2, 8]
-
     def test_sanitize_pairs_to_flat(self) -> None:
         # GIVEN interval pairs
         aspace = ElFarolActionSpace()
@@ -258,6 +204,20 @@ class TestSanitize:
         # WHEN sanitizing
         # THEN expansion into flat slot list
         assert aspace.sanitize({"intervals": [[0, 2]]}) == [0, 1, 2]
+
+    def test_sanitize_empty_list(self) -> None:
+        # GIVEN an empty list (stay home)
+        aspace = ElFarolActionSpace()
+        # WHEN sanitizing
+        # THEN [] (no slots attended)
+        assert aspace.sanitize([]) == []
+
+    def test_sanitize_empty_dict_intervals(self) -> None:
+        # GIVEN a dict with an empty intervals list
+        aspace = ElFarolActionSpace()
+        # WHEN sanitizing
+        # THEN []
+        assert aspace.sanitize({"intervals": []}) == []
 
     def test_sanitize_none_returns_empty(self) -> None:
         # GIVEN None input
@@ -274,19 +234,13 @@ class TestSanitize:
         assert aspace.sanitize("hello") == []
         assert aspace.sanitize(42) == []
 
-    def test_sanitize_drops_out_of_range_entries(self) -> None:
-        # GIVEN a flat list with one out-of-range slot
+    def test_sanitize_flat_list_returns_empty(self) -> None:
+        # GIVEN a (legacy) flat list of slot indices
         aspace = ElFarolActionSpace()
         # WHEN sanitizing
-        # THEN out-of-range entry is silently dropped
-        assert aspace.sanitize([0, 1, 99]) == [0, 1]
-
-    def test_sanitize_rejects_over_max_total_slots(self) -> None:
-        # GIVEN a flat list longer than max_total_slots
-        aspace = ElFarolActionSpace(max_total_slots=4)
-        # WHEN sanitizing
-        # THEN [] (strict rejection, caller's default-action fallback kicks in)
-        assert aspace.sanitize([0, 1, 2, 3, 4, 5]) == []
+        # THEN [] (interval-only contract; legacy flat list rejected)
+        assert aspace.sanitize([0, 1, 2]) == []
+        assert aspace.sanitize([0, 1, 2, 6, 7, 8]) == []
 
     def test_sanitize_interval_shape_rejects_third_pair_entirely(self) -> None:
         # GIVEN interval-shape input with too many pairs
@@ -295,19 +249,19 @@ class TestSanitize:
         # THEN [] (caller's default-action fallback kicks in)
         assert aspace.sanitize([[0, 0], [2, 2], [4, 4]]) == []
 
-    def test_sanitize_rejects_flat_list_exceeding_max_intervals(self) -> None:
-        # GIVEN a flat list decomposing into 3 runs (> max_intervals=2)
-        aspace = ElFarolActionSpace()
+    def test_sanitize_pairs_exceeding_max_total_slots_returns_empty(self) -> None:
+        # GIVEN one wide interval beyond max_total_slots
+        aspace = ElFarolActionSpace(max_total_slots=4)
         # WHEN sanitizing
-        # THEN [] (strict rejection, consistent with list-of-pairs / dict shapes)
-        assert aspace.sanitize([0, 1, 4, 5, 10, 11]) == []
+        # THEN [] (strict rejection)
+        assert aspace.sanitize([[0, 4]]) == []
 
-    def test_sanitize_accepts_flat_list_at_max_intervals_boundary(self) -> None:
-        # GIVEN a flat list decomposing into exactly max_intervals=2 runs
+    def test_sanitize_pairs_out_of_range_returns_empty(self) -> None:
+        # GIVEN a pair with an out-of-range end
         aspace = ElFarolActionSpace()
         # WHEN sanitizing
-        # THEN the sorted, deduped slot list is returned (boundary-inclusive)
-        assert aspace.sanitize([0, 1, 4, 5]) == [0, 1, 4, 5]
+        # THEN [] (strict rejection)
+        assert aspace.sanitize([[14, 99]]) == []
 
 
 # ---------------------------------------------------------------------------
@@ -333,7 +287,7 @@ class TestIntegrationWithConfig:
         assert aspace.max_intervals == 2
         assert aspace.max_total_slots == 6
 
-    def test_step_rejects_flat_list_exceeding_max_intervals(self) -> None:
+    def test_step_rejects_too_many_intervals(self) -> None:
         # GIVEN a 2-player ElFarolBar with default max_intervals=2
         from game_envs.games.el_farol import ElFarolBar, ElFarolConfig
 
@@ -347,12 +301,12 @@ class TestIntegrationWithConfig:
         )
         game = ElFarolBar(cfg)
         game.reset()
-        # WHEN player_0 submits 3 disjoint visits (flat list, 3 runs)
+        # WHEN player_0 submits 3 disjoint intervals (exceeds max_intervals=2)
         # AND player_1 submits a valid 2-run action
         result = game.step(
             {
-                "player_0": [0, 4, 8],  # 3 runs, exceeds max_intervals=2
-                "player_1": [0, 1, 4, 5],  # 2 runs, valid
+                "player_0": [[0, 0], [4, 4], [8, 8]],  # 3 intervals
+                "player_1": [[0, 1], [4, 5]],  # 2 intervals, valid
             }
         )
         # THEN player_0's action sanitizes to [] (no happy slots, no payoff)

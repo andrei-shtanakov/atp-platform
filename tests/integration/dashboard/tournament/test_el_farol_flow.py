@@ -63,19 +63,23 @@ async def test_el_farol_full_flow_n5_r3(session_factory):
         await session.refresh(t)
         assert t.status == TournamentStatus.ACTIVE
 
-        # Round 1: varied slot picks
-        for u, slots in zip(users, [[0, 1], [2, 3], [0], [4, 5], []], strict=True):
-            await svc.submit_action(t.id, u, action={"slots": slots})
+        # Round 1: varied interval picks
+        for u, intervals in zip(
+            users,
+            [[[0, 1]], [[2, 3]], [[0, 0]], [[4, 5]], []],
+            strict=True,
+        ):
+            await svc.submit_action(t.id, u, action={"intervals": intervals})
         await session.commit()
 
         # Round 2: all go to slot 0 (crowded)
         for u in users:
-            await svc.submit_action(t.id, u, action={"slots": [0]})
+            await svc.submit_action(t.id, u, action={"intervals": [[0, 0]]})
         await session.commit()
 
         # Round 3: only 4 submit; 5th times out -> force resolve
         for u in users[:4]:
-            await svc.submit_action(t.id, u, action={"slots": [1, 2]})
+            await svc.submit_action(t.id, u, action={"intervals": [[1, 2]]})
         await session.commit()
 
         # Find the active round and force-resolve

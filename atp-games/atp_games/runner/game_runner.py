@@ -71,57 +71,47 @@ class ProgressReporter:
         return time.monotonic() - self._start_time
 
 
-def _is_slot_list(action: Any) -> bool:
-    """True if ``action`` is a (possibly empty) list of non-negative ints."""
-    if not isinstance(action, list):
-        return False
-    return all(isinstance(s, int) and s >= 0 for s in action)
-
-
-def _slots_to_interval_pair(
-    slots: list[int],
+def _action_to_interval_pair(
+    action: Any,
     *,
     num_slots: int,
     max_total_slots: int,
 ) -> IntervalPair | None:
-    """Convert a sorted-or-unsorted list of slot indices to an IntervalPair.
+    """Convert a canonical El Farol action to an IntervalPair.
 
-    Groups contiguous slot indices into runs. Returns None when the picks
-    decompose into more than two runs (not representable as a pair of
-    contiguous intervals) or when IntervalPair construction rejects the
-    result for any other invariant (out-of-range, total slots exceeded).
+    Accepts either ``{"intervals": [[start, end], ...]}`` or a bare list
+    of ``[start, end]`` pairs. Returns ``None`` when the action is not
+    interval-shaped (e.g. PD's string ``"cooperate"``) or when
+    ``IntervalPair`` rejects the values (out-of-range, total slots
+    exceeded, more than two runs).
 
-    ``max_total_slots`` is the match's configured cap and is stored on the
-    returned :class:`IntervalPair` so the action metadata remains faithful
-    to the rules that produced it (e.g. a match with ``max_total_slots=4``
-    emits pairs whose cap is 4, not the global default).
+    ``max_total_slots`` is stored on the returned ``IntervalPair`` so the
+    action metadata stays faithful to the match's configured cap.
     """
-    if not slots:
-        return IntervalPair(
-            first=(),
-            second=(),
-            num_slots=num_slots,
-            max_total_slots=max_total_slots,
-        )
-
-    sorted_slots = sorted(set(slots))
-    runs: list[tuple[int, int]] = []
-    run_start = sorted_slots[0]
-    prev = sorted_slots[0]
-    for s in sorted_slots[1:]:
-        if s == prev + 1:
-            prev = s
-            continue
-        runs.append((run_start, prev))
-        run_start = s
-        prev = s
-    runs.append((run_start, prev))
-
-    if len(runs) > 2:
+    if isinstance(action, dict):
+        action = action.get("intervals")
+    if action is None:
+        return None
+    if not isinstance(action, (list, tuple)):
         return None
 
-    first: tuple[int, int] | tuple[()] = runs[0]
-    second: tuple[int, int] | tuple[()] = runs[1] if len(runs) == 2 else ()
+    pairs: list[tuple[int, int]] = []
+    for pair in action:
+        if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+            return None
+        start, end = pair[0], pair[1]
+        if not (isinstance(start, int) and not isinstance(start, bool)):
+            return None
+        if not (isinstance(end, int) and not isinstance(end, bool)):
+            return None
+        pairs.append((int(start), int(end)))
+
+    if len(pairs) > 2:
+        return None
+
+    ordered = sorted(pairs, key=lambda p: p[0])
+    first: tuple[int, int] | tuple[()] = ordered[0] if ordered else ()
+    second: tuple[int, int] | tuple[()] = ordered[1] if len(ordered) == 2 else ()
     try:
         return IntervalPair(
             first=first,
@@ -410,28 +400,41 @@ class GameRunner:
     ) -> None:
         """Build per-agent ActionRecord for this day when possible.
 
-        ActionRecords are built for games whose player actions are
-        convertible to a slot list via the per-player action space
-        (El Farol accepts flat lists, list-of-pairs and
-        ``{"intervals": [...]}`` shapes). For any other action shape,
-        the list is left untouched — non-interval games simply produce
+        ActionRecords are built for El Farol whose canonical action shape
+        is ``{"intervals": [[start, end], ...]}`` (or the bare pair-list
+        form). Non-interval games (e.g. PD) bail out entirely and produce
         an empty ``EpisodeResult.actions``.
         """
         num_slots = self._infer_num_slots(game, actions)
         max_total_slots = self._infer_max_total_slots(game, num_slots)
         crowded_slots = self._extract_crowded_slots(step_result)
 
+        # First action determines whether this game is interval-shaped at all.
+        # If the inaugural action isn't interval-convertible, bail entirely.
+        first_intervals: IntervalPair | None = None
+        first_pid: str | None = None
         for pid, action in actions.items():
-            slot_list = self._normalise_to_slot_list(game, pid, action)
-            if slot_list is None:
-                return  # bail out entirely — non-slot games (PD etc.)
-            intervals = _slots_to_interval_pair(
-                slot_list,
+            first_intervals = _action_to_interval_pair(
+                action,
                 num_slots=num_slots,
                 max_total_slots=max_total_slots,
             )
-            if intervals is None:
-                continue  # action not representable as IntervalPair (>2 runs)
+            first_pid = pid
+            break
+        if first_intervals is None:
+            return  # non-interval game (PD etc.)
+
+        for pid, action in actions.items():
+            if pid == first_pid:
+                intervals = first_intervals
+            else:
+                intervals = _action_to_interval_pair(
+                    action,
+                    num_slots=num_slots,
+                    max_total_slots=max_total_slots,
+                )
+                if intervals is None:
+                    continue  # malformed action for an otherwise-interval game
 
             picks = intervals.covered_slots()
             payoff = float(step_result.payoffs.get(pid, 0.0))
@@ -459,60 +462,27 @@ class GameRunner:
             )
 
     @staticmethod
-    def _normalise_to_slot_list(
-        game: Game, player_id: str, action: Any
-    ) -> list[int] | None:
-        """Normalise an agent action to a flat slot list.
-
-        Returns the slot list for El Farol-style actions (flat list,
-        list of ``[start, end]`` pairs, or ``{"intervals": [...]}``),
-        or ``None`` when the game's action space cannot produce a slot
-        list (e.g. PD whose actions are strings). The action space's
-        ``sanitize`` method does the shape normalisation.
-        """
-        if _is_slot_list(action):
-            return list(action)
-        # Interval-shaped input — only meaningful for slot-based games.
-        try:
-            aspace = game.action_space(player_id)
-        except Exception:
-            return None
-        # Only games whose action space exposes ``sanitize`` returning a
-        # list[int] can produce records here. We detect this by checking
-        # that the space accepts an empty list as a valid slot action.
-        sanitize = getattr(aspace, "sanitize", None)
-        if sanitize is None:
-            return None
-        try:
-            result = sanitize(action)
-        except Exception:
-            return None
-        if not isinstance(result, list):
-            return None
-        if not all(isinstance(s, int) and not isinstance(s, bool) for s in result):
-            return None
-        # Confirm this is a slot-based space (empty is a valid action).
-        try:
-            if not aspace.contains([]):
-                return None
-        except Exception:
-            return None
-        return result
-
-    @staticmethod
     def _infer_num_slots(game: Game, actions: dict[str, Any]) -> int:
         """Best-effort extraction of num_slots from game config or actions."""
         cfg = getattr(game, "config", None)
         num_slots = getattr(cfg, "num_slots", None)
         if isinstance(num_slots, int) and num_slots > 0:
             return num_slots
-        # Fallback: infer from the largest slot index observed.
+        # Fallback: infer from the largest slot index observed across
+        # canonical interval-shaped actions.
         max_slot = -1
         for action in actions.values():
-            if _is_slot_list(action):
-                for s in action:
-                    if isinstance(s, int) and s > max_slot:
-                        max_slot = s
+            payload = (
+                action.get("intervals") if isinstance(action, dict) else action
+            )
+            if not isinstance(payload, (list, tuple)):
+                continue
+            for pair in payload:
+                if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+                    continue
+                end = pair[1]
+                if isinstance(end, int) and end > max_slot:
+                    max_slot = end
         return max_slot + 1 if max_slot >= 0 else 16
 
     @staticmethod

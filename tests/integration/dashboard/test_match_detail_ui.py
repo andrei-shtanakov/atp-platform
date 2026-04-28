@@ -205,13 +205,13 @@ class TestMatchDetailUI:
                 Action(
                     round_id=r.id,
                     participant_id=p1.id,
-                    action_data={"slots": [0, 1]},
+                    action_data={"intervals": [[0, 1]]},
                     payoff=2.0,
                 ),
                 Action(
                     round_id=r.id,
                     participant_id=p2.id,
-                    action_data={"slots": [2, 3]},
+                    action_data={"intervals": [[2, 3]]},
                     payoff=2.0,
                 ),
             ]

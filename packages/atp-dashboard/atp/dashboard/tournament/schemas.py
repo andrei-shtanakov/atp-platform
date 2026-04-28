@@ -4,7 +4,7 @@ import os
 from typing import Annotated, Any, Literal
 
 from game_envs.games.el_farol import MAX_SLOTS_PER_DAY
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 _MAX_INTERVALS_PER_DAY = 2
 
@@ -83,15 +83,12 @@ class ElFarolAction(BaseModel):
     Visits are expressed as ``intervals`` — up to ``_MAX_INTERVALS_PER_DAY``
     inclusive ``[start, end]`` pairs covering at most ``MAX_SLOTS_PER_DAY``
     slots in total. The empty list ``[]`` is the canonical "stay home"
-    action. Pair shape matches the preferred form accepted by
+    action. Pair shape matches the form accepted by
     ``game_envs.games.el_farol.ElFarolActionSpace``.
 
-    For backwards compatibility with clients built against the pre-1704d
-    ``slots`` wire format, a ``{"slots": list[int]}`` payload is accepted
-    and run-length-encoded into intervals before field validation. Slot
-    patterns that cannot be expressed as ``<= _MAX_INTERVALS_PER_DAY``
-    non-adjacent runs (e.g. ``[0, 2, 4]``) get a clean intervals
-    validation error rather than silent acceptance.
+    The legacy ``{"slots": [...]}`` flat-slot wire shape is no longer
+    accepted — payloads carrying that key are rejected as unknown
+    fields by the ``extra="forbid"`` config.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -104,45 +101,6 @@ class ElFarolAction(BaseModel):
     )
     reasoning: str | None = Field(default=None, max_length=_REASONING_MAX)
     telemetry: ActionTelemetry | None = None
-
-    @model_validator(mode="before")
-    @classmethod
-    def _accept_legacy_slots(cls, data: Any) -> Any:
-        """Convert the legacy ``{"slots": [...]}`` wire shape to intervals.
-
-        Runs *before* field validation (and before ``extra="forbid"``)
-        so the slot list never reaches the unknown-field check. Sorts
-        and dedupes input slots, then run-length-encodes consecutive
-        integers into ``[start, end]`` pairs. The resulting intervals
-        list is then validated by the standard pipeline — over-budget
-        or non-adjacent-violating inputs surface the normal error.
-        """
-        if not isinstance(data, dict):
-            return data
-        if "intervals" in data or "slots" not in data:
-            return data
-        raw_slots = data.get("slots")
-        if not isinstance(raw_slots, list):
-            return data
-        try:
-            slots = sorted({int(s) for s in raw_slots})
-        except (TypeError, ValueError):
-            # Defer to standard validation — malformed slot list will
-            # fail loudly with a more useful error than we'd produce.
-            return data
-        intervals: list[list[int]] = []
-        if slots:
-            start = end = slots[0]
-            for s in slots[1:]:
-                if s == end + 1:
-                    end = s
-                else:
-                    intervals.append([start, end])
-                    start = end = s
-            intervals.append([start, end])
-        new_data = {k: v for k, v in data.items() if k != "slots"}
-        new_data["intervals"] = intervals
-        return new_data
 
     @field_validator("intervals")
     @classmethod
@@ -169,19 +127,6 @@ class ElFarolAction(BaseModel):
             if nxt[0] <= prev[1] + 1:
                 raise ValueError(f"intervals {prev} and {nxt} overlap or are adjacent")
         return pairs
-
-    def to_slots(self) -> list[int]:
-        """Expand ``intervals`` into a sorted flat slot list.
-
-        The game-environments strict path (``ElFarolBar.validate_action``)
-        accepts ``{"slots": list[int]}`` as its canonical input shape —
-        the interval form is the wire-layer convenience. The tournament
-        service uses this helper to bridge the two without touching the
-        game-env contract.
-        """
-        return sorted(
-            {s for start, end in self.intervals for s in range(start, end + 1)}
-        )
 
 
 class SHAction(BaseModel):

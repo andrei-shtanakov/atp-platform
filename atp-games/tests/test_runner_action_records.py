@@ -1,21 +1,13 @@
-"""Phase 2 TDD tests: GameRunner populates EpisodeResult.actions.
+"""GameRunner populates EpisodeResult.actions for interval-shaped games.
 
-These tests drive the Phase 2 runner change that adds a new
-``actions: list[ActionRecord]`` field to ``EpisodeResult`` and has
-``GameRunner._run_episode`` build per-day ``ActionRecord`` objects for
-El Farol (and any other game whose actions are ``list[int]``).
+These tests cover the runner's population of the
+``actions: list[ActionRecord]`` field on ``EpisodeResult`` for El Farol
+(canonical interval-shaped action) and the no-op behaviour for non-interval
+games (e.g. Prisoner's Dilemma whose actions are string labels).
 
-The change is additive: existing ``actions_log`` / ``history`` fields
-are untouched.  For games whose actions are not list-of-ints (e.g.
-Prisoner's Dilemma, whose actions are string labels), ``ep.actions``
-stays an empty list because no ``IntervalPair`` can be built.
-
-Expected failure modes before Phase 2 implementation:
-  * ``EpisodeResult`` has no ``actions`` attribute yet, so tests that
-    access ``ep.actions`` fail with AttributeError on construction or
-    attribute lookup.
-  * Even if the field is added as default ``[]``, the runner does not
-    populate it, so length / content assertions fail.
+The runner accepts the canonical El Farol shape — either a bare list of
+``[start, end]`` pairs or ``{"intervals": [[start, end], ...]}`` — and
+converts it via the module-level ``_action_to_interval_pair`` helper.
 """
 
 from __future__ import annotations
@@ -40,20 +32,14 @@ from atp_games.models import (
     IntervalPair,
 )
 from atp_games.runner.builtin_adapter import BuiltinAdapter
-from atp_games.runner.game_runner import GameRunner, _slots_to_interval_pair
+from atp_games.runner.game_runner import GameRunner, _action_to_interval_pair
 
 # ---------------------------------------------------------------------------
 # Deterministic El Farol test strategies
 # ---------------------------------------------------------------------------
 #
-# The built-in El Farol strategies (Traditionalist, TrendFollower, ...) all
-# produce contiguous windows, but their exact picks depend on attendance
-# history and may collide in small 2-player matches.  For deterministic,
-# disjoint, always-contiguous picks, we define two tiny inline strategies:
-# a "morning" attendee that always picks slots [0, 1, 2], and an "evening"
-# attendee that always picks slots [13, 14, 15].  Both are single
-# contiguous intervals, so the runner's list[int] -> IntervalPair
-# conversion must succeed.
+# Two tiny inline strategies producing disjoint contiguous intervals so
+# the runner's interval -> IntervalPair conversion is unambiguous.
 
 
 class MorningAttendee(Strategy):
@@ -64,7 +50,7 @@ class MorningAttendee(Strategy):
         return "morning_attendee"
 
     def choose_action(self, observation: Observation) -> Any:
-        return [0, 1, 2]
+        return [[0, 2]]
 
 
 class EveningAttendee(Strategy):
@@ -75,7 +61,7 @@ class EveningAttendee(Strategy):
         return "evening_attendee"
 
     def choose_action(self, observation: Observation) -> Any:
-        return [13, 14, 15]
+        return [[13, 15]]
 
 
 # ---------------------------------------------------------------------------
@@ -122,13 +108,13 @@ async def _run_el_farol_match(
 
 
 class TestEpisodeResultActionsField:
-    """The new ``actions`` field on EpisodeResult."""
+    """The ``actions`` field on EpisodeResult."""
 
     def test_episode_actions_field_exists_and_empty_by_default(self) -> None:
         # GIVEN an EpisodeResult constructed with only the required args
         ep = EpisodeResult(episode=0, payoffs={"p0": 1.0})
 
-        # THEN the new actions field is present and defaults to []
+        # THEN the actions field is present and defaults to []
         assert ep.actions == []
 
 
@@ -170,10 +156,6 @@ class TestRunnerBuildsActionRecordsForElFarol:
         # per day, so per-day payoff is 3 and the 3-day sum is 9.
         ep = await _run_el_farol_match(num_rounds=3)
 
-        # THEN the sum of per-day ActionRecord.payoff for each agent matches
-        # the deterministic per-day delta from the El Farol step resolution
-        # (not ep.payoffs, which uses the non-linear t_happy/max(t_crowded, 0.1)
-        # formula that is intentionally out of scope for this plan).
         for pid in ("player_0", "player_1"):
             daily_sum = sum(r.payoff for r in ep.actions if r.agent_id == pid)
             assert daily_sum == pytest.approx(9.0), (
@@ -274,7 +256,7 @@ class TestRunIdAndMatchIdUniqueness:
 
 
 class TestRunnerSkipsActionRecordsForNonIntervalGames:
-    """Games whose actions aren't list[int] yield no ActionRecords."""
+    """Games whose actions aren't interval-shaped yield no ActionRecords."""
 
     @pytest.mark.anyio
     async def test_non_el_farol_game_yields_empty_actions(self) -> None:
@@ -288,7 +270,7 @@ class TestRunnerSkipsActionRecordsForNonIntervalGames:
         result = await runner.run_game(game, agents, GameRunConfig(episodes=1))
         ep = result.episodes[0]
 
-        # THEN no ActionRecords are built (PD actions aren't list-of-ints)
+        # THEN no ActionRecords are built (PD actions aren't interval-shaped)
         assert ep.actions == []
 
 
@@ -361,7 +343,7 @@ class TestActionRecordIntentPlumbing:
         # GIVEN a 1-day 2-player El Farol match where player_0's mock
         #       adapter returns both a valid action and an intent string
         mock_agent = _make_mock_el_farol_adapter(
-            action=[0, 1, 2],
+            action=[[0, 2]],
             intent="avoid the crowd",
         )
         ep = await _run_minimal_el_farol_with_mock(
@@ -382,8 +364,8 @@ class TestActionRecordIntentPlumbing:
     ) -> None:
         # GIVEN both players return valid actions without any intent field
         ep = await _run_minimal_el_farol_with_mock(
-            player_0=_make_mock_el_farol_adapter(action=[0, 1, 2]),
-            player_1=_make_mock_el_farol_adapter(action=[13, 14, 15]),
+            player_0=_make_mock_el_farol_adapter(action=[[0, 2]]),
+            player_1=_make_mock_el_farol_adapter(action=[[13, 15]]),
         )
 
         # THEN every ActionRecord has intent is None
@@ -396,26 +378,32 @@ class TestActionRecordIntentPlumbing:
 
     @pytest.mark.anyio
     async def test_action_record_intent_is_none_on_fallback_path(self) -> None:
-        # GIVEN player_0 always returns an invalid action (wrong type) so
-        #       the runner exhausts retries and falls back to the default
+        # GIVEN player_1 always returns an invalid action (wrong type) so
+        # the runner exhausts retries and falls back to the default.
+        # ``ElFarolActionSpace.sample()`` now returns an interval-shaped
+        # action (e.g. ``[[start, end]]``), so the fallback IS
+        # interval-convertible and player_1 still gets an ActionRecord —
+        # but the original intent must be discarded since the action
+        # itself was replaced.
         invalid_agent = _make_mock_el_farol_adapter(
-            action="not-a-slot-list",
+            action="not-an-interval-list",
             intent="this intent should be discarded",
         )
         ep = await _run_minimal_el_farol_with_mock(
-            player_0=invalid_agent,
-            player_1=BuiltinAdapter(EveningAttendee()),
+            player_0=BuiltinAdapter(MorningAttendee()),
+            player_1=invalid_agent,
             max_retries=1,
         )
 
-        # THEN player_0's fallback ActionRecord(s) must not carry any intent,
-        #      even though the agent's response contained one on every attempt
-        assert ep.actions, "expected ActionRecords to be produced"
-        player_0_records = [r for r in ep.actions if r.agent_id == "player_0"]
-        assert player_0_records, "expected at least one record for player_0"
-        for record in player_0_records:
+        # THEN both players have records (1 day x 2 agents = 2 records),
+        # and player_1's record has intent=None (the agent's original
+        # intent string is discarded along with the rejected action).
+        assert len(ep.actions) == 2
+        player_1_records = [r for r in ep.actions if r.agent_id == "player_1"]
+        assert player_1_records, "expected player_1 to have an ActionRecord"
+        for record in player_1_records:
             assert record.intent is None, (
-                f"expected fallback path to drop intent, got {record.intent!r}"
+                f"expected intent=None on fallback path, got {record.intent!r}"
             )
 
 
@@ -427,8 +415,8 @@ class TestActionRecordIntentPlumbing:
 async def _run_el_farol_with_config(
     config: ElFarolConfig,
     *,
-    player_0_action: list[int],
-    player_1_action: list[int],
+    player_0_action: Any,
+    player_1_action: Any,
 ) -> EpisodeResult:
     """Run a 2-player, 1-round El Farol match with mock adapters."""
     game = ElFarolBar(config)
@@ -461,8 +449,8 @@ class TestActionRecordIntervalPairCap:
         # WHEN both players submit a valid 2-slot action
         ep = await _run_el_farol_with_config(
             config,
-            player_0_action=[0, 1],
-            player_1_action=[0, 1],
+            player_0_action=[[0, 1]],
+            player_1_action=[[0, 1]],
         )
 
         # THEN every ActionRecord.intervals.max_total_slots is the configured
@@ -491,8 +479,8 @@ class TestActionRecordIntervalPairCap:
         # WHEN both players submit a valid 2-slot action
         ep = await _run_el_farol_with_config(
             config,
-            player_0_action=[0, 1],
-            player_1_action=[0, 1],
+            player_0_action=[[0, 1]],
+            player_1_action=[[0, 1]],
         )
 
         # THEN every ActionRecord.intervals.num_slots is 8
@@ -521,8 +509,8 @@ class TestActionRecordIntervalPairCap:
         # WHEN both players submit a small valid action
         ep = await _run_el_farol_with_config(
             config,
-            player_0_action=[0, 1],
-            player_1_action=[0, 1],
+            player_0_action=[[0, 1]],
+            player_1_action=[[0, 1]],
         )
 
         # THEN every ActionRecord.intervals.max_total_slots equals the default 8
@@ -534,47 +522,127 @@ class TestActionRecordIntervalPairCap:
             )
 
 
-class TestSlotsToIntervalPair:
-    """Direct tests for the _slots_to_interval_pair helper."""
+# ---------------------------------------------------------------------------
+# Direct unit tests for the _action_to_interval_pair helper
+# ---------------------------------------------------------------------------
 
-    def test_slots_to_interval_pair_forwards_max_total_slots(self) -> None:
-        # GIVEN a small slot list and a cap of 4
-        # WHEN converting to an IntervalPair
-        result = _slots_to_interval_pair(
-            [0, 1],
-            num_slots=16,
-            max_total_slots=4,
+
+class TestActionToIntervalPair:
+    """Unit tests for the module-level _action_to_interval_pair helper."""
+
+    def test_empty_list_returns_empty_pair(self) -> None:
+        # GIVEN an empty list (stay home)
+        result = _action_to_interval_pair(
+            [], num_slots=16, max_total_slots=8
         )
-
-        # THEN the resulting IntervalPair carries the forwarded cap
+        # THEN the returned pair is empty but well-formed
         assert result is not None
-        assert result.max_total_slots == 4
-
-    def test_slots_to_interval_pair_returns_none_when_exceeds_max_total_slots(
-        self,
-    ) -> None:
-        # GIVEN 5 slots, which exceeds the cap of 4
-        # WHEN converting to an IntervalPair
-        result = _slots_to_interval_pair(
-            [0, 1, 2, 3, 4],
-            num_slots=16,
-            max_total_slots=4,
-        )
-
-        # THEN construction fails and the helper returns None
-        assert result is None
-
-    def test_slots_to_interval_pair_empty_action_preserves_cap(self) -> None:
-        # GIVEN an empty slot list with a configured cap of 4
-        # WHEN converting to an IntervalPair
-        result = _slots_to_interval_pair(
-            [],
-            num_slots=16,
-            max_total_slots=4,
-        )
-
-        # THEN the empty pair still records the cap and has no covered slots
-        assert result is not None
-        assert result.max_total_slots == 4
         assert result.first == ()
         assert result.second == ()
+        assert result.num_slots == 16
+        assert result.max_total_slots == 8
+
+    def test_single_pair_list(self) -> None:
+        # GIVEN a single [start, end] pair
+        result = _action_to_interval_pair(
+            [[0, 2]], num_slots=16, max_total_slots=8
+        )
+        # THEN the IntervalPair holds that pair as ``first``
+        assert result is not None
+        assert result.first == (0, 2)
+        assert result.second == ()
+
+    def test_two_pairs_sorted_by_start(self) -> None:
+        # GIVEN two pairs supplied out of order
+        result = _action_to_interval_pair(
+            [[10, 12], [0, 1]], num_slots=16, max_total_slots=8
+        )
+        # THEN the pair is normalised by start index
+        assert result is not None
+        assert result.first == (0, 1)
+        assert result.second == (10, 12)
+
+    def test_dict_with_intervals(self) -> None:
+        # GIVEN the canonical dict shape
+        result = _action_to_interval_pair(
+            {"intervals": [[3, 5]]}, num_slots=16, max_total_slots=8
+        )
+        # THEN intervals are extracted and IntervalPair is built
+        assert result is not None
+        assert result.first == (3, 5)
+
+    def test_dict_with_empty_intervals(self) -> None:
+        # GIVEN dict shape with an empty list
+        result = _action_to_interval_pair(
+            {"intervals": []}, num_slots=16, max_total_slots=8
+        )
+        # THEN an empty IntervalPair is returned
+        assert result is not None
+        assert result.first == ()
+        assert result.second == ()
+
+    def test_dict_without_intervals_key_returns_none(self) -> None:
+        # GIVEN a dict that is not interval-shaped (e.g. legacy "slots")
+        result = _action_to_interval_pair(
+            {"slots": [0, 1, 2]}, num_slots=16, max_total_slots=8
+        )
+        # THEN None — caller bails out
+        assert result is None
+
+    def test_none_input_returns_none(self) -> None:
+        result = _action_to_interval_pair(
+            None, num_slots=16, max_total_slots=8
+        )
+        assert result is None
+
+    def test_string_input_returns_none(self) -> None:
+        result = _action_to_interval_pair(
+            "cooperate", num_slots=16, max_total_slots=8
+        )
+        assert result is None
+
+    def test_more_than_two_pairs_returns_none(self) -> None:
+        result = _action_to_interval_pair(
+            [[0, 0], [2, 2], [4, 4]], num_slots=16, max_total_slots=8
+        )
+        assert result is None
+
+    def test_malformed_pair_shape_returns_none(self) -> None:
+        # GIVEN a triple instead of a [start, end] pair
+        result = _action_to_interval_pair(
+            [[0, 1, 2]], num_slots=16, max_total_slots=8
+        )
+        # THEN None
+        assert result is None
+
+    def test_non_int_bound_returns_none(self) -> None:
+        # GIVEN a non-int bound
+        result = _action_to_interval_pair(
+            [["a", 2]], num_slots=16, max_total_slots=8
+        )
+        assert result is None
+
+    def test_out_of_range_pair_returns_none(self) -> None:
+        # GIVEN a pair that exceeds num_slots
+        result = _action_to_interval_pair(
+            [[0, 99]], num_slots=16, max_total_slots=8
+        )
+        # THEN IntervalPair raises and the helper swallows it as None
+        assert result is None
+
+    def test_exceeds_max_total_slots_returns_none(self) -> None:
+        # GIVEN a pair covering 5 slots while max_total_slots=4
+        result = _action_to_interval_pair(
+            [[0, 4]], num_slots=16, max_total_slots=4
+        )
+        # THEN None
+        assert result is None
+
+    def test_max_total_slots_propagated(self) -> None:
+        # GIVEN a custom cap
+        result = _action_to_interval_pair(
+            [[0, 1]], num_slots=16, max_total_slots=4
+        )
+        # THEN the cap is preserved on the returned IntervalPair
+        assert result is not None
+        assert result.max_total_slots == 4

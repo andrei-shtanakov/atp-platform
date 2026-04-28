@@ -103,9 +103,9 @@
                             {% set choice = (action.action_data or {}).get("choice", "—") %}
                             <span class="{{ 'cooperate' if choice == 'cooperate' else 'defect' }}">{{ choice }}</span>
                         {% elif t.game_type == "el_farol" %}
-                            {% set slots = (action.action_data or {}).get("slots", []) %}
-                            {% if slots %}
-                                <span class="score-pair">{{ slots | join(", ") }}</span>
+                            {% set intervals = (action.action_data or {}).get("intervals", []) %}
+                            {% if intervals %}
+                                <span class="score-pair">{{ intervals | map("join", "–") | join(", ") }}</span>
                             {% else %}
                                 <span style="color:#999">stay home</span>
                             {% endif %}

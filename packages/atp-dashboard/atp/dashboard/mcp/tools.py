@@ -296,9 +296,10 @@ async def make_move(
             - prisoners_dilemma: ``{"choice": "cooperate" | "defect"}``
             - stag_hunt: ``{"choice": "stag" | "hare"}``
             - battle_of_sexes: ``{"choice": "A" | "B"}``
-            - el_farol: ``{"slots": list[int], values in [0, num_slots-1],
-              unique, max 8 entries}``. El Farol players may attend at most
-              8 of 16 slots per day.
+            - el_farol: ``{"intervals": list[[start, end]]}`` — up to 2
+              non-overlapping, non-adjacent inclusive ``[start, end]``
+              pairs with values in ``[0, num_slots-1]``, covering at most
+              8 of 16 slots per day. ``{"intervals": []}`` is "stay home".
             - public_goods: ``{"contribution": float in [0, endowment]}``.
               Endowment defaults to 20; your contribution is pooled,
               multiplied by 1.6, and split equally among all N players.

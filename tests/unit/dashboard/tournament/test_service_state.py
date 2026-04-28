@@ -160,16 +160,14 @@ async def test_state_after_tournament_completes_flags_are_false(
 
 
 # ---------------------------------------------------------------------------
-# Wire-layer action_schema override for el_farol
+# action_schema for el_farol is now produced natively by the game-env layer
 # ---------------------------------------------------------------------------
 #
-# The El Farol game-env layer still advertises the canonical slot-list
-# schema (correct for that layer — its ``validate_action`` accepts
-# ``{"slots": [...]}``), but the tournament wire contract switched to
-# intervals. ``service.get_state_for`` must replace the advertised schema
-# with the intervals shape so clients building submissions from
-# ``state.action_schema`` produce payloads that pass the ``ElFarolAction``
-# validator. Other game types must be left untouched.
+# The wire-layer override was removed; ``format_state_for_player`` on
+# ``ElFarolBar`` advertises the canonical ``intervals`` action_schema
+# directly. These tests pin that shape so service-level clients building
+# submissions from ``state.action_schema`` produce payloads that pass the
+# ``ElFarolAction`` validator. Other game types must be left untouched.
 
 
 @pytest.mark.anyio
@@ -180,11 +178,8 @@ async def test_get_state_for_el_farol_advertises_intervals_action_schema(
     bob: User,
     event_bus: TournamentEventBus,
 ) -> None:
-    """El Farol round state must advertise the intervals wire contract,
-    NOT the game-env's slot-list schema. Without this override, clients
-    that build submissions from ``state.action_schema`` would generate
-    ``{"slots": [...]}`` payloads that fail at the ``extra='forbid'``
-    boundary on ``ElFarolAction``.
+    """El Farol round state must advertise the canonical intervals
+    action_schema produced natively by the game-env layer.
     """
     from atp.dashboard.tournament.service import TournamentService
 
@@ -204,19 +199,13 @@ async def test_get_state_for_el_farol_advertises_intervals_action_schema(
     # WHEN we fetch the per-player state
     state = await svc.get_state_for(t.id, alice)
 
-    # THEN action_schema is the intervals contract (overridden at the wire boundary)
+    # THEN action_schema is the canonical intervals contract
     assert state.game_type == "el_farol"
     schema = state.action_schema
-    assert schema["type"] == "list[list[int]]"
+    assert schema["type"] == "intervals"
+    assert schema["shape"] == '{"intervals": [[start, end], ...]}'
     assert schema["max_intervals"] == 2
-    assert schema["max_slots_total"] == 8
-    assert isinstance(schema["constraints"], list)
-    # Non-adjacency is the rule that historically tripped slot-list clients;
-    # pin its presence so future schema edits can't quietly drop it.
-    assert any("non-adjacent" in c for c in schema["constraints"])
-    # The slot-list shape's marker key MUST NOT leak through the override.
-    assert "max_length" not in schema
-    assert "unique" not in schema
+    assert schema["max_total_slots"] == 8
 
 
 @pytest.mark.anyio
@@ -286,8 +275,8 @@ async def test_get_state_for_prisoners_dilemma_action_schema_unchanged(
     # THEN action_schema is the PD discrete-choice schema, NOT the el_farol shape
     schema = state.action_schema
     assert "max_intervals" not in schema
-    assert "max_slots_total" not in schema
-    assert schema.get("type") != "list[list[int]]"
+    assert "max_total_slots" not in schema
+    assert schema.get("type") != "intervals"
     # Sanity: the original PD-shaped schema is still being passed through.
     assert "options" in schema
     assert sorted(schema["options"]) == ["cooperate", "defect"]
