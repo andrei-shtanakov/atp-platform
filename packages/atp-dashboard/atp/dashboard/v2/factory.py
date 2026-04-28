@@ -182,27 +182,38 @@ def create_app(
     #
     # SlowAPIMiddleware is BaseHTTPMiddleware-based, which buffers response
     # bodies and crashes long-lived SSE streams ("Unexpected message:
-    # http.response.start"). Wrap it so /mcp/* bypasses rate limiting at
-    # the middleware layer — MCP request volume is self-limited by the
-    # single SSE-session-per-agent design. See LABS-74.
+    # http.response.start"). Wrap it so streaming routes bypass rate
+    # limiting at the middleware layer:
+    #   * /mcp/*  — MCP SSE + /mcp-http streamable-HTTP mount; volume is
+    #               self-limited by the single SSE-session-per-agent
+    #               design (LABS-74).
+    #   * /api/v1/tournaments/{id}/dashboard/stream — live tournament
+    #               dashboard SSE; one long-lived connection per
+    #               spectator, not a request-rate concern.
     limiter = create_limiter(config)
     app.state.limiter = limiter
 
-    def _slowapi_except_mcp(inner_app: Any) -> Any:
+    def _is_sse_path(path: str) -> bool:
+        if path.startswith("/mcp"):
+            return True
+        if path.startswith("/api/v1/tournaments/") and path.endswith(
+            "/dashboard/stream"
+        ):
+            return True
+        return False
+
+    def _slowapi_except_streams(inner_app: Any) -> Any:
         slowapi = SlowAPIMiddleware(inner_app)
 
         async def _asgi(scope: dict[str, Any], receive: Any, send: Any) -> None:
-            # ``startswith("/mcp")`` already covers both the existing
-            # ``/mcp`` (SSE) mount and the spike ``/mcp-http``
-            # streamable-HTTP mount — they're sibling prefixes.
-            if scope.get("type") == "http" and scope.get("path", "").startswith("/mcp"):
+            if scope.get("type") == "http" and _is_sse_path(scope.get("path", "")):
                 await inner_app(scope, receive, send)
                 return
             await slowapi(scope, receive, send)
 
         return _asgi
 
-    app.add_middleware(_slowapi_except_mcp)
+    app.add_middleware(_slowapi_except_streams)
     app.add_middleware(JWTUserStateMiddleware)
     app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 

@@ -87,6 +87,9 @@ from atp.dashboard.v2.routes.token_api import router as token_api_router
 from atp.dashboard.v2.routes.tournament_api import (
     router as tournament_api_router,
 )
+from atp.dashboard.v2.routes.tournament_live import (
+    router as tournament_live_router,
+)
 from atp.dashboard.v2.routes.traces import router as traces_router
 from atp.dashboard.v2.routes.trends import router as trends_router
 from atp.dashboard.v2.routes.upload import router as upload_router
@@ -131,6 +134,7 @@ router.include_router(agent_traces_router)
 router.include_router(catalog_router)
 router.include_router(benchmark_api_router)
 router.include_router(tournament_api_router)
+router.include_router(tournament_live_router)
 router.include_router(token_api_router)
 router.include_router(agent_management_api_router)
 router.include_router(invite_api_router)
@@ -172,6 +176,7 @@ __all__ = [
     "users_router",
     "websocket_router",
     "tournament_api_router",
+    "tournament_live_router",
     "token_api_router",
     "agent_management_api_router",
     "invite_api_router",

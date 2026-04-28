@@ -1387,6 +1387,23 @@ class TournamentService:
         # trails the outer event.round_number by one. Committing first
         # guarantees subscribers see the new round. (LABS-74.)
         await self._session.commit()
+        # round_ended fires for non-final rounds only; the final round's
+        # update is delivered via tournament_completed (subscribers re-
+        # project on either signal). Published post-commit so a fresh
+        # session in the SSE handler sees the just-resolved round's
+        # COMPLETED status and Action.payoff values.
+        await self._bus.publish(
+            TournamentEvent(
+                event_type="round_ended",
+                tournament_id=tournament.id,
+                round_number=round_obj.round_number,
+                data={
+                    "tournament_completed": False,
+                    "next_round_number": next_round.round_number,
+                },
+                timestamp=_utc_now(),
+            )
+        )
         await self._bus.publish(
             TournamentEvent(
                 event_type="round_started",

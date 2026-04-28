@@ -624,35 +624,22 @@ async def _match_visible_to_user(
 ) -> bool:
     """Return True iff ``match`` should be visible to ``user``.
 
-    Business rule mirrors the SQL predicate in the listing
-    (``ui_matches._apply_visibility``). Any divergence between the
-    two is a security bug — keep them lockstep:
+    Wraps :func:`atp.dashboard.tournament.visibility.is_tournament_visible_to`
+    with the GameResult-specific carve-outs:
 
       * ``tournament_id IS NULL`` (legacy / CLI standalone runs) → visible
-      * ``tournament.join_token IS NULL`` (public tournament) → visible
-      * the caller is an admin → visible
-      * the caller is the tournament's creator → visible
-      * the caller is a Participant of the tournament → visible
-      * otherwise → hidden
+      * tournament row missing → visible (orphaned GameResult — fail open)
+      * otherwise → defer to the shared tournament predicate
     """
     if match.tournament_id is None:
         return True
-    from atp.dashboard.tournament.models import Participant, Tournament
+    from atp.dashboard.tournament.models import Tournament
+    from atp.dashboard.tournament.visibility import is_tournament_visible_to
 
     tournament = await session.get(Tournament, match.tournament_id)
-    if tournament is None or tournament.join_token is None:
+    if tournament is None:
         return True
-    if user is None:
-        return False
-    if user.is_admin or tournament.created_by == user.id:
-        return True
-    participant_id = await session.scalar(
-        select(Participant.id)
-        .where(Participant.tournament_id == tournament.id)
-        .where(Participant.user_id == user.id)
-        .limit(1)
-    )
-    return participant_id is not None
+    return await is_tournament_visible_to(session, tournament, user)
 
 
 @router.get("/matches/{match_id}", response_class=HTMLResponse)
@@ -767,6 +754,129 @@ async def ui_match_detail(
                     "langfuse_base": os.environ.get("ATP_LANGFUSE_BASE_URL", ""),
                 }
             )
+
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/match_detail.html",
+        context=context,
+    )
+
+
+@router.get(
+    "/tournaments/{tournament_id}/live",
+    response_class=HTMLResponse,
+    response_model=None,
+)
+@limiter.limit("120/minute")
+async def ui_tournament_live(
+    request: Request,
+    tournament_id: int,
+    session: DBSession,
+) -> HTMLResponse | RedirectResponse:
+    """Render the live El Farol tournament dashboard.
+
+    Renders the same `match_detail.html` shell as the post-completion
+    replay, but bootstrapped from the live ORM projection
+    (``_reshape_from_tournament``) and wired to an SSE subscriber
+    (``live_subscriber.js``) that auto-refreshes the page when each
+    round resolves.
+
+    Visibility mirrors the rule used by ``/ui/matches/{match_id}`` —
+    public tournaments (``join_token IS NULL``) are visible to anyone;
+    private tournaments require admin / creator / participant. When the
+    tournament has already completed and a replay row exists, redirects
+    to ``/ui/matches/{match_id}`` so spectators land on the canonical
+    permanent URL.
+    """
+    import json
+    import os
+
+    from atp.dashboard.models import GameResult
+    from atp.dashboard.tournament.models import Tournament
+    from atp.dashboard.tournament.visibility import is_tournament_visible_to
+    from atp.dashboard.v2.routes.el_farol_from_tournament import (
+        _reshape_from_tournament,
+    )
+
+    user = await _get_ui_user(request, session)
+
+    tournament = await session.get(Tournament, tournament_id)
+    visible = tournament is not None and await is_tournament_visible_to(
+        session, tournament, user
+    )
+
+    context: dict[str, Any] = {
+        "active_page": "tournaments",
+        "user": user,
+        "back_link_href": "/ui/tournaments",
+        "back_link_label": "All tournaments",
+        "not_found": False,
+        "predates_schema": False,
+        "in_progress": False,
+        "live_waiting": False,
+        "status": None,
+        "match_id": f"tournament-{tournament_id}",
+        "tournament_id": tournament_id,
+    }
+
+    if not visible:
+        # Same 404-style placeholder both routes use; hides whether the
+        # tournament exists or is just private.
+        context["not_found"] = True
+        return _templates(request).TemplateResponse(
+            request=request, name="ui/match_detail.html", context=context
+        )
+
+    # If the tournament is already complete and a replay row exists,
+    # send the spectator to the canonical permanent URL.
+    if tournament.status == "completed":
+        gr_row = (
+            await session.execute(
+                select(GameResult).where(GameResult.tournament_id == tournament_id)
+            )
+        ).scalar_one_or_none()
+        if gr_row is not None and gr_row.match_id:
+            return RedirectResponse(
+                url=f"/ui/matches/{gr_row.match_id}",
+                status_code=303,
+            )
+
+    # El Farol is the only game with a dashboard renderer today; for
+    # other game types, fall through to the friendly placeholder.
+    if tournament.game_type != "el_farol":
+        context["not_found"] = True
+        return _templates(request).TemplateResponse(
+            request=request, name="ui/match_detail.html", context=context
+        )
+
+    payload = await _reshape_from_tournament(tournament_id, session)
+
+    live_stream_url = f"/api/v1/tournaments/{tournament_id}/dashboard/stream"
+
+    if payload.NUM_DAYS == 0:
+        # No rounds resolved yet — render a "waiting" placeholder with
+        # the SSE subscriber loaded so the page reloads as soon as the
+        # first round_ended event fires.
+        context.update(
+            {
+                "live_waiting": True,
+                "status": tournament.status,
+                "live_stream_url": live_stream_url,
+            }
+        )
+    else:
+        context.update(
+            {
+                "match_id": f"tournament-{tournament_id}",
+                "payload_json": json.dumps(payload.model_dump(), separators=(",", ":")),
+                "num_agents": len(payload.AGENTS),
+                "num_days": payload.NUM_DAYS,
+                "num_slots": payload.NUM_SLOTS,
+                "capacity": payload.CAPACITY,
+                "langfuse_base": os.environ.get("ATP_LANGFUSE_BASE_URL", ""),
+                "live_stream_url": live_stream_url,
+            }
+        )
 
     return _templates(request).TemplateResponse(
         request=request,

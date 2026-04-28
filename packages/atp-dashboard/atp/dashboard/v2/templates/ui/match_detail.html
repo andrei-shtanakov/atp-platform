@@ -30,12 +30,23 @@
     <p>This page auto-refreshes every 15 seconds until the match completes.</p>
     <p>Current status: <code>{{ status }}</code></p>
   </article>
+{% elif live_waiting %}
+  <article class="waiting" style="padding:24px">
+    <h2>Tournament <code>{{ tournament_id }}</code> is starting…</h2>
+    <p>Waiting for the first round to resolve. The page will update automatically.</p>
+    <p>Status: <code>{{ status }}</code> · <span id="atp-live-pill" class="atp-live-pill live">Live</span></p>
+  </article>
+  <script>window.__ATP_LIVE_URL__ = {{ live_stream_url | tojson }};</script>
+  <script src="/static/v2/js/el_farol/live_subscriber.js"></script>
 {% else %}
   <div id="atp-el-farol" class="atp-dashboard-dark roomy">
     <div class="topbar">
       <div class="brand">
         <span class="dot"></span>
         <span>ATP · El Farol</span>
+        {% if live_stream_url %}
+          <span id="atp-live-pill" class="atp-live-pill live" title="Streaming live tournament updates">Live</span>
+        {% endif %}
         <span class="match">Match <b>{{ match_id }}</b> · {{ num_agents }} agents · {{ num_days }} days · {{ num_slots }} slots/day</span>
       </div>
       <div class="spacer"></div>
@@ -146,5 +157,9 @@
   </script>
   <script src="/static/v2/js/el_farol/data_helpers.js"></script>
   <script src="/static/v2/js/el_farol/dashboard.js"></script>
+  {% if live_stream_url %}
+    <script>window.__ATP_LIVE_URL__ = {{ live_stream_url | tojson }};</script>
+    <script src="/static/v2/js/el_farol/live_subscriber.js"></script>
+  {% endif %}
 {% endif %}
 {% endblock %}
