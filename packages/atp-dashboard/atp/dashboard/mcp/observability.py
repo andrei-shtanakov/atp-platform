@@ -128,31 +128,49 @@ def emit_tool_call(ctx: Any, *, tool: str) -> None:
     per-session ``MCP_FIRST_TOOL_CALL`` event and pulls correlation
     ids out of the FastMCP context plus the ASGI scope.
 
-    If ``ctx.session_id`` is missing, the event is **skipped**: the
-    only stable per-session key on FastMCP's context is
-    ``session_id`` itself. Falling back to ``id(ctx)`` would defeat
-    the dedup contract because ``id()`` is not stable across calls
-    (FastMCP may construct a fresh ``Context`` per tool dispatch).
-    A skipped emit is preferable to a noisy one — the cold-start
-    metrics are diagnostic, not load-bearing.
-    """
-    raw_session = getattr(ctx, "session_id", None)
-    if not raw_session:
-        return
-    session_id = str(raw_session)
+    Session id resolution order (first hit wins):
 
+    1. ``?session_id=`` query parameter on the messages-POST URL.
+       FastMCP's SSE transport puts the session id there on every
+       message dispatch; this is the **stable** session key
+       regardless of how the inner ``Context`` is constructed.
+    2. ``ctx.session_id`` — FastMCP may set this on some code paths
+       (e.g. forward-events subscription); accept it as a fallback.
+
+    If neither is available the emit is skipped rather than falling
+    back to ``id(ctx)``: ``Context`` is reconstructed per dispatch,
+    so ``id()`` would defeat the dedup contract and re-emit the
+    "first" event on every call.
+
+    The original v1 of this helper relied solely on ``ctx.session_id``
+    and silently skipped emits in prod because that attribute is
+    falsy on the standard SSE messages-POST path — see PR #102 follow-up
+    (logs from tournament 34, 2026-04-28) for the discovery story.
+    """
     request_id = "no-request-id"
+    session_id: str | None = None
+
     try:
         from fastmcp.server.dependencies import get_http_request
 
         request = get_http_request()
-        resolved = getattr(request.state, "mcp_request_id", None)
-        if isinstance(resolved, str) and resolved:
-            request_id = resolved
+        resolved_request_id = getattr(request.state, "mcp_request_id", None)
+        if isinstance(resolved_request_id, str) and resolved_request_id:
+            request_id = resolved_request_id
+        url_session = request.query_params.get("session_id")
+        if url_session:
+            session_id = url_session
     except Exception:
-        # ``get_http_request`` raises outside an HTTP-bound MCP call —
-        # nothing we can do, keep the placeholder so the event still
-        # fires and operators can see the gap in tooling.
+        # ``get_http_request`` raises outside an HTTP-bound MCP call;
+        # try the ctx fallback below.
         pass
+
+    if session_id is None:
+        ctx_session = getattr(ctx, "session_id", None)
+        if ctx_session:
+            session_id = str(ctx_session)
+
+    if session_id is None:
+        return
 
     maybe_emit_first_tool_call(session_id=session_id, request_id=request_id, tool=tool)

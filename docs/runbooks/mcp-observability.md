@@ -62,7 +62,12 @@ Common fields:
 
 ### `mcp_first_tool_call`
 
-Fires the first time a given FastMCP **session** invokes any tool. Subsequent calls within the same session do not re-emit. Session identity comes from `ctx.session_id` (FastMCP-assigned, stable across the SSE connection).
+Fires the first time a given FastMCP **session** invokes any tool. Subsequent calls within the same session do not re-emit. Session identity is resolved in this order (first hit wins):
+
+1. `?session_id=` query parameter on the messages-POST URL — the stable id FastMCP's SSE transport always carries on each tool dispatch. This is the path that fires in production.
+2. `ctx.session_id` — FastMCP attribute, populated on some code paths (e.g. forward-events subscription); accepted as a fallback.
+
+If neither is available the emit is silently skipped rather than falling back to `id(ctx)` (the `Context` object is reconstructed per dispatch, so `id()` would defeat the dedup contract).
 
 | Field | Type | Notes |
 |---|---|---|
@@ -108,7 +113,7 @@ event:mcp_first_tool_call | percentiles(elapsed_since_session_start_ms, 50, 95, 
 - **Handshake events lack `session_id`.** The SSE handshake (GET /sse) reaches `MCPAuthMiddleware` before FastMCP has assigned a `session_id`, so `mcp_handshake_authorized` cannot include it. Adding it requires plumbing from the URL `?session_id=` query param on subsequent messages-POST requests (or honouring an `Mcp-Session-Id` header). Until that lands, queries that link handshake events to session-level outcomes (e.g. "sessions never made a first tool call") cannot be expressed.
 - **Per-session correlation across MCP transports** (streamable HTTP vs SSE) is not yet normalized — `session_id` shape may differ once Task 5 lands.
 - **Memory growth under attack** — `_first_tool_call_seen` is bounded at 4096 sessions / 1 h TTL. A flood of unique sessions could push older entries out, causing a re-emit of `mcp_first_tool_call` for the same session if it returns after eviction. Acceptable for diagnostics; tighten if it becomes ambiguous.
-- **Skipped emit when `ctx.session_id` missing.** `emit_tool_call` returns early if FastMCP didn't assign a session id, rather than fabricating one from `id(ctx)`. The latter would double-fire the "first" event because `id()` is not stable across calls. The skip path is silent in v1 — operators won't see "broken context" sessions until we add an `mcp_tool_call_skipped` event; deferred until we observe a real case in prod logs.
+- **Silent skip when no session id is resolvable.** `emit_tool_call` returns early only when **both** the URL `?session_id=` query param AND `ctx.session_id` are missing — not just when `ctx.session_id` is absent (the v1 trigger that broke prod, fixed in PR #103). We still do not fall back to `id(ctx)`: `Context` is reconstructed per dispatch, so `id()` would re-emit the "first" event on every call and defeat the dedup contract. The skip path remains silent in logs — if operators ever need to count "tool calls with broken transport context" we can add an `mcp_tool_call_skipped` event; deferred until we observe a real case.
 
 ## Adding new events
 
