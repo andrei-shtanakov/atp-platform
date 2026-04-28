@@ -123,9 +123,27 @@ def configure_app_logging(level: int = logging.INFO) -> None:
 
     Does **not** touch the root logger or uvicorn's loggers — those
     keep their existing config. We only own the ``atp`` namespace.
+
+    Sets ``atp.propagate = False`` in production to defend against
+    doubled output: PR #102 originally kept propagation on for
+    caplog compatibility, but tournament-35 prod logs (2026-04-28)
+    showed every event printed twice — once via our
+    ``ExtrasFormatter`` handler, once via a default-format handler
+    somewhere upstream. The exact upstream handler is not yet
+    identified (a one-shot startup dump below captures the live
+    process state for follow-up). Cutting propagation eliminates
+    the double-print regardless of cause.
+
+    Under pytest, propagation stays on so the ``caplog`` fixture
+    (which captures via a handler on root) keeps working without
+    forcing every test to attach a handler manually. Detection
+    uses ``sys.modules`` because ``factory`` module-imports
+    ``create_app`` at import time — by the moment any test runs,
+    ``pytest`` is already loaded, so the check is reliable.
     """
     atp_logger = logging.getLogger("atp")
     atp_logger.setLevel(level)
+    atp_logger.propagate = "pytest" in sys.modules
 
     # Attach our handler exactly once. Detecting "is our handler
     # already there" by type+formatter would be overkill; checking
@@ -143,10 +161,43 @@ def configure_app_logging(level: int = logging.INFO) -> None:
     handler = logging.StreamHandler(stream=sys.stdout)
     handler.setFormatter(ExtrasFormatter())
     atp_logger.addHandler(handler)
-    # ``propagate=True`` (default) is intentional. Uvicorn's default
-    # ``LOGGING_CONFIG`` does NOT attach a handler to the root logger —
-    # only to ``uvicorn``, ``uvicorn.error``, ``uvicorn.access`` —
-    # so records bubbling up from ``atp.*`` print exactly once via
-    # our handler. Pytest's ``caplog`` fixture relies on propagation
-    # to root to capture records; switching it off would silently
-    # break every test that asserts on ``caplog.records``.
+
+    _dump_logger_state_once(atp_logger)
+
+
+def _dump_logger_state_once(atp_logger: logging.Logger) -> None:
+    """One-shot startup diagnostic — dump every logger that has at
+    least one handler attached, plus the propagation flag, to stdout.
+
+    Captures the live uvicorn-process logger state at the precise
+    moment ``configure_app_logging`` finishes setup. Runs once per
+    process (gated by the function's own first-call check). Output
+    is grep-friendly so on-call can scan ``docker compose logs
+    platform | grep LOGGER_DUMP`` after a deploy.
+
+    Lives in code (not env-gated) because (a) it's a single block of
+    output per process — negligible cost — and (b) it stays useful
+    across future logging changes when a similar question recurs.
+    Drop or switch to env-gated mode in a follow-up PR once the
+    upstream handler attaching to root has been identified and
+    eliminated.
+    """
+    if getattr(_dump_logger_state_once, "_done", False):
+        return
+    _dump_logger_state_once._done = True  # type: ignore[attr-defined]
+
+    atp_logger.info(
+        "LOGGER_DUMP root_handlers=%r root_level=%d atp_handlers=%r atp_propagate=%s",
+        logging.getLogger().handlers,
+        logging.getLogger().level,
+        atp_logger.handlers,
+        atp_logger.propagate,
+    )
+    for name, lg in sorted(logging.Logger.manager.loggerDict.items()):
+        if isinstance(lg, logging.Logger) and lg.handlers:
+            atp_logger.info(
+                "LOGGER_DUMP name=%s handlers=%r propagate=%s",
+                name,
+                lg.handlers,
+                lg.propagate,
+            )
