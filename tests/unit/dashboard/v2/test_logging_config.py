@@ -164,6 +164,47 @@ def test_configure_attaches_handler_with_extras_formatter() -> None:
     assert handlers_with_extras[0].stream is sys.stdout
 
 
+def test_configure_disables_propagation_in_production() -> None:
+    """``atp.propagate`` must be False in production so records do
+    not bubble to a handler attached to root by some other module —
+    this caused the duplicated log lines on prod (tournament 35,
+    2026-04-28). If a future refactor flips this back to True
+    unconditionally, double-print returns silently. Pin the
+    invariant by simulating a non-pytest environment.
+
+    Under pytest, ``configure_app_logging`` deliberately keeps
+    ``propagate=True`` so the ``caplog`` fixture (which captures
+    via a handler on root) continues to work; that branch is
+    covered by ``test_configure_keeps_propagation_under_pytest``
+    below."""
+    # Temporarily remove ``pytest`` from sys.modules so the helper's
+    # detection branch matches production. Restore in finally so the
+    # rest of the suite is unaffected.
+    pytest_mod = sys.modules.pop("pytest", None)
+    try:
+        configure_app_logging()
+        atp_logger = logging.getLogger("atp")
+        assert atp_logger.propagate is False, (
+            "atp.propagate must be False in production to prevent "
+            "double-print via root handlers; see tournament-35 prod "
+            "log incident."
+        )
+    finally:
+        if pytest_mod is not None:
+            sys.modules["pytest"] = pytest_mod
+
+
+def test_configure_keeps_propagation_under_pytest() -> None:
+    """When pytest is loaded (every test run), propagation stays on
+    so caplog can capture via root. The complementary production
+    branch is pinned in the test above."""
+    assert "pytest" in sys.modules, "this test only meaningful under pytest"
+
+    configure_app_logging()
+    atp_logger = logging.getLogger("atp")
+    assert atp_logger.propagate is True
+
+
 def test_configure_is_idempotent() -> None:
     """Repeated calls must not stack handlers — tests that ``import``
     factory will trigger ``create_app`` setup multiple times across a
@@ -183,10 +224,12 @@ def test_configure_is_idempotent() -> None:
 def test_info_records_from_child_logger_pass_through(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """End-to-end smoke: after configure, an ``INFO`` record from
-    ``atp.mcp.observability`` (the Task 4 logger) reaches caplog,
-    confirming that ``propagate=True`` was preserved and the level
-    was lifted from the default WARNING."""
+    """Under pytest, propagation stays on (so caplog works), level
+    is lifted from WARNING to INFO, and an ``atp.mcp.observability``
+    record reaches caplog with its ``extra`` fields preserved on
+    the LogRecord. The production path (propagate=False, no
+    propagation to caplog) is covered by
+    ``test_configure_disables_propagation_in_production``."""
     configure_app_logging()
     caplog.set_level(logging.INFO, logger="atp")
 
