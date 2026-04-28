@@ -15,6 +15,12 @@
   var statusPill = document.getElementById('atp-live-pill');
   var lastSnapshotAt = 0;
   var reloadTimer = null;
+  // The SSE generator always emits an initial snapshot on connect that
+  // mirrors the server-rendered state already on the page. Reloading on
+  // it would cause an infinite reload loop (each reload reopens the
+  // stream, which re-emits the initial snapshot). Only reload on
+  // snapshots that arrive *after* the first one.
+  var sawInitialSnapshot = false;
 
   function setStatus(text, klass) {
     if (!statusPill) return;
@@ -37,6 +43,10 @@
   es.addEventListener('open', function () { setStatus('Live', 'live'); });
 
   es.addEventListener('snapshot', function (ev) {
+    if (!sawInitialSnapshot) {
+      sawInitialSnapshot = true;
+      return;
+    }
     // Debounce burst snapshots (round_ended fires close to next round_started
     // on slow servers — only one reload needed per window).
     var now = Date.now();
