@@ -48,13 +48,15 @@ def _short_sse_heartbeat(monkeypatch):
 
 @pytest.fixture
 def _patch_fresh_helpers(monkeypatch, test_database: Database):
-    """Make ``_project_snapshot_fresh`` / ``_resolved_match_id`` read from
-    the test ``Database`` rather than ``get_database()``.
+    """Make ``_project_snapshot_fresh`` / ``_resolved_match_id`` /
+    ``_wait_for_committed_terminal_status`` read from the test
+    ``Database`` rather than ``get_database()``.
 
     The default in-memory engine uses NullPool, so each new session
     creates a fresh DB without any of the test's seeded rows. The SSE
-    generator opens its own short-lived session per snapshot via
-    ``get_database()``, so we redirect both helpers to the test engine.
+    generator opens its own short-lived session per snapshot/poll via
+    ``get_database()``, so we redirect all three helpers to the test
+    engine.
     """
     from sqlalchemy import select as _select
 
@@ -76,10 +78,37 @@ def _patch_fresh_helpers(monkeypatch, test_database: Database):
             ).scalar_one_or_none()
             return row.match_id if row is not None else None
 
+    async def _fresh_wait_for_committed_terminal_status(request, tournament_id: int):
+        # Mirror production polling shape so realistic-flow tests still
+        # exercise the wait helper. Uses the module's own constants so a
+        # local monkeypatch on those (e.g. shorter timeout in a single
+        # test) flows through here too.
+        deadline = (
+            asyncio.get_event_loop().time()
+            + tournament_live_module._COMPLETION_WAIT_TIMEOUT_S
+        )
+        while True:
+            async with test_database.session_factory() as s:
+                row_status = await s.scalar(
+                    _select(Tournament.status).where(Tournament.id == tournament_id)
+                )
+                if row_status in tournament_live_module._TERMINAL_STATUSES:
+                    return True
+            if await request.is_disconnected():
+                return False
+            if asyncio.get_event_loop().time() >= deadline:
+                return False
+            await asyncio.sleep(tournament_live_module._COMPLETION_POLL_INTERVAL_S)
+
     monkeypatch.setattr(
         tournament_live_module, "_project_snapshot_fresh", _fresh_snapshot
     )
     monkeypatch.setattr(tournament_live_module, "_resolved_match_id", _fresh_match_id)
+    monkeypatch.setattr(
+        tournament_live_module,
+        "_wait_for_committed_terminal_status",
+        _fresh_wait_for_committed_terminal_status,
+    )
 
 
 # ---------- fixtures ----------
@@ -543,12 +572,18 @@ class TestDashboardSSEEndpoint:
         self,
         sse_app,
         sse_bus: TournamentEventBus,
+        test_database: Database,
         db_session: AsyncSession,
         disable_dashboard_auth,
         _patch_fresh_helpers,
     ) -> None:
         """``tournament_completed`` produces a final snapshot, an
         ``event: completed`` frame, and ends the generator.
+
+        Mirrors production: by the time the bus event is observed by the
+        SSE generator, the service has already mutated the tournament
+        row to COMPLETED. Here we both mutate AND commit so the wait
+        helper sees the terminal status immediately.
         """
         from datetime import datetime
 
@@ -568,6 +603,14 @@ class TestDashboardSSEEndpoint:
 
             drain_task = asyncio.create_task(_drain())
             await _wait_until_subscribed(sse_bus, t.id)
+
+            # Realistic flow: service committed the COMPLETED status
+            # before the SSE generator processes the event, so the wait
+            # helper exits on its first poll.
+            async with test_database.session_factory() as s:
+                t2 = await s.get(Tournament, t.id)
+                t2.status = TournamentStatus.COMPLETED
+                await s.commit()
 
             await sse_bus.publish(
                 TournamentEvent(
@@ -594,6 +637,104 @@ class TestDashboardSSEEndpoint:
             assert completed[-1][1] == {"match_id": None}
         finally:
             await gen.aclose()
+
+    @pytest.mark.anyio
+    async def test_tournament_completed_waits_for_committed_status(
+        self,
+        sse_app,
+        sse_bus: TournamentEventBus,
+        test_database: Database,
+        db_session: AsyncSession,
+        disable_dashboard_auth,
+        monkeypatch,
+        _patch_fresh_helpers,
+    ) -> None:
+        """The SSE generator must NOT emit the final ``snapshot``/``completed``
+        frames until the tournament row's status is committed as
+        COMPLETED.
+
+        GIVEN a still-ACTIVE tournament whose service-layer transaction
+            published ``tournament_completed`` BEFORE committing the
+            status flip
+        WHEN the SSE generator processes the event
+        THEN it polls and waits silently — no frame emitted within ~200ms
+        AND once status is committed as COMPLETED, the generator emits
+            the final snapshot followed by ``completed`` and closes.
+        """
+        from datetime import datetime
+
+        # Shrink the production wait window so a regression doesn't burn
+        # the full 30s real timeout if the assertions fail.
+        monkeypatch.setattr(tournament_live_module, "_COMPLETION_WAIT_TIMEOUT_S", 2.0)
+        monkeypatch.setattr(tournament_live_module, "_COMPLETION_POLL_INTERVAL_S", 0.05)
+
+        t = await _make_pending_el_farol(db_session, join_token=None)
+        # Move to ACTIVE so the test mirrors a mid-flight tournament; the
+        # important bit is that status is NOT yet terminal.
+        async with test_database.session_factory() as s:
+            t_live = await s.get(Tournament, t.id)
+            t_live.status = TournamentStatus.ACTIVE
+            await s.commit()
+
+        gen = tournament_live_module._sse_event_generator(_FakeRequest(sse_app), t.id)
+        try:
+            # Initial snapshot.
+            ev0, _ = await _read_one_frame(gen)
+            assert ev0 == "snapshot"
+
+            frames: list[bytes] = []
+
+            async def _drain():
+                async for chunk in gen:
+                    frames.append(chunk)
+
+            drain_task = asyncio.create_task(_drain())
+            await _wait_until_subscribed(sse_bus, t.id)
+
+            # Publish completion BEFORE flipping status to COMPLETED —
+            # this is the production race the wait helper guards against.
+            await sse_bus.publish(
+                TournamentEvent(
+                    event_type="tournament_completed",
+                    tournament_id=t.id,
+                    round_number=None,
+                    data={"final_scores": {}},
+                    timestamp=datetime.now(),
+                )
+            )
+
+            # Within ~200ms the generator should be polling, NOT emitting.
+            await asyncio.sleep(0.2)
+            buf_pre = b"".join(frames).decode()
+            parsed_pre = _parse_sse_chunks(buf_pre)
+            non_heartbeat = [e for e in parsed_pre if e[0] in ("snapshot", "completed")]
+            assert non_heartbeat == [], (
+                f"generator emitted frames before commit: {non_heartbeat!r}"
+            )
+
+            # Now commit the terminal status — the wait helper should
+            # observe it on its next poll and unblock.
+            async with test_database.session_factory() as s:
+                t_live = await s.get(Tournament, t.id)
+                t_live.status = TournamentStatus.COMPLETED
+                await s.commit()
+
+            # Generator should now emit snapshot + completed and close
+            # well within 1 s (poll interval is 50 ms).
+            await asyncio.wait_for(drain_task, timeout=1.0)
+
+            buf = b"".join(frames).decode()
+            parsed = _parse_sse_chunks(buf)
+            event_types = [e[0] for e in parsed]
+            assert "snapshot" in event_types
+            assert "completed" in event_types
+            # `completed` is the terminal frame.
+            assert event_types[-1] == "completed"
+        finally:
+            try:
+                await gen.aclose()
+            except RuntimeError:
+                pass
 
     @pytest.mark.anyio
     async def test_anonymous_private_stream_returns_404(

@@ -35,7 +35,7 @@ from atp.dashboard.tournament.events import (
     TournamentCancelEvent,
     TournamentEventBus,
 )
-from atp.dashboard.tournament.models import Tournament
+from atp.dashboard.tournament.models import Tournament, TournamentStatus
 from atp.dashboard.tournament.visibility import is_tournament_visible_to
 from atp.dashboard.v2.dependencies import CurrentUser, DBSession
 from atp.dashboard.v2.routes.el_farol_dashboard import DashboardPayload
@@ -46,6 +46,39 @@ from atp.dashboard.v2.routes.el_farol_from_tournament import (
 router = APIRouter(prefix="/v1/tournaments", tags=["tournaments", "dashboard"])
 
 _HEARTBEAT_SECONDS = 15.0
+
+# `_complete_tournament` and `_cancel_impl` publish their terminal events
+# from inside the still-uncommitted service-layer transaction (the
+# request handler / MCP session owns the commit boundary). A fresh
+# session opened here can race ahead of the commit and miss the
+# just-finalized round payoffs and the GameResult.match_id. Poll the
+# committed Tournament.status before emitting the final snapshot and
+# `completed` event so spectators always see the canonical end state.
+_COMPLETION_WAIT_TIMEOUT_S = 30.0
+_COMPLETION_POLL_INTERVAL_S = 0.1
+_TERMINAL_STATUSES = (TournamentStatus.COMPLETED, TournamentStatus.CANCELLED)
+
+
+async def _wait_for_committed_terminal_status(
+    request: Request, tournament_id: int
+) -> bool:
+    """Poll until Tournament.status is COMPLETED/CANCELLED in a fresh
+    session, the client disconnects, or ``_COMPLETION_WAIT_TIMEOUT_S``
+    elapses. Returns True if the terminal status was observed."""
+    db = get_database()
+    deadline = asyncio.get_event_loop().time() + _COMPLETION_WAIT_TIMEOUT_S
+    while True:
+        async with db.session_factory() as session:
+            row_status = await session.scalar(
+                select(Tournament.status).where(Tournament.id == tournament_id)
+            )
+            if row_status in _TERMINAL_STATUSES:
+                return True
+        if await request.is_disconnected():
+            return False
+        if asyncio.get_event_loop().time() >= deadline:
+            return False
+        await asyncio.sleep(_COMPLETION_POLL_INTERVAL_S)
 
 
 def _bus_from_request(request: Request) -> TournamentEventBus:
@@ -159,6 +192,10 @@ async def _sse_event_generator(
                 # rounds resolved before cancellation, then close the
                 # stream with a `completed` event (no match_id, since
                 # cancelled tournaments still get a GameResult dual-write).
+                # The cancel event is published mid-transaction by
+                # _cancel_impl's caller; wait for the commit so the
+                # final read sees the canonical state.
+                await _wait_for_committed_terminal_status(request, tournament_id)
                 snapshot = await _project_snapshot_fresh(tournament_id)
                 yield _format_sse("snapshot", snapshot.model_dump(mode="json"))
                 match_id = await _resolved_match_id(tournament_id)
@@ -168,11 +205,20 @@ async def _sse_event_generator(
                 )
                 return
 
-            if event.event_type in ("round_ended", "tournament_completed"):
+            if event.event_type == "round_ended":
+                # round_ended is published post-commit (see service.py),
+                # so a fresh read already reflects the resolved round.
                 snapshot = await _project_snapshot_fresh(tournament_id)
                 yield _format_sse("snapshot", snapshot.model_dump(mode="json"))
 
             if event.event_type == "tournament_completed":
+                # Published mid-transaction by _complete_tournament. Wait
+                # for the commit so the snapshot includes the final
+                # round's payoffs and _resolved_match_id() can see the
+                # GameResult dual-write.
+                await _wait_for_committed_terminal_status(request, tournament_id)
+                snapshot = await _project_snapshot_fresh(tournament_id)
+                yield _format_sse("snapshot", snapshot.model_dump(mode="json"))
                 match_id = await _resolved_match_id(tournament_id)
                 yield _format_sse("completed", {"match_id": match_id})
                 return
