@@ -29,24 +29,60 @@ function agentColor(i) { return identityColorsOn ? AGENTS[i].color : '#9aa3b2'; 
 
 const LS_KEY_DAY = 'atp-day-' + (window.__ATP_MATCH__ ? window.__ATP_MATCH__.match_id : 'default');
 const LS_KEY_PINS = 'atp-pinned-' + (window.__ATP_MATCH__ ? window.__ATP_MATCH__.match_id : 'default');
+
+// Live-mode follow-latest support. The SSE-driven page reload pattern
+// makes the per-load currentDay decision the only place to enforce
+// "auto-advance to the latest round" — once the page is rendered we
+// can't update window.ATP without a refactor. The sessionStorage flag
+// survives reloads but dies on tab close so a fresh tab defaults to
+// follow-live = on.
+const isLiveMode = !!window.__ATP_LIVE_URL__;
+const FOLLOW_LIVE_KEY = 'atp-follow-live-' + (window.__ATP_MATCH__ ? window.__ATP_MATCH__.match_id : 'default');
+
+function isFollowingLive() {
+  if (!isLiveMode) return false;
+  try { return sessionStorage.getItem(FOLLOW_LIVE_KEY) !== 'false'; }
+  catch (e) { return true; }
+}
+
+function setFollowingLive(enabled) {
+  if (!isLiveMode) return;
+  try {
+    if (enabled) sessionStorage.removeItem(FOLLOW_LIVE_KEY);
+    else sessionStorage.setItem(FOLLOW_LIVE_KEY, 'false');
+  } catch (e) {}
+  window.dispatchEvent(new CustomEvent('atp:follow-live-changed', {
+    detail: { enabled: enabled }
+  }));
+}
+
+window.atpIsFollowingLive = isFollowingLive;
+window.atpSetFollowingLive = setFollowingLive;
+
 try {
   const d = parseInt(localStorage.getItem(LS_KEY_DAY) || '', 10);
   if (!isEmpty && d >= 1 && d <= NUM_DAYS) currentDay = d;
 } catch (e) {}
+
+if (!isEmpty && isFollowingLive() && NUM_DAYS > 0) {
+  currentDay = NUM_DAYS;
+}
+
 try { const p = JSON.parse(localStorage.getItem(LS_KEY_PINS)||'[]'); if (Array.isArray(p)) pinnedCompare = p.filter(x => x>=0 && x<AGENTS.length); } catch(e){}
 
 /* ---------- playback ---------- */
 function togglePlay() {
   if (isDataEmpty()) return;
   playing = !playing;
+  if (playing) setFollowingLive(false);
   const btn = $('playBtn');
   if (playing) { btn.textContent = '⏸ Pause'; playTimer = setInterval(() => { if (currentDay < NUM_DAYS) { currentDay++; renderAll(); } else togglePlay(); }, playSpeed); }
   else { btn.textContent = '▶ Play'; clearInterval(playTimer); }
 }
-function step(d) { if (isDataEmpty()) return; currentDay = Math.max(1, Math.min(NUM_DAYS, currentDay + d)); renderAll(); }
-function jump(d) { if (isDataEmpty()) return; currentDay = d; renderAll(); }
+function step(d) { if (isDataEmpty()) return; setFollowingLive(false); currentDay = Math.max(1, Math.min(NUM_DAYS, currentDay + d)); renderAll(); }
+function jump(d) { if (isDataEmpty()) return; setFollowingLive(d === NUM_DAYS); currentDay = d; renderAll(); }
 window.togglePlay = togglePlay; window.step = step; window.jump = jump;
-$('scrubber').addEventListener('input', e => { currentDay = parseInt(e.target.value); renderAll(); });
+$('scrubber').addEventListener('input', e => { setFollowingLive(false); currentDay = parseInt(e.target.value); renderAll(); });
 $('speedSel').addEventListener('change', e => { playSpeed = parseInt(e.target.value); if (playing) { clearInterval(playTimer); playing = false; togglePlay(); } });
 
 /* ---------- popovers ---------- */

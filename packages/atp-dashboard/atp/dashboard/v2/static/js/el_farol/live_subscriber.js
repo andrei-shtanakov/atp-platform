@@ -77,4 +77,32 @@
   };
 
   window.addEventListener('beforeunload', function () { es.close(); });
+
+  // Follow-live resume pill: visible only when the user has opted out of
+  // auto-advancing (sessionStorage flag flipped by dashboard.js on manual
+  // navigation). Click resumes follow-live and snaps to NUM_DAYS.
+  var resumeBtn = document.getElementById('atp-resume-pill');
+
+  function syncResumePill() {
+    if (!resumeBtn) return;
+    var following = typeof window.atpIsFollowingLive === 'function'
+      && window.atpIsFollowingLive();
+    resumeBtn.hidden = following;
+  }
+
+  if (resumeBtn) {
+    resumeBtn.addEventListener('click', function () {
+      if (typeof window.atpSetFollowingLive === 'function') {
+        window.atpSetFollowingLive(true);
+      }
+      if (typeof window.jump === 'function' && typeof window.ATP === 'object'
+          && window.ATP && window.ATP.NUM_DAYS > 0) {
+        window.jump(window.ATP.NUM_DAYS);
+      }
+      syncResumePill();
+    });
+  }
+
+  window.addEventListener('atp:follow-live-changed', syncResumePill);
+  syncResumePill();
 })();

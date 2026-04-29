@@ -38,6 +38,8 @@
         <span>ATP · El Farol</span>
         {% if live_stream_url %}
           <span id="atp-live-pill" class="atp-live-pill live" title="Streaming live tournament updates">Live</span>
+          <button id="atp-resume-pill" class="atp-resume-pill" type="button" hidden
+                  title="Resume following the latest round">▶ Resume live</button>
         {% endif %}
         <span class="match">Match <b>{{ match_id }}</b> · {{ num_agents }} agents · {{ num_days }} days · {{ num_slots }} slots/day</span>
       </div>
@@ -146,11 +148,11 @@
   <script>
     window.__ATP_MATCH__ = JSON.parse(document.getElementById('atp-match-payload').textContent);
     {% if langfuse_base %}window.ATP_LANGFUSE_BASE = {{ langfuse_base | tojson }};{% endif %}
+    {% if live_stream_url %}window.__ATP_LIVE_URL__ = {{ live_stream_url | tojson }};{% endif %}
   </script>
   <script src="/static/v2/js/el_farol/data_helpers.js"></script>
   <script src="/static/v2/js/el_farol/dashboard.js"></script>
   {% if live_stream_url %}
-    <script>window.__ATP_LIVE_URL__ = {{ live_stream_url | tojson }};</script>
     <script src="/static/v2/js/el_farol/live_subscriber.js"></script>
   {% endif %}
 {% endif %}
