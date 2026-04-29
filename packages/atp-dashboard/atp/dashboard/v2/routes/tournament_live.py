@@ -218,6 +218,22 @@ async def _sse_event_generator(
                 snapshot = await _project_snapshot_fresh(tournament_id)
                 yield _format_sse("snapshot", snapshot.model_dump(mode="json"))
 
+            if event.event_type == "round_started":
+                # round_started is published post-commit by
+                # ``_start_tournament`` and the next-round branch of
+                # ``_resolve_round``. Push a fresh snapshot so the client
+                # picks up the new active round's started_at/deadline —
+                # without this, a spectator who opens the page while the
+                # tournament is still PENDING never sees round 1's
+                # countdown, and one-round tournaments never render a
+                # timer at all (round_ended → tournament_completed
+                # collapses the only window the timer could appear in).
+                # The client-side 1500ms snapshot debounce coalesces
+                # this with the immediately-preceding round_ended
+                # snapshot for mid-tournament round transitions.
+                snapshot = await _project_snapshot_fresh(tournament_id)
+                yield _format_sse("snapshot", snapshot.model_dump(mode="json"))
+
             if event.event_type == "tournament_completed":
                 # Published mid-transaction by _complete_tournament. Wait
                 # for the commit so the snapshot includes the final

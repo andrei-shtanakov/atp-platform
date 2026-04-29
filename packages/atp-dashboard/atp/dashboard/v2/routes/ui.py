@@ -790,9 +790,10 @@ async def ui_tournament_live(
     """
     import json
     import os
+    from datetime import UTC
 
     from atp.dashboard.models import GameResult
-    from atp.dashboard.tournament.models import Tournament
+    from atp.dashboard.tournament.models import Round, RoundStatus, Tournament
     from atp.dashboard.tournament.visibility import is_tournament_visible_to
     from atp.dashboard.v2.routes.el_farol_from_tournament import (
         _reshape_from_tournament,
@@ -813,7 +814,6 @@ async def ui_tournament_live(
         "not_found": False,
         "predates_schema": False,
         "in_progress": False,
-        "live_waiting": False,
         "status": None,
         "match_id": f"tournament-{tournament_id}",
         "tournament_id": tournament_id,
@@ -853,30 +853,61 @@ async def ui_tournament_live(
 
     live_stream_url = f"/api/v1/tournaments/{tournament_id}/dashboard/stream"
 
-    if payload.NUM_DAYS == 0:
-        # No rounds resolved yet — render a "waiting" placeholder with
-        # the SSE subscriber loaded so the page reloads as soon as the
-        # first round_ended event fires.
-        context.update(
-            {
-                "live_waiting": True,
-                "status": tournament.status,
-                "live_stream_url": live_stream_url,
-            }
+    # Surface the active round's started_at + deadline so the topbar can
+    # render a per-round countdown timer. Only the most recent
+    # non-terminal round is considered "active"; if the latest round is
+    # already completed/cancelled the timer is hidden until the next
+    # round_started reload.
+    active_round_stmt = (
+        select(Round)
+        .where(Round.tournament_id == tournament_id)
+        .where(
+            Round.status.in_(
+                [RoundStatus.WAITING_FOR_ACTIONS, RoundStatus.IN_PROGRESS]
+            )
         )
-    else:
-        context.update(
-            {
-                "match_id": f"tournament-{tournament_id}",
-                "payload_json": json.dumps(payload.model_dump(), separators=(",", ":")),
-                "num_agents": len(payload.AGENTS),
-                "num_days": payload.NUM_DAYS,
-                "num_slots": payload.NUM_SLOTS,
-                "capacity": payload.CAPACITY,
-                "langfuse_base": os.environ.get("ATP_LANGFUSE_BASE_URL", ""),
-                "live_stream_url": live_stream_url,
-            }
-        )
+        .order_by(Round.round_number.desc())
+        .limit(1)
+    )
+    active_round = (await session.execute(active_round_stmt)).scalar_one_or_none()
+    current_round_number: int | None = None
+    current_round_started_ms: int | None = None
+    current_round_deadline_ms: int | None = None
+    if active_round is not None:
+        current_round_number = active_round.round_number
+        # Round.started_at / deadline are stored as naive datetimes
+        # (column type DateTime, no tz) — treat them as UTC for client
+        # comparison against Date.now().
+        if active_round.started_at is not None:
+            started = active_round.started_at
+            if started.tzinfo is None:
+                started = started.replace(tzinfo=UTC)
+            current_round_started_ms = int(started.timestamp() * 1000)
+        if active_round.deadline is not None:
+            dl = active_round.deadline
+            if dl.tzinfo is None:
+                dl = dl.replace(tzinfo=UTC)
+            current_round_deadline_ms = int(dl.timestamp() * 1000)
+
+    # The skeleton renders the same shell whether or not any rounds have
+    # resolved; the JS short-circuits empty DATA into a "waiting for
+    # round 1…" view, and the SSE subscriber triggers a reload once the
+    # first round_ended event fires.
+    context.update(
+        {
+            "match_id": f"tournament-{tournament_id}",
+            "payload_json": json.dumps(payload.model_dump(), separators=(",", ":")),
+            "num_agents": len(payload.AGENTS),
+            "num_days": payload.NUM_DAYS,
+            "num_slots": payload.NUM_SLOTS,
+            "capacity": payload.CAPACITY,
+            "langfuse_base": os.environ.get("ATP_LANGFUSE_BASE_URL", ""),
+            "live_stream_url": live_stream_url,
+            "current_round_number": current_round_number,
+            "current_round_started_ms": current_round_started_ms,
+            "current_round_deadline_ms": current_round_deadline_ms,
+        }
+    )
 
     return _templates(request).TemplateResponse(
         request=request,

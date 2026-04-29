@@ -261,3 +261,70 @@ button, input, select { font-family: inherit; color: inherit; }
 .atp-live-pill.warn     { background:rgba(250,204,21,.18); color:#facc15; }
 .atp-live-pill.done     { background:rgba(74,222,128,.18); color:#4ade80; animation:none; }
 @keyframes atp-live-pulse { 0%,100% { opacity:1; } 50% { opacity:.55; } }
+
+.atp-resume-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  margin-left: 6px;
+  border-radius: 10px;
+  border: 1px solid rgba(96, 165, 250, 0.5);
+  background: rgba(96, 165, 250, 0.18);
+  color: #60a5fa;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  vertical-align: middle;
+  font-family: inherit;
+}
+.atp-resume-pill:hover {
+  background: rgba(96, 165, 250, 0.32);
+}
+.atp-resume-pill[hidden] {
+  display: none;
+}
+
+/* ---------- per-round countdown timer ---------- */
+.atp-round-timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  margin-left: 6px;
+  border-radius: 10px;
+  background: rgba(154, 163, 178, 0.14);
+  border: 1px solid rgba(154, 163, 178, 0.28);
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  vertical-align: middle;
+  font-variant-numeric: tabular-nums;
+}
+.atp-round-timer .atp-round-timer-label {
+  color: var(--text-3);
+  text-transform: uppercase;
+  font-size: 10px;
+}
+.atp-round-timer .atp-round-timer-value {
+  color: var(--text);
+}
+.atp-round-timer.warn {
+  background: rgba(245, 185, 68, 0.18);
+  border-color: rgba(245, 185, 68, 0.45);
+  color: var(--warn);
+}
+.atp-round-timer.warn .atp-round-timer-value {
+  color: var(--warn);
+}
+.atp-round-timer.expired {
+  background: rgba(248, 113, 113, 0.18);
+  border-color: rgba(248, 113, 113, 0.45);
+  color: var(--bad);
+}
+.atp-round-timer.expired .atp-round-timer-value {
+  color: var(--bad);
+}
