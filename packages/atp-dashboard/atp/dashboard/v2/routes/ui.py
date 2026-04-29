@@ -862,9 +862,7 @@ async def ui_tournament_live(
         select(Round)
         .where(Round.tournament_id == tournament_id)
         .where(
-            Round.status.in_(
-                [RoundStatus.WAITING_FOR_ACTIONS, RoundStatus.IN_PROGRESS]
-            )
+            Round.status.in_([RoundStatus.WAITING_FOR_ACTIONS, RoundStatus.IN_PROGRESS])
         )
         .order_by(Round.round_number.desc())
         .limit(1)
