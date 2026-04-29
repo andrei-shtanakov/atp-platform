@@ -178,7 +178,7 @@ async def test_full_3_round_publishes_round_started_and_tournament_completed(
 
     async def collect() -> None:
         async with event_bus.subscribe(t.id) as queue:
-            for _ in range(4):
+            for _ in range(6):
                 event = await queue.get()
                 received.append(event)
 
@@ -193,13 +193,23 @@ async def test_full_3_round_publishes_round_started_and_tournament_completed(
 
     await asyncio.wait_for(collector, timeout=2.0)
 
+    # 3-round tournament: each non-final round resolution publishes
+    # round_ended (with next_round_number) followed by round_started for
+    # the next round. The final round emits tournament_completed instead
+    # of round_ended.
     assert [e.event_type for e in received] == [
         "round_started",
+        "round_ended",
         "round_started",
+        "round_ended",
         "round_started",
         "tournament_completed",
     ]
-    assert [e.round_number for e in received[:3]] == [1, 2, 3]
+    assert [e.round_number for e in received] == [1, 1, 2, 2, 3, None]
+    assert received[1].data["tournament_completed"] is False
+    assert received[1].data["next_round_number"] == 2
+    assert received[3].data["tournament_completed"] is False
+    assert received[3].data["next_round_number"] == 3
 
 
 @pytest.mark.anyio

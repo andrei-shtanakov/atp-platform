@@ -232,6 +232,43 @@ body {
     color: #888;
 }
 
+.watch-live-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #c0392b;
+    text-decoration: none;
+}
+
+.watch-live-link:hover {
+    text-decoration: underline;
+}
+
+.watch-live-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #e74c3c;
+    box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.6);
+    animation: watch-live-pulse 1.6s ease-out infinite;
+}
+
+@keyframes watch-live-pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.55);
+    }
+    70% {
+        box-shadow: 0 0 0 6px rgba(231, 76, 60, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(231, 76, 60, 0);
+    }
+}
+
 .score-pair {
     font-family: 'SF Mono', 'Fira Code', monospace;
     font-size: 0.9rem;
