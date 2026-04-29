@@ -60,7 +60,7 @@ window.atpIsFollowingLive = isFollowingLive;
 window.atpSetFollowingLive = setFollowingLive;
 
 try {
-  const d = parseInt(localStorage.getItem(LS_KEY_DAY) || '', 10);
+  const d = parseInt(localStorage.getItem(LS_KEY_DAY) || '1', 10);
   if (!isEmpty && d >= 1 && d <= NUM_DAYS) currentDay = d;
 } catch (e) {}
 
