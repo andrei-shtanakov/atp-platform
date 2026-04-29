@@ -40,6 +40,15 @@
           <span id="atp-live-pill" class="atp-live-pill live" title="Streaming live tournament updates">Live</span>
           <button id="atp-resume-pill" class="atp-resume-pill" type="button" hidden
                   title="Resume following the latest round">▶ Resume live</button>
+          {% if current_round_deadline_ms %}
+            <span id="atp-round-timer" class="atp-round-timer mono"
+                  data-deadline-ms="{{ current_round_deadline_ms }}"
+                  {% if current_round_started_ms %}data-started-ms="{{ current_round_started_ms }}"{% endif %}
+                  title="Time remaining for the current round">
+              <span class="atp-round-timer-label">R{{ current_round_number }}</span>
+              <span class="atp-round-timer-value">--:--</span>
+            </span>
+          {% endif %}
         {% endif %}
         <span class="match">Match <b>{{ match_id }}</b> · {{ num_agents }} agents · {{ num_days }} days · {{ num_slots }} slots/day</span>
       </div>
