@@ -813,7 +813,6 @@ async def ui_tournament_live(
         "not_found": False,
         "predates_schema": False,
         "in_progress": False,
-        "live_waiting": False,
         "status": None,
         "match_id": f"tournament-{tournament_id}",
         "tournament_id": tournament_id,
@@ -853,30 +852,22 @@ async def ui_tournament_live(
 
     live_stream_url = f"/api/v1/tournaments/{tournament_id}/dashboard/stream"
 
-    if payload.NUM_DAYS == 0:
-        # No rounds resolved yet — render a "waiting" placeholder with
-        # the SSE subscriber loaded so the page reloads as soon as the
-        # first round_ended event fires.
-        context.update(
-            {
-                "live_waiting": True,
-                "status": tournament.status,
-                "live_stream_url": live_stream_url,
-            }
-        )
-    else:
-        context.update(
-            {
-                "match_id": f"tournament-{tournament_id}",
-                "payload_json": json.dumps(payload.model_dump(), separators=(",", ":")),
-                "num_agents": len(payload.AGENTS),
-                "num_days": payload.NUM_DAYS,
-                "num_slots": payload.NUM_SLOTS,
-                "capacity": payload.CAPACITY,
-                "langfuse_base": os.environ.get("ATP_LANGFUSE_BASE_URL", ""),
-                "live_stream_url": live_stream_url,
-            }
-        )
+    # The skeleton renders the same shell whether or not any rounds have
+    # resolved; the JS short-circuits empty DATA into a "waiting for
+    # round 1…" view, and the SSE subscriber triggers a reload once the
+    # first round_ended event fires.
+    context.update(
+        {
+            "match_id": f"tournament-{tournament_id}",
+            "payload_json": json.dumps(payload.model_dump(), separators=(",", ":")),
+            "num_agents": len(payload.AGENTS),
+            "num_days": payload.NUM_DAYS,
+            "num_slots": payload.NUM_SLOTS,
+            "capacity": payload.CAPACITY,
+            "langfuse_base": os.environ.get("ATP_LANGFUSE_BASE_URL", ""),
+            "live_stream_url": live_stream_url,
+        }
+    )
 
     return _templates(request).TemplateResponse(
         request=request,

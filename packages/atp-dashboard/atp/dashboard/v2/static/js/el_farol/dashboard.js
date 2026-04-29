@@ -14,7 +14,8 @@
 // ATP · El Farol · Cards dashboard
 const { AGENTS, NUM_SLOTS, CAPACITY, NUM_DAYS, WEEK_LEN, DATA, cumPayoff, cumSeries, leaderboard, nonEmptyIntervals } = window.ATP;
 
-let currentDay = Math.min(42, typeof NUM_DAYS === 'number' ? NUM_DAYS : 42);
+const isEmpty = !Array.isArray(DATA) || DATA.length === 0 || NUM_DAYS === 0;
+let currentDay = isEmpty ? 0 : Math.min(42, typeof NUM_DAYS === 'number' ? NUM_DAYS : 42);
 let playing = false; let playTimer = null;
 let playSpeed = 380;
 let heatMode = 'slot-day';
@@ -23,22 +24,27 @@ let hoverCompare = null;
 let identityColorsOn = true;
 
 const $ = (id) => document.getElementById(id);
+function isDataEmpty() { return !DATA || DATA.length === 0; }
 function agentColor(i) { return identityColorsOn ? AGENTS[i].color : '#9aa3b2'; }
 
 const LS_KEY_DAY = 'atp-day-' + (window.__ATP_MATCH__ ? window.__ATP_MATCH__.match_id : 'default');
 const LS_KEY_PINS = 'atp-pinned-' + (window.__ATP_MATCH__ ? window.__ATP_MATCH__.match_id : 'default');
-try { const d = parseInt(localStorage.getItem(LS_KEY_DAY)||'1', 10); if (d>=1 && d<=NUM_DAYS) currentDay = d; } catch(e){}
+try {
+  const d = parseInt(localStorage.getItem(LS_KEY_DAY) || '', 10);
+  if (!isEmpty && d >= 1 && d <= NUM_DAYS) currentDay = d;
+} catch (e) {}
 try { const p = JSON.parse(localStorage.getItem(LS_KEY_PINS)||'[]'); if (Array.isArray(p)) pinnedCompare = p.filter(x => x>=0 && x<AGENTS.length); } catch(e){}
 
 /* ---------- playback ---------- */
 function togglePlay() {
+  if (isDataEmpty()) return;
   playing = !playing;
   const btn = $('playBtn');
   if (playing) { btn.textContent = '⏸ Pause'; playTimer = setInterval(() => { if (currentDay < NUM_DAYS) { currentDay++; renderAll(); } else togglePlay(); }, playSpeed); }
   else { btn.textContent = '▶ Play'; clearInterval(playTimer); }
 }
-function step(d) { currentDay = Math.max(1, Math.min(NUM_DAYS, currentDay + d)); renderAll(); }
-function jump(d) { currentDay = d; renderAll(); }
+function step(d) { if (isDataEmpty()) return; currentDay = Math.max(1, Math.min(NUM_DAYS, currentDay + d)); renderAll(); }
+function jump(d) { if (isDataEmpty()) return; currentDay = d; renderAll(); }
 window.togglePlay = togglePlay; window.step = step; window.jump = jump;
 $('scrubber').addEventListener('input', e => { currentDay = parseInt(e.target.value); renderAll(); });
 $('speedSel').addEventListener('change', e => { playSpeed = parseInt(e.target.value); if (playing) { clearInterval(playTimer); playing = false; togglePlay(); } });
@@ -52,6 +58,11 @@ document.addEventListener('click', (e) => {
 });
 
 function renderRulesDiagram() {
+  if (isDataEmpty()) {
+    $('rulesDayNum').textContent = '—';
+    $('rulesDiagram').innerHTML = '';
+    return;
+  }
   const rd = DATA[currentDay-1];
   $('rulesDayNum').textContent = currentDay;
   const el = $('rulesDiagram'); el.innerHTML = '';
@@ -84,6 +95,13 @@ $('heatSeg').querySelectorAll('button').forEach(b => b.addEventListener('click',
 
 /* ---------- KPI strip ---------- */
 function renderKPIs() {
+  if (isDataEmpty()) {
+    ['kpiLeader','kpiLeaderSub','kpiSpread','kpiOver','kpiAtt','kpiBest','kpiBestSub','dayLabel','weekLabel'].forEach(id => {
+      const el = $(id); if (el) el.textContent = '—';
+    });
+    const sc = $('scrubber'); if (sc) sc.value = 0;
+    return;
+  }
   const rd = DATA[currentDay-1];
   const lb = leaderboard(currentDay);
   $('kpiLeader').textContent = lb[0].id;
@@ -124,6 +142,17 @@ function sparklineSVG(series, w, h, color, yMin, yMax) {
 
 /* ---------- cards ---------- */
 function renderCards() {
+  if (isDataEmpty()) {
+    const html = AGENTS.map((a, ai) => `<div class="acard" data-agent="${ai}">
+      <div class="acard-head">
+        <div class="name"><span class="sw" style="background:${agentColor(ai)}"></span><span class="id">${a.id}</span></div>
+      </div>
+      <div class="profile">user · ${a.user}</div>
+      <div class="muted tiny" style="margin-top:8px">Waiting for round 1…</div>
+    </div>`).join('');
+    $('cards').innerHTML = html;
+    return;
+  }
   const lb = leaderboard(currentDay);
   const rd = DATA[currentDay-1];
   const prev = currentDay > 1 ? leaderboard(currentDay-1) : null;
@@ -203,6 +232,10 @@ function heatColor(att) {
 
 function renderHeatmap() {
   const svg = $('heatmap');
+  if (isDataEmpty()) {
+    svg.innerHTML = '<text x="450" y="170" fill="#6b7280" font-size="12" text-anchor="middle" font-family="JetBrains Mono">No rounds resolved yet</text>';
+    return;
+  }
   const W = 900, H = 340;
   const PAD_L = 78, PAD_R = 14, PAD_T = 14, PAD_B = 32;
   const plotW = W - PAD_L - PAD_R, plotH = H - PAD_T - PAD_B;
@@ -435,4 +468,9 @@ document.addEventListener('keydown', e => {
 });
 
 renderAll();
+
+if (isDataEmpty()) {
+  const playBtn = $('playBtn'); if (playBtn) playBtn.disabled = true;
+  const sc = $('scrubber'); if (sc) { sc.disabled = true; sc.max = 0; }
+}
 })();
