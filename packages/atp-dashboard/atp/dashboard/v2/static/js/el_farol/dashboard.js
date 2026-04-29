@@ -26,6 +26,11 @@ let identityColorsOn = true;
 const $ = (id) => document.getElementById(id);
 function isDataEmpty() { return !DATA || DATA.length === 0; }
 function agentColor(i) { return identityColorsOn ? AGENTS[i].color : '#9aa3b2'; }
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
 
 const LS_KEY_DAY = 'atp-day-' + (window.__ATP_MATCH__ ? window.__ATP_MATCH__.match_id : 'default');
 const LS_KEY_PINS = 'atp-pinned-' + (window.__ATP_MATCH__ ? window.__ATP_MATCH__.match_id : 'default');
@@ -181,9 +186,9 @@ function renderCards() {
   if (isDataEmpty()) {
     const html = AGENTS.map((a, ai) => `<div class="acard" data-agent="${ai}">
       <div class="acard-head">
-        <div class="name"><span class="sw" style="background:${agentColor(ai)}"></span><span class="id">${a.id}</span></div>
+        <div class="name"><span class="sw" style="background:${agentColor(ai)}"></span><span class="id">${escapeHtml(a.id)}</span></div>
       </div>
-      <div class="profile">user · ${a.user}</div>
+      <div class="profile">user · ${escapeHtml(a.user)}</div>
       <div class="muted tiny" style="margin-top:8px">Waiting for round 1…</div>
     </div>`).join('');
     $('cards').innerHTML = html;
