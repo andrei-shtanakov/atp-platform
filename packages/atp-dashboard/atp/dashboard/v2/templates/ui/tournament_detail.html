@@ -1,13 +1,15 @@
 {% extends "ui/base_ui.html" %}
 
 {% set t = tournament %}
+{% set fallback_name = "Tournament #" ~ t.id %}
 {% set custom_name = (t.config or {}).get("name") %}
-{% set name = custom_name or ("Tournament #" ~ t.id) %}
+{% set name = custom_name or fallback_name %}
+{% set show_id_badge = custom_name and custom_name != fallback_name %}
 
 {% block title %}{{ name }} - ATP Platform{% endblock %}
 
 {% block content %}
-<h2>{{ name }}{% if custom_name %} <small style="color:#888;font-weight:normal;font-size:0.65em">#{{ t.id }}</small>{% endif %}</h2>
+<h2>{{ name }}{% if show_id_badge %} <small style="color:#888;font-weight:normal;font-size:0.65em">#{{ t.id }}</small>{% endif %}</h2>
 {# LABS-TSA PR-5: one-time join_token reveal. Only rendered when the
    POST handler passes ``join_token_once``; a normal GET never sets this
    so the token is shown exactly once, in the response body for the
@@ -15,7 +17,8 @@
 {% if join_token_once %}
 <div class="cancel-box" style="background:#fffbe6;color:#333;padding:12px;margin:12px 0;border-radius:4px">
   <strong>Tournament created — copy these into your bot config (the join token is shown once):</strong>
-  <p style="margin:8px 0 4px"><strong>Tournament ID:</strong> <code style="background:#fff;padding:2px 6px;border-radius:3px">{{ t.id }}</code></p>
+  <p style="margin:8px 0 4px"><strong>Tournament ID:</strong></p>
+  <input type="text" readonly value="{{ t.id }}" onclick="this.select()" style="width:100%;font-family:monospace">
   <p style="margin:8px 0 4px"><strong>Join token:</strong></p>
   <input type="text" readonly value="{{ join_token_once }}" onclick="this.select()" style="width:100%;font-family:monospace">
 </div>

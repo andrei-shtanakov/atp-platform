@@ -1,6 +1,8 @@
 {% for t in tournaments %}
+{% set fallback_name = "Tournament #" ~ t.id %}
 {% set custom_name = (t.config or {}).get("name") %}
-{% set name = custom_name or ("Tournament #" ~ t.id) %}
+{% set name = custom_name or fallback_name %}
+{% set show_id_badge = custom_name and custom_name != fallback_name %}
 {% set active_players = t.participants | selectattr("released_at", "none") | list | length %}
 {% set total_players = t.participants | length %}
 {% set completed_rounds = t.rounds | selectattr("status", "equalto", "completed") | list | length %}
@@ -8,7 +10,7 @@
 <tr>
     <td>
         <a href="/ui/tournaments/{{ t.id }}" class="tournament-name">{{ name }}</a>
-        {% if custom_name %}<small style="color:#888;margin-left:6px">#{{ t.id }}</small>{% endif %}
+        {% if show_id_badge %}<small style="color:#888;margin-left:6px">#{{ t.id }}</small>{% endif %}
         <div class="game-type">{{ t.game_type }}</div>
         {% if t.status in ("pending", "active") and t.game_type == "el_farol" %}
         <a href="/ui/tournaments/{{ t.id }}/live" class="watch-live-link"
