@@ -143,11 +143,14 @@ async def main() -> None:
                     continue
 
                 intervals = _choose_random_intervals(state, rng)
+                action_payload: dict[str, Any] = {"intervals": intervals}
+                # Optionally add reasoning (max 8000 chars; visible to owner during play)
+                # action_payload["reasoning"] = "Random strategy: choosing intervals to optimize threshold"
                 move = await session.call_tool(
                     "make_move",
                     {
                         "tournament_id": tournament_id,
-                        "action": {"intervals": intervals},
+                        "action": action_payload,
                     },
                 )
                 move_payload = _parse_tool_result(move)
