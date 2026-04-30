@@ -144,8 +144,12 @@ async def main() -> None:
 
                 intervals = _choose_random_intervals(state, rng)
                 action_payload: dict[str, Any] = {"intervals": intervals}
-                # Optionally add reasoning (max 8000 chars; visible to owner during play)
-                # action_payload["reasoning"] = "Random strategy: choosing intervals to optimize threshold"
+                # Optionally add reasoning (max 8000 chars; visible
+                # to owner during play)
+                # action_payload["reasoning"] = (
+                #     "Random strategy: choosing intervals to "
+                #     "optimize threshold"
+                # )
                 move = await session.call_tool(
                     "make_move",
                     {
