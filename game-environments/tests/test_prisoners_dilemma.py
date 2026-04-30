@@ -388,3 +388,83 @@ class TestPrisonersDilemmaSerialization:
         assert restored.player_id == obs.player_id
         assert restored.round_number == obs.round_number
         assert len(restored.history) == len(obs.history)
+
+
+class TestPrisonersDilemmaValidateAction:
+    """Tests for PrisonersDilemma.validate_action strict entrypoint."""
+
+    def test_validate_action_accepts_cooperate(self) -> None:
+        pd = PrisonersDilemma()
+        assert pd.validate_action({"choice": "cooperate"}) == {"choice": "cooperate"}
+
+    def test_validate_action_accepts_defect(self) -> None:
+        pd = PrisonersDilemma()
+        assert pd.validate_action({"choice": "defect"}) == {"choice": "defect"}
+
+    def test_validate_action_rejects_unknown_choice(self) -> None:
+        pd = PrisonersDilemma()
+        from game_envs.core.errors import ValidationError
+
+        with pytest.raises(ValidationError, match="choice"):
+            pd.validate_action({"choice": "betray"})
+
+    def test_validate_action_rejects_missing_choice(self) -> None:
+        pd = PrisonersDilemma()
+        from game_envs.core.errors import ValidationError
+
+        with pytest.raises(ValidationError):
+            pd.validate_action({})
+
+    def test_validate_action_rejects_non_dict(self) -> None:
+        pd = PrisonersDilemma()
+        from game_envs.core.errors import ValidationError
+
+        with pytest.raises(ValidationError):
+            pd.validate_action("cooperate")  # type: ignore[arg-type]
+
+
+def test_default_action_on_timeout_returns_defect() -> None:
+    pd = PrisonersDilemma()
+    assert pd.default_action_on_timeout() == {"choice": "defect"}
+
+
+def test_format_state_accepts_generic_action_history_shape() -> None:
+    pd = PrisonersDilemma()
+    history = [
+        {"round": 1, "actions": {0: {"choice": "cooperate"}, 1: {"choice": "defect"}}},
+        {"round": 2, "actions": {0: {"choice": "defect"}, 1: {"choice": "defect"}}},
+    ]
+    state = pd.format_state_for_player(
+        round_number=3,
+        total_rounds=5,
+        participant_idx=0,
+        action_history=history,
+        cumulative_scores=[1.0, 6.0],
+    )
+    assert state["your_history"] == ["cooperate", "defect"]
+    assert state["opponent_history"] == ["defect", "defect"]
+    assert state["your_cumulative_score"] == 1.0
+    assert state["opponent_cumulative_score"] == 6.0
+    assert state["game_type"] == "prisoners_dilemma"
+    assert "your_turn" in state  # preserved for back-compat (spec §3.4)
+
+
+def test_compute_round_payoffs_from_action_dicts() -> None:
+    pd = PrisonersDilemma()
+    payoffs = pd.compute_round_payoffs(
+        {0: {"choice": "cooperate"}, 1: {"choice": "defect"}}
+    )
+    assert payoffs == [0.0, 5.0]  # sucker, temptation
+
+
+def test_format_state_empty_history() -> None:
+    pd = PrisonersDilemma()
+    state = pd.format_state_for_player(
+        round_number=1,
+        total_rounds=5,
+        participant_idx=0,
+        action_history=[],
+        cumulative_scores=[0.0, 0.0],
+    )
+    assert state["your_history"] == []
+    assert state["opponent_history"] == []

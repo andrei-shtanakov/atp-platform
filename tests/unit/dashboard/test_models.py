@@ -64,6 +64,7 @@ class TestAgentModel:
             name="test-agent",
             agent_type="http",
             config={"endpoint": "http://localhost:8000"},
+            owner_id=1,
         )
         assert agent.name == "test-agent"
         assert agent.agent_type == "http"
@@ -75,6 +76,7 @@ class TestAgentModel:
             name="simple-agent",
             agent_type="cli",
             config={},  # Explicit empty config since defaults apply at DB level
+            owner_id=1,
         )
         assert agent.config == {}
 
@@ -84,6 +86,7 @@ class TestAgentModel:
             id=1,
             name="test-agent",
             agent_type="http",
+            owner_id=1,
         )
         assert "test-agent" in repr(agent)
         assert "http" in repr(agent)

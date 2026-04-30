@@ -34,15 +34,57 @@ def _parse_tool_result(result: Any) -> dict[str, Any]:
     return {}
 
 
-def _choose_random_slots(state: dict[str, Any], rng: random.Random) -> list[int]:
-    num_slots = int(state.get("num_slots", 16))
-    max_len = int((state.get("action_schema") or {}).get("max_length", 8))
-    max_len = max(0, min(max_len, num_slots))
+def _choose_random_intervals(
+    state: dict[str, Any], rng: random.Random
+) -> list[list[int]]:
+    """Pick a random El Farol action in the canonical interval shape.
 
-    visits = rng.randint(0, max_len)
-    if visits == 0:
+    Returns either ``[]`` ("stay home"), one interval, or two
+    non-overlapping non-adjacent intervals. Total covered slots stays
+    within ``max_total_slots``.
+    """
+    num_slots = int(state.get("num_slots", 16))
+    schema = state.get("action_schema") or {}
+    max_intervals = int(schema.get("max_intervals", 2))
+    max_total_slots = int(schema.get("max_total_slots", 8))
+    max_total_slots = max(0, min(max_total_slots, num_slots))
+    max_intervals = max(0, min(max_intervals, max_total_slots))
+
+    if max_total_slots == 0 or max_intervals == 0:
         return []
-    return sorted(rng.sample(range(num_slots), visits))
+
+    n_intervals = rng.randint(0, max_intervals)
+    if n_intervals == 0:
+        return []
+
+    if n_intervals == 1:
+        length = rng.randint(1, max_total_slots)
+        max_start = num_slots - length
+        start = rng.randint(0, max_start)
+        return [[start, start + length - 1]]
+
+    # Two intervals: pick lengths summing to <= max_total_slots, then
+    # place them with at least one empty slot between.
+    total = rng.randint(2, max_total_slots)
+    len1 = rng.randint(1, total - 1)
+    len2 = total - len1
+    # Need: start1 + len1 - 1 + 1 < start2 → start2 >= start1 + len1 + 1
+    # And: start2 + len2 - 1 < num_slots → start2 <= num_slots - len2
+    # Pick start1 first, then start2 in feasible range.
+    max_start1 = num_slots - len2 - 1 - len1
+    if max_start1 < 0:
+        # Can't fit two intervals; fall back to one.
+        length = min(total, num_slots)
+        max_start = num_slots - length
+        start = rng.randint(0, max_start)
+        return [[start, start + length - 1]]
+    start1 = rng.randint(0, max_start1)
+    end1 = start1 + len1 - 1
+    min_start2 = end1 + 2
+    max_start2 = num_slots - len2
+    start2 = rng.randint(min_start2, max_start2)
+    end2 = start2 + len2 - 1
+    return [[start1, end1], [start2, end2]]
 
 
 async def main() -> None:
@@ -100,13 +142,19 @@ async def main() -> None:
                     await asyncio.sleep(0.5)
                     continue
 
-                slots = _choose_random_slots(state, rng)
+                intervals = _choose_random_intervals(state, rng)
+                action_payload: dict[str, Any] = {"intervals": intervals}
+                # Optionally add reasoning (max 8000 chars; visible to owner during play)
+                # action_payload["reasoning"] = "Random strategy: choosing intervals to optimize threshold"
                 move = await session.call_tool(
                     "make_move",
-                    {"tournament_id": tournament_id, "action": {"slots": slots}},
+                    {
+                        "tournament_id": tournament_id,
+                        "action": action_payload,
+                    },
                 )
                 move_payload = _parse_tool_result(move)
-                print(f"round {round_number}: slots={slots} -> {move_payload}")
+                print(f"round {round_number}: intervals={intervals} -> {move_payload}")
                 last_played_round = round_number
 
 

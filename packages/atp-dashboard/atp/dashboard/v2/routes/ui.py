@@ -6,14 +6,17 @@ All UI routes are under /ui/ prefix.
 
 from __future__ import annotations
 
+import functools
 import logging
 from collections.abc import Sequence
 from datetime import datetime
 from types import SimpleNamespace
+from typing import Any
 
-from fastapi import APIRouter, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from atp.dashboard.benchmark.models import Benchmark, Run, RunStatus, TaskResult
@@ -54,6 +57,43 @@ async def _needs_bootstrap(session: DBSession) -> bool:
     """True when the database has no users yet — the 'first admin' path."""
     result = await session.execute(select(func.count(User.id)))
     return (result.scalar_one() or 0) == 0
+
+
+@functools.lru_cache(maxsize=1)
+def _game_registry() -> Any:
+    """Return the populated ``GameRegistry`` class, or ``None`` if unavailable.
+
+    Imports every bundled game module once per process so the registry
+    decorators fire. Cached via ``lru_cache`` so /ui/games and
+    /ui/games/{name} don't pay the import cost on each request.
+    """
+    try:
+        from game_envs.games import (  # noqa: PLC0415
+            auction,
+            battle_of_sexes,
+            colonel_blotto,
+            congestion,
+            el_farol,
+            prisoners_dilemma,
+            public_goods,
+            stag_hunt,
+        )
+        from game_envs.games.registry import GameRegistry  # noqa: PLC0415
+
+        _ = (
+            auction,
+            battle_of_sexes,
+            colonel_blotto,
+            congestion,
+            el_farol,
+            prisoners_dilemma,
+            public_goods,
+            stag_hunt,
+        )
+        return GameRegistry
+    except Exception:
+        logger.exception("game_envs not importable; game registry disabled")
+        return None
 
 
 @router.get("/about", response_class=HTMLResponse)
@@ -388,37 +428,12 @@ async def ui_games(request: Request, session: DBSession) -> HTMLResponse:
     """Render games page with game registry and tournaments."""
     user = await _get_ui_user(request, session)
     games: list[dict] = []
-    try:
-        from game_envs.games import (  # noqa: PLC0415
-            auction,
-            battle_of_sexes,
-            colonel_blotto,
-            congestion,
-            el_farol,
-            prisoners_dilemma,
-            public_goods,
-            stag_hunt,
-        )
-        from game_envs.games.registry import GameRegistry  # noqa: PLC0415
-
-        _ = (
-            auction,
-            battle_of_sexes,
-            colonel_blotto,
-            congestion,
-            el_farol,
-            prisoners_dilemma,
-            public_goods,
-            stag_hunt,
-        )
-        games = GameRegistry.list_games(with_metadata=True)  # type: ignore[assignment]
-    except Exception:
-        logger.debug("game_envs not available; showing empty games list")
-
-    from atp.dashboard.tournament.models import Tournament  # noqa: PLC0415
+    registry = _game_registry()
+    if registry is not None:
+        games = registry.list_games(with_metadata=True)
 
     result = await session.execute(
-        select(Tournament).order_by(Tournament.id.desc()).limit(50)
+        select(TournamentModel).order_by(TournamentModel.id.desc()).limit(50)
     )
     tournaments = result.scalars().all()
 
@@ -431,6 +446,471 @@ async def ui_games(request: Request, session: DBSession) -> HTMLResponse:
             "tournaments": tournaments,
             "user": user,
         },
+    )
+
+
+@router.get("/games/{game_name}", response_class=HTMLResponse)
+@limiter.limit("120/minute")
+async def ui_game_detail(
+    request: Request,
+    game_name: str,
+    session: DBSession,
+) -> HTMLResponse:
+    """Public per-game detail page: rules, payoffs, how to participate.
+
+    Content comes from ``atp.dashboard.v2.game_copy.GAME_COPY`` (narrative
+    prose authored separately from the game-environments engine package)
+    and from ``GameRegistry.game_info()`` (technical metadata — action
+    spaces, config schema, player count). The page is intentionally
+    public: anonymous visitors see the same thing as authenticated users.
+    """
+    from atp.dashboard.v2.game_copy import get_copy  # noqa: PLC0415
+
+    copy = get_copy(game_name)
+    if copy is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"unknown game: {game_name}",
+        )
+
+    user = await _get_ui_user(request, session)
+
+    # Pull live registry metadata (action spaces, num_players, etc.).
+    # Cached module-level helper; first call imports game_envs, subsequent
+    # calls are a dict lookup.
+    registry_info: dict[str, Any] | None = None
+    registry = _game_registry()
+    if registry is not None:
+        try:
+            registry_info = registry.game_info(game_name)
+        except KeyError:
+            # Copy exists but engine doesn't know this game yet — still render.
+            registry_info = None
+        except Exception:
+            logger.exception("game_envs metadata unavailable for %s", game_name)
+            registry_info = None
+
+    # Latest tournaments of this game_type for social proof.
+    tournaments_stmt = (
+        select(TournamentModel)
+        .where(TournamentModel.game_type == game_name)
+        .order_by(TournamentModel.id.desc())
+        .limit(5)
+    )
+    recent_tournaments = list((await session.execute(tournaments_stmt)).scalars().all())
+
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/game_detail.html",
+        context={
+            "active_page": "games",
+            "game_name": game_name,
+            "copy": copy,
+            "registry_info": registry_info,
+            "recent_tournaments": recent_tournaments,
+            "user": user,
+        },
+    )
+
+
+@router.get("/matches", response_class=HTMLResponse)
+@limiter.limit("120/minute")
+async def ui_matches(
+    request: Request,
+    session: DBSession,
+) -> HTMLResponse:
+    """List El Farol matches that ``/ui/matches/{id}`` can render.
+
+    Two render paths feed the listing (mirroring the dispatch in
+    :func:`ui_match_detail`):
+
+      * **CLI matches** — ``status == 'completed'`` plus both
+        ``actions_json`` and ``day_aggregates_json`` populated. These
+        Phase-7 JSON columns are only written by the CLI writer for
+        El Farol-shaped games (see ``atp/cli/commands/game.py``), so
+        the populated-JSON filter implicitly selects El Farol without
+        matching on ``game_name`` — the engine's pretty name
+        (``"El Farol Bar (n=6, threshold=4, days=30)"``) would not
+        match a literal ``"el_farol"`` anyway.
+      * **Tournament-backed matches** — ``tournament_id IS NOT NULL``
+        and ``game_name == 'el_farol'``. Tournament writes leave the
+        Phase-7 JSON columns ``NULL`` on purpose; the dashboard is
+        reshaped at read time from authoritative ``Round``/``Action``
+        ORM rows (LABS-106). The ``el_farol`` literal works here
+        because :func:`TournamentService._write_game_result_for_tournament`
+        sets ``GameResult.game_name = tournament.game_type``, and the
+        only tournament game with a working detail page today is El
+        Farol.
+    """
+    from atp.dashboard.models import GameResult
+    from atp.dashboard.tournament.models import Participant
+    from atp.dashboard.tournament.models import Tournament as _Tournament
+
+    user = await _get_ui_user(request, session)
+    user_id = user.id if user else None
+
+    renderable_filters = [
+        GameResult.status == "completed",
+        or_(
+            and_(
+                GameResult.actions_json.is_not(None),
+                GameResult.day_aggregates_json.is_not(None),
+            ),
+            and_(
+                GameResult.tournament_id.is_not(None),
+                GameResult.game_name == "el_farol",
+            ),
+        ),
+    ]
+
+    def _apply_visibility(stmt):  # type: ignore[no-untyped-def]
+        """LABS-TSA PR-5: outer-join Tournament and filter by visibility.
+
+        Rows pass when any of:
+          * ``tournament_id IS NULL`` (legacy / CLI standalone runs)
+          * ``tournament.join_token IS NULL`` (public tournaments)
+          * the current user is the tournament creator
+          * the current user is a Participant of the tournament
+          * the current user is an admin (no filter applied)
+
+        The detail route at ``/ui/matches/{id}`` applies the same rule
+        post-fetch via ``_match_visible_to_user`` below. Any change
+        here MUST be mirrored in that helper or an IDOR bug sneaks
+        back in.
+        """
+        stmt = stmt.outerjoin(_Tournament, GameResult.tournament_id == _Tournament.id)
+        if user is not None and user.is_admin:
+            return stmt
+        visibility_clauses: list[Any] = [
+            GameResult.tournament_id.is_(None),
+            _Tournament.join_token.is_(None),
+        ]
+        if user_id is not None:
+            visibility_clauses.append(_Tournament.created_by == user_id)
+            visibility_clauses.append(
+                _Tournament.id.in_(
+                    select(Participant.tournament_id).where(
+                        Participant.user_id == user_id
+                    )
+                )
+            )
+        return stmt.where(or_(*visibility_clauses))
+
+    stmt = _apply_visibility(select(GameResult).where(*renderable_filters))
+    stmt = stmt.order_by(GameResult.completed_at.desc().nulls_last()).limit(100)
+    matches = list((await session.execute(stmt)).scalars().all())
+
+    total_stmt = _apply_visibility(
+        select(func.count(GameResult.id)).where(*renderable_filters)
+    )
+    total = (await session.execute(total_stmt)).scalar_one()
+
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/matches.html",
+        context={
+            "active_page": "matches",
+            "matches": matches,
+            "total": total,
+            "user": user,
+        },
+    )
+
+
+async def _match_visible_to_user(
+    session: AsyncSession,
+    match: Any,  # noqa: ANN401 — GameResult ORM row, avoids circular import
+    user: User | None,
+) -> bool:
+    """Return True iff ``match`` should be visible to ``user``.
+
+    Wraps :func:`atp.dashboard.tournament.visibility.is_tournament_visible_to`
+    with the GameResult-specific carve-outs:
+
+      * ``tournament_id IS NULL`` (legacy / CLI standalone runs) → visible
+      * tournament row missing → visible (orphaned GameResult — fail open)
+      * otherwise → defer to the shared tournament predicate
+    """
+    if match.tournament_id is None:
+        return True
+    from atp.dashboard.tournament.models import Tournament
+    from atp.dashboard.tournament.visibility import is_tournament_visible_to
+
+    tournament = await session.get(Tournament, match.tournament_id)
+    if tournament is None:
+        return True
+    return await is_tournament_visible_to(session, tournament, user)
+
+
+@router.get("/matches/{match_id}", response_class=HTMLResponse)
+@limiter.limit("120/minute")
+async def ui_match_detail(
+    request: Request,
+    match_id: str,
+    session: DBSession,
+) -> HTMLResponse:
+    """Render the El Farol match dashboard for a single completed match.
+
+    Wraps the standalone dashboard bundle
+    (``/static/v2/js/el_farol/{data_helpers,dashboard}.js``) with a Jinja
+    shell that extends ``base_ui.html`` so sidebar/auth/navigation stay
+    consistent. The server reshape (from
+    ``atp.dashboard.v2.routes.el_farol_dashboard``) runs inline during
+    the request and serialises the payload into ``window.__ATP_MATCH__``
+    so the JS boots from a single JSON blob rather than a second fetch.
+    ADR-005 (LABS-98) documents the stack choice.
+    """
+    import json
+    import os
+
+    from atp.dashboard.models import GameResult
+    from atp.dashboard.v2.routes.el_farol_dashboard import _reshape
+    from atp.dashboard.v2.routes.el_farol_from_tournament import (
+        _reshape_from_tournament,
+    )
+
+    user = await _get_ui_user(request, session)
+
+    # entry-path hint — /ui/matches can be reached from runs listing or
+    # tournaments; fall back to games list for anonymous traffic.
+    referer = request.headers.get("referer", "") or ""
+    if "/ui/tournaments" in referer:
+        back_link_href, back_link_label = "/ui/tournaments", "All tournaments"
+        active_page = "tournaments"
+    elif "/ui/runs" in referer:
+        back_link_href, back_link_label = "/ui/runs", "All runs"
+        active_page = "runs"
+    else:
+        back_link_href, back_link_label = "/ui/games", "All games"
+        active_page = "games"
+
+    stmt = select(GameResult).where(GameResult.match_id == match_id)
+    row = (await session.execute(stmt)).scalar_one_or_none()
+    if row is None and match_id.isdigit():
+        row = await session.get(GameResult, int(match_id))
+
+    # Visibility gate: same business rule as the /ui/matches listing
+    # filter (``_apply_visibility`` closure in ``ui_matches``) — kept
+    # in sync via ``_match_visible_to_user`` below. Without this, a
+    # private-tournament match_id would still be enumerable by
+    # autoincrement PK (``/ui/matches/1``, ``/ui/matches/2``, …) or by
+    # a leaked UUID.
+    if row is not None and not await _match_visible_to_user(session, row, user):
+        # Hide existence: render the same "not found" HTML path the
+        # unknown-match branch uses (200 + friendly message). Avoids
+        # using HTTP status as an existence oracle — same 200 for
+        # "does not exist" and "you are not allowed to see it".
+        row = None
+
+    context: dict[str, Any] = {
+        "active_page": active_page,
+        "match_id": match_id,
+        "user": user,
+        "back_link_href": back_link_href,
+        "back_link_label": back_link_label,
+        "not_found": False,
+        "predates_schema": False,
+        "in_progress": False,
+        "status": None,
+    }
+
+    if row is None:
+        context["not_found"] = True
+    elif row.status and row.status != "completed":
+        context["in_progress"] = True
+        context["status"] = row.status
+    else:
+        # Three render paths share the completed-match branch:
+        # (a) tournament-backed El Farol matches → reshape from
+        #     authoritative Round/Action ORM rows (LABS-106).  Other
+        #     game types are gated out — /ui/matches/{id} is an El
+        #     Farol-only dashboard and the helper hard-codes 16 slots
+        #     plus the el_farol/ builtin prefix, so a PD or
+        #     public_goods tournament would render nonsense.
+        # (b) Phase-7 CLI matches → existing reshape from
+        #     actions_json/day_aggregates_json columns.
+        # (c) legacy CLI matches (pre PR #63) and non–El Farol
+        #     tournament matches → friendly placeholder.
+        payload = None
+        if row.tournament_id is not None and row.game_name == "el_farol":
+            payload = await _reshape_from_tournament(
+                row.tournament_id, session, match_id=row.match_id
+            )
+        elif not row.actions_json or not row.day_aggregates_json:
+            context["predates_schema"] = True
+        else:
+            payload = _reshape(row)
+
+        if payload is not None:
+            context.update(
+                {
+                    "payload_json": json.dumps(
+                        payload.model_dump(), separators=(",", ":")
+                    ),
+                    "num_agents": len(payload.AGENTS),
+                    "num_days": payload.NUM_DAYS,
+                    "num_slots": payload.NUM_SLOTS,
+                    "capacity": payload.CAPACITY,
+                    "langfuse_base": os.environ.get("ATP_LANGFUSE_BASE_URL", ""),
+                }
+            )
+
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/match_detail.html",
+        context=context,
+    )
+
+
+@router.get(
+    "/tournaments/{tournament_id}/live",
+    response_class=HTMLResponse,
+    response_model=None,
+)
+@limiter.limit("120/minute")
+async def ui_tournament_live(
+    request: Request,
+    tournament_id: int,
+    session: DBSession,
+) -> HTMLResponse | RedirectResponse:
+    """Render the live El Farol tournament dashboard.
+
+    Renders the same `match_detail.html` shell as the post-completion
+    replay, but bootstrapped from the live ORM projection
+    (``_reshape_from_tournament``) and wired to an SSE subscriber
+    (``live_subscriber.js``) that auto-refreshes the page when each
+    round resolves.
+
+    Visibility mirrors the rule used by ``/ui/matches/{match_id}`` —
+    public tournaments (``join_token IS NULL``) are visible to anyone;
+    private tournaments require admin / creator / participant. When the
+    tournament has already completed and a replay row exists, redirects
+    to ``/ui/matches/{match_id}`` so spectators land on the canonical
+    permanent URL.
+    """
+    import json
+    import os
+    from datetime import UTC
+
+    from atp.dashboard.models import GameResult
+    from atp.dashboard.tournament.models import Round, RoundStatus, Tournament
+    from atp.dashboard.tournament.visibility import is_tournament_visible_to
+    from atp.dashboard.v2.routes.el_farol_from_tournament import (
+        _reshape_from_tournament,
+    )
+
+    user = await _get_ui_user(request, session)
+
+    tournament = await session.get(Tournament, tournament_id)
+    visible = tournament is not None and await is_tournament_visible_to(
+        session, tournament, user
+    )
+
+    context: dict[str, Any] = {
+        "active_page": "tournaments",
+        "user": user,
+        "back_link_href": "/ui/tournaments",
+        "back_link_label": "All tournaments",
+        "not_found": False,
+        "predates_schema": False,
+        "in_progress": False,
+        "status": None,
+        "match_id": f"tournament-{tournament_id}",
+        "tournament_id": tournament_id,
+    }
+
+    if not visible:
+        # Same 404-style placeholder both routes use; hides whether the
+        # tournament exists or is just private.
+        context["not_found"] = True
+        return _templates(request).TemplateResponse(
+            request=request, name="ui/match_detail.html", context=context
+        )
+
+    # If the tournament is already complete and a replay row exists,
+    # send the spectator to the canonical permanent URL.
+    if tournament.status == "completed":
+        gr_row = (
+            await session.execute(
+                select(GameResult).where(GameResult.tournament_id == tournament_id)
+            )
+        ).scalar_one_or_none()
+        if gr_row is not None and gr_row.match_id:
+            return RedirectResponse(
+                url=f"/ui/matches/{gr_row.match_id}",
+                status_code=303,
+            )
+
+    # El Farol is the only game with a dashboard renderer today; for
+    # other game types, fall through to the friendly placeholder.
+    if tournament.game_type != "el_farol":
+        context["not_found"] = True
+        return _templates(request).TemplateResponse(
+            request=request, name="ui/match_detail.html", context=context
+        )
+
+    payload = await _reshape_from_tournament(tournament_id, session)
+
+    live_stream_url = f"/api/v1/tournaments/{tournament_id}/dashboard/stream"
+
+    # Surface the active round's started_at + deadline so the topbar can
+    # render a per-round countdown timer. Only the most recent
+    # non-terminal round is considered "active"; if the latest round is
+    # already completed/cancelled the timer is hidden until the next
+    # round_started reload.
+    active_round_stmt = (
+        select(Round)
+        .where(Round.tournament_id == tournament_id)
+        .where(
+            Round.status.in_([RoundStatus.WAITING_FOR_ACTIONS, RoundStatus.IN_PROGRESS])
+        )
+        .order_by(Round.round_number.desc())
+        .limit(1)
+    )
+    active_round = (await session.execute(active_round_stmt)).scalar_one_or_none()
+    current_round_number: int | None = None
+    current_round_started_ms: int | None = None
+    current_round_deadline_ms: int | None = None
+    if active_round is not None:
+        current_round_number = active_round.round_number
+        # Round.started_at / deadline are stored as naive datetimes
+        # (column type DateTime, no tz) — treat them as UTC for client
+        # comparison against Date.now().
+        if active_round.started_at is not None:
+            started = active_round.started_at
+            if started.tzinfo is None:
+                started = started.replace(tzinfo=UTC)
+            current_round_started_ms = int(started.timestamp() * 1000)
+        if active_round.deadline is not None:
+            dl = active_round.deadline
+            if dl.tzinfo is None:
+                dl = dl.replace(tzinfo=UTC)
+            current_round_deadline_ms = int(dl.timestamp() * 1000)
+
+    # The skeleton renders the same shell whether or not any rounds have
+    # resolved; the JS short-circuits empty DATA into a "waiting for
+    # round 1…" view, and the SSE subscriber triggers a reload once the
+    # first round_ended event fires.
+    context.update(
+        {
+            "match_id": f"tournament-{tournament_id}",
+            "payload_json": json.dumps(payload.model_dump(), separators=(",", ":")),
+            "num_agents": len(payload.AGENTS),
+            "num_days": payload.NUM_DAYS,
+            "num_slots": payload.NUM_SLOTS,
+            "capacity": payload.CAPACITY,
+            "langfuse_base": os.environ.get("ATP_LANGFUSE_BASE_URL", ""),
+            "live_stream_url": live_stream_url,
+            "current_round_number": current_round_number,
+            "current_round_started_ms": current_round_started_ms,
+            "current_round_deadline_ms": current_round_deadline_ms,
+        }
+    )
+
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/match_detail.html",
+        context=context,
     )
 
 
@@ -521,6 +1001,215 @@ async def ui_tournaments(
     )
 
 
+# Whitelist of game_types surfaced by the /ui/tournaments/new form —
+# derived from TournamentService.SUPPORTED_GAMES so the UI cannot drift
+# from the service-level validator.
+from atp.dashboard.tournament.service import (  # noqa: E402
+    SUPPORTED_GAMES as _TOURNAMENT_SUPPORTED_GAMES,
+)
+
+_TOURNAMENT_NEW_GAMES: list[str] = sorted(_TOURNAMENT_SUPPORTED_GAMES)
+
+
+def _resolve_form_user(request: Request, session_user: User | None) -> int | None:
+    """Resolve the active user id for form POSTs.
+
+    Mirrors ``get_current_user_for_tournament`` in ``tournament_api.py``:
+    prefers the JWT-decoded ``request.state.user_id`` and falls back to
+    id=1 when ``ATP_DISABLE_AUTH=true`` so integration tests that bypass
+    auth can seed a user and still transit the POST path.
+    """
+    import os
+
+    if session_user is not None:
+        return session_user.id
+    user_id: int | None = getattr(request.state, "user_id", None)
+    if user_id is not None:
+        return user_id
+    if os.environ.get("ATP_DISABLE_AUTH") == "true":
+        return 1
+    return None
+
+
+@router.get("/tournaments/new", response_class=HTMLResponse)
+@limiter.limit("60/minute")
+async def ui_tournaments_new(
+    request: Request,
+    session: DBSession,
+    game_type: str = "el_farol",
+) -> HTMLResponse:
+    """Render the self-service tournament creation form.
+
+    LABS-TSA PR-5. Non-admin users see a forced-private visibility
+    widget (disabled radio backed by a hidden input so the POST body
+    always carries ``private=on``); admins can toggle private/public.
+    The builtin-strategy checklist is game-scoped via
+    ``list_builtins_for_game``.
+    """
+    from atp.dashboard.tournament.builtins import list_builtins_for_game
+
+    user = await _get_ui_user(request, session)
+    builtins = list_builtins_for_game(game_type)
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/tournament_new.html",
+        context={
+            "active_page": "tournaments",
+            "games": _TOURNAMENT_NEW_GAMES,
+            "selected_game": game_type,
+            "builtins": builtins,
+            "user": user,
+        },
+    )
+
+
+@router.post("/tournaments/new", response_class=HTMLResponse)
+@limiter.limit("30/minute")
+async def ui_tournaments_new_submit(
+    request: Request,
+    session: DBSession,
+) -> HTMLResponse:
+    """Handle the self-service tournament creation POST.
+
+    LABS-TSA PR-5. Renders the detail page inline on success (no
+    redirect) so the one-time ``join_token`` reveal stays in the
+    response body and is not exposed through a follow-up GET.
+    """
+    from atp.dashboard.mcp import tournament_event_bus
+    from atp.dashboard.tournament.errors import (
+        ConcurrentPrivateCapExceededError,
+        RosterValidationError,
+    )
+    from atp.dashboard.tournament.errors import (
+        ValidationError as TournamentValidationError,
+    )
+    from atp.dashboard.tournament.service import TournamentService
+
+    user_row = await _get_ui_user(request, session)
+    user_id = _resolve_form_user(request, user_row)
+    if user_id is None:
+        return RedirectResponse(url="/ui/login", status_code=303)  # type: ignore[return-value]
+    creator = user_row or await session.get(User, user_id)
+    if creator is None or not creator.is_active:
+        return RedirectResponse(url="/ui/login", status_code=303)  # type: ignore[return-value]
+
+    form = await request.form()
+    game_type = str(form.get("game_type", "el_farol"))
+    private = str(form.get("private", "")).lower() in ("on", "true", "1")
+    try:
+        num_players = int(str(form.get("num_players", "2")))
+        total_rounds = int(str(form.get("total_rounds", "1")))
+        round_deadline_s = int(str(form.get("round_deadline_s", "30")))
+    except ValueError:
+        return _render_tournament_new_form_error(
+            request,
+            creator,
+            game_type,
+            "num_players / total_rounds / round_deadline_s must be integers",
+        )
+    roster_raw = form.getlist("roster[]")
+    roster = [str(r) for r in roster_raw if r]
+
+    # Non-admins cannot create public tournaments — enforce server-side
+    # regardless of what the form submitted. The template already hides
+    # the "public" radio for non-admins, but the check here is the hard
+    # gate.
+    if not creator.is_admin:
+        private = True
+
+    bus = getattr(request.app.state, "tournament_event_bus", tournament_event_bus)
+    svc = TournamentService(session=session, bus=bus)
+    tournament_name = f"{game_type} #{creator.username}"
+    try:
+        tournament, join_token = await svc.create_tournament(
+            creator=creator,
+            name=tournament_name,
+            game_type=game_type,
+            num_players=num_players,
+            total_rounds=total_rounds,
+            round_deadline_s=round_deadline_s,
+            private=private,
+            roster=roster,
+        )
+    except (
+        TournamentValidationError,
+        RosterValidationError,
+        ConcurrentPrivateCapExceededError,
+    ) as exc:
+        return _render_tournament_new_form_error(request, creator, game_type, str(exc))
+    # Ensure the caller-owned transaction writes the Tournament row.
+    await session.commit()
+
+    # Re-read the tournament with participants and rounds eager-loaded so
+    # the synchronous Jinja render doesn't trigger an async lazy-load
+    # (which blows up with ``MissingGreenlet``).
+    from atp.dashboard.tournament.models import Round
+    from atp.dashboard.tournament.models import Tournament as _Tournament
+
+    reloaded = (
+        await session.execute(
+            select(_Tournament)
+            .where(_Tournament.id == tournament.id)
+            .options(
+                selectinload(_Tournament.participants),
+                selectinload(_Tournament.rounds).selectinload(Round.actions),
+            )
+        )
+    ).scalar_one()
+
+    # Server-render the detail page directly so the join_token is never
+    # exposed through a POST→GET redirect.
+    creator_name = creator.username
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/tournament_detail.html",
+        context={
+            "active_page": "tournaments",
+            "tournament": reloaded,
+            "creator_name": creator_name,
+            "cancelled_by_name": None,
+            "sorted_rounds": sorted(
+                list(reloaded.rounds), key=lambda r: r.round_number, reverse=True
+            ),
+            "sorted_participants": sorted(
+                list(reloaded.participants), key=lambda p: p.id
+            ),
+            "participant_map": {p.id: p.agent_name for p in reloaded.participants},
+            "completed_rounds": 0,
+            "timeline": [],
+            "user": creator,
+            "is_admin": creator.is_admin,
+            "visible_reasoning_action_ids": set(),
+            "join_token_once": join_token,
+        },
+    )
+
+
+def _render_tournament_new_form_error(
+    request: Request,
+    user: User,
+    game_type: str,
+    error: str,
+) -> HTMLResponse:
+    """Re-render /ui/tournaments/new with an error banner."""
+    from atp.dashboard.tournament.builtins import list_builtins_for_game
+
+    builtins = list_builtins_for_game(game_type)
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/tournament_new.html",
+        context={
+            "active_page": "tournaments",
+            "games": _TOURNAMENT_NEW_GAMES,
+            "selected_game": game_type,
+            "builtins": builtins,
+            "user": user,
+            "error": error,
+        },
+        status_code=400,
+    )
+
+
 @router.get("/tournaments/{tournament_id}", response_class=HTMLResponse)
 @limiter.limit("120/minute")
 async def ui_tournament_detail(
@@ -529,7 +1218,9 @@ async def ui_tournament_detail(
     session: DBSession,
 ) -> HTMLResponse:
     """Render tournament detail page or HTMX live partial."""
+    from atp.dashboard.tournament.access import can_view_reasoning
     from atp.dashboard.tournament.models import (
+        Action,
         Round,
         Tournament,
     )
@@ -539,7 +1230,9 @@ async def ui_tournament_detail(
         .where(Tournament.id == tournament_id)
         .options(
             selectinload(Tournament.participants),
-            selectinload(Tournament.rounds).selectinload(Round.actions),
+            selectinload(Tournament.rounds)
+            .selectinload(Round.actions)
+            .selectinload(Action.participant),
         )
     )
     tournament = result.scalar_one_or_none()
@@ -647,6 +1340,31 @@ async def ui_tournament_detail(
         # Newest first
         timeline.sort(key=lambda e: e[1], reverse=True)
 
+    # Precompute which Action.id values the current viewer may read the
+    # reasoning of. Template-side gate is a simple membership test, keeping
+    # ACL logic out of Jinja.
+    visible_reasoning_action_ids = {
+        a.id
+        for r in sorted_rounds
+        for a in r.actions
+        if can_view_reasoning(
+            user=user,
+            tournament=tournament,
+            action_user_id=(a.participant.user_id if a.participant else None),
+        )
+    }
+
+    # Cards-replay cross-link (LABS-106): only completed tournaments have
+    # a GameResult row written by _write_game_result_for_tournament; for
+    # in-flight or cancelled ones the link falls back to the listing.
+    from atp.dashboard.models import GameResult
+
+    cards_match_id: str | None = None
+    if tournament.status == "completed":
+        cards_match_id = await session.scalar(
+            select(GameResult.match_id).where(GameResult.tournament_id == tournament.id)
+        )
+
     context = {
         "active_page": "tournaments",
         "tournament": tournament,
@@ -659,6 +1377,8 @@ async def ui_tournament_detail(
         "completed_rounds": completed_rounds,
         "timeline": timeline,
         "user": user,
+        "visible_reasoning_action_ids": visible_reasoning_action_ids,
+        "cards_match_id": cards_match_id,
     }
 
     partial = request.query_params.get("partial")
@@ -1175,7 +1895,15 @@ async def ui_analytics(request: Request, session: DBSession) -> HTMLResponse:
 @router.get("/agents", response_class=HTMLResponse)
 @limiter.limit("120/minute")
 async def ui_agents(request: Request, session: DBSession) -> HTMLResponse:
-    """My Agents page."""
+    """My Agents page.
+
+    LABS-TSA PR-5: adds a per-purpose quota strip (benchmark + tournament
+    agent counts vs. their configured caps) and surfaces ``purpose`` as a
+    table column. ``counts`` and ``quota`` are keyed by the two
+    ``Agent.purpose`` values.
+    """
+    from atp.dashboard.v2.config import get_config
+
     user = await _get_ui_user(request, session)
     if not user:
         return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
@@ -1202,11 +1930,32 @@ async def ui_agents(request: Request, session: DBSession) -> HTMLResponse:
             name=a.name,
             version=a.version,
             agent_type=a.agent_type,
+            purpose=a.purpose,
             created_at=a.created_at,
             token_count=tc,
         )
         for a, tc in result.all()
     ]
+
+    # Per-purpose counts for the quota strip. Exclude soft-deleted agents
+    # so the UI matches the enforcement logic in create_agent_for_user.
+    counts: dict[str, int] = {}
+    for purpose in ("benchmark", "tournament"):
+        counts[purpose] = (
+            await session.scalar(
+                select(func.count(Agent.id)).where(
+                    Agent.owner_id == user.id,
+                    Agent.purpose == purpose,
+                    Agent.deleted_at.is_(None),
+                )
+            )
+            or 0
+        )
+    cfg = get_config()
+    quota = {
+        "benchmark": cfg.max_benchmark_agents_per_user,
+        "tournament": cfg.max_tournament_agents_per_user,
+    }
 
     error = request.query_params.get("error")
     return _templates(request).TemplateResponse(
@@ -1216,6 +1965,8 @@ async def ui_agents(request: Request, session: DBSession) -> HTMLResponse:
             "active_page": "agents",
             "user": user,
             "agents": agents,
+            "counts": counts,
+            "quota": quota,
             "error": error,
         },
     )
@@ -1259,6 +2010,63 @@ async def ui_create_agent(
         return RedirectResponse(  # type: ignore[return-value]
             url=f"/ui/agents?error={quote(detail)}", status_code=303
         )
+
+    return RedirectResponse(url="/ui/agents", status_code=303)  # type: ignore[return-value]
+
+
+@router.post("/agents/{agent_id}/delete", response_class=HTMLResponse)
+@limiter.limit("10/minute")
+async def ui_delete_agent(
+    request: Request,
+    session: DBSession,
+    agent_id: int,
+) -> HTMLResponse:
+    """Soft-delete an agent via the cookie-auth UI.
+
+    Mirrors ``DELETE /api/v1/agents/{id}`` but accepts a form POST so
+    the agents table can expose a Delete button without JavaScript.
+    """
+    from urllib.parse import quote
+
+    user = await _get_ui_user(request, session)
+    if not user:
+        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+
+    agent = await session.get(Agent, agent_id)
+    if agent is None or agent.deleted_at is not None:
+        return RedirectResponse(  # type: ignore[return-value]
+            url="/ui/agents?error=Agent+not+found", status_code=303
+        )
+    if agent.owner_id != user.id and not user.is_admin:
+        return RedirectResponse(  # type: ignore[return-value]
+            url="/ui/agents?error=You+don%27t+own+this+agent", status_code=303
+        )
+
+    active = await session.execute(
+        select(Participant.id)
+        .join(TournamentModel, Participant.tournament_id == TournamentModel.id)
+        .where(
+            Participant.agent_id == agent_id,
+            Participant.released_at.is_(None),
+            TournamentModel.status.in_(
+                [TournamentStatus.PENDING, TournamentStatus.ACTIVE]
+            ),
+        )
+    )
+    if active.scalar_one_or_none() is not None:
+        return RedirectResponse(  # type: ignore[return-value]
+            url=f"/ui/agents?error={quote('Agent is in an active tournament')}",
+            status_code=303,
+        )
+
+    now = datetime.now()
+    agent.deleted_at = now
+    await session.execute(
+        update(APIToken)
+        .where(APIToken.agent_id == agent_id, APIToken.revoked_at.is_(None))
+        .values(revoked_at=now)
+    )
+    await session.flush()
 
     return RedirectResponse(url="/ui/agents", status_code=303)  # type: ignore[return-value]
 
@@ -1330,6 +2138,104 @@ async def _render_agent_detail(
         },
         status_code=status_code,
     )
+
+
+@router.get("/agents/new", response_class=HTMLResponse)
+@limiter.limit("60/minute")
+async def ui_agent_new(
+    request: Request,
+    session: DBSession,
+    purpose: str = "benchmark",
+) -> HTMLResponse:
+    """Render the agent-registration form.
+
+    Reachable from the "Register benchmark agent" / "Register tournament
+    agent" buttons on ``/ui/agents``. Must be declared BEFORE
+    ``/agents/{agent_id}`` below — FastAPI route matching is
+    declaration-order, and ``"new"`` would fail the
+    ``agent_id: int`` coercion otherwise (this was the QA-blocking
+    422 bug surfaced on prod).
+    """
+    user = await _get_ui_user(request, session)
+    if not user:
+        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+    if purpose not in ("benchmark", "tournament"):
+        purpose = "benchmark"
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/agent_new.html",
+        context={
+            "active_page": "agents",
+            "user": user,
+            "purpose": purpose,
+            "error": None,
+        },
+    )
+
+
+@router.post("/agents/new", response_class=HTMLResponse)
+@limiter.limit("30/minute")
+async def ui_agent_new_submit(
+    request: Request,
+    session: DBSession,
+) -> HTMLResponse:
+    """Create an agent from the UI form; redirect to /ui/agents on success."""
+    user = await _get_ui_user(request, session)
+    if not user:
+        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+    form = await request.form()
+    name = str(form.get("name", "")).strip()
+    agent_type = str(form.get("agent_type", "mcp")).strip()
+    purpose = str(form.get("purpose", "benchmark")).strip()
+    description = str(form.get("description", "")).strip() or None
+
+    if purpose not in ("benchmark", "tournament"):
+        purpose = "benchmark"
+
+    error: str | None = None
+    if not name:
+        error = "Name is required."
+
+    if error is None:
+        from atp.dashboard.v2.routes.agent_management_api import (
+            create_agent_for_user,
+        )
+
+        try:
+            await create_agent_for_user(
+                session=session,
+                user=user,
+                name=name,
+                version="latest",
+                agent_type=agent_type,
+                description=description,
+                config=None,
+                purpose=purpose,
+            )
+        except HTTPException as exc:
+            # create_agent_for_user uses a SAVEPOINT around the INSERT, so
+            # the outer transaction (and the ORM-loaded ``user`` instance
+            # the template lazy-loads) stays live — no rollback needed here.
+            error = str(exc.detail)
+        except Exception as exc:  # pragma: no cover - defensive
+            error = str(exc)
+
+    if error is not None:
+        return _templates(request).TemplateResponse(
+            request=request,
+            name="ui/agent_new.html",
+            context={
+                "active_page": "agents",
+                "user": user,
+                "purpose": purpose,
+                "form_name": name,
+                "form_agent_type": agent_type,
+                "form_description": description or "",
+                "error": error,
+            },
+            status_code=400,
+        )
+    return RedirectResponse(url="/ui/agents", status_code=303)  # type: ignore[return-value]
 
 
 @router.get("/agents/{agent_id}", response_class=HTMLResponse)
@@ -1444,15 +2350,21 @@ async def ui_revoke_token(
     return RedirectResponse(url=target, status_code=303)  # type: ignore[return-value]
 
 
-@router.get("/tokens", response_class=HTMLResponse)
-@limiter.limit("120/minute")
-async def ui_tokens(request: Request, session: DBSession) -> HTMLResponse:
-    """My Tokens page."""
-    user = await _get_ui_user(request, session)
-    if not user:
-        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+async def _render_tokens_page(
+    request: Request,
+    session: DBSession,
+    user: User,
+    *,
+    new_token: str | None = None,
+    error: str | None = None,
+    status_code: int = 200,
+) -> HTMLResponse:
+    """Shared renderer for the /ui/tokens page.
 
-    # Single query: tokens + agent name via LEFT JOIN
+    Used by both the GET (list) and POST (create) handlers so the
+    newly-minted raw token can be shown inline on submit without a
+    second redirect.
+    """
     token_result = await session.execute(
         select(APIToken, Agent.name.label("agent_name"))
         .outerjoin(Agent, APIToken.agent_id == Agent.id)
@@ -1482,7 +2394,79 @@ async def ui_tokens(request: Request, session: DBSession) -> HTMLResponse:
             "user": user,
             "tokens": tokens,
             "now": datetime.now(),
+            "new_token": new_token,
+            "error": error,
         },
+        status_code=status_code,
+    )
+
+
+@router.get("/tokens", response_class=HTMLResponse)
+@limiter.limit("120/minute")
+async def ui_tokens(request: Request, session: DBSession) -> HTMLResponse:
+    """My Tokens page."""
+    user = await _get_ui_user(request, session)
+    if not user:
+        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+
+    return await _render_tokens_page(request, session, user)
+
+
+@router.post("/tokens", response_class=HTMLResponse)
+@limiter.limit("10/minute")
+async def ui_create_user_token(
+    request: Request,
+    session: DBSession,
+    name: str = Form(...),
+    expires_in_days: str = Form(""),
+) -> HTMLResponse:
+    """Create a user-level API token (``atp_u_...``) via the UI form.
+
+    Companion of ``POST /ui/agents/{id}/tokens`` which creates
+    agent-scoped tokens. Without this handler, user-level tokens could
+    only be minted via ``POST /api/v1/tokens`` with curl — a friction
+    point visible from the public About quickstart (PR #34).
+    """
+    from atp.dashboard.v2.routes.token_api import create_token_for_user
+
+    user = await _get_ui_user(request, session)
+    if not user:
+        return RedirectResponse(url="/ui/login", status_code=302)  # type: ignore[return-value]
+
+    days: int | None = None
+    raw_days = expires_in_days.strip()
+    if raw_days:
+        try:
+            days = int(raw_days)
+        except ValueError:
+            return await _render_tokens_page(
+                request,
+                session,
+                user,
+                error="Expiry must be a whole number of days (or blank)",
+                status_code=400,
+            )
+
+    try:
+        _, raw = await create_token_for_user(
+            session=session,
+            user=user,
+            name=name.strip(),
+            agent_id=None,
+            expires_in_days=days,
+        )
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Failed to create token"
+        return await _render_tokens_page(
+            request,
+            session,
+            user,
+            error=detail,
+            status_code=exc.status_code,
+        )
+
+    return await _render_tokens_page(
+        request, session, user, new_token=raw, status_code=201
     )
 
 

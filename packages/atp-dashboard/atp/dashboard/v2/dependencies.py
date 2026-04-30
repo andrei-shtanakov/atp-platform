@@ -7,7 +7,7 @@ including database sessions, configuration, authentication, and services.
 from collections.abc import AsyncGenerator
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from atp.dashboard.auth import (
@@ -18,7 +18,6 @@ from atp.dashboard.auth import (
 from atp.dashboard.database import Database, get_database
 from atp.dashboard.models import User
 from atp.dashboard.v2.config import DashboardConfig, get_config
-from atp.dashboard.v2.services.agent_service import AgentService
 from atp.dashboard.v2.services.comparison_service import ComparisonService
 from atp.dashboard.v2.services.export_service import ExportService
 from atp.dashboard.v2.services.test_service import TestService
@@ -74,6 +73,44 @@ Config = Annotated[DashboardConfig, Depends(get_dashboard_config)]
 CurrentUser = Annotated[User | None, Depends(get_current_user)]
 RequiredUser = Annotated[User, Depends(get_current_active_user)]
 AdminUser = Annotated[User, Depends(get_current_admin_user)]
+
+
+async def get_benchmark_caller(
+    request: Request,
+    user: RequiredUser,
+) -> User:
+    """Authenticate a caller for the benchmark API (LABS-TSA PR-3).
+
+    Wraps ``get_current_active_user`` with a purpose check: tournament
+    agents are rejected with 403. User-level tokens and admin sessions
+    (which have no ``agent_purpose`` on ``request.state``) keep access,
+    as do benchmark-agent tokens.
+    """
+    agent_purpose = getattr(request.state, "agent_purpose", None)
+    if agent_purpose == "tournament":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="benchmark API is benchmark-agents only",
+        )
+    return user
+
+
+async def reject_tournament_token(request: Request) -> None:
+    """Router-level guard: 403 tournament-agent tokens (LABS-TSA PR-3).
+
+    Unlike ``get_benchmark_caller`` this does NOT require authentication,
+    so it can sit on endpoints that are otherwise public (e.g. listing
+    benchmarks). It only acts when ``state.agent_purpose == "tournament"``.
+    """
+    agent_purpose = getattr(request.state, "agent_purpose", None)
+    if agent_purpose == "tournament":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="benchmark API is benchmark-agents only",
+        )
+
+
+BenchmarkCaller = Annotated[User, Depends(get_benchmark_caller)]
 
 
 class PaginationParams:
@@ -145,23 +182,6 @@ async def get_test_service(session: DBSession) -> TestService:
     return TestService(session)
 
 
-async def get_agent_service(session: DBSession) -> AgentService:
-    """Get an AgentService instance for dependency injection.
-
-    Args:
-        session: Database session.
-
-    Returns:
-        AgentService instance.
-
-    Example:
-        @app.get("/agents")
-        async def list_agents(service: AgentServiceDep):
-            return await service.list_agents()
-    """
-    return AgentService(session)
-
-
 async def get_comparison_service(session: DBSession) -> ComparisonService:
     """Get a ComparisonService instance for dependency injection.
 
@@ -198,6 +218,5 @@ async def get_export_service(session: DBSession) -> ExportService:
 
 # Service type aliases for cleaner route signatures
 TestServiceDep = Annotated[TestService, Depends(get_test_service)]
-AgentServiceDep = Annotated[AgentService, Depends(get_agent_service)]
 ComparisonServiceDep = Annotated[ComparisonService, Depends(get_comparison_service)]
 ExportServiceDep = Annotated[ExportService, Depends(get_export_service)]

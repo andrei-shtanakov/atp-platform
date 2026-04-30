@@ -45,7 +45,8 @@ internally so you don't have to maintain two variants.
 
 ## Healthcheck
 
-Docker healthcheck uses stdlib `urllib.request`, not `httpx` — the
-runtime image's system `python` does not have `httpx` installed (only
-the `/app/.venv/bin/python` does). Do not "fix" the healthcheck back to
-httpx without also switching the command to use the venv binary.
+Defined as the `HEALTHCHECK` instruction in `deploy/Dockerfile`. Uses
+stdlib `urllib.request`, not `httpx` — the runtime image's system
+`python` does not have `httpx` installed (only the `/app/.venv/bin/python`
+does). Do not "fix" the healthcheck back to httpx without also switching
+the command to use the venv binary.

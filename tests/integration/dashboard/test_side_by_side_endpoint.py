@@ -81,12 +81,14 @@ async def test_data(async_session: AsyncSession) -> dict:
         agent_type="http",
         config={"endpoint": "http://localhost:8001"},
         description="Alpha agent for testing",
+        owner_id=1,
     )
     agent_beta = Agent(
         name="agent-beta",
         agent_type="http",
         config={"endpoint": "http://localhost:8002"},
         description="Beta agent for testing",
+        owner_id=1,
     )
     async_session.add_all([agent_alpha, agent_beta])
     await async_session.flush()
@@ -96,6 +98,7 @@ async def test_data(async_session: AsyncSession) -> dict:
     suite_alpha = SuiteExecution(
         suite_name="benchmark-suite",
         agent_id=agent_alpha.id,
+        agent_name=agent_alpha.name,
         started_at=now - timedelta(hours=2),
         completed_at=now - timedelta(hours=1),
         duration_seconds=3600.0,
@@ -109,6 +112,7 @@ async def test_data(async_session: AsyncSession) -> dict:
     suite_beta = SuiteExecution(
         suite_name="benchmark-suite",
         agent_id=agent_beta.id,
+        agent_name=agent_beta.name,
         started_at=now - timedelta(hours=1),
         completed_at=now,
         duration_seconds=3600.0,
@@ -472,6 +476,7 @@ class TestSideBySideEndpointIntegration:
             name="agent-gamma",
             agent_type="cli",
             config={},
+            owner_id=1,
         )
         async_session.add(agent_gamma)
         await async_session.flush()
@@ -480,6 +485,7 @@ class TestSideBySideEndpointIntegration:
         suite_gamma = SuiteExecution(
             suite_name="benchmark-suite",
             agent_id=agent_gamma.id,
+            agent_name=agent_gamma.name,
             started_at=now,
             completed_at=now,
             duration_seconds=100.0,

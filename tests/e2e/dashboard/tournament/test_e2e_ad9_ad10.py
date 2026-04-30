@@ -5,7 +5,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-pytestmark = pytest.mark.anyio
+pytestmark = [pytest.mark.anyio, pytest.mark.slow]
 
 
 async def test_e2e_ad9_duration_cap_rejects_over_budget(

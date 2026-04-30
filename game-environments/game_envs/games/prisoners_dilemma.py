@@ -227,28 +227,31 @@ class PrisonersDilemma(Game):
         round_number: int,
         total_rounds: int,
         participant_idx: int,
-        action_history: list[list[str]],
+        action_history: list[dict[str, Any]],
         cumulative_scores: list[float],
     ) -> dict[str, Any]:
         """Build a player-private RoundState dict for the given player.
 
         Args:
-            round_number: The 1-indexed round about to be played.
+            round_number: 1-indexed round about to be played.
             total_rounds: Total rounds in the tournament.
-            participant_idx: Which participant we are formatting for
-                (0 or 1 in 2-player PD).
-            action_history: List per round of [player0_action, player1_action]
-                strings. Empty list = no rounds played yet.
+            participant_idx: Which participant we are formatting for (0 or 1).
+            action_history: List per resolved round of
+                ``{"round": i, "actions": {pid: action_data}}``. Empty list =
+                no rounds played yet.
             cumulative_scores: Per-participant cumulative scores so far.
 
         Returns:
-            Dict matching the RoundState shape, with this player's view
-            (your_history vs opponent_history correctly oriented). The
+            Dict matching the PDRoundState shape (see schemas.py). The
             ``tournament_id`` field is -1 and must be filled by the caller.
         """
         opponent_idx = 1 - participant_idx
-        your_history = [r[participant_idx] for r in action_history]
-        opponent_history = [r[opponent_idx] for r in action_history]
+        your_history = [
+            row["actions"][participant_idx]["choice"] for row in action_history
+        ]
+        opponent_history = [
+            row["actions"][opponent_idx]["choice"] for row in action_history
+        ]
         return {
             "tournament_id": -1,
             "round_number": round_number,
@@ -261,10 +264,47 @@ class PrisonersDilemma(Game):
                 "type": "choice",
                 "options": [COOPERATE, DEFECT],
             },
-            "your_turn": True,
+            "your_turn": True,  # service overwrites this based on DB submission state
             "total_rounds": total_rounds,
             "extra": {},
         }
+
+    def validate_action(self, raw: Any) -> dict[str, str]:
+        """Validate a client-submitted action and return canonical form.
+
+        Strict path used by tournament submit. Raises ValidationError on
+        any malformed input.
+        """
+        from game_envs.core.errors import (
+            ValidationError,  # local import to avoid cycles
+        )
+
+        if not isinstance(raw, dict):
+            raise ValidationError(f"action must be a dict, got {type(raw).__name__}")
+        choice = raw.get("choice")
+        if choice not in (COOPERATE, DEFECT):
+            raise ValidationError(
+                f"choice must be {COOPERATE!r} or {DEFECT!r}, got {choice!r}"
+            )
+        return {"choice": choice}
+
+    def default_action_on_timeout(self) -> dict[str, str]:
+        """Action substituted when a participant misses the round deadline."""
+        return {"choice": DEFECT}
+
+    def compute_round_payoffs(self, actions: dict[int, dict[str, Any]]) -> list[float]:
+        """Generic entry point used by the tournament service.
+
+        Args:
+            actions: Mapping participant_idx -> action_data dict.
+
+        Returns:
+            List of payoffs in participant_idx order.
+        """
+        a0 = actions[0]["choice"]
+        a1 = actions[1]["choice"]
+        payoffs = self._compute_payoffs(a0, a1)
+        return [payoffs["player_0"], payoffs["player_1"]]
 
     def _compute_payoffs(self, a0: str, a1: str) -> dict[str, float]:
         """Compute round payoffs from the payoff matrix."""

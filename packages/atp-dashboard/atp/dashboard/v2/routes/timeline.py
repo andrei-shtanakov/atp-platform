@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from atp.dashboard.models import Agent, SuiteExecution, TestExecution
+from atp.dashboard.models import SuiteExecution, TestExecution
 from atp.dashboard.rbac import Permission, require_permission
 from atp.dashboard.schemas import (
     AgentTimeline,
@@ -147,11 +147,10 @@ async def get_timeline_events(
     stmt = (
         select(TestExecution)
         .join(SuiteExecution)
-        .join(Agent)
         .where(
             SuiteExecution.suite_name == suite_name,
             TestExecution.test_id == test_id,
-            Agent.name == agent_name,
+            SuiteExecution.agent_name == agent_name,
         )
         .options(selectinload(TestExecution.run_results))
         .order_by(TestExecution.started_at.desc())
@@ -285,11 +284,10 @@ async def get_multi_timeline(
         stmt = (
             select(TestExecution)
             .join(SuiteExecution)
-            .join(Agent)
             .where(
                 SuiteExecution.suite_name == suite_name,
                 TestExecution.test_id == test_id,
-                Agent.name == agent_name,
+                SuiteExecution.agent_name == agent_name,
             )
             .options(selectinload(TestExecution.run_results))
             .order_by(TestExecution.started_at.desc())

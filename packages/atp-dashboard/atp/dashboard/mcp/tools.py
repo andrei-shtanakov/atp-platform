@@ -13,11 +13,13 @@ wrappers below.
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from typing import Any
 
 from fastmcp import Context
 
 from atp.dashboard.mcp import mcp_server, tournament_event_bus
+from atp.dashboard.mcp.observability import emit_tool_call
 from atp.dashboard.tournament.service import TournamentService
 
 logger = logging.getLogger("atp.dashboard.mcp.tools")
@@ -34,9 +36,13 @@ async def _join_tournament_impl(
     agent_name: str,
     user: Any,
     service: TournamentService,
+    agent_id: int | None = None,
 ) -> dict[str, Any]:
     participant, is_new = await service.join(
-        tournament_id=tournament_id, user=user, agent_name=agent_name
+        tournament_id=tournament_id,
+        user=user,
+        agent_name=agent_name,
+        agent_id=agent_id,
     )
     return {
         "tournament_id": tournament_id,
@@ -54,12 +60,19 @@ async def join_tournament(
     tournament_id: int,
     agent_name: str,
     join_token: str | None = None,
+    agent_id: int | None = None,
 ) -> dict[str, Any]:
     """MCP tool handler: idempotent join with session_sync on every call.
 
     Called both from the FastMCP tool decorator shim and from integration
     tests. Extracting the body from the decorator makes it testable
     without a live MCP session.
+
+    LABS-TSA PR-6 (post-review): ``agent_id`` comes from the agent-scoped
+    token on the MCP transport. When provided, service.join() uses it
+    directly and skips the by-name auto-provision path — critical for
+    users running multiple agents, where name-only lookup cannot tell
+    the agents apart safely.
 
     session_sync is emitted on BOTH new-join (is_new=True) AND reconnect
     (is_new=False) so that the MCP client can catch up on state it missed
@@ -70,11 +83,14 @@ async def join_tournament(
         user=user,
         agent_name=agent_name,
         join_token=join_token,
+        agent_id=agent_id,
     )
     await service._session.commit()
 
     try:
-        state = await service.get_state_for(tournament_id=tournament_id, user=user)
+        state = await service.get_state_for(
+            tournament_id=tournament_id, user=user, agent_id=agent_id
+        )
         state_payload: dict[str, Any] = (
             state.to_dict() if hasattr(state, "to_dict") else state  # type: ignore[assignment]
         )
@@ -109,8 +125,9 @@ async def _get_current_state_impl(
     tournament_id: int,
     user: Any,
     service: TournamentService,
+    agent_id: int | None = None,
 ) -> dict[str, Any]:
-    state = await service.get_state_for(tournament_id, user)
+    state = await service.get_state_for(tournament_id, user, agent_id=agent_id)
     return state.to_dict()
 
 
@@ -120,8 +137,42 @@ async def _make_move_impl(
     action: dict[str, Any],
     user: Any,
     service: TournamentService,
+    agent_id: int | None = None,
 ) -> dict[str, Any]:
-    return await service.submit_action(tournament_id, user, action=action)
+    return await service.submit_action(
+        tournament_id, user, action=action, agent_id=agent_id
+    )
+
+
+async def _ping_impl() -> dict[str, Any]:
+    """Pure-impl helper for the ``ping`` tool.
+
+    No DB access, no service dependency — the response is built from
+    in-process state only. Designed as a connectivity warm-up SDK
+    clients can call before issuing real tournament operations.
+
+    Diagnostic interpretation of failure modes:
+
+    - ``ping`` missing from the advertised tool list (or any
+      transport-level error returned by the SSE handshake itself):
+      tool registration / handshake has not completed yet — the
+      client should retry the SSE connection before attempting real
+      operations.
+    - ``401 Unauthorized``: an authentication problem (missing,
+      invalid, or expired token / wrong token purpose). This is NOT
+      a handshake-retry signal; the client should fix or refresh
+      credentials rather than reconnect in a loop.
+
+    See docs/superpowers/plans/2026-04-27-mcp-server-reliability.md
+    Task 3 for the broader context.
+    """
+    from atp.dashboard.v2.config import get_config
+
+    return {
+        "ok": True,
+        "server_version": get_config().version,
+        "ts": datetime.now(UTC).isoformat(),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -149,13 +200,16 @@ async def _join_tournament_mcp(
     """
     from atp.dashboard.mcp.notifications import (
         forward_events_to_session,
+        resolve_agent_id_from_ctx,
         resolve_user_from_ctx,
         with_service,
     )
 
+    emit_tool_call(ctx, tool="join_tournament")
     user = await resolve_user_from_ctx(ctx)
+    agent_id = resolve_agent_id_from_ctx(ctx)
 
-    await forward_events_to_session(ctx, tournament_id, user)
+    await forward_events_to_session(ctx, tournament_id, user, agent_id=agent_id)
     try:
         async with with_service(ctx, tournament_event_bus) as service:
             result = await join_tournament(
@@ -165,6 +219,7 @@ async def _join_tournament_mcp(
                 tournament_id=tournament_id,
                 agent_name=agent_name,
                 join_token=join_token,
+                agent_id=agent_id,
             )
     except Exception:
         # Join failed — cancel the orphan forwarder task so we don't
@@ -185,15 +240,44 @@ async def get_current_state(
 ) -> dict:
     """Return a player-private RoundState for the current round."""
     from atp.dashboard.mcp.notifications import (
+        resolve_agent_id_from_ctx,
         resolve_user_from_ctx,
         with_service,
     )
 
+    emit_tool_call(ctx, tool="get_current_state")
     user = await resolve_user_from_ctx(ctx)
+    agent_id = resolve_agent_id_from_ctx(ctx)
     async with with_service(ctx, tournament_event_bus) as service:
         return await _get_current_state_impl(
-            tournament_id=tournament_id, user=user, service=service
+            tournament_id=tournament_id,
+            user=user,
+            service=service,
+            agent_id=agent_id,
         )
+
+
+@mcp_server.tool()
+async def ping(ctx: Context) -> dict:
+    """Cheap connectivity probe — no DB access, no auth lookup beyond
+    what ``MCPAuthMiddleware`` already enforced.
+
+    Use this as a warm-up before issuing real tournament operations.
+    If ``ping`` is missing from the discovered tool list or the SSE
+    handshake itself surfaces a transport-level error, tool
+    registration hasn't finished — retry the connection rather than
+    calling ``join_tournament`` / ``make_move`` and racing the
+    registration.
+
+    A 401 here means the credentials are bad (missing, invalid, or
+    wrong purpose), not that the handshake is incomplete; clients
+    should refresh credentials, not reconnect in a loop.
+
+    Returns:
+        ``{"ok": True, "server_version": "<dashboard version>", "ts": "<iso8601 UTC>"}``
+    """
+    emit_tool_call(ctx, tool="ping")
+    return await _ping_impl()
 
 
 @mcp_server.tool()
@@ -202,19 +286,55 @@ async def make_move(
     tournament_id: int,
     action: dict,
 ) -> dict:
-    """Submit an action for the current round."""
+    """Submit an action for the current round.
+
+    Args:
+        tournament_id: The tournament to submit to.
+        action: Dict whose required fields depend on the tournament's
+            game_type.
+
+            - prisoners_dilemma: ``{"choice": "cooperate" | "defect"}``
+            - stag_hunt: ``{"choice": "stag" | "hare"}``
+            - battle_of_sexes: ``{"choice": "A" | "B"}``
+            - el_farol: ``{"intervals": list[[start, end]]}`` — up to 2
+              non-overlapping, non-adjacent inclusive ``[start, end]``
+              pairs with values in ``[0, num_slots-1]``, covering at most
+              8 of 16 slots per day. ``{"intervals": []}`` is "stay home".
+            - public_goods: ``{"contribution": float in [0, endowment]}``.
+              Endowment defaults to 20; your contribution is pooled,
+              multiplied by 1.6, and split equally among all N players.
+
+            Optional for every game type:
+
+            - ``reasoning``: short free-form rationale for this move
+              (max 8000 chars; empty/whitespace-only treated as absent).
+              Example:
+              ``{"choice": "defect", "reasoning": "Opponent defected in
+              round 2; retaliating to discourage exploitation."}``
+              Revealed publicly only after tournament completion; visible
+              during live play only to the tournament owner, admins, and
+              the submitting agent itself.
+
+    ``game_type`` is optional on the wire; the server reads it from the
+    tournament record. If you send it and it mismatches the tournament's
+    game_type, the call is rejected (422).
+    """
     from atp.dashboard.mcp.notifications import (
+        resolve_agent_id_from_ctx,
         resolve_user_from_ctx,
         with_service,
     )
 
+    emit_tool_call(ctx, tool="make_move")
     user = await resolve_user_from_ctx(ctx)
+    agent_id = resolve_agent_id_from_ctx(ctx)
     async with with_service(ctx, tournament_event_bus) as service:
         return await _make_move_impl(
             tournament_id=tournament_id,
             action=action,
             user=user,
             service=service,
+            agent_id=agent_id,
         )
 
 
@@ -228,14 +348,19 @@ async def leave_tournament(
     service: Any,
     user: Any,
     tournament_id: int,
+    agent_id: int | None = None,
 ) -> dict[str, Any]:
     """MCP tool: leave a tournament.
+
+    LABS-TSA PR-6 (post-review): ``agent_id`` routes the leave to the
+    caller's specific Participant when the user has multiple agents in
+    the tournament. MCP agent-scoped callers always pass it.
 
     Idempotent at the DB level — a retry after a successful-but-unacknowledged
     first call will return NotFoundError; SDK callers MUST treat that as
     success.
     """
-    await service.leave(tournament_id=tournament_id, user=user)
+    await service.leave(tournament_id=tournament_id, user=user, agent_id=agent_id)
     return {"left": True, "tournament_id": tournament_id}
 
 
@@ -267,18 +392,28 @@ async def list_tournaments(
     service: Any,
     user: Any,
     status: str | None = None,
+    game_type: str | None = None,
 ) -> dict[str, Any]:
-    """MCP tool: list tournaments, optionally filtered by status."""
+    """MCP tool: list tournaments, optionally filtered by status and game_type.
+
+    Args:
+        status: optional filter; one of the TournamentStatus values.
+        game_type: optional filter; one of "prisoners_dilemma" |
+            "stag_hunt" | "battle_of_sexes" | "el_farol" | "public_goods".
+    """
     from atp.dashboard.tournament.models import TournamentStatus
 
     status_filter = TournamentStatus(status) if status else None
-    tournaments = await service.list_tournaments(user=user, status=status_filter)
+    tournaments = await service.list_tournaments(
+        user=user, status=status_filter, game_type=game_type
+    )
     return {
         "tournaments": [
             {
                 "id": t.id,
                 "name": (getattr(t, "config", {}) or {}).get("name", ""),
                 "status": getattr(t, "status", None),
+                "game_type": getattr(t, "game_type", None),
                 "has_join_token": bool(getattr(t, "join_token", None)),
             }
             for t in tournaments
@@ -332,14 +467,21 @@ async def mcp_leave_tournament(
 ) -> dict:
     """Leave a tournament. Idempotent."""
     from atp.dashboard.mcp.notifications import (
+        resolve_agent_id_from_ctx,
         resolve_user_from_ctx,
         with_service,
     )
 
+    emit_tool_call(ctx, tool="mcp_leave_tournament")
     user = await resolve_user_from_ctx(ctx)
+    agent_id = resolve_agent_id_from_ctx(ctx)
     async with with_service(ctx, tournament_event_bus) as service:
         return await leave_tournament(
-            ctx=ctx, service=service, user=user, tournament_id=tournament_id
+            ctx=ctx,
+            service=service,
+            user=user,
+            tournament_id=tournament_id,
+            agent_id=agent_id,
         )
 
 
@@ -355,6 +497,7 @@ async def mcp_get_history(
         with_service,
     )
 
+    emit_tool_call(ctx, tool="mcp_get_history")
     user = await resolve_user_from_ctx(ctx)
     async with with_service(ctx, tournament_event_bus) as service:
         return await get_history(
@@ -370,17 +513,25 @@ async def mcp_get_history(
 async def mcp_list_tournaments(
     ctx: Context,
     status: str | None = None,
+    game_type: str | None = None,
 ) -> dict:
-    """List tournaments, optionally filtered by status string."""
+    """List tournaments, optionally filtered by status and/or game_type.
+
+    Args:
+        status: optional; one of the TournamentStatus values.
+        game_type: optional; one of "prisoners_dilemma" | "stag_hunt" |
+            "battle_of_sexes" | "el_farol" | "public_goods".
+    """
     from atp.dashboard.mcp.notifications import (
         resolve_user_from_ctx,
         with_service,
     )
 
+    emit_tool_call(ctx, tool="mcp_list_tournaments")
     user = await resolve_user_from_ctx(ctx)
     async with with_service(ctx, tournament_event_bus) as service:
         return await list_tournaments(
-            ctx=ctx, service=service, user=user, status=status
+            ctx=ctx, service=service, user=user, status=status, game_type=game_type
         )
 
 
@@ -395,6 +546,7 @@ async def mcp_get_tournament(
         with_service,
     )
 
+    emit_tool_call(ctx, tool="mcp_get_tournament")
     user = await resolve_user_from_ctx(ctx)
     async with with_service(ctx, tournament_event_bus) as service:
         return await get_tournament(
@@ -414,6 +566,7 @@ async def mcp_cancel_tournament(
         with_service,
     )
 
+    emit_tool_call(ctx, tool="mcp_cancel_tournament")
     user = await resolve_user_from_ctx(ctx)
     async with with_service(ctx, tournament_event_bus) as service:
         return await cancel_tournament(

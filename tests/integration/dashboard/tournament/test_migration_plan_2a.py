@@ -53,7 +53,12 @@ def test_upgrade_creates_participant_released_at(fresh_db):
         for c in inspect(engine).get_columns("tournament_participants")
         if c["name"] == "user_id"
     )
-    assert user_col["nullable"] is False
+    # Plan 2a originally shipped user_id as NOT NULL. LABS-TSA PR-1
+    # flipped it to nullable so builtin-strategy participants (which
+    # have no User backing them) can live in the same table. This
+    # fresh_db fixture runs every migration up to head, so the final
+    # state is nullable.
+    assert user_col["nullable"] is True
     engine.dispose()
 
 
@@ -65,13 +70,16 @@ def test_upgrade_creates_action_source(fresh_db):
 
 
 def test_upgrade_creates_six_base_invariants(fresh_db):
+    """Smoke-test base invariants after migrations up to head.
+
+    LABS-TSA PR-6 replaced the two user-keyed Participant uniqueness
+    entries with agent-keyed partial unique indexes, so the
+    ``uq_participant_tournament_user`` UniqueConstraint no longer appears
+    and ``uq_participant_user_active`` is replaced by
+    ``uq_participant_tournament_agent`` and ``uq_participant_agent_active``.
+    """
     engine = create_engine(fresh_db)
     inspector = inspect(engine)
-
-    pc_unique = {
-        u["name"] for u in inspector.get_unique_constraints("tournament_participants")
-    }
-    assert "uq_participant_tournament_user" in pc_unique
 
     ac_unique = {
         u["name"] for u in inspector.get_unique_constraints("tournament_actions")
@@ -87,7 +95,15 @@ def test_upgrade_creates_six_base_invariants(fresh_db):
     assert "idx_round_status_deadline" in r_indexes
 
     p_indexes = {i["name"] for i in inspector.get_indexes("tournament_participants")}
-    assert "uq_participant_user_active" in p_indexes
+    assert "uq_participant_tournament_agent" in p_indexes
+    assert "uq_participant_agent_active" in p_indexes
+    # Old user-keyed indexes gone after PR-6
+    assert "uq_participant_user_active" not in p_indexes
+
+    pc_unique = {
+        u["name"] for u in inspector.get_unique_constraints("tournament_participants")
+    }
+    assert "uq_participant_tournament_user" not in pc_unique
 
     engine.dispose()
 

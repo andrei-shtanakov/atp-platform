@@ -1,16 +1,42 @@
 """Shared fixtures for dashboard unit tests."""
 
 import os
-from collections.abc import Generator
+from collections.abc import AsyncIterator, Generator
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+import atp.dashboard.tournament.models  # noqa: F401  (ensure model registration)
+from atp.dashboard.models import Base
 from atp.dashboard.v2.config import get_config
 
 # Ensure test env vars are set for entire unit test session.
 # Routes that call get_config() need ATP_SECRET_KEY to not raise in non-debug mode.
 os.environ.setdefault("ATP_SECRET_KEY", "unit-test-secret-key")
 os.environ.setdefault("ATP_DEBUG", "true")
+
+
+@pytest.fixture(autouse=True)
+def _clear_token_caches() -> Generator[None, None, None]:
+    """Clear in-process token caches between tests.
+
+    ``JWTUserStateMiddleware`` keeps two module-level caches
+    (``_legacy_purpose_cache`` for legacy agent_purpose lookups and
+    ``_token_auth_cache`` for the full resolved triple). Without
+    isolation, a test that mints token X and resolves it leaks the
+    cached entry into the next test, hiding DB-state changes such
+    as revocation or purpose updates.
+    """
+    from atp.dashboard.v2.rate_limit import (
+        _legacy_purpose_cache,
+        _token_auth_cache,
+    )
+
+    _legacy_purpose_cache.clear()
+    _token_auth_cache.clear()
+    yield
+    _legacy_purpose_cache.clear()
+    _token_auth_cache.clear()
 
 
 @pytest.fixture
@@ -41,3 +67,19 @@ def disable_dashboard_auth() -> Generator[None, None, None]:
             os.environ.pop(key, None)
         else:
             os.environ[key] = old_val
+
+
+@pytest.fixture
+async def db_session() -> AsyncIterator[AsyncSession]:
+    """Fresh in-memory SQLite + all tables, one per test.
+
+    Mirrors the fixture in tests/unit/dashboard/tournament/conftest.py
+    for test modules that live directly under tests/unit/dashboard/.
+    """
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    session_local = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_local() as sess:
+        yield sess
+    await engine.dispose()

@@ -774,7 +774,7 @@ After successful migration:
 
 - **Documentation**: [docs/](.)
 - **Examples**: [examples/](../../examples/)
-- **Issues**: [GitHub Issues](https://github.com/yourusername/atp-platform/issues)
+- **Issues**: [GitHub Issues](https://github.com/andrei-shtanakov/atp-platform/issues)
 
 ## See Also
 

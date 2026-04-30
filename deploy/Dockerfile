@@ -30,6 +30,7 @@ COPY atp/ atp/
 COPY game-environments/ game-environments/
 COPY atp-games/ atp-games/
 COPY migrations/ migrations/
+COPY scripts/ scripts/
 COPY alembic.ini ./
 
 # Install workspace packages (uses cached deps)
@@ -55,6 +56,11 @@ COPY --from=ghcr.io/astral-sh/uv:0.7 /uv /usr/local/bin/uv
 # Copy installed environment from builder
 COPY --from=builder /app /app
 
+# Entrypoint runs ``alembic upgrade head`` before exec'ing the app.
+# Owned by root, readable by all so the non-root ``atp`` user can run it.
+COPY deploy/entrypoint.sh /usr/local/bin/atp-entrypoint
+RUN chmod 0755 /usr/local/bin/atp-entrypoint
+
 # Create data and cache directories owned by atp user
 RUN mkdir -p /data && chown atp:atp /data
 RUN mkdir -p /app/.cache && chown -R atp:atp /app/.cache
@@ -78,5 +84,9 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 # race on force_resolve_round. docker-compose.yml already overrides with
 # --workers 1 but we keep the Dockerfile CMD consistent so direct
 # `docker run` is also safe.
+#
+# ENTRYPOINT applies Alembic migrations against ATP_DATABASE_URL first,
+# then execs the uvicorn CMD below so signals reach PID 1 correctly.
+ENTRYPOINT ["/usr/local/bin/atp-entrypoint"]
 CMD ["uv", "run", "--no-sync", "uvicorn", "atp.dashboard.v2.factory:app", \
      "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]

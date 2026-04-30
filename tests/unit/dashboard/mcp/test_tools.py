@@ -28,7 +28,10 @@ async def test_join_tournament_calls_service_and_returns_participant_info() -> N
     )
 
     fake_service.join.assert_awaited_once_with(
-        tournament_id=7, user=fake_user, agent_name="alice-tft"
+        tournament_id=7,
+        user=fake_user,
+        agent_name="alice-tft",
+        agent_id=None,
     )
     assert result == {
         "tournament_id": 7,
@@ -56,7 +59,7 @@ async def test_get_current_state_impl_returns_state_dict() -> None:
     result = await tools._get_current_state_impl(
         tournament_id=7, user=fake_user, service=fake_service
     )
-    fake_service.get_state_for.assert_awaited_once_with(7, fake_user)
+    fake_service.get_state_for.assert_awaited_once_with(7, fake_user, agent_id=None)
     assert result == {
         "tournament_id": 7,
         "round_number": 5,
@@ -81,6 +84,139 @@ async def test_make_move_impl_passes_action_to_service() -> None:
         service=fake_service,
     )
     fake_service.submit_action.assert_awaited_once_with(
-        7, fake_user, action={"choice": "cooperate"}
+        7, fake_user, action={"choice": "cooperate"}, agent_id=None
     )
     assert result == {"status": "waiting", "round_number": 1}
+
+
+@pytest.mark.anyio
+async def test_make_move_impl_forwards_agent_id() -> None:
+    """When the MCP handler extracts agent_id from request state, the
+    impl must thread it into service.submit_action so multi-agent
+    users target the right participant row.
+    """
+    from atp.dashboard.mcp import tools
+
+    fake_user = MagicMock(id=42)
+    fake_service = MagicMock()
+    fake_service.submit_action = AsyncMock(
+        return_value={"status": "waiting", "round_number": 1}
+    )
+
+    await tools._make_move_impl(
+        tournament_id=7,
+        action={"choice": "defect"},
+        user=fake_user,
+        service=fake_service,
+        agent_id=123,
+    )
+    fake_service.submit_action.assert_awaited_once_with(
+        7, fake_user, action={"choice": "defect"}, agent_id=123
+    )
+
+
+@pytest.mark.anyio
+async def test_get_current_state_impl_forwards_agent_id() -> None:
+    """``_get_current_state_impl`` must thread agent_id through to
+    ``service.get_state_for`` so the returned snapshot is keyed on
+    the caller's agent, not the first user-matching Participant.
+    """
+    from atp.dashboard.mcp import tools
+
+    fake_user = MagicMock(id=42)
+    fake_state = MagicMock()
+    fake_state.to_dict.return_value = {"tournament_id": 7}
+    fake_service = MagicMock()
+    fake_service.get_state_for = AsyncMock(return_value=fake_state)
+
+    await tools._get_current_state_impl(
+        tournament_id=7,
+        user=fake_user,
+        service=fake_service,
+        agent_id=456,
+    )
+    fake_service.get_state_for.assert_awaited_once_with(7, fake_user, agent_id=456)
+
+
+@pytest.mark.anyio
+async def test_join_tournament_impl_forwards_agent_id() -> None:
+    """``_join_tournament_impl`` must thread agent_id into service.join
+    so the MCP path avoids the by-name auto-provision fallback.
+    """
+    from atp.dashboard.mcp import tools
+
+    fake_user = MagicMock(id=42)
+    fake_participant = MagicMock(id=99)
+    fake_service = MagicMock()
+    fake_service.join = AsyncMock(return_value=(fake_participant, True))
+
+    await tools._join_tournament_impl(
+        tournament_id=7,
+        agent_name="alice-tft",
+        user=fake_user,
+        service=fake_service,
+        agent_id=789,
+    )
+    fake_service.join.assert_awaited_once_with(
+        tournament_id=7,
+        user=fake_user,
+        agent_name="alice-tft",
+        agent_id=789,
+    )
+
+
+# ---------------------------------------------------------------------------
+# ping — warmup tool from MCP reliability plan Task 3
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_ping_impl_returns_expected_shape() -> None:
+    """``_ping_impl`` returns the documented warmup envelope:
+    ``ok``, ``server_version``, ``ts``."""
+    from atp.dashboard.mcp import tools
+
+    result = await tools._ping_impl()
+
+    assert result.keys() == {"ok", "server_version", "ts"}
+    assert result["ok"] is True
+    assert isinstance(result["server_version"], str) and result["server_version"]
+    # ``ts`` must be an ISO-8601 string with timezone — assert datetime
+    # round-trip rather than re-implementing the format check.
+    from datetime import datetime
+
+    parsed = datetime.fromisoformat(result["ts"])
+    assert parsed.tzinfo is not None, "ping ts must include timezone offset"
+
+
+@pytest.mark.anyio
+async def test_ping_impl_does_not_touch_database(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The whole point of ``ping`` is that it stays cheap on a cold
+    server — no DB session, no api_tokens lookup. Monkeypatch
+    ``get_database`` to fail so any regression that adds DB access
+    surfaces deterministically."""
+    from atp.dashboard.mcp import tools
+
+    def _fail_db() -> object:
+        raise RuntimeError("ping must not touch the database")
+
+    monkeypatch.setattr("atp.dashboard.database.get_database", _fail_db)
+
+    result = await tools._ping_impl()
+    assert result["ok"] is True
+
+
+@pytest.mark.anyio
+async def test_ping_tool_is_registered_on_mcp_server() -> None:
+    """The decorated wrapper must be registered with FastMCP under the
+    public name ``ping`` so SDK clients can discover it via
+    ``tools/list``. Catches accidental decorator removal."""
+    from atp.dashboard.mcp import mcp_server
+    from atp.dashboard.mcp import tools as _tools  # noqa: F401 — register tools
+
+    tool_names = {t.name for t in await mcp_server.list_tools()}
+    assert "ping" in tool_names, (
+        f"ping tool not registered on FastMCP server; have {sorted(tool_names)}"
+    )

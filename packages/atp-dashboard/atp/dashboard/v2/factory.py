@@ -22,6 +22,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from atp.dashboard.database import init_database
 from atp.dashboard.tournament.deadlines import run_deadline_worker
 from atp.dashboard.v2.config import DashboardConfig, get_config
+from atp.dashboard.v2.logging_config import configure_app_logging
 from atp.dashboard.v2.rate_limit import (
     JWTUserStateMiddleware,
     create_limiter,
@@ -107,6 +108,12 @@ def create_app(
     if config is None:
         config = get_config()
 
+    # Configure the ``atp.*`` logger hierarchy first so any subsequent
+    # imports / setup that emit at INFO are visible. Uvicorn's default
+    # config covers only its own loggers, leaving every ``logger.info``
+    # in app code silently dropped — see ``logging_config`` docstring.
+    configure_app_logging()
+
     # Set up the FastMCP sub-app first so its lifespan can be composed
     # into the outer FastAPI lifespan. Phase 0.2 verified that Starlette
     # does NOT propagate sub-app lifespans under mount(), so we must
@@ -116,6 +123,13 @@ def create_app(
     from atp.dashboard.mcp.auth import MCPAuthMiddleware
 
     mcp_app = mcp_server.http_app(transport="sse")
+    # Spike: parallel streamable-HTTP mount at /mcp-http to test
+    # whether the cold-start race we observe on /mcp/sse is
+    # transport-specific or lives above transport. Same FastMCP
+    # instance, same tool registry — only the transport layer
+    # differs. Existing SSE mount stays intact so participant-kit
+    # bots are unaffected during the test.
+    mcp_http_app = mcp_server.http_app(transport="streamable-http")
 
     @asynccontextmanager
     async def _combined_lifespan(app_: FastAPI) -> AsyncGenerator[None, None]:
@@ -136,7 +150,8 @@ def create_app(
             )
             try:
                 async with mcp_app.router.lifespan_context(app_):
-                    yield
+                    async with mcp_http_app.router.lifespan_context(app_):
+                        yield
             finally:
                 shutdown_event.set()
                 worker_task.cancel()
@@ -167,24 +182,38 @@ def create_app(
     #
     # SlowAPIMiddleware is BaseHTTPMiddleware-based, which buffers response
     # bodies and crashes long-lived SSE streams ("Unexpected message:
-    # http.response.start"). Wrap it so /mcp/* bypasses rate limiting at
-    # the middleware layer — MCP request volume is self-limited by the
-    # single SSE-session-per-agent design. See LABS-74.
+    # http.response.start"). Wrap it so streaming routes bypass rate
+    # limiting at the middleware layer:
+    #   * /mcp/*  — MCP SSE + /mcp-http streamable-HTTP mount; volume is
+    #               self-limited by the single SSE-session-per-agent
+    #               design (LABS-74).
+    #   * /api/v1/tournaments/{id}/dashboard/stream — live tournament
+    #               dashboard SSE; one long-lived connection per
+    #               spectator, not a request-rate concern.
     limiter = create_limiter(config)
     app.state.limiter = limiter
 
-    def _slowapi_except_mcp(inner_app: Any) -> Any:
+    def _is_sse_path(path: str) -> bool:
+        if path.startswith("/mcp"):
+            return True
+        if path.startswith("/api/v1/tournaments/") and path.endswith(
+            "/dashboard/stream"
+        ):
+            return True
+        return False
+
+    def _slowapi_except_streams(inner_app: Any) -> Any:
         slowapi = SlowAPIMiddleware(inner_app)
 
         async def _asgi(scope: dict[str, Any], receive: Any, send: Any) -> None:
-            if scope.get("type") == "http" and scope.get("path", "").startswith("/mcp"):
+            if scope.get("type") == "http" and _is_sse_path(scope.get("path", "")):
                 await inner_app(scope, receive, send)
                 return
             await slowapi(scope, receive, send)
 
         return _asgi
 
-    app.add_middleware(_slowapi_except_mcp)
+    app.add_middleware(_slowapi_except_streams)
     app.add_middleware(JWTUserStateMiddleware)
     app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
@@ -204,13 +233,23 @@ def create_app(
     mcp_app.add_middleware(MCPAuthMiddleware)
     app.mount("/mcp", mcp_app)
 
+    # Spike: streamable-HTTP transport mounted as a sibling at
+    # /mcp-http. Same auth gating; same FastMCP instance underneath
+    # so tools registered via @mcp_server.tool() are visible from
+    # both transports. Lets bots opt into the alternate transport
+    # without affecting existing /mcp/sse traffic.
+    mcp_http_app.add_middleware(MCPAuthMiddleware)
+    app.mount("/mcp-http", mcp_http_app)
+
     # Mount API routes
     app.include_router(api_router, prefix="/api")
 
     # Mount UI routes (HTMX + Pico CSS frontend)
+    from atp.dashboard.v2.routes.admin_ui import router as admin_ui_router
     from atp.dashboard.v2.routes.ui import router as ui_router
 
     app.include_router(ui_router)
+    app.include_router(admin_ui_router)
 
     # Configure Jinja2 templates
     if TEMPLATES_DIR.exists():

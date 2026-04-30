@@ -1,14 +1,36 @@
-"""Pre-evaluation guardrails inspired by arbiter's invariant rules.
+"""Post-execution, pre-evaluation guardrails.
 
-Run checks before each evaluator to skip wasteful evaluations early
-(e.g. don't call LLM-judge on an empty response).
+Runs after an agent produces a response but before ATP dispatches any
+evaluator, so that empty, timed-out, or over-budget responses can
+short-circuit the expensive evaluator pipeline (LLM-judge, container
+execution, etc.).
+
+Relationship to arbiter
+-----------------------
+The short-circuit *pattern* — list of independent predicates, each
+returning a (name, passed, reason) tuple — is borrowed from
+arbiter-core's invariant rules. The *rule set* is NOT borrowed:
+
+- arbiter's invariants gate agent *assignment* (pre-dispatch, operating
+  on TaskInput + AgentContext + SystemContext).
+- These guardrails gate *evaluation* (post-dispatch, operating on an
+  ATPResponse after the agent has already run).
+
+Of the three rules here, two (``within_budget``, ``timeout_not_exceeded``)
+share a concept — budget and time — with arbiter counterparts
+(``budget_remaining``, ``sla_feasible``), but use inverted predicates
+(measurement vs. estimate). ``not_silently_failed`` has no arbiter
+analogue, and eight arbiter invariants have no analogue here.
+
+Semantic mapping: ``arbiter/docs/guardrails-atp-mapping.md`` in the
+sibling repo.
 """
 
 import logging
 from dataclasses import dataclass
 
 from atp.loader.models import TestDefinition
-from atp.protocol import ATPResponse
+from atp.protocol import ATPResponse, ResponseStatus
 
 logger = logging.getLogger(__name__)
 
@@ -22,25 +44,40 @@ class CheckResult:
     reason: str
 
 
-def check_response_not_empty(response: ATPResponse) -> CheckResult:
-    """Skip evaluation if the agent returned no output."""
-    has_artifacts = bool(response.artifacts)
-    has_output = bool(getattr(response, "output", None))
+def check_not_silently_failed(response: ATPResponse) -> CheckResult:
+    """Skip evaluation only when the agent both failed AND produced no artifacts.
 
-    if response.status.value == "failed" and not has_artifacts and not has_output:
+    A ``status=failed`` response with no artifacts carries nothing an
+    evaluator can score — running LLM-judge on it is pure waste. A
+    ``status=failed`` response *with* artifacts is still evaluated: the
+    agent may have partially succeeded (e.g. produced a file before
+    dying) and some evaluators grade exactly that.
+
+    A ``status=completed`` response with empty artifacts is NOT caught
+    here — that's a valid shape (some tests score events / metrics
+    rather than outputs). Behavior and event evaluators pick those up
+    downstream.
+    """
+    if response.status == ResponseStatus.FAILED and not response.artifacts:
         return CheckResult(
-            name="response_not_empty",
+            name="not_silently_failed",
             passed=False,
             reason="Agent response is empty/failed with no artifacts",
         )
-    return CheckResult(name="response_not_empty", passed=True, reason="")
+    return CheckResult(name="not_silently_failed", passed=True, reason="")
 
 
 def check_timeout_not_exceeded(
     test: TestDefinition, response: ATPResponse
 ) -> CheckResult:
-    """Skip evaluation if the agent timed out."""
-    if response.status.value == "timeout":
+    """Skip evaluation if the agent timed out.
+
+    Post-execution, per-test **measurement** of ``response.status``.
+    Distinct from arbiter's ``sla_feasible``, which is a pre-dispatch
+    **estimate** (`agent.avg_duration × buffer ≤ task.sla`) on a
+    different axis. See ``arbiter/docs/guardrails-atp-mapping.md``.
+    """
+    if response.status == ResponseStatus.TIMEOUT:
         return CheckResult(
             name="timeout_not_exceeded",
             passed=False,
@@ -50,7 +87,14 @@ def check_timeout_not_exceeded(
 
 
 def check_within_budget(test: TestDefinition, response: ATPResponse) -> CheckResult:
-    """Skip evaluation if the agent exceeded its budget."""
+    """Skip evaluation if the agent exceeded its budget.
+
+    Post-execution, per-test **measurement** of
+    ``response.metrics.cost_usd`` against ``test.constraints.budget_usd``.
+    Distinct from arbiter's ``budget_remaining``, which is a
+    pre-dispatch **estimate** against a system-wide remaining-budget
+    pool. See ``arbiter/docs/guardrails-atp-mapping.md``.
+    """
     budget = test.constraints.budget_usd
     if budget is None:
         return CheckResult(name="within_budget", passed=True, reason="")
@@ -83,7 +127,7 @@ def run_guardrails(
         should be skipped for this test.
     """
     return [
-        check_response_not_empty(response),
+        check_not_silently_failed(response),
         check_timeout_not_exceeded(test, response),
         check_within_budget(test, response),
     ]

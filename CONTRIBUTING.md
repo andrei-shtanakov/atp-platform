@@ -5,7 +5,7 @@ Contributions are welcome. This guide covers everything you need to get started.
 ## Development Setup
 
 ```bash
-git clone https://github.com/yourusername/atp-platform.git
+git clone https://github.com/andrei-shtanakov/atp-platform.git
 cd atp-platform
 
 # Install all dependencies (including dev tools)

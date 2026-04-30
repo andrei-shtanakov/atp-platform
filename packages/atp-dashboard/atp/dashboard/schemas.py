@@ -1,7 +1,7 @@
 """Pydantic schemas for API request/response models."""
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -1876,6 +1876,13 @@ class AgentOwnerCreate(BaseModel):
     agent_type: str = Field(..., min_length=1, max_length=50)
     config: dict[str, Any] = Field(default_factory=dict)
     description: str | None = None
+    purpose: Literal["benchmark", "tournament"] = Field(
+        default="benchmark",
+        description=(
+            "Agent purpose — benchmark agents run suite evaluations; "
+            "tournament agents connect to /mcp for game-theoretic play."
+        ),
+    )
 
 
 class AgentOwnerUpdate(BaseModel):
@@ -1896,6 +1903,7 @@ class AgentOwnerResponse(BaseModel):
     config: dict[str, Any]
     description: str | None
     owner_id: int | None
+    purpose: str
     created_at: datetime
     updated_at: datetime
 

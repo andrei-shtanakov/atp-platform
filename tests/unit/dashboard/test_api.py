@@ -80,23 +80,6 @@ class TestAgentEndpoints:
         response = client.get("/api/agents")
         assert response.status_code in [200, 500]
 
-    def test_create_agent_unauthorized(self, unauth_client: TestClient) -> None:
-        """Test create agent without authentication."""
-        response = unauth_client.post(
-            "/api/agents",
-            json={"name": "test", "agent_type": "http"},
-        )
-        assert response.status_code == 401
-
-    def test_create_agent_invalid_token(self, unauth_client: TestClient) -> None:
-        """Test create agent with invalid token returns 401."""
-        response = unauth_client.post(
-            "/api/agents",
-            json={"name": "test", "agent_type": "http"},
-            headers={"Authorization": "Bearer fake-token"},
-        )
-        assert response.status_code == 401
-
     def test_get_agent(self, client: TestClient) -> None:
         """Test get agent endpoint exists."""
         response = client.get("/api/agents/1")

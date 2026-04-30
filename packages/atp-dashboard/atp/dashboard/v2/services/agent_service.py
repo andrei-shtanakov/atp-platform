@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from atp.dashboard.models import Agent
-from atp.dashboard.schemas import AgentCreate, AgentResponse, AgentUpdate
+from atp.dashboard.schemas import AgentResponse, AgentUpdate
 
 
 class AgentService:
@@ -65,33 +65,6 @@ class AgentService:
         agent = result.scalar_one_or_none()
         if agent is None:
             return None
-        return AgentResponse.model_validate(agent)
-
-    async def create_agent(self, agent_data: AgentCreate) -> AgentResponse | None:
-        """Create a new agent.
-
-        Args:
-            agent_data: Agent creation data.
-
-        Returns:
-            Created agent response, or None if an agent with the
-            same name already exists.
-        """
-        # Check for existing agent
-        stmt = select(Agent).where(Agent.name == agent_data.name)
-        result = await self._session.execute(stmt)
-        if result.scalar_one_or_none():
-            return None
-
-        agent = Agent(
-            name=agent_data.name,
-            agent_type=agent_data.agent_type,
-            config=agent_data.config,
-            description=agent_data.description,
-        )
-        self._session.add(agent)
-        await self._session.flush()
-        await self._session.refresh(agent)
         return AgentResponse.model_validate(agent)
 
     async def update_agent(

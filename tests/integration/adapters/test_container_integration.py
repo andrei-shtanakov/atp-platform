@@ -37,11 +37,19 @@ def _detect_runtime() -> str | None:
 
 CONTAINER_RUNTIME = _detect_runtime()
 
-# Skip all tests in this module if no container runtime is available
-pytestmark = pytest.mark.skipif(
-    CONTAINER_RUNTIME is None,
-    reason="No container runtime (Docker/Podman) is available",
-)
+# Skip all tests in this module if no container runtime is available.
+# Also marked ``slow`` because CI runners lack a local image registry —
+# ``localhost/atp-test-agent:latest`` pulls fail with "dial tcp [::1]:443:
+# connect: connection refused", producing flakes in the shared
+# ``test (3.12)`` coverage gate. The tests are still valuable locally
+# (Podman/Docker present) and in CI jobs that opt into slow tests.
+pytestmark = [
+    pytest.mark.skipif(
+        CONTAINER_RUNTIME is None,
+        reason="No container runtime (Docker/Podman) is available",
+    ),
+    pytest.mark.slow,
+]
 
 
 def _local_image_name(name: str) -> str:

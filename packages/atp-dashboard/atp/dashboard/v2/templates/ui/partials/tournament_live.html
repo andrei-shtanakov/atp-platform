@@ -92,11 +92,59 @@
             {% for p in sorted_participants %}
                 {% set action = r.actions | selectattr("participant_id", "equalto", p.id) | first %}
                 {% if action %}
-                    {% set choice = (action.action_data or {}).get("choice", "—") %}
+                    {# Single source of truth for the "this row was auto-
+                       submitted on timeout" predicate — reused below for
+                       both the (timeout) label and for suppressing the
+                       empty-reasoning placeholder. Avoids drift if the
+                       source enum name ever changes. #}
+                    {% set is_timeout_default = action.source == "timeout_default" %}
                     <td>
-                        <span class="{{ 'cooperate' if choice == 'cooperate' else 'defect' }}">{{ choice }}</span>
-                        {% if is_admin and action.source == "TIMEOUT_DEFAULT" %}
+                        {% if t.game_type == "prisoners_dilemma" %}
+                            {% set choice = (action.action_data or {}).get("choice", "—") %}
+                            <span class="{{ 'cooperate' if choice == 'cooperate' else 'defect' }}">{{ choice }}</span>
+                        {% elif t.game_type == "el_farol" %}
+                            {% set intervals = (action.action_data or {}).get("intervals", []) %}
+                            {% if intervals %}
+                                <span class="score-pair">{{ intervals | map("join", "–") | join(", ") }}</span>
+                            {% else %}
+                                <span style="color:#999">stay home</span>
+                            {% endif %}
+                        {% elif t.game_type == "public_goods" %}
+                            {% set contrib = (action.action_data or {}).get("contribution") %}
+                            {% if contrib is not none %}
+                                <span class="score-pair">{{ "%.2f"|format(contrib) }}</span>
+                            {% else %}
+                                <span style="color:#999">—</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="score-pair">{{ action.action_data | tojson }}</span>
+                        {% endif %}
+                        {% if is_admin and is_timeout_default %}
                         <span style="font-size:0.75rem;color:#999">(timeout)</span>
+                        {% endif %}
+                        {# Inline reasoning. Rendered for every action the
+                           caller is allowed to see reasoning for, even when
+                           the agent didn't attach any — an explicit empty
+                           placeholder makes the feature discoverable instead
+                           of hiding behind a missing 💭 icon. Timeout-default
+                           actions are server-generated and never carry
+                           reasoning, so we skip the placeholder for them to
+                           avoid visual noise. #}
+                        {% if action.id in visible_reasoning_action_ids %}
+                            {% if action.reasoning %}
+                            <div class="reasoning-inline"
+                                 style="font-size:0.8rem;color:#555;white-space:pre-wrap;margin-top:0.25rem;font-style:italic;">
+                                💭 {{ action.reasoning }}
+                            </div>
+                            {% elif not is_timeout_default %}
+                            {# #666 on white reaches WCAG AA for normal text
+                               (4.5:1); the prior #aaa failed the bar. Keep
+                               it muted enough to read as secondary. #}
+                            <div class="reasoning-inline reasoning-inline-empty"
+                                 style="font-size:0.75rem;color:#666;margin-top:0.25rem;font-style:italic;">
+                                💭 <span>no reasoning</span>
+                            </div>
+                            {% endif %}
                         {% endif %}
                     </td>
                 {% else %}

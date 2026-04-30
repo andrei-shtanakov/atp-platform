@@ -11,22 +11,37 @@ worker, leave/get_history/list, AD-9/AD-10 enforcement, etc.).
 
 from __future__ import annotations
 
+import functools
 import logging
 import os
 import secrets
+import time
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from game_envs.games.battle_of_sexes import BattleOfSexes
+from game_envs.games.el_farol import MAX_SLOTS_PER_DAY, ElFarolBar, ElFarolConfig
 from game_envs.games.prisoners_dilemma import PrisonersDilemma
+from game_envs.games.public_goods import PGConfig, PublicGoodsGame
+from game_envs.games.stag_hunt import StagHunt
+from pydantic import TypeAdapter
+from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from atp.dashboard.models import Agent, User
+from atp.dashboard.models import DEFAULT_TENANT_ID, Agent, GameResult, User
+from atp.dashboard.tournament.builtins import (
+    BuiltinNotFoundError,
+    resolve_builtin,
+)
 from atp.dashboard.tournament.errors import (
+    ConcurrentPrivateCapExceededError,
     ConflictError,
     NotFoundError,
+    RosterValidationError,
     ValidationError,
 )
 from atp.dashboard.tournament.events import (
@@ -36,6 +51,7 @@ from atp.dashboard.tournament.events import (
 )
 from atp.dashboard.tournament.models import (
     Action,
+    ActionSource,
     Participant,
     Round,
     RoundStatus,
@@ -43,7 +59,17 @@ from atp.dashboard.tournament.models import (
     TournamentStatus,
 )
 from atp.dashboard.tournament.reasons import CancelReason
-from atp.dashboard.tournament.state import RoundState
+from atp.dashboard.tournament.schemas import (
+    BoSRoundState,
+    ElFarolRoundState,
+    PDRoundState,
+    PGRoundState,
+    SHRoundState,
+    TournamentAction,
+)
+from atp.dashboard.tournament.schemas import (
+    RoundState as _RS_UNION,
+)
 
 logger = logging.getLogger("atp.dashboard.tournament.service")
 
@@ -61,11 +87,104 @@ TOURNAMENT_PENDING_MAX_WAIT_S: int = int(
     os.environ.get("ATP_TOURNAMENT_PENDING_MAX_WAIT_S", "300")
 )
 
-_SUPPORTED_GAMES = frozenset({"prisoners_dilemma"})
+SUPPORTED_GAMES: frozenset[str] = frozenset(
+    {
+        "prisoners_dilemma",
+        "el_farol",
+        "stag_hunt",
+        "battle_of_sexes",
+        "public_goods",
+    }
+)
+# Back-compat alias for private usage within this module; external
+# callers should import ``SUPPORTED_GAMES`` instead.
+_SUPPORTED_GAMES = SUPPORTED_GAMES
 
-_GAME_INSTANCES: dict[str, Any] = {
-    "prisoners_dilemma": PrisonersDilemma(),
-}
+_PD_SINGLETON: PrisonersDilemma = PrisonersDilemma()
+_SH_SINGLETON: StagHunt = StagHunt()
+_BOS_SINGLETON: BattleOfSexes = BattleOfSexes()
+
+# Hardcoded El Farol V1 preset (spec §3.2).
+_EL_FAROL_V1_NUM_SLOTS = 16
+_EL_FAROL_V1_THRESHOLD_RATIO = 0.6
+_EL_FAROL_V1_MIN_TOTAL_HOURS = 0
+
+# Startup assert — spec §12 silent-min_total_hours mitigation.
+assert _EL_FAROL_V1_MIN_TOTAL_HOURS == 0, (
+    "Raising _EL_FAROL_V1_MIN_TOTAL_HOURS without a Phase C "
+    "finalize_scores hook would silently ignore DQ. See spec §12."
+)
+
+
+@functools.lru_cache(maxsize=64)
+def _el_farol_for(num_players: int) -> ElFarolBar:
+    cap = max(1, int(_EL_FAROL_V1_THRESHOLD_RATIO * num_players))
+    cfg = ElFarolConfig(
+        num_players=num_players,
+        num_slots=_EL_FAROL_V1_NUM_SLOTS,
+        capacity_threshold=cap,
+        min_total_hours=_EL_FAROL_V1_MIN_TOTAL_HOURS,
+    )
+    return ElFarolBar(cfg)
+
+
+@functools.lru_cache(maxsize=64)
+def _pg_for(num_players: int) -> PublicGoodsGame:
+    """Cached Public Goods engine for a given player count.
+
+    Deliberately uses ``PGConfig`` defaults — endowment=20, multiplier=1.6,
+    punishment_cost=0 and punishment_effect=0 — so the tournament runs
+    the simple single-step variant (``_step_basic``). Per-tournament
+    config (custom endowment/multiplier) is a future extension; matches
+    the El Farol pattern above where threshold is hardcoded v1-style.
+    """
+    return PublicGoodsGame(PGConfig(num_players=num_players))
+
+
+def _game_for(tournament: Any) -> Any:
+    """Return the Game instance for a tournament.
+
+    PD/SH/BoS use module-level singletons; N-player games (El Farol,
+    Public Goods) use per-num_players cached factories. Unknown
+    game_type raises ValidationError.
+    """
+    gt = tournament.game_type
+    if gt == "prisoners_dilemma":
+        return _PD_SINGLETON
+    if gt == "stag_hunt":
+        return _SH_SINGLETON
+    if gt == "battle_of_sexes":
+        return _BOS_SINGLETON
+    if gt == "el_farol":
+        return _el_farol_for(tournament.num_players)
+    if gt == "public_goods":
+        return _pg_for(tournament.num_players)
+    raise ValidationError(f"unsupported game_type {gt!r}")
+
+
+_ACTION_ADAPTER: TypeAdapter[Any] = TypeAdapter(TournamentAction)
+_ROUND_STATE_ADAPTER: TypeAdapter[
+    PDRoundState | SHRoundState | BoSRoundState | ElFarolRoundState | PGRoundState
+] = TypeAdapter(_RS_UNION)
+
+
+def _action_hint_for(game_type: str) -> str:
+    """Human-readable expected-shape hint for error messages (spec §4)."""
+    if game_type == "prisoners_dilemma":
+        return "{choice: 'cooperate' | 'defect'}"
+    if game_type == "stag_hunt":
+        return "{choice: 'stag' | 'hare'}"
+    if game_type == "battle_of_sexes":
+        return "{choice: 'A' | 'B'}"
+    if game_type == "el_farol":
+        return (
+            "{intervals: list[[start, end]], up to 2 non-adjacent inclusive "
+            f"pairs with 0 <= start <= end < num_slots, max {MAX_SLOTS_PER_DAY} "
+            "slots total; [] = stay home}"
+        )
+    if game_type == "public_goods":
+        return "{contribution: float in [0, endowment]}"
+    return "{} (unknown game_type)"
 
 
 class TournamentService:
@@ -83,24 +202,64 @@ class TournamentService:
         total_rounds: int,
         round_deadline_s: int,
         private: bool = False,
+        roster: list[str] | None = None,
     ) -> tuple[Tournament, str | None]:
         """Create a tournament. AD-9 duration cap validation, pending_deadline,
         optional join_token.
 
         Does NOT auto-join the creator.
+
+        ``roster`` (LABS-TSA PR-4) is an optional list of namespaced
+        builtin strategy names (e.g. ``["el_farol/traditionalist"]``)
+        that will be inserted as Participant rows with
+        ``builtin_strategy=...`` so private test tournaments can
+        spin up against deterministic sparring partners.
+
+        Private tournaments enforce:
+        * Every roster entry is a known builtin for this game_type.
+        * Roster size does not exceed ``num_players``.
+        * Creator has at least one tournament-purpose agent OR the
+          roster fills every slot (so the tournament actually has
+          enough participants to resolve).
+        * Creator is under the concurrent-private cap
+          (``ATP_MAX_CONCURRENT_PRIVATE_TOURNAMENTS_PER_USER``) —
+          raises ``ConcurrentPrivateCapExceededError``.
         """
+        roster = list(roster or [])
         if game_type not in _SUPPORTED_GAMES:
             raise ValidationError(
                 f"unsupported game_type {game_type!r}; "
-                f"v1 slice supports: {sorted(_SUPPORTED_GAMES)}"
+                f"supports: {sorted(_SUPPORTED_GAMES)}"
             )
-        required_players = _GAME_INSTANCES[game_type].config.num_players
-        if num_players != required_players:
-            _p = "player" if required_players == 1 else "players"
-            raise ValidationError(
-                f"num_players: {game_type} requires exactly {required_players} {_p}, "
-                f"got {num_players}"
-            )
+        if game_type == "prisoners_dilemma":
+            if num_players != 2:
+                raise ValidationError(
+                    f"prisoners_dilemma requires exactly 2 players, got {num_players}"
+                )
+        elif game_type == "stag_hunt":
+            if num_players != 2:
+                raise ValidationError(
+                    f"stag_hunt requires exactly 2 players, got {num_players}"
+                )
+        elif game_type == "battle_of_sexes":
+            if num_players != 2:
+                raise ValidationError(
+                    f"battle_of_sexes requires exactly 2 players, got {num_players}"
+                )
+        elif game_type == "el_farol":
+            if not (2 <= num_players <= 20):
+                raise ValidationError(
+                    f"el_farol requires 2 <= num_players <= 20 (phase B bound), "
+                    f"got {num_players}"
+                )
+        elif game_type == "public_goods":
+            # Engine itself enforces 2..20 in PGConfig.__post_init__, but
+            # fail here first for a nicer error message and to avoid a
+            # half-constructed cache entry.
+            if not (2 <= num_players <= 20):
+                raise ValidationError(
+                    f"public_goods requires 2 <= num_players <= 20, got {num_players}"
+                )
         if total_rounds < 1:
             raise ValidationError("total_rounds must be >= 1")
         if round_deadline_s < 1:
@@ -118,6 +277,79 @@ class TournamentService:
                 f"(ATP_TOKEN_EXPIRE_MINUTES − 10) × 60 = {budget}s cap. "
                 f"Reduce total_rounds or round_deadline_s."
             )
+
+        # --- LABS-TSA PR-4: roster validation (size, namespacing, lookup) ---
+        if len(roster) > num_players:
+            raise RosterValidationError(
+                f"builtin roster ({len(roster)}) larger than "
+                f"num_players ({num_players})"
+            )
+        for entry in roster:
+            if "/" not in entry:
+                raise RosterValidationError(
+                    f"unknown builtin strategy {entry!r} "
+                    "(must be namespaced as 'game/name')"
+                )
+            prefix, _ = entry.split("/", 1)
+            if prefix != game_type:
+                raise RosterValidationError(
+                    f"unknown builtin strategy {entry!r} "
+                    f"for game {game_type!r} (namespace mismatch)"
+                )
+            try:
+                # Probe resolution with dummy ids — the instance is
+                # discarded; only the class lookup matters.
+                resolve_builtin(entry, tournament_id=0, participant_id=0)
+            except BuiltinNotFoundError as exc:
+                raise RosterValidationError(
+                    f"unknown builtin strategy {entry!r}: {exc}"
+                ) from exc
+
+        # --- LABS-TSA PR-4: creator-commit check for private tournaments ---
+        if private:
+            creator_tournament_agents = await self._session.scalar(
+                select(func.count(Agent.id)).where(
+                    Agent.owner_id == creator.id,
+                    Agent.purpose == "tournament",
+                    Agent.deleted_at.is_(None),
+                )
+            )
+            agent_count = int(creator_tournament_agents or 0)
+            has_agent = agent_count > 0
+            roster_fills_all = len(roster) >= num_players
+            if not has_agent and not roster_fills_all:
+                missing = num_players - len(roster)
+                raise RosterValidationError(
+                    f"private tournament needs {num_players} participants; "
+                    f"you have {agent_count} tournament agents and "
+                    f"{len(roster)} builtin(s), leaving {missing} slot(s) "
+                    "unfilled. Register a tournament-purpose agent via "
+                    "/ui/agents, or extend the builtin roster until "
+                    f"len(roster) == num_players ({num_players})."
+                )
+
+        # --- LABS-TSA PR-4: concurrent-private cap ---
+        if private:
+            from atp.dashboard.v2.config import get_config
+
+            cfg = get_config()
+            active = await self._session.scalar(
+                select(func.count(Tournament.id)).where(
+                    Tournament.created_by == creator.id,
+                    Tournament.join_token.is_not(None),
+                    Tournament.status.in_(
+                        [TournamentStatus.PENDING, TournamentStatus.ACTIVE]
+                    ),
+                    # Exclude expired-pending so deadlines.py auto-cancel
+                    # doesn't race the cap.
+                    (Tournament.status != TournamentStatus.PENDING)
+                    | (Tournament.pending_deadline > _utc_now()),
+                )
+            )
+            current = int(active or 0)
+            cap = cfg.max_concurrent_private_tournaments_per_user
+            if current >= cap:
+                raise ConcurrentPrivateCapExceededError(current, cap)
 
         now = _utc_now()
         pending_deadline = now + timedelta(seconds=TOURNAMENT_PENDING_MAX_WAIT_S)
@@ -143,6 +375,30 @@ class TournamentService:
         self._session.add(tournament)
         await self._session.flush()
 
+        # --- LABS-TSA PR-4: insert builtin participants ---
+        for entry in roster:
+            self._session.add(
+                Participant(
+                    tournament_id=tournament.id,
+                    user_id=None,
+                    agent_id=None,
+                    agent_name=entry,
+                    builtin_strategy=entry,
+                )
+            )
+        if roster:
+            await self._session.flush()
+            # If the roster already fills every slot, transition straight
+            # to ACTIVE so downstream deadline/worker logic can pick up
+            # immediately. Mirrors the count-based transition in ``join``.
+            count = await self._session.scalar(
+                select(func.count(Participant.id)).where(
+                    Participant.tournament_id == tournament.id
+                )
+            )
+            if count == num_players:
+                await self._start_tournament(tournament)
+
         return tournament, join_token_plaintext
 
     async def join(
@@ -151,17 +407,34 @@ class TournamentService:
         user: User,
         agent_name: str,
         join_token: str | None = None,
+        *,
+        agent_id: int | None = None,
     ) -> tuple[Participant, bool]:
         """Idempotent join with race-aware IntegrityError handling.
 
         Returns (participant, is_new).
 
+        LABS-TSA PR-6: uniqueness is agent-keyed, not user-keyed. A
+        single user may register multiple tournament agents and play
+        them all in the same tournament.
+
+        LABS-TSA PR-6 (post-review): ``agent_id`` is the clean-path
+        input from MCP agent-scoped tokens — the caller has already
+        identified the exact Agent row and we skip name-based lookup
+        entirely. When ``agent_id is None`` (CLI/admin callers), we
+        fall back to the by-name lookup + auto-provision path, which
+        now enforces ``ATP_MAX_TOURNAMENT_AGENTS_PER_USER`` and runs
+        AFTER join validation so a rejected join cannot orphan an
+        Agent row.
+
         Race semantics on INSERT IntegrityError:
-        - uq_participant_tournament_user violation: a concurrent idempotent
-          re-join from the same user won the insert race. Re-read the
-          existing row and return (existing, False).
-        - uq_participant_user_active violation: user has active participation
-          in a different tournament. Raise ConflictError(409).
+        - uq_participant_tournament_agent violation: either a concurrent
+          idempotent re-join of the same agent won the insert race, or
+          the agent previously participated in this tournament and was
+          released. Re-read; if an active row exists return it, else
+          raise ConflictError("previously participated").
+        - uq_participant_agent_active violation: the agent has active
+          participation in a *different* tournament. Raise ConflictError(409).
         - Any other IntegrityError: re-raise unchanged.
         """
         tournament = await self._session.get(Tournament, tournament_id)
@@ -171,30 +444,64 @@ class TournamentService:
         # Capture scalar values before any potential rollback expiry
         user_id = user.id
 
-        # Idempotent pre-check: existing participant can always reconnect,
-        # even when the tournament is already active (MCP reconnect scenario).
-        existing = await self._session.scalar(
-            select(Participant)
-            .where(Participant.tournament_id == tournament_id)
-            .where(Participant.user_id == user_id)
-        )
-        if existing is not None:
-            if existing.released_at is not None:
-                # Leave is terminal — cannot rejoin
-                raise ConflictError(
-                    f"user {user_id} already left tournament "
-                    f"{tournament_id}; rejoin not permitted"
-                )
-            return existing, False
+        # --- Step 1: validate the join itself BEFORE any auto-provision ---
+        # Previously the service auto-provisioned an Agent row before it
+        # knew whether the join would succeed. A failed join
+        # (wrong join_token, agent already active elsewhere) would leave
+        # an orphan Agent consuming a quota slot. We now validate first.
+        # The idempotent pre-check for agent_id-supplied callers happens
+        # inside Step 2 below; for name-based callers the pre-check runs
+        # after resolution (also in Step 2).
 
-        # Fresh join: tournament must be pending.
+        resolved_agent_id: int | None = agent_id
+
+        # --- Step 2: resolve agent_id ---
+        if resolved_agent_id is None:
+            # By-name resolution for CLI/admin callers. MCP clients
+            # pass agent_id explicitly and skip this branch.
+            agent_lookup_filter = (
+                Agent.owner_id == user_id,
+                Agent.tenant_id == DEFAULT_TENANT_ID,
+                Agent.name == agent_name,
+                Agent.purpose == "tournament",
+                Agent.deleted_at.is_(None),
+            )
+            resolved_agent_id = await self._session.scalar(
+                select(Agent.id).where(*agent_lookup_filter).limit(1)
+            )
+            needs_auto_provision = resolved_agent_id is None
+        else:
+            needs_auto_provision = False
+            agent_lookup_filter = ()  # unused on the explicit-agent_id path
+
+        # Idempotent pre-check (only meaningful once we already have a
+        # concrete agent_id — either supplied directly or resolved from
+        # an existing Agent row). The auto-provision branch inserts a
+        # brand-new Agent so it cannot have any prior Participant rows.
+        if resolved_agent_id is not None:
+            existing = await self._session.scalar(
+                select(Participant)
+                .where(Participant.tournament_id == tournament_id)
+                .where(Participant.agent_id == resolved_agent_id)
+            )
+            if existing is not None:
+                if existing.released_at is not None:
+                    # Leave is terminal — cannot rejoin.
+                    raise ConflictError(
+                        f"agent {agent_name!r} previously participated in "
+                        f"tournament {tournament_id} "
+                        f"(released={existing.released_at.isoformat()}); "
+                        "rejoin not permitted"
+                    )
+                return existing, False
+
+        # --- Step 3: validate tournament status and join_token ---
         if tournament.status != TournamentStatus.PENDING:
             raise ConflictError(
                 f"tournament {tournament_id} is {tournament.status!r}, "
                 "not accepting joins"
             )
 
-        # Private tournament token check (AD-10)
         if tournament.join_token is not None:
             import hmac
 
@@ -205,27 +512,81 @@ class TournamentService:
                     f"tournament {tournament_id} requires a valid join_token"
                 )
 
-        # Resolve agent_id from an owned Agent matching agent_name, so the
-        # "agent in active tournament" check in DELETE /api/v1/agents/{id}
-        # can block soft-delete of an agent actively playing. If the user
-        # has no matching owned agent (e.g. legacy ownerless flow), agent_id
-        # stays NULL and the legacy behaviour is preserved.
-        agent_id = await self._session.scalar(
-            select(Agent.id)
-            .where(
-                Agent.owner_id == user_id,
-                Agent.name == agent_name,
-                Agent.deleted_at.is_(None),
-            )
-            .limit(1)
-        )
+        # --- Step 4: auto-provision (only for by-name callers, only
+        # after validation succeeded) ---
+        if needs_auto_provision:
+            from atp.dashboard.v2.config import get_config
 
-        # INSERT path
+            cfg = get_config()
+            cap = cfg.max_tournament_agents_per_user
+            existing_count = await self._session.scalar(
+                select(func.count(Agent.id)).where(
+                    Agent.owner_id == user_id,
+                    Agent.purpose == "tournament",
+                    Agent.deleted_at.is_(None),
+                )
+            )
+            current = int(existing_count or 0)
+            if current >= cap:
+                raise ConflictError(
+                    f"tournament agent quota exceeded ({current}/{cap})"
+                )
+
+            # Race-tolerant auto-provision: another concurrent join may
+            # win the insert race on the agent's UNIQUE
+            # (tenant_id, owner_id, name, version) index. Use a
+            # savepoint so an IntegrityError doesn't tear down the
+            # outer transaction — we simply re-read the row and
+            # continue.
+            auto_agent = Agent(
+                tenant_id=DEFAULT_TENANT_ID,
+                name=agent_name,
+                agent_type="mcp",
+                owner_id=user_id,
+                config={},
+                purpose="tournament",
+            )
+            try:
+                async with self._session.begin_nested():
+                    self._session.add(auto_agent)
+                    await self._session.flush()
+                resolved_agent_id = auto_agent.id
+            except IntegrityError:
+                # Re-read with the same purpose-aware filter so we pick
+                # up the concurrent insert, not a stale benchmark-
+                # purpose agent that happens to share the name.
+                resolved_agent_id = await self._session.scalar(
+                    select(Agent.id).where(*agent_lookup_filter).limit(1)
+                )
+                if resolved_agent_id is None:
+                    # Reread failed — propagate the race
+                    raise
+
+            # Re-check idempotency now that we have an agent_id —
+            # unlikely but possible if two concurrent joins race past
+            # the auto-provision block.
+            existing = await self._session.scalar(
+                select(Participant)
+                .where(Participant.tournament_id == tournament_id)
+                .where(Participant.agent_id == resolved_agent_id)
+            )
+            if existing is not None:
+                if existing.released_at is not None:
+                    raise ConflictError(
+                        f"agent {agent_name!r} previously participated in "
+                        f"tournament {tournament_id} "
+                        f"(released={existing.released_at.isoformat()}); "
+                        "rejoin not permitted"
+                    )
+                return existing, False
+
+        # --- Step 5: INSERT path ---
+        assert resolved_agent_id is not None
         participant = Participant(
             tournament_id=tournament_id,
             user_id=user_id,
             agent_name=agent_name,
-            agent_id=agent_id,
+            agent_id=resolved_agent_id,
             released_at=None,
         )
         self._session.add(participant)
@@ -241,25 +602,53 @@ class TournamentService:
         except IntegrityError as exc:
             constraint_name = self._extract_constraint_name(exc)
             await self._session.rollback()
-            if constraint_name in (
-                "uq_participant_tournament_user",
-                "uq_participant_user_active",
-            ):
-                # Re-read to determine actual conflict type.
-                # Both constraints fire when the same user is already active in any
-                # tournament. Check if the existing row is for THIS tournament
-                # (idempotent re-join) or a DIFFERENT one (true conflict).
+            if constraint_name == "uq_participant_tournament_agent":
+                # Composite (tournament_id, agent_id) uniqueness: fires
+                # on either a concurrent idempotent re-join (active row
+                # exists) OR a rejoin-after-leave (released row still
+                # exists). Disambiguate via a lookup that does NOT
+                # filter on released_at.
                 existing = await self._session.scalar(
                     select(Participant)
                     .where(Participant.tournament_id == tournament_id)
-                    .where(Participant.user_id == user_id)
+                    .where(Participant.agent_id == resolved_agent_id)
+                )
+                if existing is not None and existing.released_at is None:
+                    return existing, False
+                if existing is not None and existing.released_at is not None:
+                    raise ConflictError(
+                        f"agent {agent_name!r} previously participated in "
+                        f"tournament {tournament_id} "
+                        f"(released={existing.released_at.isoformat()}); "
+                        "rejoin not permitted"
+                    ) from exc
+                # Row vanished between INSERT and re-read — extremely
+                # unlikely but defend with a generic conflict.
+                raise ConflictError(
+                    f"agent {agent_name!r} conflict in tournament {tournament_id}"
+                ) from exc
+            if constraint_name == "uq_participant_agent_active":
+                # Agent is active *somewhere*. Distinguish same-
+                # tournament (concurrent idempotent re-join) from
+                # different-tournament (true conflict). Either row
+                # satisfies the partial unique index; inspect the
+                # existing one.
+                other = await self._session.scalar(
+                    select(Participant)
+                    .where(Participant.agent_id == resolved_agent_id)
                     .where(Participant.released_at.is_(None))
                 )
-                if existing is not None:
-                    # Same tournament — idempotent re-join
-                    return existing, False
-                # Different tournament active — true conflict
-                raise ConflictError("user already has an active tournament") from exc
+                if other is not None and other.tournament_id == tournament_id:
+                    # Same tournament — idempotent re-join.
+                    return other, False
+                if other is not None:
+                    raise ConflictError(
+                        f"agent {other.agent_name!r} already active in "
+                        f"tournament {other.tournament_id}"
+                    ) from exc
+                raise ConflictError(
+                    f"agent {agent_name!r} already has an active tournament"
+                ) from exc
             raise
 
         return participant, True
@@ -273,11 +662,11 @@ class TournamentService:
         Named constraints may appear as 'constraint failed: <name>'.
         PostgreSQL: exc.orig.diag.constraint_name is available.
 
-        Disambiguation for tournament_participants:
-        - uq_participant_user_active: single-column partial index on user_id
-          → message contains only 'tournament_participants.user_id'
-        - uq_participant_tournament_user: two-column index on
-          (tournament_id, user_id) → message contains 'tournament_id'
+        Disambiguation for tournament_participants (LABS-TSA PR-6):
+        - uq_participant_agent_active: single-column partial index on agent_id
+          → message contains only 'tournament_participants.agent_id'
+        - uq_participant_tournament_agent: two-column partial index on
+          (tournament_id, agent_id) → message contains 'tournament_id'
         """
         # Extract only the first line of the error — the constraint description.
         # SQLite format: '(sqlite3.IntegrityError) UNIQUE constraint failed: table.col'
@@ -285,25 +674,27 @@ class TournamentService:
         first_line = str(exc).split("\n")[0].lower()
         # Named index/constraint — check for explicit name first
         for name in (
-            "uq_participant_user_active",
-            "uq_participant_tournament_user",
+            "uq_participant_agent_active",
+            "uq_participant_tournament_agent",
             "uq_action_round_participant",
             "uq_round_tournament_number",
         ):
             if name in first_line:
                 return name
         # SQLite column-based disambiguation for tournament_participants.
-        # The partial unique index on user_id (uq_participant_user_active) shows
-        # only 'tournament_participants.user_id' in the first line (single column).
-        # The composite (tournament_id, user_id) unique constraint shows both
-        # 'tournament_participants.tournament_id' and 'tournament_participants.user_id'.
-        if "tournament_participants" in first_line and "user_id" in first_line:
+        # The partial unique index on agent_id (uq_participant_agent_active)
+        # shows only 'tournament_participants.agent_id' in the first line
+        # (single column). The composite (tournament_id, agent_id) partial
+        # unique index shows both 'tournament_participants.tournament_id'
+        # and 'tournament_participants.agent_id'.
+        if "tournament_participants" in first_line and "agent_id" in first_line:
             if "tournament_id" in first_line:
-                # composite (tournament_id, user_id) → uq_participant_tournament_user
-                return "uq_participant_tournament_user"
+                # composite (tournament_id, agent_id) →
+                # uq_participant_tournament_agent
+                return "uq_participant_tournament_agent"
             else:
-                # single user_id partial index → uq_participant_user_active
-                return "uq_participant_user_active"
+                # single agent_id partial index → uq_participant_agent_active
+                return "uq_participant_agent_active"
         # PostgreSQL path
         orig = getattr(exc, "orig", None)
         diag = getattr(orig, "diag", None)
@@ -325,7 +716,17 @@ class TournamentService:
             state={},
         )
         self._session.add(round_1)
-        await self._session.flush()
+        # Commit (not just flush) BEFORE publishing round_started —
+        # same invariant the subsequent-round branch of
+        # ``_resolve_round`` enforces (LABS-74). The notification
+        # forwarder opens a fresh DB session to build the per-player
+        # state snapshot; without the commit that session reads
+        # pre-commit rows and the snapshot's state trails the outer
+        # event.round_number by one. The MCP ``join`` shim also
+        # subscribes to the event bus *before* calling
+        # ``service.join()``, so a pre-commit publish could deliver a
+        # first-round state that hasn't yet been persisted.
+        await self._session.commit()
         await self._bus.publish(
             TournamentEvent(
                 event_type="round_started",
@@ -340,8 +741,22 @@ class TournamentService:
         self,
         tournament_id: int,
         user: User,
-    ) -> RoundState:
+        *,
+        agent_id: int | None = None,
+    ) -> PDRoundState | SHRoundState | BoSRoundState | ElFarolRoundState | PGRoundState:
         """Build a player-private RoundState for the current round.
+
+        Returns a pydantic ``PDRoundState`` or ``ElFarolRoundState``
+        (see ``atp.dashboard.tournament.schemas``), chosen by the
+        tournament's game_type discriminator.
+
+        LABS-TSA PR-6 (post-review): ``agent_id`` selects the caller's
+        Participant when the user has multiple agents in the same
+        tournament. The MCP path always passes it (extracted from
+        ``scope.state['agent_id']`` by the caller). When None, the
+        legacy single-agent path looks up the first Participant whose
+        ``user_id`` matches — preserved for backwards compatibility
+        with admin/CLI call sites that don't own an agent_id.
 
         v1 slice raises NotFoundError if the user is not a participant
         of the tournament (enumeration-guard: indistinguishable from
@@ -362,10 +777,20 @@ class TournamentService:
             .scalars()
             .all()
         )
-        my_idx = next(
-            (i for i, p in enumerate(participants) if p.user_id == user.id),
-            None,
-        )
+        if agent_id is not None:
+            # Agent-keyed lookup — required for MCP multi-agent-per-user.
+            my_idx = next(
+                (i for i, p in enumerate(participants) if p.agent_id == agent_id),
+                None,
+            )
+        else:
+            # Legacy single-agent path: match by user_id. If the user has
+            # multiple agents, the first-registered Participant wins. MCP
+            # callers always pass agent_id to avoid this ambiguity.
+            my_idx = next(
+                (i for i, p in enumerate(participants) if p.user_id == user.id),
+                None,
+            )
         if my_idx is None:
             raise NotFoundError(f"tournament {tournament_id} not found")
 
@@ -382,22 +807,24 @@ class TournamentService:
             .all()
         )
 
-        action_history: list[list[str]] = []
+        action_history: list[dict[str, Any]] = []
         cumulative_scores: list[float] = [0.0] * len(participants)
         current_round_number = 1
         found_active = False
         for r in rounds:
             if r.status == RoundStatus.COMPLETED:
-                row: list[str] = [""] * len(participants)
+                actions_by_idx: dict[int, dict[str, Any]] = {}
                 for action in r.actions:
                     p_idx = next(
                         i
                         for i, p in enumerate(participants)
                         if p.id == action.participant_id
                     )
-                    row[p_idx] = action.action_data.get("choice", "")
+                    actions_by_idx[p_idx] = action.action_data
                     cumulative_scores[p_idx] += action.payoff or 0.0
-                action_history.append(row)
+                action_history.append(
+                    {"round": r.round_number, "actions": actions_by_idx}
+                )
             else:
                 current_round_number = r.round_number
                 found_active = True
@@ -405,7 +832,7 @@ class TournamentService:
         if not found_active and rounds:
             current_round_number = len(rounds)
 
-        game = _GAME_INSTANCES[tournament.game_type]
+        game = _game_for(tournament)
         formatted = game.format_state_for_player(
             round_number=current_round_number,
             total_rounds=tournament.total_rounds,
@@ -413,27 +840,70 @@ class TournamentService:
             action_history=action_history,
             cumulative_scores=cumulative_scores,
         )
-        return RoundState(
-            tournament_id=tournament_id,
-            round_number=formatted["round_number"],
-            game_type=formatted["game_type"],
-            your_history=formatted["your_history"],
-            opponent_history=formatted["opponent_history"],
-            your_cumulative_score=formatted["your_cumulative_score"],
-            opponent_cumulative_score=formatted["opponent_cumulative_score"],
-            action_schema=formatted["action_schema"],
-            your_turn=formatted["your_turn"],
-            total_rounds=formatted["total_rounds"],
-            extra=formatted.get("extra", {}),
-        )
+
+        # Game-env's ``format_state_for_player`` already advertises the
+        # canonical interval action schema for El Farol — no wire-layer
+        # override needed.
+
+        # Compute submission state for the active round by inspecting
+        # the already-loaded rounds+actions (no extra DB round-trip).
+        my_participant_id = participants[my_idx].id
+        if found_active:
+            has_submitted = False
+            for r in rounds:
+                if r.status == RoundStatus.WAITING_FOR_ACTIONS:
+                    for a in r.actions:
+                        if a.participant_id == my_participant_id:
+                            has_submitted = True
+                            break
+                    break
+        else:
+            # No active round (tournament completed, pending, or just
+            # created). Nothing to submit — flip flags to False by
+            # treating the player as already submitted.
+            has_submitted = True
+
+        # Inject game-specific submission-state field (spec §3.2 step 6).
+        if tournament.game_type in (
+            "prisoners_dilemma",
+            "stag_hunt",
+            "battle_of_sexes",
+        ):
+            # Both are 2-player simultaneous discrete-choice games; they
+            # share the "your_turn" flag semantics.
+            formatted["your_turn"] = not has_submitted
+        elif tournament.game_type in ("el_farol", "public_goods"):
+            # Both are N-player simultaneous games; client polls via
+            # ``pending_submission`` rather than the 2-player
+            # ``your_turn`` flag.
+            formatted["pending_submission"] = not has_submitted
+        else:
+            raise ValidationError(f"unsupported game_type {tournament.game_type!r}")
+
+        # Strip internal-only keys that the wire schemas forbid
+        # (extra="forbid"), then set authoritative server-side fields.
+        formatted.pop("extra", None)
+        formatted["tournament_id"] = tournament_id
+        formatted["game_type"] = tournament.game_type
+
+        return _ROUND_STATE_ADAPTER.validate_python(formatted)
 
     async def submit_action(
         self,
         tournament_id: int,
         user: User,
         action: dict[str, Any],
+        *,
+        agent_id: int | None = None,
     ) -> dict[str, Any]:
         """Submit one player's action for the current round.
+
+        LABS-TSA PR-6 (post-review): ``agent_id`` selects the caller's
+        Participant when the user has multiple agents in the same
+        tournament. When None, the legacy single-agent path matches by
+        user_id with ``.limit(1)`` — admin/CLI callers that never used
+        agent-scoped tokens stay working, but concurrent multi-agent
+        setups must pass agent_id to avoid the ambiguity.
 
         Returns:
             {"status": "waiting", "round_number": N} if more actions
@@ -450,14 +920,78 @@ class TournamentService:
                 f"tournament {tournament_id} is {tournament.status}, not active"
             )
 
-        my_participant = (
-            await self._session.execute(
-                select(Participant).where(
-                    Participant.tournament_id == tournament_id,
-                    Participant.user_id == user.id,
-                )
+        # Server-side game_type enforcement (spec §4).
+        # Reject cross-game payloads early; inject the server-authoritative
+        # game_type so clients may omit it on the wire.
+        incoming_gt = action.get("game_type") if isinstance(action, dict) else None
+        if incoming_gt is not None and incoming_gt != tournament.game_type:
+            logger.info(
+                "action_rejected",
+                extra={
+                    "event": "action_rejected",
+                    "game_type": tournament.game_type,
+                    "tournament_id": tournament_id,
+                    "validation_error_path": "game_type_mismatch",
+                },
             )
-        ).scalar_one_or_none()
+            raise ValidationError(
+                f"action game_type {incoming_gt!r} does not match "
+                f"tournament {tournament_id} game_type {tournament.game_type!r}"
+            )
+        if isinstance(action, dict):
+            action_with_type = {**action, "game_type": tournament.game_type}
+        else:
+            action_with_type = action
+
+        try:
+            typed = _ACTION_ADAPTER.validate_python(action_with_type)
+        except PydanticValidationError as e:
+            expected = _action_hint_for(tournament.game_type)
+            errors = e.errors()
+            first_err = errors[0] if errors else {"msg": "unknown"}
+            logger.info(
+                "action_rejected",
+                extra={
+                    "event": "action_rejected",
+                    "game_type": tournament.game_type,
+                    "tournament_id": tournament_id,
+                    "validation_error_path": "client_submission",
+                },
+            )
+            raise ValidationError(
+                f"invalid action for tournament {tournament_id} "
+                f"(game_type={tournament.game_type!r}); "
+                f"expected: {expected}; "
+                f"pydantic: {first_err.get('loc')}: {first_err.get('msg')}"
+            ) from e
+
+        if agent_id is not None:
+            # Agent-keyed lookup (MCP multi-agent-per-user path).
+            my_participant = (
+                await self._session.execute(
+                    select(Participant).where(
+                        Participant.tournament_id == tournament_id,
+                        Participant.agent_id == agent_id,
+                    )
+                )
+            ).scalar_one_or_none()
+        else:
+            # Legacy single-agent path. ``.limit(1)`` guards against the
+            # ambiguity window where a user has >1 Participant row in the
+            # tournament — callers on this path are CLI/admin tooling
+            # that has never supported multiple agents. MCP clients
+            # always pass agent_id.
+            my_participant = (
+                await self._session.execute(
+                    select(Participant)
+                    .where(
+                        Participant.tournament_id == tournament_id,
+                        Participant.user_id == user.id,
+                    )
+                    .order_by(Participant.id)
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
         if my_participant is None:
             raise NotFoundError(f"tournament {tournament_id} not found")
 
@@ -477,18 +1011,15 @@ class TournamentService:
                 f"tournament {tournament_id} has no round accepting actions"
             )
 
-        game = _GAME_INSTANCES[tournament.game_type]
-        schema_probe = game.format_state_for_player(
-            round_number=1,
-            total_rounds=1,
-            participant_idx=0,
-            action_history=[],
-            cumulative_scores=[0.0, 0.0],
-        )
-        if action.get("choice") not in schema_probe["action_schema"]["options"]:
-            raise ValidationError(
-                f"invalid action {action!r} for game {tournament.game_type}"
-            )
+        raw_reasoning = getattr(typed, "reasoning", None)
+        reasoning = raw_reasoning.strip() if raw_reasoning else None
+        reasoning = reasoning or None  # "" / whitespace-only → None
+
+        game = _game_for(tournament)
+        # All games (including El Farol) now expose a single canonical
+        # input shape; submit the typed payload directly.
+        game_payload = typed.model_dump(exclude={"game_type", "reasoning", "telemetry"})
+        canonical = game.validate_action(game_payload)
 
         existing = (
             await self._session.execute(
@@ -504,13 +1035,46 @@ class TournamentService:
                 f"{current_round.round_number}"
             )
 
+        # Tier-2 telemetry capture (LABS observability).
+        # ``ActionTelemetry`` is opt-in on the wire — agents that omit
+        # it leave model_id/tokens/cost as NULL (drawer renders "—").
+        # ``decide_ms`` falls back to a server-side measurement so it
+        # is always populated; agent self-report wins when present
+        # because the agent has zero clock skew.
+        tel = getattr(typed, "telemetry", None)
+        tel_model_id = tel.model_id if tel is not None else None
+        tel_tokens_in = tel.tokens_in if tel is not None else None
+        tel_tokens_out = tel.tokens_out if tel is not None else None
+        tel_cost_usd = tel.cost_usd if tel is not None else None
+        tel_decide_ms = tel.decide_ms if tel is not None else None
+        if tel_decide_ms is None and current_round.started_at is not None:
+            elapsed_ms = (
+                _utc_now() - current_round.started_at
+            ).total_seconds() * 1000.0
+            # Negative is impossible in practice (started_at is set on
+            # round open, before any submit can race in) but clamp
+            # defensively against clock-skew edge cases.
+            tel_decide_ms = max(0, int(elapsed_ms))
+
         new_action = Action(
             round_id=current_round.id,
             participant_id=my_participant.id,
-            action_data={"choice": action["choice"]},
+            action_data=canonical,
+            reasoning=reasoning,
+            model_id=tel_model_id,
+            tokens_in=tel_tokens_in,
+            tokens_out=tel_tokens_out,
+            cost_usd=tel_cost_usd,
+            decide_ms=tel_decide_ms,
         )
         self._session.add(new_action)
         await self._session.flush()
+
+        # LABS-TSA PR-4: fill in any builtin-participant moves so a
+        # mixed roster (agents + builtins) does not stall when the
+        # last human submits. _resolve_round is idempotent on this
+        # insert.
+        await self._ensure_builtin_actions(current_round, tournament)
 
         action_count = (
             await self._session.scalar(
@@ -527,6 +1091,209 @@ class TournamentService:
 
         return await self._resolve_round(current_round, tournament)
 
+    async def _build_observation_for_builtin(
+        self,
+        *,
+        tournament: Tournament,
+        round_obj: Round,
+        participant: Participant,
+        participants: list[Participant],
+    ) -> Any:
+        """Build a game-specific ``Observation`` for a builtin participant.
+
+        Replays the per-round state from the database (prior rounds'
+        resolved actions → ``history`` / attendance / contributions)
+        and constructs the Observation dataclass the strategy's
+        ``choose_action`` expects.
+
+        Per-game shape:
+          * ``el_farol``: ``game_state['attendance_history']`` (list of
+            per-slot counts per round) + ``num_slots``.
+          * ``prisoners_dilemma`` / ``stag_hunt`` / ``battle_of_sexes``:
+            only ``history`` (list of RoundResult) + ``player_id``.
+          * ``public_goods``: ``game_state['endowment']`` + ``history``.
+        """
+        from game_envs.core.state import Observation, RoundResult
+
+        prior_rounds_stmt = (
+            select(Round)
+            .where(
+                Round.tournament_id == tournament.id,
+                Round.round_number < round_obj.round_number,
+                Round.status == RoundStatus.COMPLETED,
+            )
+            .order_by(Round.round_number)
+            .options(selectinload(Round.actions))
+        )
+        prior_rounds = (await self._session.execute(prior_rounds_stmt)).scalars().all()
+        idx_by_pid = {p.id: i for i, p in enumerate(participants)}
+        my_idx = idx_by_pid[participant.id]
+        player_id = str(my_idx)
+
+        # Build RoundResult history keyed by "0", "1", ... player_ids.
+        history: list[RoundResult] = []
+        for r in prior_rounds:
+            actions_by_pid: dict[str, Any] = {}
+            payoffs_by_pid: dict[str, float] = {}
+            for a in r.actions:
+                idx = idx_by_pid.get(a.participant_id)
+                if idx is None:
+                    continue
+                actions_by_pid[str(idx)] = a.action_data
+                payoffs_by_pid[str(idx)] = float(a.payoff or 0.0)
+            history.append(
+                RoundResult(
+                    round_number=r.round_number,
+                    actions=actions_by_pid,
+                    payoffs=payoffs_by_pid,
+                )
+            )
+
+        game = _game_for(tournament)
+        available_actions = list(getattr(game, "available_actions", lambda: [])())
+        game_state: dict[str, Any] = {}
+
+        if tournament.game_type == "el_farol":
+            num_slots = _EL_FAROL_V1_NUM_SLOTS
+            attendance_history: list[list[int]] = []
+            for r in prior_rounds:
+                counts = [0] * num_slots
+                for a in r.actions:
+                    for pair in (a.action_data or {}).get("intervals", []):
+                        if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+                            continue
+                        start, end = pair[0], pair[1]
+                        if not (isinstance(start, int) and isinstance(end, int)):
+                            continue
+                        lo = max(0, int(start))
+                        hi = min(num_slots - 1, int(end))
+                        for s in range(lo, hi + 1):
+                            counts[s] += 1
+                attendance_history.append(counts)
+            game_state = {
+                "attendance_history": attendance_history,
+                "num_slots": num_slots,
+            }
+        elif tournament.game_type == "public_goods":
+            pg_game = _pg_for(tournament.num_players)
+            pg_cfg: PGConfig = pg_game._pg_config  # typed config view
+            game_state = {
+                "endowment": pg_cfg.endowment,
+                "stage": "contribute",
+            }
+
+        return Observation(
+            player_id=player_id,
+            game_state=game_state,
+            available_actions=available_actions,
+            history=history,
+            round_number=round_obj.round_number,
+            total_rounds=tournament.total_rounds,
+        )
+
+    def _coerce_builtin_action(self, *, game_type: str, raw: Any) -> dict[str, Any]:
+        """Map a Strategy's ``choose_action`` return to canonical action_data.
+
+        Each game has a slightly different action payload shape:
+        * PD / SH / BoS → ``{"choice": <str>}``
+        * El Farol → ``{"intervals": [[start, end], ...]}``
+        * Public Goods → ``{"contribution": <float>}``
+
+        Strategies return the bare value (e.g. ``"cooperate"``,
+        ``[[0, 3]]``, ``5.0``) so we wrap it here.
+        """
+        if isinstance(raw, dict):
+            return raw
+        if game_type in ("prisoners_dilemma", "stag_hunt", "battle_of_sexes"):
+            return {"choice": raw}
+        if game_type == "el_farol":
+            intervals = list(raw) if raw is not None else []
+            normalised: list[list[int]] = []
+            for pair in intervals:
+                if isinstance(pair, (list, tuple)) and len(pair) == 2:
+                    normalised.append([int(pair[0]), int(pair[1])])
+            return {"intervals": normalised}
+        if game_type == "public_goods":
+            return {"contribution": float(raw)}
+        # Best-effort fallback
+        return {"value": raw}
+
+    async def _ensure_builtin_actions(
+        self, round_obj: Round, tournament: Tournament
+    ) -> int:
+        """Synthesise Action rows for every builtin participant in ``round_obj``.
+
+        Idempotent — existing Action rows are left alone. Returns the
+        number of Action rows inserted in this call.
+
+        Must be called whenever we are about to count submitted
+        actions (submit_action, force_resolve_round, _resolve_round)
+        so builtins never stall progress.
+        """
+        participants = (
+            (
+                await self._session.execute(
+                    select(Participant)
+                    .where(Participant.tournament_id == tournament.id)
+                    .order_by(Participant.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        builtins = [p for p in participants if p.builtin_strategy is not None]
+        if not builtins:
+            return 0
+
+        existing_ids_stmt = select(Action.participant_id).where(
+            Action.round_id == round_obj.id
+        )
+        existing_ids = {
+            row[0] for row in await self._session.execute(existing_ids_stmt)
+        }
+
+        inserted = 0
+        game = _game_for(tournament)
+        for p in builtins:
+            if p.id in existing_ids:
+                continue
+            obs = await self._build_observation_for_builtin(
+                tournament=tournament,
+                round_obj=round_obj,
+                participant=p,
+                participants=list(participants),
+            )
+            strategy = resolve_builtin(
+                p.builtin_strategy or "",
+                tournament_id=tournament.id,
+                participant_id=p.id,
+            )
+            raw = strategy.choose_action(obs)
+            action_data = self._coerce_builtin_action(
+                game_type=tournament.game_type, raw=raw
+            )
+            # Validate against the game's action schema; fall back to
+            # default_action_on_timeout() if the builtin returns
+            # malformed data so a broken strategy can't deadlock a
+            # round.
+            try:
+                canonical = game.validate_action(action_data)
+            except Exception:
+                canonical = game.default_action_on_timeout()
+            self._session.add(
+                Action(
+                    round_id=round_obj.id,
+                    participant_id=p.id,
+                    action_data=canonical,
+                    source=ActionSource.BUILTIN,
+                )
+            )
+            inserted += 1
+
+        if inserted:
+            await self._session.flush()
+        return inserted
+
     async def _resolve_round(
         self, round_obj: Round, tournament: Tournament
     ) -> dict[str, Any]:
@@ -534,6 +1301,10 @@ class TournamentService:
         round completed, and either create the next round or finish the
         tournament if this was the last.
         """
+        # LABS-TSA PR-4: synthesise builtin moves before counting /
+        # resolving so a mixed roster (agents + builtins) never stalls.
+        await self._ensure_builtin_actions(round_obj, tournament)
+        start = time.perf_counter()
         round_obj.status = "resolving"
         await self._session.flush()
 
@@ -562,35 +1333,65 @@ class TournamentService:
         )
         idx_by_pid = {p.id: i for i, p in enumerate(participants)}
 
-        action_vec: list[str] = [""] * len(participants)
-        actions_by_idx: dict[int, Action] = {}
+        action_by_idx: dict[int, Action] = {}
+        action_data_by_idx: dict[int, dict[str, Any]] = {}
         for a in actions:
             i = idx_by_pid[a.participant_id]
-            action_vec[i] = a.action_data["choice"]
-            actions_by_idx[i] = a
+            action_by_idx[i] = a
+            action_data_by_idx[i] = a.action_data
 
-        # PD payoff matrix (slice-local; in Plan 2 this comes from the
-        # game-environments PD class).
-        # CC = 3,3 ; CD = 0,5 ; DC = 5,0 ; DD = 1,1
-        a0, a1 = action_vec[0], action_vec[1]
-        if a0 == "cooperate" and a1 == "cooperate":
-            payoffs = [3.0, 3.0]
-        elif a0 == "cooperate" and a1 == "defect":
-            payoffs = [0.0, 5.0]
-        elif a0 == "defect" and a1 == "cooperate":
-            payoffs = [5.0, 0.0]
-        else:
-            payoffs = [1.0, 1.0]
+        game = _game_for(tournament)
+        payoffs = game.compute_round_payoffs(action_data_by_idx)
 
-        for i, action in actions_by_idx.items():
+        for i, action in action_by_idx.items():
             action.payoff = payoffs[i]
 
         round_obj.status = RoundStatus.COMPLETED
         await self._session.flush()
 
         if round_obj.round_number >= tournament.total_rounds:
-            await self._complete_tournament(tournament)
-            await self._session.flush()
+            completion_event = await self._complete_tournament(tournament)
+            # Commit (not just flush) BEFORE publishing
+            # ``tournament_completed``. The deadline worker calls
+            # force_resolve_round inside an
+            # ``async with session_factory() as session:`` block whose
+            # auto-rollback-on-exit otherwise reverts every status
+            # change made here — round.status=COMPLETED,
+            # tournament.status=COMPLETED, GameResult row, payoffs,
+            # released_at — leaving the round visible to the next
+            # tick as still WAITING_FOR_ACTIONS. The worker then
+            # re-resolves the same round every poll interval forever.
+            #
+            # Order is also load-bearing for subscribers: publishing
+            # before commit would let them observe a completion event
+            # whose state never becomes durable if the commit later
+            # fails or the task is cancelled. Mirrors the
+            # commit-then-publish discipline of ``_cancel_impl`` and
+            # the non-final-round branch below.
+            await self._session.commit()
+            try:
+                await self._bus.publish(completion_event)
+            except Exception:
+                # Subscribers are best-effort. If publishing fails
+                # after commit, the tournament is still durably
+                # completed; just log and continue rather than
+                # surface a 500 to the caller (deadline worker, etc.).
+                logger.warning(
+                    "tournament.complete.publish_failed",
+                    extra={"tournament_id": tournament.id},
+                    exc_info=True,
+                )
+            elapsed_ms = int((time.perf_counter() - start) * 1000)
+            logger.info(
+                "round_resolved",
+                extra={
+                    "event": "round_resolved",
+                    "game_type": tournament.game_type,
+                    "tournament_id": tournament.id,
+                    "round_number": round_obj.round_number,
+                    "round_resolution_ms": elapsed_ms,
+                },
+            )
             return {
                 "status": "round_resolved",
                 "round_number": round_obj.round_number,
@@ -615,6 +1416,23 @@ class TournamentService:
         # trails the outer event.round_number by one. Committing first
         # guarantees subscribers see the new round. (LABS-74.)
         await self._session.commit()
+        # round_ended fires for non-final rounds only; the final round's
+        # update is delivered via tournament_completed (subscribers re-
+        # project on either signal). Published post-commit so a fresh
+        # session in the SSE handler sees the just-resolved round's
+        # COMPLETED status and Action.payoff values.
+        await self._bus.publish(
+            TournamentEvent(
+                event_type="round_ended",
+                tournament_id=tournament.id,
+                round_number=round_obj.round_number,
+                data={
+                    "tournament_completed": False,
+                    "next_round_number": next_round.round_number,
+                },
+                timestamp=_utc_now(),
+            )
+        )
         await self._bus.publish(
             TournamentEvent(
                 event_type="round_started",
@@ -625,6 +1443,17 @@ class TournamentService:
             )
         )
 
+        elapsed_ms = int((time.perf_counter() - start) * 1000)
+        logger.info(
+            "round_resolved",
+            extra={
+                "event": "round_resolved",
+                "game_type": tournament.game_type,
+                "tournament_id": tournament.id,
+                "round_number": round_obj.round_number,
+                "round_resolution_ms": elapsed_ms,
+            },
+        )
         return {
             "status": "round_resolved",
             "round_number": round_obj.round_number,
@@ -633,10 +1462,42 @@ class TournamentService:
             "next_round_number": next_round.round_number,
         }
 
-    async def _complete_tournament(self, tournament: Tournament) -> None:
-        """Mark tournament COMPLETED and write final per-participant scores."""
+    async def _complete_tournament(self, tournament: Tournament) -> TournamentEvent:
+        """Mark tournament COMPLETED and write final per-participant scores.
+
+        Also releases every participant (``released_at = now``) so their
+        ``agent_id`` is no longer matched by
+        ``uq_participant_agent_active`` and they are free to join another
+        tournament. Mirrors the release step in ``_cancel_impl``; without
+        it, natural completion would leave agents "stuck" active forever.
+
+        LABS-TSA PR-5: writes a companion ``GameResult`` row with a fresh
+        UUID ``match_id`` and ``tournament_id = tournament.id`` so
+        ``/ui/matches`` can surface tournament outcomes. The UNIQUE
+        partial index on ``game_results.tournament_id`` plus a SAVEPOINT
+        around the insert make the dual-write idempotent — a second
+        completion attempt hits IntegrityError and is absorbed silently.
+        The JSON blobs (``actions_json`` etc.) are left as empty lists
+        in this PR; a follow-up ticket will port the full Phase-7
+        reshape from ``atp/cli/commands/game.py::_build_game_result_kwargs``.
+
+        Does NOT publish to the bus — builds and returns the
+        ``tournament_completed`` event for the caller to publish AFTER
+        committing the surrounding transaction. Mirrors the
+        commit-before-publish discipline of ``_cancel_impl``: with
+        publish-before-commit, a failed/cancelled commit (DB lock,
+        task cancel) would leave subscribers observing a completion
+        event for state that never became durable.
+        """
+        now = _utc_now()
         tournament.status = TournamentStatus.COMPLETED
-        tournament.ends_at = _utc_now()
+        tournament.ends_at = now
+
+        # Dual-write a GameResult row linked to this tournament. Must run
+        # before the per-participant release loop so an IntegrityError
+        # from a duplicate completion only rolls back the SAVEPOINT, not
+        # the outer transaction flipping tournament.status.
+        await self._write_game_result_for_tournament(tournament)
 
         participants = (
             (
@@ -656,32 +1517,117 @@ class TournamentService:
                 )
             )
             p.total_score = float(total or 0.0)
+            if p.released_at is None:
+                p.released_at = now
         await self._session.flush()
-        await self._bus.publish(
-            TournamentEvent(
-                event_type="tournament_completed",
-                tournament_id=tournament.id,
-                round_number=None,
-                data={
-                    "final_scores": {p.user_id: p.total_score for p in participants},
+        # Builtin-strategy Participant rows have ``user_id IS NULL``
+        # (LABS-TSA PR-4). Skip them when keying the final_scores dict
+        # by user_id — without the filter, multiple builtins collapse
+        # into a single ``null`` key and clients expecting int keys
+        # (see tests/e2e/test_mcp_pd_tournament.py) get a malformed
+        # event. Builtin scores are still available via the tournament
+        # detail API for callers that need them.
+        return TournamentEvent(
+            event_type="tournament_completed",
+            tournament_id=tournament.id,
+            round_number=None,
+            data={
+                "final_scores": {
+                    p.user_id: p.total_score
+                    for p in participants
+                    if p.user_id is not None
                 },
-                timestamp=_utc_now(),
-            )
+            },
+            timestamp=_utc_now(),
         )
 
-    async def leave(self, tournament_id: int, user: User) -> None:
+    async def _write_game_result_for_tournament(self, tournament: Tournament) -> None:
+        """Dual-write a ``GameResult`` row linked to this tournament.
+
+        LABS-TSA PR-5. Populates the scalar fields only; the four
+        Phase-7 JSON columns stay NULL because LABS-106 reshapes the
+        dashboard payload at read time from ``Round``/``Action`` ORM
+        rows (see ``el_farol_from_tournament._reshape_from_tournament``).
+        ``Round``/``Action`` are the single source of truth for
+        tournament-produced data — duplicating into JSON blobs would
+        only invite consistency drift.
+
+        ``match_id`` is a fresh UUID — **never** the tournament's
+        ``join_token`` (that's a secret the creator must share with
+        agents out-of-band).
+
+        Wrapped in ``session.begin_nested()`` so the UNIQUE partial
+        index ``uq_game_results_tournament_id`` converts a duplicate
+        completion into a silent no-op instead of crashing the outer
+        transaction that just flipped ``tournament.status``.
+        """
+        match_id = str(uuid.uuid4())
+        variant = (tournament.config or {}).get("variant", "tournament")
+        row = GameResult(
+            match_id=match_id,
+            game_name=tournament.game_type,
+            game_type=variant,
+            num_players=tournament.num_players,
+            num_rounds=tournament.total_rounds,
+            num_episodes=1,
+            status="completed",
+            completed_at=_utc_now(),
+            tournament_id=tournament.id,
+            # Phase-7 JSON columns stay NULL on purpose — LABS-106
+            # reshapes the dashboard payload at read time from
+            # Round/Action ORM rows. The /ui/matches listing accepts
+            # these rows via the (tournament_id IS NOT NULL AND
+            # game_name == "el_farol") branch in renderable_filters
+            # (LABS-104, ui.py::ui_matches).
+            actions_json=None,
+            day_aggregates_json=None,
+            round_payoffs_json=None,
+            agents_json=None,
+        )
+        try:
+            async with self._session.begin_nested():
+                self._session.add(row)
+                await self._session.flush()
+        except IntegrityError:
+            # Idempotency path — a previous completion already wrote the
+            # GameResult for this tournament_id (UNIQUE partial index
+            # ``uq_game_results_tournament_id``). Fall through silently.
+            logger.info(
+                "tournament._write_game_result.duplicate",
+                extra={
+                    "tournament_id": tournament.id,
+                    "event": "tournament_completion_dual_write_duplicate",
+                },
+            )
+
+    async def leave(
+        self,
+        tournament_id: int,
+        user: User,
+        *,
+        agent_id: int | None = None,
+    ) -> None:
         """Mark the caller's Participant as released.
+
+        LABS-TSA PR-6 (post-review): ``agent_id`` selects the caller's
+        Participant when the user has multiple agents in the same
+        tournament. When None, the legacy single-agent path matches by
+        user_id. MCP agent-scoped callers always pass agent_id.
 
         If the caller is the last active participant of an ACTIVE
         tournament, cascade to _cancel_impl with reason=ABANDONED inside
         the same transaction. Caller owns the transaction boundary.
         """
-        participant = await self._session.scalar(
+        participant_stmt = (
             select(Participant)
             .where(Participant.tournament_id == tournament_id)
-            .where(Participant.user_id == user.id)
             .where(Participant.released_at.is_(None))
         )
+        if agent_id is not None:
+            participant_stmt = participant_stmt.where(Participant.agent_id == agent_id)
+        else:
+            participant_stmt = participant_stmt.where(Participant.user_id == user.id)
+        participant = await self._session.scalar(participant_stmt)
         if participant is None:
             raise NotFoundError(
                 f"user {user.id} is not active in tournament {tournament_id}"
@@ -792,8 +1738,10 @@ class TournamentService:
         self,
         user: User,
         status: TournamentStatus | None = None,
+        game_type: str | None = None,
     ) -> list[Tournament]:
-        """Return tournaments visible to `user`, optionally filtered by status.
+        """Return tournaments visible to `user`, optionally filtered by
+        status and/or game_type.
 
         Visibility rule:
         - user.is_admin: all tournaments.
@@ -805,6 +1753,8 @@ class TournamentService:
         stmt = select(Tournament)
         if status is not None:
             stmt = stmt.where(Tournament.status == status)
+        if game_type is not None:
+            stmt = stmt.where(Tournament.game_type == game_type)
 
         if not user.is_admin:
             stmt = stmt.where(
@@ -1039,6 +1989,7 @@ class TournamentService:
         )
         all_participant_ids = [row[0] for row in participants_result]
 
+        game = _game_for(tournament)
         now = _utc_now()
         for participant_id in all_participant_ids:
             if participant_id not in submitted_ids:
@@ -1046,7 +1997,7 @@ class TournamentService:
                     Action(
                         round_id=round_id,
                         participant_id=participant_id,
-                        action_data={"choice": "defect"},
+                        action_data=game.default_action_on_timeout(),
                         submitted_at=now,
                         source=ActionSource.TIMEOUT_DEFAULT,
                     )
@@ -1056,3 +2007,226 @@ class TournamentService:
         # and persist payoffs identically to submit-driven resolution.
         await self._session.flush()
         await self._resolve_round(round_obj, tournament)
+
+    # ------------------------------------------------------------------
+    # Admin: kick participant
+    # ------------------------------------------------------------------
+
+    async def kick_participant(self, tournament_id: int, participant_id: int) -> None:
+        """Release a participant from a live tournament.
+
+        Sets ``Participant.released_at = now``. If there is no Action
+        yet for the current in-progress round, inserts a
+        ``TIMEOUT_DEFAULT`` action with the game's
+        ``default_action_on_timeout()`` payload so round resolution is
+        not blocked by the freed slot.
+
+        Kicking is only allowed on *live* tournaments (PENDING or
+        ACTIVE). COMPLETED and CANCELLED tournaments are frozen
+        post-mortem state and mutating ``released_at`` there would
+        corrupt the audit trail.
+
+        Raises:
+            LookupError: participant does not exist in this tournament.
+            ValueError: participant is already released, OR the
+                tournament is not in a live status (pending/active).
+        """
+        stmt = (
+            select(Participant)
+            .where(
+                Participant.tournament_id == tournament_id,
+                Participant.id == participant_id,
+            )
+            .options(selectinload(Participant.tournament))
+        )
+        participant = (await self._session.execute(stmt)).scalars().first()
+        if participant is None:
+            raise LookupError(
+                f"participant {participant_id} not found in tournament {tournament_id}"
+            )
+        tournament = participant.tournament
+        if tournament.status not in (
+            TournamentStatus.PENDING.value,
+            TournamentStatus.ACTIVE.value,
+        ):
+            raise ValueError(
+                f"cannot kick from tournament in status {tournament.status!r}; "
+                f"kicking is only allowed on live (pending/active) tournaments"
+            )
+        if participant.released_at is not None:
+            raise ValueError("participant already released")
+
+        participant.released_at = _utc_now()
+
+        if tournament.status == TournamentStatus.ACTIVE.value:
+            round_stmt = (
+                select(Round)
+                .where(
+                    Round.tournament_id == tournament_id,
+                    Round.status.in_(
+                        (
+                            RoundStatus.WAITING_FOR_ACTIONS.value,
+                            RoundStatus.IN_PROGRESS.value,
+                        )
+                    ),
+                )
+                .order_by(Round.round_number.desc())
+            )
+            current_round = (await self._session.execute(round_stmt)).scalars().first()
+            if current_round is not None:
+                existing_stmt = select(Action).where(
+                    Action.round_id == current_round.id,
+                    Action.participant_id == participant.id,
+                )
+                existing = (
+                    (await self._session.execute(existing_stmt)).scalars().first()
+                )
+                if existing is None:
+                    game = _game_for(tournament)
+                    default_action = game.default_action_on_timeout()
+                    self._session.add(
+                        Action(
+                            round_id=current_round.id,
+                            participant_id=participant.id,
+                            action_data=default_action,
+                            submitted_at=_utc_now(),
+                            source=ActionSource.TIMEOUT_DEFAULT,
+                        )
+                    )
+
+        await self._session.commit()
+
+    # ------------------------------------------------------------------
+    # Admin activity snapshot
+    # ------------------------------------------------------------------
+
+    async def get_admin_activity(self, tournament_id: int) -> dict:
+        """Return an admin-level activity snapshot for HTMX rendering.
+
+        Loads the tournament, its participants, and every Round + Action
+        in a single eagerly-loaded query, then aggregates into the shape
+        documented in the admin-GUI spec. Raises LookupError if the
+        tournament does not exist.
+        """
+        stmt = (
+            select(Tournament)
+            .where(Tournament.id == tournament_id)
+            .options(
+                selectinload(Tournament.participants),
+                selectinload(Tournament.rounds).selectinload(Round.actions),
+            )
+        )
+        tournament = (await self._session.execute(stmt)).scalars().first()
+        if tournament is None:
+            raise LookupError(f"tournament {tournament_id} not found")
+
+        total_rounds = tournament.total_rounds
+        rounds_by_number: dict[int, Round] = {
+            r.round_number: r for r in tournament.rounds
+        }
+
+        # Current round = highest round_number among rounds not yet
+        # COMPLETED; else the highest round_number overall; else 0.
+        active_rounds = [
+            r
+            for r in tournament.rounds
+            if r.status != RoundStatus.COMPLETED.value
+            and r.status != RoundStatus.CANCELLED.value
+        ]
+        if active_rounds:
+            current_round_number = max(r.round_number for r in active_rounds)
+        elif tournament.rounds:
+            current_round_number = max(r.round_number for r in tournament.rounds)
+        else:
+            current_round_number = 0
+
+        # Deadline countdown (live rounds only).
+        deadline_remaining_s: int | None = None
+        current_round_obj = rounds_by_number.get(current_round_number)
+        if (
+            current_round_obj is not None
+            and current_round_obj.deadline is not None
+            and current_round_obj.status
+            in (
+                RoundStatus.WAITING_FOR_ACTIONS.value,
+                RoundStatus.IN_PROGRESS.value,
+            )
+        ):
+            now = _utc_now()  # naive UTC per module convention
+            deadline = current_round_obj.deadline
+            if deadline.tzinfo is not None:
+                deadline = deadline.astimezone(UTC).replace(tzinfo=None)
+            delta = deadline - now
+            deadline_remaining_s = max(0, int(delta.total_seconds()))
+
+        # Action lookup: (participant_id, round_number) -> Action.
+        actions_by_pid_round: dict[tuple[int, int], Action] = {}
+        for rnd in tournament.rounds:
+            for act in rnd.actions:
+                actions_by_pid_round[(act.participant_id, rnd.round_number)] = act
+
+        def cell_for(action: Action | None, round_status: str | None) -> str:
+            if action is None:
+                # Rounds that have already completed or been cancelled
+                # without an action from this participant count as
+                # timeout (force_resolve_round normally fills completed
+                # rounds; cancelled rounds may simply stop with missing
+                # actions, which we still surface as a miss).
+                if round_status in (
+                    RoundStatus.COMPLETED.value,
+                    RoundStatus.CANCELLED.value,
+                ):
+                    return "timeout"
+                return "waiting"
+            if action.source == ActionSource.TIMEOUT_DEFAULT.value:
+                return "timeout"
+            return "submitted"
+
+        participants_out: list[dict] = []
+        submitted_this_round = 0
+        for p in tournament.participants:
+            row_per_round: list[str] = []
+            for r_num in range(1, total_rounds + 1):
+                rnd = rounds_by_number.get(r_num)
+                act = actions_by_pid_round.get((p.id, r_num))
+                row_per_round.append(
+                    cell_for(act, rnd.status if rnd is not None else None)
+                )
+
+            current_act = actions_by_pid_round.get((p.id, current_round_number))
+            if p.released_at is not None:
+                status_str = "released"
+            elif current_round_number == 0:
+                status_str = "waiting"
+            elif current_act is None:
+                status_str = "waiting"
+            elif current_act.source == ActionSource.TIMEOUT_DEFAULT.value:
+                status_str = "timeout"
+            else:
+                status_str = "submitted"
+                submitted_this_round += 1
+
+            participants_out.append(
+                {
+                    "id": p.id,
+                    "agent_name": p.agent_name,
+                    "released_at": p.released_at,
+                    "total_score": p.total_score,
+                    "current_round_status": status_str,
+                    "current_round_submitted_at": (
+                        current_act.submitted_at if current_act else None
+                    ),
+                    "row_per_round": row_per_round,
+                }
+            )
+
+        return {
+            "tournament_id": tournament.id,
+            "status": tournament.status,
+            "current_round": current_round_number or None,
+            "total_rounds": total_rounds,
+            "deadline_remaining_s": deadline_remaining_s,
+            "participants": participants_out,
+            "submitted_this_round": submitted_this_round,
+            "total_this_round": len(tournament.participants),
+        }

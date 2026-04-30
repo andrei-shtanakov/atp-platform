@@ -24,6 +24,7 @@ Final payoffs (get_payoffs):
 
 from __future__ import annotations
 
+import math
 import random
 from dataclasses import dataclass
 from typing import Any
@@ -45,72 +46,173 @@ from game_envs.games.registry import register_game
 # ---------------------------------------------------------------------------
 
 
+# Default cap on total slots per day. The authoritative limit lives on
+# ``ElFarolConfig.max_total_slots`` and is threaded through the action space.
 MAX_SLOTS_PER_DAY = 8
 
 
 class ElFarolActionSpace(ActionSpace):
-    """Action space for El Farol Bar: a list of time-slot indices.
+    """Action space for El Farol Bar: contiguous-interval visits.
 
-    A valid action is a list of unique integers in [0, num_slots),
-    with at most ``MAX_SLOTS_PER_DAY`` entries.
+    A valid action covers at most ``max_intervals`` contiguous runs of
+    time slots with at most ``max_total_slots`` slots in total. Agents
+    submit one of two equivalent interval shapes:
+
+      * ``{"intervals": [[start, end], ...]}`` — preferred wire form.
+      * ``[[start, end], ...]`` — bare list of inclusive ``[start, end]`` pairs.
+
+    The empty list ``[]`` (or ``{"intervals": []}``) means "stay home".
+
+    Intervals are validated as non-overlapping, non-adjacent (at least
+    one empty slot between them) and within ``[0, num_slots - 1]``.
+    ``sanitize`` normalises any valid input into a flat, sorted,
+    deduplicated ``list[int]`` of slot indices for downstream payoff
+    math; flat slot lists are no longer accepted as input.
     """
 
-    def __init__(self, num_slots: int = 16) -> None:
+    def __init__(
+        self,
+        num_slots: int = 16,
+        max_intervals: int = 2,
+        max_total_slots: int = 8,
+    ) -> None:
         self.num_slots = num_slots
+        self.max_intervals = max_intervals
+        self.max_total_slots = max_total_slots
+
+    # ------------------------------------------------------------------
+    # Shape detection
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _extract_intervals_from_dict(action: Any) -> Any:
+        if isinstance(action, dict) and "intervals" in action:
+            return action["intervals"]
+        return None
+
+    @staticmethod
+    def _is_pair_list(value: Any) -> bool:
+        """True iff ``value`` is a non-empty list of [start, end] pairs."""
+        if not isinstance(value, list) or not value:
+            return False
+        for pair in value:
+            if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+                return False
+            if not all(isinstance(x, int) and not isinstance(x, bool) for x in pair):
+                return False
+        return True
+
+    # ------------------------------------------------------------------
+    # Validation
+    # ------------------------------------------------------------------
+
+    def _validate_pairs(self, pairs: list[list[int]] | list[tuple[int, int]]) -> bool:
+        if len(pairs) > self.max_intervals:
+            return False
+        normalised: list[tuple[int, int]] = []
+        total = 0
+        for pair in pairs:
+            start, end = int(pair[0]), int(pair[1])
+            if start > end:
+                return False
+            if start < 0 or end >= self.num_slots:
+                return False
+            normalised.append((start, end))
+            total += end - start + 1
+        if total > self.max_total_slots:
+            return False
+        # Non-overlap + non-adjacency: compare pairs in canonical order.
+        ordered = sorted(normalised, key=lambda p: p[0])
+        for i in range(len(ordered) - 1):
+            prev_end = ordered[i][1]
+            next_start = ordered[i + 1][0]
+            if next_start <= prev_end + 1:
+                return False
+        return True
 
     def contains(self, action: Any) -> bool:
-        if not isinstance(action, list):
-            return False
-        if len(action) > MAX_SLOTS_PER_DAY:
-            return False
-        if len(action) != len(set(action)):
-            return False
-        return all(isinstance(s, int) and 0 <= s < self.num_slots for s in action)
+        # Dict form
+        dict_intervals = self._extract_intervals_from_dict(action)
+        if dict_intervals is not None:
+            action = dict_intervals
+        # Empty list is always valid ("stay home")
+        if isinstance(action, list) and not action:
+            return True
+        # List of [start, end] pairs — the only accepted non-empty shape.
+        if self._is_pair_list(action):
+            return self._validate_pairs(list(action))
+        return False
+
+    # ------------------------------------------------------------------
+    # Lenient normalisation
+    # ------------------------------------------------------------------
 
     def sanitize(self, action: Any) -> list[int]:
-        """Convert any input to a safe slot list.
+        """Convert valid interval input to a sorted, deduped slot list.
 
-        Handles None, non-list types, duplicates, out-of-range
-        values, and oversized lists. Returns an empty list for
-        completely invalid input.
+        Accepts ``{"intervals": [[start, end], ...]}``, a bare list of
+        ``[start, end]`` pairs, or ``[]`` / ``{"intervals": []}`` for
+        "stay home". Anything else (including a flat list of slot
+        indices) is treated as invalid and yields ``[]`` so the caller's
+        default-action fallback can decide what to submit.
+
+        The flat ``list[int]`` return type is the canonical internal
+        representation used by payoff math; the wire format is intervals.
         """
-        if action is None:
-            return []
-        if not isinstance(action, (list, tuple)):
-            return []
-        seen: set[int] = set()
-        result: list[int] = []
-        for s in action:
-            if not isinstance(s, int):
-                continue
-            if s < 0 or s >= self.num_slots:
-                continue
-            if s in seen:
-                continue
-            seen.add(s)
-            result.append(s)
-            if len(result) >= MAX_SLOTS_PER_DAY:
-                break
-        return result
+        dict_intervals = self._extract_intervals_from_dict(action)
+        if dict_intervals is not None:
+            action = dict_intervals
 
-    def sample(self, rng: random.Random | None = None) -> list[int]:
+        # Empty list = "stay home".
+        if isinstance(action, list) and not action:
+            return []
+
+        # The only valid non-empty input shape is a list of [start, end] pairs.
+        if not self._is_pair_list(action):
+            return []
+        if len(action) > self.max_intervals:
+            return []
+        if not self._validate_pairs(list(action)):
+            return []
+        slots: list[int] = []
+        for pair in action:
+            start, end = int(pair[0]), int(pair[1])
+            slots.extend(range(start, end + 1))
+        return sorted(set(slots))
+
+    # ------------------------------------------------------------------
+    # Misc
+    # ------------------------------------------------------------------
+
+    def sample(self, rng: random.Random | None = None) -> list[list[int]]:
+        """Sample a random valid action — a single contiguous interval."""
         r = rng or random.Random()
-        length = r.randint(4, MAX_SLOTS_PER_DAY)
+        length = r.randint(1, self.max_total_slots)
         start = r.randint(0, max(0, self.num_slots - length))
-        return list(range(start, min(start + length, self.num_slots)))
+        end = min(start + length, self.num_slots) - 1
+        if end < start:
+            return []
+        return [[start, end]]
 
     def to_list(self) -> list[str]:
-        return [f"list of slot indices in 0..{self.num_slots - 1}"]
+        return [
+            f"{{'intervals': [[start, end], ...]}} with up to "
+            f"{self.max_intervals} non-adjacent contiguous intervals; "
+            f"start, end in 0..{self.num_slots - 1}"
+        ]
 
     def to_description(self) -> str:
         return (
-            f"Choose which time slots to attend today. "
-            f"Provide a list of unique integers in "
-            f"0–{self.num_slots - 1} "
+            f"Choose which time slots to attend today as up to "
+            f"{self.max_intervals} contiguous interval(s). "
+            f'Shape: {{"intervals": [[start, end], ...]}} '
+            f"with inclusive slot indices in 0..{self.num_slots - 1} "
             f"(each slot = 30 min). "
-            f"At most {MAX_SLOTS_PER_DAY} slots per day. "
-            f"Example: [4, 5, 6, 7, 8]. "
-            f"Return an empty list [] to stay home."
+            f"At most {self.max_total_slots} slots total per day. "
+            f"Intervals must be non-overlapping and non-adjacent (at least "
+            f"one empty slot between them). Example: "
+            f'{{"intervals": [[6, 9], [12, 15]]}}. '
+            f'Return {{"intervals": []}} or [] to stay home.'
         )
 
 
@@ -128,6 +230,14 @@ class ElFarolConfig(GameConfig):
         num_rounds: Number of days to simulate (default 30).
         num_slots: Time slots per day — default 16 (30-min each, 8 hours).
         capacity_threshold: Bar is crowded when attendance >= this value.
+            A value of 0 is a sentinel meaning "derive from
+            ``floor(capacity_ratio * num_players)``" at construction time.
+        max_intervals: Maximum number of contiguous visit intervals per day.
+        max_total_slots: Maximum total number of slots covered per day
+            (across both intervals).
+        capacity_ratio: Fraction of ``num_players`` used to derive
+            ``capacity_threshold`` when it is not set explicitly. Must be
+            strictly in ``(0, 1]``.
         min_total_hours: Minimum hours required to avoid disqualification.
         slot_duration: Duration of each slot in hours (default 0.5 h).
     """
@@ -135,7 +245,10 @@ class ElFarolConfig(GameConfig):
     num_players: int = 100
     num_rounds: int = 30
     num_slots: int = 16
-    capacity_threshold: int = 60
+    capacity_threshold: int = 0
+    max_intervals: int = 2
+    max_total_slots: int = 8
+    capacity_ratio: float = 0.6
     min_total_hours: float = 0.0
     slot_duration: float = 0.5  # hours
 
@@ -143,6 +256,23 @@ class ElFarolConfig(GameConfig):
         super().__post_init__()
         if self.num_slots < 1:
             raise ValueError(f"num_slots must be >= 1, got {self.num_slots}")
+        if not 0.0 < self.capacity_ratio <= 1.0:
+            raise ValueError(
+                f"capacity_ratio must be in (0, 1], got {self.capacity_ratio}"
+            )
+        if self.max_total_slots > self.num_slots:
+            raise ValueError(
+                f"max_total_slots ({self.max_total_slots}) must be <= "
+                f"num_slots ({self.num_slots})"
+            )
+        if self.max_intervals > self.max_total_slots:
+            raise ValueError(
+                f"max_intervals ({self.max_intervals}) must be <= "
+                f"max_total_slots ({self.max_total_slots})"
+            )
+        if self.capacity_threshold == 0:
+            derived = math.floor(self.capacity_ratio * self.num_players)
+            object.__setattr__(self, "capacity_threshold", derived)
         if self.capacity_threshold < 1:
             raise ValueError(
                 f"capacity_threshold must be >= 1, got {self.capacity_threshold}"
@@ -239,7 +369,195 @@ class ElFarolBar(Game):
     # ------------------------------------------------------------------
 
     def action_space(self, player_id: str) -> ElFarolActionSpace:
-        return ElFarolActionSpace(self._ef_config.num_slots)
+        cfg = self._ef_config
+        return ElFarolActionSpace(
+            num_slots=cfg.num_slots,
+            max_intervals=cfg.max_intervals,
+            max_total_slots=cfg.max_total_slots,
+        )
+
+    def validate_action(self, raw: Any) -> dict[str, list[list[int]]]:
+        """Validate a client-submitted action and return canonical form.
+
+        Strict path. Used by tournament submit. Accepts only the
+        ``{"intervals": [[start, end], ...]}`` interval shape; the
+        legacy flat slot list (``{"slots": [...]}``) is no longer
+        supported. See ``ElFarolActionSpace.sanitize`` for the permissive
+        replay path.
+        """
+        from game_envs.core.errors import (
+            ValidationError,  # local import to avoid cycles
+        )
+
+        if not isinstance(raw, dict):
+            raise ValidationError(f"action must be a dict, got {type(raw).__name__}")
+        if "intervals" not in raw:
+            raise ValidationError("action must have field 'intervals'")
+        intervals = raw["intervals"]
+        if not isinstance(intervals, list):
+            raise ValidationError(
+                "intervals must be a list of [start, end] pairs, got "
+                f"{type(intervals).__name__}"
+            )
+        cfg = self._ef_config
+        num_slots = cfg.num_slots
+        if len(intervals) > cfg.max_intervals:
+            raise ValidationError(
+                f"at most {cfg.max_intervals} intervals per day, got {len(intervals)}"
+            )
+        normalised: list[list[int]] = []
+        total = 0
+        for pair in intervals:
+            if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+                raise ValidationError(
+                    f"each interval must be a [start, end] pair, got {pair!r}"
+                )
+            start, end = pair[0], pair[1]
+            if not (isinstance(start, int) and not isinstance(start, bool)):
+                raise ValidationError(f"interval start {start!r} is not an int")
+            if not (isinstance(end, int) and not isinstance(end, bool)):
+                raise ValidationError(f"interval end {end!r} is not an int")
+            if start < 0 or end >= num_slots:
+                raise ValidationError(
+                    f"interval [{start}, {end}] out of range [0, {num_slots})"
+                )
+            if start > end:
+                raise ValidationError(
+                    f"interval [{start}, {end}] must satisfy start <= end"
+                )
+            normalised.append([int(start), int(end)])
+            total += end - start + 1
+        if total > cfg.max_total_slots:
+            raise ValidationError(
+                f"intervals cover {total} slots; max is {cfg.max_total_slots}"
+            )
+        ordered = sorted(normalised, key=lambda p: p[0])
+        for prev, nxt in zip(ordered, ordered[1:]):
+            if nxt[0] <= prev[1] + 1:
+                raise ValidationError(
+                    f"intervals {prev} and {nxt} overlap or are adjacent"
+                )
+        return {"intervals": ordered}
+
+    def default_action_on_timeout(self) -> dict[str, list[list[int]]]:
+        """Stay home — attend zero slots (spec §3.1)."""
+        return {"intervals": []}
+
+    def format_state_for_player(
+        self,
+        round_number: int,
+        total_rounds: int,
+        participant_idx: int,
+        action_history: list[dict[str, Any]],
+        cumulative_scores: list[float],
+    ) -> dict[str, Any]:
+        """N-player state formatter (see spec §3.1).
+
+        Action data in each ``action_history`` row is expected in the
+        canonical interval shape ``{"intervals": [[start, end], ...]}``.
+        Per-slot occupancy counts are derived by expanding each interval.
+
+        Does NOT include ``pending_submission`` — service-layer concern.
+        """
+        num_slots = self._ef_config.num_slots
+
+        def _slots_of(action_data: dict[str, Any]) -> list[int]:
+            slots: list[int] = []
+            for pair in action_data.get("intervals", []):
+                if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+                    continue
+                start, end = pair[0], pair[1]
+                if not (isinstance(start, int) and isinstance(end, int)):
+                    continue
+                lo = max(0, int(start))
+                hi = min(num_slots - 1, int(end))
+                if lo <= hi:
+                    slots.extend(range(lo, hi + 1))
+            return slots
+
+        your_history = [
+            sorted(set(_slots_of(row["actions"].get(participant_idx, {}))))
+            for row in action_history
+        ]
+        attendance_by_round: list[list[int]] = []
+        for row in action_history:
+            counts = [0] * num_slots
+            for _pid, action_data in row["actions"].items():
+                for s in _slots_of(action_data):
+                    counts[s] += 1
+            attendance_by_round.append(counts)
+
+        return {
+            "tournament_id": -1,
+            "game_type": "el_farol",
+            "round_number": round_number,
+            "total_rounds": total_rounds,
+            "your_history": your_history,
+            "attendance_by_round": attendance_by_round,
+            "capacity_threshold": self._ef_config.capacity_threshold,
+            "your_cumulative_score": cumulative_scores[participant_idx],
+            "all_scores": list(cumulative_scores),
+            "your_participant_idx": participant_idx,
+            "num_slots": num_slots,
+            "action_schema": {
+                "type": "intervals",
+                "shape": '{"intervals": [[start, end], ...]}',
+                "max_intervals": self._ef_config.max_intervals,
+                "max_total_slots": self._ef_config.max_total_slots,
+                "value_range": [0, num_slots - 1],
+            },
+            "extra": {},
+        }
+
+    def compute_round_payoffs(self, actions: dict[int, dict[str, Any]]) -> list[float]:
+        """Per-round payoff = happy slots − crowded slots (spec §3.3).
+
+        Args:
+            actions: participant_idx -> ``{"intervals": [[start, end], ...]}``.
+
+        Returns:
+            List of per-round payoffs in participant_idx order.
+        """
+        n = self._ef_config.num_players
+        threshold = self._ef_config.capacity_threshold
+        num_slots = self._ef_config.num_slots
+
+        def _slots_of(action_data: dict[str, Any]) -> list[int]:
+            slots: list[int] = []
+            for pair in action_data.get("intervals", []):
+                if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+                    continue
+                start, end = pair[0], pair[1]
+                if not (isinstance(start, int) and isinstance(end, int)):
+                    continue
+                lo = max(0, int(start))
+                hi = min(num_slots - 1, int(end))
+                if lo <= hi:
+                    slots.extend(range(lo, hi + 1))
+            return slots
+
+        per_player_slots: list[list[int]] = [
+            _slots_of(actions.get(p_idx, {})) for p_idx in range(n)
+        ]
+
+        counts = [0] * num_slots
+        for slots in per_player_slots:
+            for s in slots:
+                counts[s] += 1
+
+        crowded = {i for i, c in enumerate(counts) if c >= threshold}
+
+        payoffs: list[float] = [0.0] * n
+        for p_idx, slots in enumerate(per_player_slots):
+            happy = 0
+            crowded_count = 0
+            for s in slots:
+                if s in crowded:
+                    crowded_count += 1
+                else:
+                    happy += 1
+            payoffs[p_idx] = float(happy - crowded_count)
+        return payoffs
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -435,8 +753,12 @@ class ElFarolBar(Game):
                 f"- Each day has {c.num_slots} time slots "
                 f"of {c.slot_duration:.1f} h each "
                 f"({slot_hours:.0f} h total).",
-                "- You choose which slots to attend "
-                f"(list of integers 0–{c.num_slots - 1}).",
+                "- You choose which slots to attend as up to "
+                f"{c.max_intervals} contiguous interval(s): "
+                f'{{"intervals": [[start, end], ...]}} with inclusive '
+                f"indices in 0–{c.num_slots - 1}, at most "
+                f"{c.max_total_slots} slots total per day, intervals "
+                "non-overlapping and non-adjacent.",
                 f"- If {c.capacity_threshold}+ players attend "
                 "a slot, it becomes *crowded*.",
                 "- You can only observe past attendance — not what others plan today.",

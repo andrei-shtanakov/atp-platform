@@ -19,6 +19,7 @@
                 <li><a href="/ui/benchmarks" class="{% if active_page == 'benchmarks' %}active{% endif %}">Benchmarks</a></li>
                 <li><a href="/ui/games" class="{% if active_page == 'games' %}active{% endif %}">Games</a></li>
                 <li><a href="/ui/tournaments" class="{% if active_page == 'tournaments' %}active{% endif %}">Tournaments</a></li>
+                <li><a href="/ui/matches" class="{% if active_page == 'matches' %}active{% endif %}">Matches</a></li>
                 <li><a href="/ui/runs" class="{% if active_page == 'runs' %}active{% endif %}">Runs</a></li>
                 <li><a href="/ui/leaderboard" class="{% if active_page == 'leaderboard' %}active{% endif %}">Leaderboard</a></li>
                 <li><a href="/ui/suites" class="{% if active_page == 'suites' %}active{% endif %}">Suites</a></li>
@@ -29,6 +30,7 @@
                 {% endif %}
                 {% if user and user.is_admin %}
                 <li><a href="/ui/invites" class="{% if active_page == 'invites' %}active{% endif %}">Invites</a></li>
+                <li><a href="/ui/admin" class="{% if active_page == 'admin' %}active{% endif %}">Admin</a></li>
                 {% endif %}
                 <li><a href="/ui/about" class="{% if active_page == 'about' %}active{% endif %}">About</a></li>
             </ul>

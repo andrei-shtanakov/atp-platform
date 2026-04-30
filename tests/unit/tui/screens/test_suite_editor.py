@@ -74,6 +74,7 @@ class TestNewSuiteScreenIntegration:
 
             # Press 'n' for new suite
             await pilot.press("n")
+            await pilot.pause()  # let NewSuiteScreen finish mounting
 
             # Should now be on NewSuiteScreen
             assert isinstance(pilot.app.screen, NewSuiteScreen)
@@ -131,10 +132,12 @@ class TestNewSuiteScreenIntegration:
         async with app.run_test(size=(100, 50)) as pilot:
             await pilot.press("m")
             await pilot.press("n")
+            await pilot.pause()  # let NewSuiteScreen finish mounting
             assert isinstance(pilot.app.screen, NewSuiteScreen)
 
             # Click cancel
             await pilot.click("#cancel-btn")
+            await pilot.pause()  # let dismiss propagate before asserting
 
             # Should be back on main screen
             assert isinstance(pilot.app.screen, MainScreen)
@@ -145,10 +148,12 @@ class TestNewSuiteScreenIntegration:
         async with app.run_test() as pilot:
             await pilot.press("m")
             await pilot.press("n")
+            await pilot.pause()  # let NewSuiteScreen finish mounting
             assert isinstance(pilot.app.screen, NewSuiteScreen)
 
             # Press escape
             await pilot.press("escape")
+            await pilot.pause()  # let dismiss propagate before asserting
 
             # Should be back on main screen
             assert isinstance(pilot.app.screen, MainScreen)
@@ -159,6 +164,7 @@ class TestNewSuiteScreenIntegration:
         async with app.run_test(size=(100, 50)) as pilot:
             await pilot.press("m")
             await pilot.press("n")
+            await pilot.pause()  # let NewSuiteScreen finish mounting
 
             screen = pilot.app.screen
             assert isinstance(screen, NewSuiteScreen)
@@ -189,12 +195,14 @@ class TestNewSuiteScreenIntegration:
         async with app.run_test(size=(100, 50)) as pilot:
             await pilot.press("m")
             await pilot.press("n")
+            await pilot.pause()  # let NewSuiteScreen finish mounting
 
             screen = pilot.app.screen
             assert isinstance(screen, NewSuiteScreen)
 
             # Try to create without filling name
             await pilot.click("#create-btn")
+            await pilot.pause()  # let validation handler complete
 
             # Should still be on NewSuiteScreen (validation failed)
             assert isinstance(pilot.app.screen, NewSuiteScreen)
@@ -205,6 +213,7 @@ class TestNewSuiteScreenIntegration:
         async with app.run_test() as pilot:
             await pilot.press("m")
             await pilot.press("n")
+            await pilot.pause()  # let NewSuiteScreen finish mounting
 
             screen = pilot.app.screen
             assert isinstance(screen, NewSuiteScreen)
@@ -215,6 +224,7 @@ class TestNewSuiteScreenIntegration:
 
             # Press Ctrl+S
             await pilot.press("ctrl+s")
+            await pilot.pause()  # let submit handler dismiss the screen
 
             # Should be on main screen with suite loaded
             assert isinstance(pilot.app.screen, MainScreen)

@@ -1,0 +1,168 @@
+{% extends "ui/base_ui.html" %}
+
+{% block title %}ATP · El Farol · Match {{ match_id }}{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="/static/v2/css/el_farol.css">
+
+<div style="padding:8px 16px"><a href="{{ back_link_href }}">← {{ back_link_label }}</a></div>
+
+{% if not_found %}
+  <article style="padding:24px">
+    <h2>Match <code>{{ match_id }}</code> not found</h2>
+    <p>The match id was not present in the dashboard database. It may have
+       been deleted, or the URL may be stale.</p>
+  </article>
+{% elif predates_schema %}
+  <article style="padding:24px">
+    <h2>Match <code>{{ match_id }}</code> is from a pre-Phase-7 run</h2>
+    <p>This match was recorded before PR #63 introduced per-day typed
+       data. The dashboard can only render matches whose <code>actions_json</code>
+       and <code>day_aggregates_json</code> columns are populated.</p>
+    <p>Re-run the match against a current build of ATP to see it here.</p>
+  </article>
+{% elif in_progress %}
+  <article class="waiting" style="padding:24px"
+           hx-get="{{ request.url.path }}"
+           hx-trigger="every 15s"
+           hx-swap="outerHTML">
+    <h2>Match <code>{{ match_id }}</code> is still running…</h2>
+    <p>This page auto-refreshes every 15 seconds until the match completes.</p>
+    <p>Current status: <code>{{ status }}</code></p>
+  </article>
+{% else %}
+  <div id="atp-el-farol" class="atp-dashboard-dark roomy">
+    <div class="topbar">
+      <div class="brand">
+        <span class="dot"></span>
+        <span>ATP · El Farol</span>
+        {% if live_stream_url %}
+          <span id="atp-live-pill" class="atp-live-pill live" title="Streaming live tournament updates">Live</span>
+          <button id="atp-resume-pill" class="atp-resume-pill" type="button" hidden
+                  title="Resume following the latest round">▶ Resume live</button>
+          {% if current_round_deadline_ms %}
+            <span id="atp-round-timer" class="atp-round-timer mono"
+                  data-deadline-ms="{{ current_round_deadline_ms }}"
+                  {% if current_round_started_ms %}data-started-ms="{{ current_round_started_ms }}"{% endif %}
+                  title="Time remaining for the current round">
+              <span class="atp-round-timer-label">R{{ current_round_number }}</span>
+              <span class="atp-round-timer-value">--:--</span>
+            </span>
+          {% endif %}
+        {% endif %}
+        <span class="match">Match <b>{{ match_id }}</b> · {{ num_agents }} agents · {{ num_days }} days · {{ num_slots }} slots/day</span>
+      </div>
+      <div class="spacer"></div>
+      <button class="info-btn" id="rulesBtn" title="How this game works">?</button>
+      <button class="tweaks-btn" id="tweaksBtn" title="Tweaks">⚙</button>
+    </div>
+
+    <div class="playback">
+      <button class="btn-icon" onclick="jump(1)" title="Day 1">⏮</button>
+      <button class="btn-icon" onclick="step(-1)" title="Prev">◀</button>
+      <button class="btn-icon play" id="playBtn" onclick="togglePlay()">▶ Play</button>
+      <button class="btn-icon" onclick="step(1)" title="Next">▶</button>
+      <button class="btn-icon" onclick="jump({{ num_days }})" title="Last">⏭</button>
+      <div class="scrubber-wrap">
+        <span class="day-label">Day <b id="dayLabel">1</b> / {{ num_days }} · <span id="weekLabel">w1</span></span>
+        <input type="range" min="1" max="{{ num_days or 1 }}" value="1" class="scrubber" id="scrubber">
+      </div>
+      <select id="speedSel" title="Playback speed">
+        <option value="800">0.5×</option>
+        <option value="380" selected="">1×</option>
+        <option value="200">2×</option>
+        <option value="80">5×</option>
+      </select>
+    </div>
+
+    <div class="kpi-strip">
+      <div class="kpi"><div class="label">Leader</div><div class="value" id="kpiLeader">—</div><div class="sub" id="kpiLeaderSub">—</div></div>
+      <div class="kpi"><div class="label">Spread (1st ↔ last)</div><div class="value" id="kpiSpread">—</div><div class="sub">payoff gap</div></div>
+      <div class="kpi"><div class="label">Over-cap slots today</div><div class="value" id="kpiOver">—</div><div class="sub">of {{ num_slots }} slots</div></div>
+      <div class="kpi"><div class="label">Attendances</div><div class="value" id="kpiAtt">—</div><div class="sub">total agent-slots</div></div>
+      <div class="kpi"><div class="label">Best day</div><div class="value good" id="kpiBest">—</div><div class="sub" id="kpiBestSub">—</div></div>
+    </div>
+
+    <div class="main">
+      <div class="cards-grid" id="cards"></div>
+
+      <div class="lower">
+        <div class="panel-card">
+          <div class="hd">
+            <div>
+              <h3>Attendance heatmap</h3>
+              <div class="sub" id="heatSub">slot × day · darker red = over capacity</div>
+            </div>
+            <div class="seg" id="heatSeg">
+              <button class="on" data-m="slot-day">slot × day</button>
+              <button data-m="agent-day">agent × day</button>
+              <button data-m="agent-slot">agent × slot (avg)</button>
+            </div>
+          </div>
+          <svg class="heatmap" id="heatmap" viewBox="0 0 900 340" preserveAspectRatio="none"></svg>
+        </div>
+
+        <div class="panel-card">
+          <div class="hd">
+            <h3>Compare</h3>
+            <span class="sub">hover a card · click <code class="mono" style="font-size:10px">+</code> to pin</span>
+          </div>
+          <div id="compare"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- rules popover -->
+    <div class="rules-pop" id="rulesPop">
+      <h3>The El Farol Bar Problem</h3>
+      <p>Agents decide which <b>slots</b> of a {{ num_slots }}-slot day to visit.</p>
+      <p>If fewer than <b>cap = {{ capacity }}</b> agents picked the same slot → everyone there earns <b>+1</b>. Otherwise → <b>−1</b>.</p>
+      <div style="margin: 12px 0">
+        <div class="tiny muted">example · day <span id="rulesDayNum">—</span></div>
+        <div class="rules-slot" id="rulesDiagram"></div>
+        <div class="tiny muted" style="margin-top: 6px">green = under cap (+1), red = over cap (−1)</div>
+      </div>
+      <p class="tiny muted">Agents don't communicate. They learn from prior attendance patterns.</p>
+    </div>
+
+    <!-- tweaks popover -->
+    <div class="tweaks-pop" id="tweaksPop">
+      <h3>Tweaks</h3>
+      <div class="tweak-row">
+        <span class="label">Density</span>
+        <select id="tweakDensity"><option value="roomy">Roomy</option><option value="dense">Dense</option></select>
+      </div>
+      <div class="tweak-row">
+        <span class="label">Identity colors</span>
+        <div class="toggle on" id="tweakColors"></div>
+      </div>
+      <div class="tweak-row">
+        <span class="label">Show rules info</span>
+        <div class="toggle on" id="tweakRules"></div>
+      </div>
+    </div>
+
+    <!-- drawer -->
+    <div class="overlay" id="overlay" onclick="closeDrawer()"></div>
+    <div class="drawer" id="drawer">
+      <div class="drawer-head">
+        <div><h3 id="drawTitle">—</h3><div class="muted tiny" id="drawSub">—</div></div>
+        <button class="drawer-close" onclick="closeDrawer()">×</button>
+      </div>
+      <div id="drawBody"></div>
+    </div>
+  </div>
+
+  <script id="atp-match-payload" type="application/json">{{ payload_json | safe }}</script>
+  <script>
+    window.__ATP_MATCH__ = JSON.parse(document.getElementById('atp-match-payload').textContent);
+    {% if langfuse_base %}window.ATP_LANGFUSE_BASE = {{ langfuse_base | tojson }};{% endif %}
+    {% if live_stream_url %}window.__ATP_LIVE_URL__ = {{ live_stream_url | tojson }};{% endif %}
+  </script>
+  <script src="/static/v2/js/el_farol/data_helpers.js"></script>
+  <script src="/static/v2/js/el_farol/dashboard.js"></script>
+  {% if live_stream_url %}
+    <script src="/static/v2/js/el_farol/live_subscriber.js"></script>
+  {% endif %}
+{% endif %}
+{% endblock %}

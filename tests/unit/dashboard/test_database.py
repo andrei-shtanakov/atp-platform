@@ -166,3 +166,205 @@ class TestDatabaseWithPostgres:
         engine = db.engine
         # Engine should be created with SQLite-specific settings
         assert engine is not None
+
+
+class TestAddMissingColumnsServerDefaults:
+    """Regression coverage for ``_add_missing_columns`` across every
+    ``server_default`` pattern used in the models (as of LABS-96 audit):
+
+    - ``String, server_default=""`` (LABS-96 prod incident)
+    - ``String, server_default="latest"`` (versioned string)
+    - ``Integer, server_default="2"`` (numeric literal as str)
+    - ``DateTime, server_default=func.now()`` (SQL function)
+
+    All four patterns are rendered via SQLAlchemy's own ``CreateColumn``
+    DDL compiler to avoid the hand-rolled quoting footguns we hit.
+    """
+
+    @staticmethod
+    def _fresh_db_with_pre_row(tmp_path: Path, table_name: str):  # type: ignore[no-untyped-def]
+        import sqlalchemy as sa
+        from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+        from atp.dashboard.database import Database
+
+        class _Base(DeclarativeBase):
+            pass
+
+        class _Pre(_Base):  # noqa: F841
+            __tablename__ = table_name
+            id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
+
+        url = f"sqlite+aiosqlite:///{tmp_path / f'{table_name}.db'}"
+        db = Database(url=url)
+        return db, _Base, sa, mapped_column, Mapped
+
+    @staticmethod
+    async def _run_with_patched_base(db, _Base):  # type: ignore[no-untyped-def]
+        import atp.dashboard.database as db_mod
+        from atp.dashboard.database import (
+            _add_missing_columns as add_missing_columns,
+        )
+
+        original = db_mod.Base
+        db_mod.Base = _Base  # type: ignore[assignment]
+        try:
+            await add_missing_columns(db)
+        finally:
+            db_mod.Base = original  # type: ignore[assignment]
+
+    @pytest.mark.anyio
+    async def test_empty_string_server_default(self, tmp_path: Path) -> None:
+        """PR #59 regression: ``DEFAULT ''`` used to produce ``DEFAULT ``."""
+        db, _Base, sa, mapped_column, Mapped = self._fresh_db_with_pre_row(
+            tmp_path, "_rt_empty"
+        )
+
+        async with db.engine.begin() as conn:
+            await conn.run_sync(_Base.metadata.create_all)
+        async with db.session() as s:
+            await s.execute(sa.text("INSERT INTO _rt_empty (id) VALUES (1)"))
+            await s.commit()
+
+        _Base.metadata.clear()
+
+        class _Post(_Base):  # noqa: F841
+            __tablename__ = "_rt_empty"
+            id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
+            agent_name: Mapped[str] = mapped_column(
+                sa.String(100), nullable=False, server_default=""
+            )
+
+        await self._run_with_patched_base(db, _Base)
+
+        async with db.session() as s:
+            row = (
+                await s.execute(sa.text("SELECT agent_name FROM _rt_empty WHERE id=1"))
+            ).first()
+            assert row is not None and row[0] == ""
+        await db.close()
+
+    @pytest.mark.anyio
+    async def test_nonempty_string_server_default(self, tmp_path: Path) -> None:
+        db, _Base, sa, mapped_column, Mapped = self._fresh_db_with_pre_row(
+            tmp_path, "_rt_str"
+        )
+
+        async with db.engine.begin() as conn:
+            await conn.run_sync(_Base.metadata.create_all)
+        async with db.session() as s:
+            await s.execute(sa.text("INSERT INTO _rt_str (id) VALUES (1)"))
+            await s.commit()
+
+        _Base.metadata.clear()
+
+        class _Post(_Base):  # noqa: F841
+            __tablename__ = "_rt_str"
+            id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
+            version: Mapped[str] = mapped_column(
+                sa.String(50), nullable=False, server_default="latest"
+            )
+
+        await self._run_with_patched_base(db, _Base)
+
+        async with db.session() as s:
+            row = (
+                await s.execute(sa.text("SELECT version FROM _rt_str WHERE id=1"))
+            ).first()
+            assert row is not None and row[0] == "latest"
+        await db.close()
+
+    @pytest.mark.anyio
+    async def test_integer_with_numeric_string_default(self, tmp_path: Path) -> None:
+        """Tournament model uses ``Integer, server_default="2"``. The old
+        hand-rolled code emitted ``DEFAULT 2`` (bare int literal); the
+        interim LABS-96 fix would have emitted ``DEFAULT '2'`` (string
+        literal for an Integer column). Either works in SQLite but the
+        SQLAlchemy-native render is the one that matches ``create_all``
+        and is dialect-consistent.
+        """
+        db, _Base, sa, mapped_column, Mapped = self._fresh_db_with_pre_row(
+            tmp_path, "_rt_int"
+        )
+
+        async with db.engine.begin() as conn:
+            await conn.run_sync(_Base.metadata.create_all)
+        async with db.session() as s:
+            await s.execute(sa.text("INSERT INTO _rt_int (id) VALUES (1)"))
+            await s.commit()
+
+        _Base.metadata.clear()
+
+        class _Post(_Base):  # noqa: F841
+            __tablename__ = "_rt_int"
+            id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
+            num_players: Mapped[int] = mapped_column(
+                sa.Integer, nullable=False, server_default="2"
+            )
+
+        await self._run_with_patched_base(db, _Base)
+
+        async with db.session() as s:
+            row = (
+                await s.execute(sa.text("SELECT num_players FROM _rt_int WHERE id=1"))
+            ).first()
+            # SQLite stores '2' as TEXT if the DEFAULT is a string literal.
+            # With the DDL-compiler fix, the default matches what create_all
+            # would produce in the same DB.
+            assert row is not None and str(row[0]) == "2"
+        await db.close()
+
+    @pytest.mark.anyio
+    async def test_function_server_default_falls_back_to_nullable(
+        self, tmp_path: Path, caplog
+    ) -> None:
+        """SQLite rejects ``ALTER TABLE ... DEFAULT CURRENT_TIMESTAMP``
+        with "Cannot add a column with non-constant default". The helper
+        must detect this, strip the default, add the column as NULL,
+        and log a warning pointing at Alembic for the real fix.
+
+        Latent bug discovered by the LABS-96 audit before it reached
+        prod.
+        """
+        db, _Base, sa, mapped_column, Mapped = self._fresh_db_with_pre_row(
+            tmp_path, "_rt_now"
+        )
+
+        async with db.engine.begin() as conn:
+            await conn.run_sync(_Base.metadata.create_all)
+        async with db.session() as s:
+            await s.execute(sa.text("INSERT INTO _rt_now (id) VALUES (1)"))
+            await s.commit()
+
+        _Base.metadata.clear()
+
+        from datetime import datetime
+
+        class _Post(_Base):  # noqa: F841
+            __tablename__ = "_rt_now"
+            id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
+            created_at: Mapped[datetime] = mapped_column(
+                sa.DateTime, nullable=False, server_default=sa.func.now()
+            )
+
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="atp.dashboard"):
+            await self._run_with_patched_base(db, _Base)
+
+        # Column must be there (nullable, no default).
+        async with db.session() as s:
+            row = (
+                await s.execute(sa.text("SELECT created_at FROM _rt_now WHERE id=1"))
+            ).first()
+            # The pre-existing row had no created_at — column was added
+            # nullable, value is NULL.
+            assert row is not None and row[0] is None
+
+        # And a warning was emitted pointing at Alembic.
+        assert any(
+            "non-constant defaults" in rec.message
+            and "_rt_now.created_at" in rec.message
+            for rec in caplog.records
+        )
+        await db.close()

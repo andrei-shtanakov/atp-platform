@@ -1,10 +1,12 @@
 """Database connection and session management for ATP Dashboard."""
 
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -14,6 +16,8 @@ from sqlalchemy.ext.asyncio import (
 
 import atp.dashboard.tokens as _tokens_models  # noqa: F401  — register ORM models
 from atp.dashboard.models import Base
+
+logger = logging.getLogger(__name__)
 
 
 class Database:
@@ -153,17 +157,34 @@ def set_database(db: Database) -> None:
 async def init_database(url: str | None = None, echo: bool = False) -> Database:
     """Initialize and return the database.
 
-    Creates tables if they don't exist, adds missing columns to existing
-    tables, and seeds default RBAC roles.
+    Creates tables if they don't exist, reconciles legacy tables whose
+    columns/indexes lag behind the current ORM metadata (additive-migration
+    path), backfills legacy run ownership, and seeds default RBAC roles.
+
+    The reconcile step is what keeps pre-migration deployments from crashing
+    once new ORM attributes are mapped. ``create_all`` alone never alters an
+    existing table, so a database upgraded from ``main`` would otherwise keep
+    its old ``game_results`` (for example) table and every ``SELECT`` that
+    references a newly-mapped column would raise
+    ``OperationalError: no such column``.
 
     Args:
-        url: Database URL.
+        url: Database URL. When None, falls back to the
+            ``ATP_DATABASE_URL`` environment variable and finally to
+            the SQLite default. This lets CLI-side callers (e.g.
+            ``atp game run``'s dashboard writer) share the server's
+            configured database without threading the URL through every
+            callsite.
         echo: Whether to echo SQL statements.
 
     Returns:
         Database instance.
     """
+    import os
+
     global _database
+    if url is None:
+        url = os.environ.get("ATP_DATABASE_URL") or None
     _database = Database(url=url, echo=echo)
     await _database.create_tables()
     await _add_missing_columns(_database)
@@ -254,6 +275,7 @@ async def _add_missing_columns(db: Database) -> None:
 
     from sqlalchemy import inspect as sa_inspect
     from sqlalchemy import text
+    from sqlalchemy.schema import CreateColumn
 
     logger = logging.getLogger("atp.dashboard")
 
@@ -274,18 +296,109 @@ async def _add_missing_columns(db: Database) -> None:
                 if column.name in existing:
                     continue
 
-                col_type = column.type.compile(db.engine.dialect)
-                nullable = "NULL" if column.nullable else "NOT NULL"
-                default = ""
-                if column.server_default is not None:
-                    default = f" DEFAULT {column.server_default.arg}"  # type: ignore[union-attr]
-
-                stmt = (
-                    f"ALTER TABLE {table.name} "
-                    f"ADD COLUMN {column.name} {col_type} {nullable}{default}"
+                # Render the full column fragment via SQLAlchemy's own DDL
+                # compiler. This gives us correct quoting for string
+                # server_defaults, proper translation of server_default=
+                # func.now() to the dialect's CURRENT_TIMESTAMP, and type
+                # rendering consistent with create_all(). Doing it by hand
+                # (str-concat + naive quoting) previously broke on
+                # server_default="" (LABS-96).
+                column_ddl = str(
+                    CreateColumn(column).compile(dialect=db.engine.dialect)
                 )
+
+                # Non-constant server_defaults (e.g. func.now()) cannot be
+                # added via SQLite's ALTER TABLE ADD COLUMN — the engine
+                # rejects "Cannot add a column with non-constant default".
+                # Strip the default and fall back to NULL with a loud
+                # warning; the ORM model still says NOT NULL so the proper
+                # Alembic migration is responsible for backfill + flip.
+                is_nonconstant_default = (
+                    column.server_default is not None
+                    and not isinstance(getattr(column.server_default, "arg", None), str)
+                )
+
+                # SQLite (and most other engines) also reject ALTER TABLE
+                # ADD COLUMN ... NOT NULL without a default when the table
+                # already has rows.
+                force_nullable = False
+                if not column.nullable and column.server_default is None:
+                    row_count = (
+                        await conn.execute(text(f"SELECT COUNT(*) FROM {table.name}"))
+                    ).scalar_one()
+                    if row_count:
+                        force_nullable = True
+                        logger.warning(
+                            "Auto-adding %s.%s as NULLABLE because the table "
+                            "has %d existing rows and the column is NOT NULL "
+                            "without a server_default. Run Alembic migrations "
+                            "to backfill and enforce NOT NULL.",
+                            table.name,
+                            column.name,
+                            row_count,
+                        )
+
+                if is_nonconstant_default:
+                    logger.warning(
+                        "Auto-adding %s.%s as NULLABLE without its "
+                        "server_default because SQLite rejects non-constant "
+                        "defaults on ALTER TABLE ADD COLUMN. Run Alembic "
+                        "migrations for the proper add+backfill.",
+                        table.name,
+                        column.name,
+                    )
+                    # Drop both the DEFAULT clause and any NOT NULL so the
+                    # ALTER is constant and the populated table accepts it.
+                    column_ddl = (
+                        str(column.name)
+                        + " "
+                        + column.type.compile(dialect=db.engine.dialect)
+                    )
+                elif force_nullable:
+                    # Drop a trailing NOT NULL; DDL compiler emits it after
+                    # the type / default clauses.
+                    column_ddl = column_ddl.replace(" NOT NULL", "")
+
+                stmt = f"ALTER TABLE {table.name} ADD COLUMN {column_ddl}"
                 logger.info("Auto-adding column: %s.%s", table.name, column.name)
                 await conn.execute(text(stmt))
+
+        await conn.run_sync(_create_missing_indexes)
+
+
+def _create_missing_indexes(conn: Any) -> None:
+    """Create ORM-declared indexes missing from existing tables.
+
+    ``create_all`` skips indexes on pre-existing tables. Legacy databases
+    upgraded from earlier versions therefore lack the newer named indexes
+    (e.g. ``idx_game_result_match``). Runs on the sync DBAPI connection via
+    ``AsyncConnection.run_sync`` because ``sqlalchemy.inspect`` is sync-only.
+    """
+    inspector = sa_inspect(conn)
+    assert inspector is not None
+    for table in Base.metadata.sorted_tables:
+        if not inspector.has_table(table.name):
+            continue
+        existing_idx_names = {
+            idx["name"] for idx in inspector.get_indexes(table.name) if idx.get("name")
+        }
+        for idx in table.indexes:
+            if idx.name is None or idx.name in existing_idx_names:
+                continue
+            try:
+                idx.create(conn)
+                logger.info(
+                    "Reconciled schema: created missing index %s on %s",
+                    idx.name,
+                    table.name,
+                )
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning(
+                    "Could not create missing index %s on %s: %s",
+                    idx.name,
+                    table.name,
+                    exc,
+                )
 
 
 async def _seed_default_roles(db: Database) -> None:

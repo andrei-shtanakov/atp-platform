@@ -16,7 +16,7 @@ import httpx
 import jwt
 import pytest
 
-pytestmark = pytest.mark.anyio
+pytestmark = [pytest.mark.anyio, pytest.mark.slow]
 
 _E2E_SECRET = "e2e-sc1-secret-32-bytes-long-pad!"
 
@@ -271,7 +271,11 @@ async def tournament_uvicorn(tmp_path, monkeypatch):
     import httpx as _httpx_probe
 
     probe_jwt = _mint_jwt(0, "probe")
-    mcp_deadline = loop.time() + 15.0
+    # Deadline bumped 15s → 60s (LABS-20/74). CI runners can take 20-40s
+    # to warm up uvicorn + FastMCP session manager; with 15s the readiness
+    # probe failed consistently on merged PRs (#42 CI etc.). 60s leaves a
+    # generous margin while still bounding fixture time.
+    mcp_deadline = loop.time() + 60.0
     mcp_ready = False
     last_err: Exception | None = None
     while loop.time() < mcp_deadline:

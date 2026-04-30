@@ -1,5 +1,56 @@
 # TODO
 
+## Ecosystem Roadmap (план от 2026-04-16)
+
+> Стратегический контекст: `../_cowork_output/roadmap/ecosystem-roadmap.md`
+> Актуальный статус: `../_cowork_output/status/2026-04-10-status.md`
+> **Роль ATP в экосистеме**: валидация задач Maestro (`validation_cmd`) и eval-driven обучение arbiter
+
+### Активные кросс-проектные задачи
+
+- [x] **R-06a: Поддержать Maestro CLI quick win** (effort S) ✅ 2026-04-25
+  - Документ написан: [`docs/maestro-integration.md`](docs/maestro-integration.md) —
+    exit codes (0/1/2), `atp run` контракт, рекомендованные `validation_cmd` patterns,
+    semver-обязательства по флагам.
+  - `atp run` экзит-коды verified end-to-end (0=pass, 1=fail, 2=error).
+
+- [x] **R-13: Нормализация guardrails с arbiter** (effort M) ✅ 2026-04-25
+  - arbiter-команда написала маппинг: [`../arbiter/docs/guardrails-atp-mapping.md`](../arbiter/docs/guardrails-atp-mapping.md)
+    (2026-04-17). Вывод: 0 правил перекрываются семантически, 2 разделяют **концепт**
+    (бюджет, время) на разных осях; **не** объединяем структурно (shared types — over-engineering
+    для 15 строк), сохраняем разные имена, выравниваем описания.
+  - ATP-сторона:
+    - Module docstring `atp/evaluators/guardrails.py:1-27` уточнён под фразу "post-execution,
+      pre-evaluation gate" + ссылка на mapping (rec #2).
+    - `check_timeout_not_exceeded` / `check_within_budget` docstrings проясняют axis
+      (measurement vs. estimate, per-test vs. system-wide) — rec #3.
+  - Не делаем (по совместному решению):
+    - Shared types через FFI / JSON Schema (rec #1, "revisit only if a third project pulls in").
+    - Re-naming правил под канон arbiter — это бы скрыло реальное разделение фаз.
+
+### Готовы предоставить (ждём запроса от Maestro)
+
+- [ ] **R-06b: SDK-интеграция для Maestro** (зависит от Maestro R-03)
+  - `atp.sdk.arun()` или SDK Adapter — структурированные результаты
+  - Автоматический feedback loop: Maestro → задача → ATP eval → arbiter обучение
+  - Наш SDK уже готов (PyPI `atp-platform-sdk` v2.0.0)
+
+- [ ] **R-07: Eval-driven routing validation** (зависит от R-03, R-06b)
+  - A/B тестирование arbiter DT routing vs random vs always-best-agent
+  - Совместно с `../arbiter/` — набор test suites на нашей стороне
+
+### Ждём от других проектов
+
+- **Maestro → R-03**: без MCP-клиента в Maestro невозможен feedback loop в arbiter → отложить R-06b/R-07
+- **arbiter → R-10 (CI)**: при работе над R-13 хочется уверенности в стабильности invariants
+
+### НЕ делаем здесь
+
+- ❌ Собственная интеграция с spec-runner — связь идёт через Maestro
+- ❌ Расширение ATP под специфику Maestro до формализации `validation_cmd` контракта
+
+---
+
 ## ~~Publish sub-packages to PyPI~~ DONE
 
 All packages published.
@@ -99,3 +150,14 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
 - [ ] **Chart.js in Analytics**: status pie chart, score histogram, per-agent line chart (templates/ui/analytics.html).
 - [ ] **Fix UI routes test isolation**: `.value` bug in analytics/home templates, UNIQUE constraint collision.
 - [ ] **Benchmark API scoring**: wire up evaluators instead of the naive score (100 if completed else 0).
+
+## Admin tournament GUI follow-ups (deferred from 2026-04-20 spec)
+
+Spec: `docs/superpowers/specs/2026-04-20-admin-tournament-gui-design.md`
+Plan: `docs/superpowers/plans/2026-04-20-admin-tournament-gui.md`
+
+- [ ] **h · Live MCP SSE connection status** per participant in admin detail — needs a new in-memory connection registry bound to the FastMCP server plus a `/ui/admin/tournaments/{id}/connections` fragment. Scope: ~2 days.
+- [ ] **f · Force-advance round** (admin button + REST endpoint wrapping existing `TournamentService.force_resolve_round`) — currently only the deadline worker can trigger it. Safety: needs a confirmation step and audit log entry.
+- [ ] **g · Extend round deadline mid-round** — requires adding a service method and a new audit row since mutating `Round.deadline` after creation is currently disallowed.
+- [ ] **Generalize admin create form to all 8 games** — currently hardcoded to `el_farol` dropdown. Add per-game config fieldsets keyed off the game registry.
+- [ ] **Long-lived bot MCP sessions (spec C)** — separate design and plan; the admin TTL change in this PR does not address bot-side session budget (still capped at `(ATP_TOKEN_EXPIRE_MINUTES − 10) × 60` in `TournamentService.create_tournament`).

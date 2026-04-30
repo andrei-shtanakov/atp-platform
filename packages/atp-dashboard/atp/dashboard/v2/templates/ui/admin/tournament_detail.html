@@ -1,0 +1,51 @@
+{% extends "ui/base_ui.html" %}
+
+{% block title %}Tournament #{{ tournament.id }} - Admin - ATP Platform{% endblock %}
+
+{% block content %}
+<header style="display:flex;justify-content:space-between;align-items:flex-start;">
+  <div>
+    <h1>
+      Tournament #{{ tournament.id }}
+      {% if not is_live %}<small>- Post-mortem</small>{% endif %}
+    </h1>
+    <p>
+      {{ tournament.game_type }} - round
+      {{ current_round }}/{{ tournament.total_rounds }} -
+      <strong>{{ tournament.status }}</strong>
+    </p>
+    <p>
+      <small>
+        Created {{ tournament.created_at.strftime("%Y-%m-%d %H:%M") }} -
+        {{ tournament.participants|length }} participants
+      </small>
+    </p>
+  </div>
+  <div>
+    <a href="/ui/admin/tournaments" role="button" class="secondary">Back</a>
+    {% if is_live %}
+    <button
+      hx-post="/api/v1/tournaments/{{ tournament.id }}/cancel"
+      hx-confirm="Cancel this tournament? This cannot be undone."
+      hx-swap="none"
+      class="contrast">
+      Cancel tournament
+    </button>
+    {% endif %}
+  </div>
+</header>
+
+{% if is_live %}
+<article
+  id="activity-block"
+  hx-get="/ui/admin/tournaments/{{ tournament.id }}/activity"
+  hx-trigger="load, every 2s"
+  hx-swap="innerHTML">
+  <p><em>Loading activity…</em></p>
+</article>
+{% else %}
+<article id="activity-block">
+  {% include "ui/admin/_activity_block.html" %}
+</article>
+{% endif %}
+{% endblock %}

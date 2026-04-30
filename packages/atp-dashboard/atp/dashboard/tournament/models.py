@@ -13,6 +13,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     func,
     text,
@@ -57,6 +58,10 @@ class ActionSource(StrEnum):
     TIMEOUT_DEFAULT — deadline worker force_resolve_round created a
     default action for a participant who did not submit before the
     round deadline.
+    BUILTIN — LABS-TSA PR-4: tournament runner synthesised this
+    action by calling a builtin strategy's ``choose_action`` during
+    round resolution. Distinct from SUBMITTED so UI/admin reporting
+    can tell real player moves from sparring-partner moves.
 
     Stored as plain String(32) without a native enum type or CHECK
     constraint.
@@ -64,6 +69,7 @@ class ActionSource(StrEnum):
 
     SUBMITTED = "submitted"
     TIMEOUT_DEFAULT = "timeout_default"
+    BUILTIN = "builtin"
 
 
 class Tournament(Base):
@@ -196,8 +202,11 @@ class Participant(Base):
         ForeignKey("tournaments.id"),
         nullable=False,
     )
-    user_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id"), nullable=False
+    # LABS-TSA PR-1: nullable to allow builtin-strategy participants
+    # (which have no User). Enforced together with agent_id / builtin_strategy
+    # via a CHECK constraint in __table_args__ below.
+    user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=True
     )
     agent_name: Mapped[str] = mapped_column(String(200), nullable=False)
     joined_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
@@ -210,6 +219,11 @@ class Participant(Base):
     agent_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("agents.id"), nullable=True
     )
+
+    # LABS-TSA PR-1: builtin strategy name (namespaced as "{game}/{strategy}").
+    # Exactly one of agent_id / builtin_strategy must be set; the CHECK
+    # constraint in __table_args__ enforces this.
+    builtin_strategy: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     # Relationships
     tournament: Mapped["Tournament"] = relationship(
@@ -224,21 +238,49 @@ class Participant(Base):
     __table_args__ = (
         Index("idx_participant_tournament", "tournament_id"),
         Index("idx_participant_user", "user_id"),
-        UniqueConstraint(
-            "tournament_id",
-            "user_id",
-            name="uq_participant_tournament_user",
-        ),
+        # LABS-TSA PR-6: uniqueness is agent-keyed, not user-keyed. A
+        # single user may register multiple tournament agents and play
+        # them all in the same tournament. Builtins (agent_id IS NULL)
+        # remain unconstrained so a tournament can seat several of the
+        # same builtin strategy.
         Index(
             # uq_ prefix: semantically a unique constraint, implemented
             # as a partial unique index because UniqueConstraint does
             # not accept WHERE clauses and neither SQLite nor PostgreSQL
             # support partial UNIQUE in CREATE TABLE syntax.
-            "uq_participant_user_active",
-            "user_id",
+            "uq_participant_tournament_agent",
+            "tournament_id",
+            "agent_id",
             unique=True,
-            sqlite_where=text("user_id IS NOT NULL AND released_at IS NULL"),
-            postgresql_where=text("user_id IS NOT NULL AND released_at IS NULL"),
+            sqlite_where=text("agent_id IS NOT NULL"),
+            postgresql_where=text("agent_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_participant_agent_active",
+            "agent_id",
+            unique=True,
+            sqlite_where=text("agent_id IS NOT NULL AND released_at IS NULL"),
+            postgresql_where=text("agent_id IS NOT NULL AND released_at IS NULL"),
+        ),
+        # LABS-TSA PR-1
+        Index(
+            "idx_participants_builtin",
+            "tournament_id",
+            "builtin_strategy",
+            sqlite_where=text("builtin_strategy IS NOT NULL"),
+            postgresql_where=text("builtin_strategy IS NOT NULL"),
+        ),
+        # LABS-TSA PR-4: agent-xor-builtin CHECK. Every Participant row
+        # is either a real agent-backed entry (agent_id set, builtin
+        # null) or a synthetic builtin (builtin_strategy set, agent_id
+        # null) — never both, never neither. Duplicated here so
+        # Base.metadata.create_all() produces a schema equivalent to
+        # ``alembic upgrade head``. See the PR-4 migration
+        # ``a9c4e81f3d2a_tournament_participant_agent_xor_builtin_check``.
+        CheckConstraint(
+            "(agent_id IS NOT NULL AND builtin_strategy IS NULL)"
+            " OR (agent_id IS NULL AND builtin_strategy IS NOT NULL)",
+            name="ck_participants_agent_xor_builtin",
         ),
     )
 
@@ -317,6 +359,33 @@ class Action(Base):
         nullable=False,
         server_default="submitted",
     )
+
+    reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Runner-managed tier-2 fields — populated by submit_action /
+    # validator / round dispatcher in follow-up work. Nullable so old
+    # rows and unwired code paths stay valid; rendered as "—" on the
+    # dashboard drawer until capture lands.
+    retry_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    validation_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decide_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Agent-provided LLM telemetry — populated from the optional
+    # ``telemetry`` sub-object on the submitted action (see
+    # ``ActionTelemetry`` in schemas.py). Opt-in; zero impact if the
+    # agent omits it.
+    model_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    tokens_in: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tokens_out: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # W3C traceparent linkage — extracted from the incoming MCP request
+    # in a follow-up tracing middleware. Enables the drawer's
+    # "open in Langfuse" deep-link when ATP_LANGFUSE_BASE_URL is set.
+    trace_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    span_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     # Relationships
     round: Mapped["Round"] = relationship(

@@ -3,7 +3,10 @@
 6 handlers for tournament lifecycle management:
   GET    /api/v1/tournaments              — list (visibility-filtered)
   GET    /api/v1/tournaments/{id}         — detail
-  GET    /api/v1/tournaments/{id}/rounds  — round history
+  GET    /api/v1/tournaments/{id}/rounds  — round history with nested
+                                            per-action data (action_data,
+                                            payoff, reasoning; reasoning is
+                                            gated — see access.can_view_reasoning)
   GET    /api/v1/tournaments/{id}/participants — participant list
   POST   /api/v1/tournaments             — create (returns join_token once)
   POST   /api/v1/tournaments/{id}/cancel — cancel
@@ -21,14 +24,23 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from atp.dashboard.models import User
+from atp.dashboard.tournament.access import can_view_reasoning
 from atp.dashboard.tournament.errors import (
+    ConcurrentPrivateCapExceededError,
     ConflictError,
     NotFoundError,
+    RosterValidationError,
     ValidationError,
 )
-from atp.dashboard.tournament.models import Participant, TournamentStatus
+from atp.dashboard.tournament.models import (
+    Action,
+    Participant,
+    Round,
+    TournamentStatus,
+)
 from atp.dashboard.tournament.service import TournamentService
 from atp.dashboard.v2.dependencies import DBSession, get_db_session
 
@@ -88,6 +100,12 @@ TournamentSvc = Annotated[TournamentService, Depends(get_tournament_service)]
 # ---------------------------------------------------------------------------
 
 
+class BuiltinRosterEntry(BaseModel):
+    """A single builtin slot commitment on tournament creation (LABS-TSA PR-4)."""
+
+    builtin_strategy: str
+
+
 class CreateTournamentRequest(BaseModel):
     """Payload for creating a new tournament."""
 
@@ -97,6 +115,10 @@ class CreateTournamentRequest(BaseModel):
     total_rounds: int = Field(ge=1)
     round_deadline_s: int = Field(ge=1)
     private: bool = False
+    # LABS-TSA PR-4: optional list of namespaced builtin strategies
+    # that pre-populate the tournament with deterministic sparring
+    # partners. See ``packages/atp-dashboard/atp/dashboard/tournament/builtins.py``.
+    roster: list[BuiltinRosterEntry] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -175,20 +197,72 @@ async def get_rounds_endpoint(
     tournament_id: int,
     user: TournamentUser,
     service: TournamentSvc,
+    session: DBSession,
 ) -> dict[str, Any]:
-    """Return round history for a tournament."""
+    """Return round history with nested per-action data.
+
+    Response shape (each round):
+
+        {"round_number": N, "status": "completed|...",
+         "actions": [
+             {"agent_name": str, "action_data": {...},
+              "payoff": float | null, "reasoning": str | null},
+             ...
+         ]}
+
+    ``reasoning`` is masked to ``null`` for viewers who fail the gate in
+    ``atp.dashboard.tournament.access.can_view_reasoning`` (e.g. non-owners
+    reading opponent rows during live play). The original minimal shape
+    (``round_number`` + ``status``) is a strict subset, so legacy clients
+    that ignore the ``actions`` key keep working.
+    """
     try:
-        rounds = await service.get_history(tournament_id, user)
+        t = await service.get_tournament(tournament_id, user)
     except NotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="tournament not found",
         )
+
+    # Mirror service.get_history() cap: latest 100 rounds, returned in
+    # ascending order. Prevents unbounded response growth now that nested
+    # actions (with action_data + reasoning) inflate per-round payload.
+    stmt = (
+        select(Round)
+        .where(Round.tournament_id == tournament_id)
+        .order_by(Round.round_number.desc())
+        .limit(100)
+        .options(
+            selectinload(Round.actions).selectinload(Action.participant),
+        )
+    )
+    rounds = sorted(
+        (await session.scalars(stmt)).all(),
+        key=lambda r: r.round_number,
+    )
+
     return {
         "rounds": [
             {
                 "round_number": r.round_number,
                 "status": (r.status if isinstance(r.status, str) else r.status.value),
+                "actions": [
+                    {
+                        "agent_name": a.participant.agent_name,
+                        "action_data": a.action_data,
+                        "payoff": a.payoff,
+                        "reasoning": (
+                            a.reasoning
+                            if can_view_reasoning(
+                                user=user,
+                                tournament=t,
+                                action_user_id=a.participant.user_id,
+                            )
+                            else None
+                        ),
+                    }
+                    for a in sorted(r.actions, key=lambda x: x.participant_id)
+                ],
             }
             for r in rounds
         ]
@@ -238,7 +312,16 @@ async def create_tournament_endpoint(
     user: TournamentUser,
     service: TournamentSvc,
 ) -> dict[str, Any]:
-    """Create a tournament. Returns join_token once (private tournaments only)."""
+    """Create a tournament. Returns join_token once (private tournaments only).
+
+    Roster-validation failures (unknown builtin, cross-game pairing,
+    oversized roster, missing creator commitment) surface as HTTP 400
+    so callers can distinguish them from pure pydantic shape errors
+    (422).
+
+    Exceeding the concurrent-private tournament cap surfaces as HTTP
+    429 with the current/cap counts in the detail.
+    """
     try:
         tournament, join_token = await service.create_tournament(
             creator=user,
@@ -248,11 +331,28 @@ async def create_tournament_endpoint(
             total_rounds=req.total_rounds,
             round_deadline_s=req.round_deadline_s,
             private=req.private,
+            roster=[e.builtin_strategy for e in req.roster],
+        )
+    except RosterValidationError as e:
+        # Roster-specific semantic violations (unknown builtin,
+        # cross-game, missing creator commit, oversized roster)
+        # surface as HTTP 400 so clients can distinguish them from
+        # generic tournament validation (422).
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
         )
     except ValidationError as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(e),
+        )
+    except ConcurrentPrivateCapExceededError as e:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                f"concurrent private tournament limit exceeded ({e.current}/{e.cap})"
+            ),
         )
 
     response = _serialize(tournament, user.is_admin)
@@ -280,3 +380,37 @@ async def cancel_tournament_endpoint(
             detail=str(e),
         )
     return {"cancelled": True}
+
+
+@router.delete(
+    "/{tournament_id}/participants/{participant_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def kick_participant_endpoint(
+    tournament_id: int,
+    participant_id: int,
+    user: TournamentUser,
+    service: TournamentSvc,
+) -> None:
+    """Kick a participant from a live tournament (admin only).
+
+    Sets Participant.released_at and, for in-progress rounds, inserts a
+    TIMEOUT_DEFAULT action so round resolution is not blocked.
+    """
+    if not user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required",
+        )
+    try:
+        await service.kick_participant(tournament_id, participant_id)
+    except LookupError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="participant not found",
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        )

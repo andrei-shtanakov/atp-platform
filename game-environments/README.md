@@ -733,7 +733,7 @@ game_envs/
 
 ## Integration with ATP
 
-While `game-environments` is standalone, it integrates with the [ATP Platform](https://github.com/yourusername/atp-platform-ru) via the `atp-games` plugin:
+While `game-environments` is standalone, it integrates with the [ATP Platform](https://github.com/andrei-shtanakov/atp-platform) via the `atp-games` plugin:
 
 ```
 game-environments (standalone)     ATP Platform
