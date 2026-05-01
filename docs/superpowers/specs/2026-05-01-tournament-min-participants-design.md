@@ -1,6 +1,6 @@
 # Tournament Autostart with No-Show Placeholders — Design
 
-**Status:** Draft (rev 2 — review-incorporated)
+**Status:** Draft (rev 3 — second-round review incorporated)
 **Date:** 2026-05-01
 **Owner:** ATP platform
 **Scope:** `el_farol`, `public_goods` tournament types only
@@ -64,10 +64,12 @@ deadline_worker tick (deadlines.py)
 
 `try_autostart_or_cancel(tournament_id)` (new method on `TournamentService`):
 
-1. `tournament = await session.get_one(Tournament, tournament_id, with_for_update=True)`
-   — locks the row for the rest of the transaction. Closes the read-then-write race against
-   any concurrent `join()` (which inserts a `Participant` and may call `_start_tournament`
-   itself when `count == num_players`).
+1. `tournament = await session.get(Tournament, tournament_id, with_for_update=True)` and
+   `if tournament is None: raise NotFoundError(...)`. Matches the existing codebase pattern
+   (e.g. `service.py:1884`). The `with_for_update=True` flag locks the row for the rest of
+   the transaction, closing the read-then-write race against any concurrent `join()` (which
+   inserts a `Participant` and may call `_start_tournament` itself when
+   `count == num_players`).
 2. Re-check `tournament.status == PENDING`. If not (concurrent join already started it, or a
    user cancel ran), return — nothing to do.
 3. `live_count = SELECT count(*) FROM tournament_participants WHERE tournament_id = ? AND
@@ -78,9 +80,15 @@ deadline_worker tick (deadlines.py)
 5. Branch:
    - `live_count >= threshold` → call `_fill_no_shows_and_start(tournament, missing=num_players − live_count)`.
    - `live_count < threshold` → call `cancel_tournament_system(tournament_id, PENDING_TIMEOUT)`.
-6. `await session.commit()` (mirrors the explicit commit at `deadlines.py:141` for the cancel
-   path — `cancel_tournament_system` and the new fill helper both leave the commit to the
-   caller).
+6. Commit semantics:
+   - **Cancel branch:** `cancel_tournament_system` does not commit (matches existing
+     `deadlines.py:141` pattern). The outer `await session.commit()` in the worker
+     completes the transaction.
+   - **Fill branch:** `_fill_no_shows_and_start` calls `_start_tournament`, which already
+     commits internally at `service.py:729` *before* publishing `round_started` (the LABS-74
+     invariant — subscribers must see the persisted state). The outer
+     `await session.commit()` in the worker is a no-op for this branch but kept symmetrically
+     for code clarity.
 
 `_fill_no_shows_and_start(tournament, missing)` (private helper):
 
@@ -191,36 +199,54 @@ unaffected.
 
 ## Event Payload
 
-`_start_tournament` already publishes a `round_started` event for round 1 at
-`packages/atp-dashboard/atp/dashboard/tournament/service.py:730`. There is **no separate
+`round_started` is published from **two** sites, not one:
+
+- `_start_tournament` for round 1 (`service.py:730`).
+- `_resolve_round` for the next-round transition after each round resolution
+  (`service.py:1438`).
+
+Today both publish `data={"total_rounds": tournament.total_rounds}`. There is **no separate
 `tournament_started` event** in `EventType` (`events.py:28-33`); creating one would force
 every SSE/MCP subscriber to handle a new type for marginal benefit. Instead, augment the
-existing round-1 payload.
+existing round-started payload via a shared helper applied at *both* sites — so subscribers
+can read fields directly without `event.data.get(..., default)` defensiveness.
 
-Change `_start_tournament(tournament)` signature:
+New helper on `TournamentService`:
+
+```python
+@staticmethod
+def _round_started_payload(
+    tournament: Tournament,
+    *,
+    no_show_fill_count: int = 0,
+) -> dict[str, Any]:
+    return {
+        "total_rounds": tournament.total_rounds,
+        "had_no_show_fill": no_show_fill_count > 0,
+        "no_show_count": no_show_fill_count,
+    }
+```
+
+`_start_tournament(tournament)` gains a kwarg:
 
 ```python
 async def _start_tournament(
     self,
     tournament: Tournament,
     *,
-    no_show_fill_count: int = 0,   # NEW
+    no_show_fill_count: int = 0,
 ) -> None:
+    ...
+    data = self._round_started_payload(
+        tournament, no_show_fill_count=no_show_fill_count
+    )
 ```
 
-Its `data` dict for the `round_started` publish becomes:
-
-```python
-data = {
-    "total_rounds": tournament.total_rounds,
-    "had_no_show_fill": no_show_fill_count > 0,
-    "no_show_count": no_show_fill_count,
-}
-```
-
-Default `no_show_fill_count=0` keeps `had_no_show_fill=False` and `no_show_count=0` for the
-existing call sites (`create_tournament` inline-start and `join()`-triggered start), preserving
-backward compatibility.
+`_resolve_round` next-round publish (`service.py:1436-1444`) switches to the helper with
+default `no_show_fill_count=0`. Rounds 2+ thus always carry `had_no_show_fill=False`,
+`no_show_count=0`. Subscribers (`tournament_live.py:221` already ignores `data`;
+`notifications.py:140` only reads `total_rounds`) remain compatible — the additions are
+strictly additive within `data`.
 
 The deadline worker also emits `log.info("deadline_worker.no_show_fill", extra={
 "tournament_id": ..., "missing": ..., "threshold": ..., "live_count": ...})` for ops
@@ -260,6 +286,46 @@ multi-replica deploy. It is not strictly required today but adds negligible cost
 silent correctness bug into a clean serialization on the row. If we ever scale out, the
 contract for the worker becomes: at most one fill+start transaction per Tournament at a time.
 
+### `join()` race against the new ACTIVE-flip path
+
+`join()` reads the Tournament row at `service.py:440` via `session.get(...)` **without** a
+lock and validates `tournament.status == PENDING` at `service.py:499` from that cached
+object. The Participant `INSERT` runs later (`service.py:592-594`). The INSERT triggers an
+implicit FK lock (`FOR KEY SHARE` on the parent Tournament row in Postgres), which serializes
+against the worker's `FOR UPDATE`.
+
+Pre-rev-3 this race was unreachable because the worker only `cancel`led — the late INSERT
+into a CANCELLED tournament was rejected by the existing `status == PENDING` check, and
+the FK lock contention never produced a wrong outcome. Rev 3 introduces the new active-flip
+path: the worker can transition `PENDING → ACTIVE`, commit, and release the lock. A
+concurrent `join()` whose status check passed *before* the worker took the lock will, after
+the lock releases, INSERT a Participant into an ACTIVE tournament — bypassing the cached
+status check.
+
+This is reachable. The race window is narrow (single asyncio loop, same process), but
+**ignoring it would let the new feature ship a known correctness bug**. The fix lives on the
+join side because the root cause is join's stale cached read, not the worker's design:
+
+```python
+# In TournamentService.join, AFTER the successful flush() at service.py:594,
+# BEFORE the count == num_players check at service.py:600.
+await self._session.refresh(tournament)
+if tournament.status != TournamentStatus.PENDING:
+    await self._session.rollback()
+    raise ConflictError(
+        f"tournament {tournament_id} flipped to {tournament.status!r} "
+        "concurrently — try again or accept the autostart"
+    )
+```
+
+Mechanically: `refresh()` re-reads the locked-and-released row; if the worker flipped status
+under the lock, join() now sees ACTIVE and rolls back its own INSERT. Same exception type as
+the existing pre-INSERT status check at `service.py:499-503`, so callers (REST + MCP) need
+no new handling — they already retry/surface 409 cleanly.
+
+This fix is **in scope for this rev** because the feature opens the race; deferring it would
+ship a regression. It is also the only place we touch the existing `join()` flow.
+
 ## Test Plan
 
 **Unit (`tests/unit/dashboard/tournament/`)**
@@ -285,6 +351,10 @@ contract for the worker becomes: at most one fill+start transaction per Tourname
   - Regression guard for default event payload — `_start_tournament` called WITHOUT
     `no_show_fill_count` publishes `round_started` with `had_no_show_fill=False`,
     `no_show_count=0`. Catches future payload migrations that drop the defaults.
+  - **Same guard for `_resolve_round` next-round publish** — round 2+ `round_started` events
+    must always carry `had_no_show_fill=False`, `no_show_count=0` via the shared
+    `_round_started_payload` helper. Direct dict access (no `.get(..., default)`) is the
+    contract.
 - `test_deadlines.py` (extend):
   - Expired pending with `live_count >= min_participants` AND game in {el_farol,
     public_goods} → fill + start, no cancel.
@@ -293,7 +363,14 @@ contract for the worker becomes: at most one fill+start transaction per Tourname
   - Expired pending for `prisoners_dilemma` → cancel as today (scope guard).
   - **Concurrent `join()` during fill** (skipped on SQLite due to no real `FOR UPDATE`
     semantics; runs on Postgres in CI). Documents the lock contract: with both transactions
-    in flight, only one of them succeeds in inserting beyond `num_players`.
+    in flight, the late `join()` either (a) acquired the FK lock first → worker's
+    `try_autostart_or_cancel` re-reads status and skips, no fill happens, OR (b) the worker
+    won → `join()`'s defensive `refresh()` (see Concurrency Model) sees ACTIVE and raises
+    `ConflictError`, rolling back its INSERT. **`count > num_players` is unreachable in
+    either ordering.**
+  - **`join()` defensive refresh regression guard** (new test in `test_service_join.py`):
+    simulate a flip of `tournament.status` to ACTIVE between `flush()` and the post-flush
+    check; verify `join()` raises `ConflictError` and rolls back the participant INSERT.
 - `test_api_serialization.py` (extend):
   - `kind="no_show"` and `was_no_show=True` for a Participant whose
     `builtin_strategy="el_farol/no_show"`.
