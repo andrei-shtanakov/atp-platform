@@ -12,13 +12,14 @@ from atp.dashboard.tournament.deadlines import _tick, run_deadline_worker
 
 def _make_session_factory(
     expired_rounds: list[int],
-    expired_pending: list[int],
+    expired_pending: list[tuple[int, str]],
 ):
     session = MagicMock()
+    session.commit = AsyncMock()
     session.execute = AsyncMock(
         side_effect=[
             MagicMock(__iter__=lambda self: iter([(r,) for r in expired_rounds])),
-            MagicMock(__iter__=lambda self: iter([(t,) for t in expired_pending])),
+            MagicMock(__iter__=lambda self: iter(expired_pending)),
         ]
     )
     # Async context manager support
@@ -75,6 +76,47 @@ async def test_tick_inner_guard_isolates_poison_row(caplog, monkeypatch):
     assert len(failed_records) == 1
     outer_records = [r for r in caplog.records if "tick_failed" in r.message]
     assert len(outer_records) == 0
+
+
+@pytest.mark.anyio
+async def test_tick_routes_pending_expiry_by_game_type(monkeypatch):
+    factory, session = _make_session_factory(
+        [],
+        [
+            (11, "el_farol"),
+            (12, "public_goods"),
+            (13, "prisoners_dilemma"),
+        ],
+    )
+    bus = MagicMock()
+
+    from atp.dashboard.tournament import deadlines
+
+    calls: list[tuple[str, int]] = []
+
+    class _FakeService:
+        def __init__(self, *a, **k):
+            pass
+
+        async def force_resolve_round(self, round_id):
+            raise AssertionError(f"unexpected round resolve: {round_id}")
+
+        async def try_shrink_and_start_or_cancel(self, tournament_id):
+            calls.append(("shrink", tournament_id))
+
+        async def cancel_tournament_system(self, tournament_id, **kwargs):
+            calls.append(("cancel", tournament_id))
+
+    monkeypatch.setattr(deadlines, "TournamentService", _FakeService)
+
+    await _tick(factory, bus, logging.getLogger("tournament.deadlines"))
+
+    assert calls == [
+        ("shrink", 11),
+        ("shrink", 12),
+        ("cancel", 13),
+    ]
+    assert session.commit.await_count == 3
 
 
 @pytest.mark.anyio

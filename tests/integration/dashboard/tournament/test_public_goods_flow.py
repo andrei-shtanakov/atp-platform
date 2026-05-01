@@ -9,10 +9,14 @@ server-side payoff math.
 
 from __future__ import annotations
 
+import logging
+from datetime import UTC, datetime
+
 import pytest
 from sqlalchemy import select, text
 
 from atp.dashboard.models import User
+from atp.dashboard.tournament.deadlines import _tick
 from atp.dashboard.tournament.models import (
     Round,
     RoundStatus,
@@ -120,3 +124,44 @@ async def test_public_goods_full_flow_n4_r3(session_factory):
         r3_contributions = state.all_contributions_by_round[2]
         assert r3_contributions[:3] == [15.0, 15.0, 15.0]
         assert r3_contributions[3] == 0.0
+
+
+@pytest.mark.anyio
+async def test_public_goods_pending_timeout_shrinks_to_live_roster(session_factory):
+    async with session_factory() as session:
+        users = await _seed_users(session, 5)
+        await session.commit()
+
+        svc = TournamentService(session, _DummyBus())
+        t, _ = await svc.create_tournament(
+            creator=users[0],
+            name="pg-shrink",
+            game_type="public_goods",
+            num_players=5,
+            total_rounds=2,
+            round_deadline_s=60,
+        )
+        for u in users[:3]:
+            await svc.join(t.id, u, agent_name=u.username)
+        t.pending_deadline = datetime(1970, 1, 1, tzinfo=UTC).replace(tzinfo=None)
+        await session.commit()
+
+    await _tick(
+        session_factory,
+        _DummyBus(),
+        logging.getLogger("tournament.deadlines"),
+    )
+
+    async with session_factory() as verify:
+        t = await verify.get(Tournament, t.id)
+        assert t is not None
+        assert t.status == TournamentStatus.ACTIVE
+        assert t.num_players == 3
+
+        state = await TournamentService(verify, _DummyBus()).get_state_for(
+            t.id,
+            users[0],
+        )
+        assert state.game_type == "public_goods"
+        assert state.num_players == 3
+        assert len(state.all_scores) == 3

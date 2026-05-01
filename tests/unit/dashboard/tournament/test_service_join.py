@@ -264,3 +264,47 @@ async def test_join_ignores_soft_deleted_owned_agent(
     # linked agent is NOT the soft-deleted one.
     assert alice_participant.agent_id is not None
     assert alice_participant.agent_id != dead_agent.id
+
+
+@pytest.mark.anyio
+async def test_join_rolls_back_if_refresh_sees_concurrent_start(
+    session: AsyncSession,
+    admin_user: User,
+    alice: User,
+    event_bus: TournamentEventBus,
+) -> None:
+    from atp.dashboard.tournament.errors import ConflictError
+    from atp.dashboard.tournament.models import Participant, TournamentStatus
+    from atp.dashboard.tournament.service import TournamentService
+
+    svc = TournamentService(session, event_bus)
+    tournament, _ = await svc.create_tournament(
+        creator=admin_user,
+        name="race-guard",
+        game_type="el_farol",
+        num_players=2,
+        total_rounds=2,
+        round_deadline_s=30,
+    )
+
+    async def fake_refresh(obj, *args, **kwargs):
+        if obj is tournament:
+            obj.status = TournamentStatus.ACTIVE
+            return
+        await AsyncSession.refresh(session, obj, *args, **kwargs)
+
+    session.refresh = fake_refresh  # type: ignore[method-assign]
+
+    with pytest.raises(ConflictError, match="not accepting joins"):
+        await svc.join(tournament_id=tournament.id, user=alice, agent_name="alice-tft")
+
+    participants = (
+        (
+            await session.execute(
+                select(Participant).where(Participant.tournament_id == tournament.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert participants == []
