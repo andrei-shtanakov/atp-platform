@@ -1,6 +1,6 @@
 # Tournament Autostart with No-Show Placeholders — Design
 
-**Status:** Draft (rev 3 — second-round review incorporated)
+**Status:** Draft (rev 4 — third-round review: builtin path + min_participants semantics)
 **Date:** 2026-05-01
 **Owner:** ATP platform
 **Scope:** `el_farol`, `public_goods` tournament types only
@@ -21,10 +21,15 @@ the tournament from scratch.
 
 ## Goal
 
-Allow the creator to opt into a "minimum live participants" threshold below `num_players`. If at
-least that many participants have joined when `pending_deadline` expires, the tournament starts
-with the missing slots filled by deterministic placeholder participants who play a stable no-op
-strategy each round.
+Allow the creator to opt into a "minimum live user-owned agents" threshold below `num_players`.
+If at least that many user-owned agents have joined when `pending_deadline` expires, the
+tournament starts with all remaining empty seats filled by deterministic placeholder
+participants who play a stable no-op strategy each round.
+
+**The threshold counts only user-owned agents** (`agent_id IS NOT NULL`). Pre-committed
+roster builtins do not count toward the threshold but still occupy seats. This matches the
+original use case: "20 bots scheduled, 18 connected, 2 had connectivity issues" — the
+threshold is about live agents, not seat coverage.
 
 Out of scope:
 
@@ -41,13 +46,14 @@ Out of scope:
 |---|---|---|
 | 1 | Apply only to `el_farol` and `public_goods` | Other game types are exactly-2-players where threshold relaxation is degenerate. |
 | 2 | Reuse existing `Participant.builtin_strategy` infrastructure | Placeholder = special builtin (`<game>/no_show`). No engine, runner, or evaluator changes. |
-| 3 | Per-tournament `min_participants` field, default NULL = `num_players` | Explicit per-tournament control beats a global magic constant. NULL preserves legacy behavior. |
+| 3 | Per-tournament `min_participants` field, default NULL = `num_players`. Counts **only user-owned agents** (`agent_id IS NOT NULL AND released_at IS NULL`). | Explicit per-tournament control beats a global magic constant. NULL preserves legacy behavior. Counting only user-owned agents matches the original use case (tolerate live-agent failures, not roster gaps). |
 | 4 | Hard floor `min_participants >= 2` | A 1-real-player game is meaningless even in El Farol. |
-| 5 | No-show actions: `el_farol → stay_home`, `public_goods → contribute=0` | Deterministic stable action that maps intuitively to "didn't show up". Welfare implications are game-specific (free-riding for PG; for EF they may even *help* surviving players when the bar would otherwise overflow) and explicitly documented, not framed as a penalty signal. |
+| 5 | No-show actions per game: `el_farol → []` (empty intervals, "stay home"); `public_goods → 0.0` (matches existing `FreeRider`). Behaviorally identical to no-action, but registered as a distinct strategy class so the `kind` derivation can disambiguate them in the API. | Deterministic stable action mapping to "didn't show up". Welfare implications are game-specific (free-riding for PG; for EF they may even *help* surviving players when the bar would otherwise overflow). Distinct class per game keeps lineage explicit even when behavior overlaps an existing builtin. |
 | 6 | Derived `was_no_show` / `kind` field in API responses, no new column on `Participant` | UI can render three categories (user / builtin / no-show) without doubling the source of truth. |
 | 7 | Fill logic lives in the existing `deadline_worker` tick | Reuses the already-running scan; no new background job. |
 | 8 | `agent_name = "missed-N"` is a convention, not a reserved namespace | Programmatic disambiguation MUST use the `kind` field. We do not validate against real users naming an agent `missed-1`; the data fields (`user_id`, `agent_id`) and derived `kind` already make rows unambiguous. |
 | 9 | Single deadline-worker assumption made explicit | Today's deploy runs one container with one deadline-worker task in lifespan. Defensive `SELECT … FOR UPDATE` on the Tournament row is added as cheap insurance against future multi-replica deploys. |
+| 10 | `<game>/no_show` is **rejected** in user-supplied `roster` and **invisible** in `list_builtins_for_game()` | No-show is an internal mechanism for graceful autostart. Allowing it as a user-pickable seat type would let operators construct a tournament that is "all no-shows" intentionally, blurring the meaning of `kind="no_show"` in audits and analytics. NoShow classes are NOT in `StrategyRegistry` (avoids the duplicate-bare-name conflict, see Builtin Registration), so `list_builtins_for_game` excludes them automatically. Only one explicit filter is needed: roster validation in `service.create_tournament` (`service.py:287-306`). |
 
 ## Architecture
 
@@ -66,29 +72,42 @@ deadline_worker tick (deadlines.py)
 
 1. `tournament = await session.get(Tournament, tournament_id, with_for_update=True)` and
    `if tournament is None: raise NotFoundError(...)`. Matches the existing codebase pattern
-   (e.g. `service.py:1884`). The `with_for_update=True` flag locks the row for the rest of
-   the transaction, closing the read-then-write race against any concurrent `join()` (which
-   inserts a `Participant` and may call `_start_tournament` itself when
-   `count == num_players`).
+   (e.g. `service.py:1884`). The `with_for_update=True` flag locks the row, blocking any
+   concurrent `join()`'s implicit `FOR KEY SHARE` from the FK INSERT.
 2. Re-check `tournament.status == PENDING`. If not (concurrent join already started it, or a
    user cancel ran), return — nothing to do.
-3. `live_count = SELECT count(*) FROM tournament_participants WHERE tournament_id = ? AND
-   released_at IS NULL` — **MUST filter `released_at IS NULL`**. `leave()` (`service.py:1636`)
-   sets `released_at = now()` without removing the row, so a join→leave inside the PENDING
-   window leaves a phantom that would otherwise inflate the count.
+3. `live_user_count = SELECT count(*) FROM tournament_participants WHERE tournament_id = ?
+   AND agent_id IS NOT NULL AND released_at IS NULL` — **counts only user-owned agents**:
+   - `agent_id IS NOT NULL` excludes roster builtins (which have `agent_id NULL` and a
+     non-no_show `builtin_strategy`) and any pre-existing no-show fills (defensive — the
+     fill itself is the only no-show writer, and it runs after this count).
+   - `released_at IS NULL` excludes phantom rows from `join → leave` inside the PENDING
+     window (`leave()` at `service.py:1636` sets `released_at = now()` without removing
+     the row).
 4. `threshold = tournament.min_participants OR tournament.num_players`.
-5. Branch:
-   - `live_count >= threshold` → call `_fill_no_shows_and_start(tournament, missing=num_players − live_count)`.
-   - `live_count < threshold` → call `cancel_tournament_system(tournament_id, PENDING_TIMEOUT)`.
-6. Commit semantics:
-   - **Cancel branch:** `cancel_tournament_system` does not commit (matches existing
-     `deadlines.py:141` pattern). The outer `await session.commit()` in the worker
-     completes the transaction.
-   - **Fill branch:** `_fill_no_shows_and_start` calls `_start_tournament`, which already
-     commits internally at `service.py:729` *before* publishing `round_started` (the LABS-74
-     invariant — subscribers must see the persisted state). The outer
-     `await session.commit()` in the worker is a no-op for this branch but kept symmetrically
-     for code clarity.
+5. `total_seats = SELECT count(*) FROM tournament_participants WHERE tournament_id = ?`
+   (no filters — total existing seats including roster). `missing = num_players − total_seats`.
+6. Branch:
+   - `live_user_count >= threshold` → call
+     `_fill_no_shows_and_start(tournament, missing=missing)`. (`missing` may be 0 if roster
+     + live joins already cover all seats; in that case `join()` would have started the
+     tournament inline already, so this branch is rare but not pathological.)
+   - `live_user_count < threshold` → call
+     `cancel_tournament_system(tournament_id, PENDING_TIMEOUT)`.
+7. Commit semantics — **two transaction boundaries, not one**:
+   - **Cancel branch:** `cancel_tournament_system` does not commit. The outer
+     `await session.commit()` in the worker (mirroring `deadlines.py:141`) completes the
+     transaction. Lock holds until that outer commit.
+   - **Fill branch:** `_fill_no_shows_and_start` (a) inserts `missing` no-show
+     `Participant` rows, then (b) calls `_start_tournament`. `_start_tournament` commits
+     internally at `service.py:729` *before* publishing `round_started` (the LABS-74
+     invariant — subscribers must observe persisted state). **That internal commit is
+     the atomic boundary for the entire fill+flip operation; the FOR UPDATE lock is
+     released at that point.** Everything from `try_autostart_or_cancel` step 1 through
+     `_start_tournament`'s commit lives in one transaction. The outer
+     `await session.commit()` in the worker is a defensive no-op on the fill branch (the
+     inner commit already completed the transaction) and exists only for code-path
+     symmetry with the cancel branch.
 
 `_fill_no_shows_and_start(tournament, missing)` (private helper):
 
@@ -124,16 +143,121 @@ no-shows can coexist in one tournament.
 
 ## Builtin Registration
 
-Add to `atp-games/atp_games/`:
+Builtins live in `game-environments/game_envs/strategies/<game>_strategies.py` and are
+registered via `StrategyRegistry.register("name", Class)` in `game_envs/__init__.py`
+(see existing registrations at `game_envs/__init__.py:180-204`). The dashboard-side resolver
+at `packages/atp-dashboard/atp/dashboard/tournament/builtins.py:65-87` (`_load_game_strategies`)
+filters the global registry by `cls.__module__` to scope lookups per game.
 
-- `el_farol/no_show` — strategy class returning `stay_home` (action=0) every round.
-- `public_goods/no_show` — strategy class returning `contribute=0` every round.
+**Add two new Strategy classes:**
 
-Register via the existing `BUILTIN_REGISTRY` mechanism. The resolver at
-`packages/atp-dashboard/atp/dashboard/tournament/service.py:302` (`resolve_builtin`) picks
-them up unchanged. Treat them like any other builtin for the purpose of `roster` validation —
-they are valid `<game>/<name>` entries and can in principle be specified in `roster=[...]`
-explicitly (no need to special-case prevent that).
+`game_envs/strategies/el_farol_strategies.py` — append:
+
+```python
+class NoShow(Strategy):
+    """Placeholder strategy used by deadline-worker autostart fill.
+
+    Returns the empty interval list (canonical "stay home" action for
+    El Farol). NOT registered as a user-pickable builtin — see roster
+    validation in TournamentService.create_tournament.
+    """
+
+    @property
+    def name(self) -> str:
+        return "no_show"
+
+    def choose_action(self, observation: Observation) -> Any:
+        return []   # _coerce_builtin_action wraps to {"intervals": []}
+```
+
+`game_envs/strategies/pg_strategies.py` — append:
+
+```python
+class NoShow(Strategy):
+    """Placeholder strategy used by deadline-worker autostart fill.
+
+    Returns 0.0 (zero contribution). Behaviorally identical to FreeRider
+    but registered as a distinct class so Participant.builtin_strategy
+    encodes the autostart-fill provenance distinctly from a roster-picked
+    free_rider. NOT registered as a user-pickable builtin.
+    """
+
+    @property
+    def name(self) -> str:
+        return "no_show"
+
+    def choose_action(self, observation: Observation) -> Any:
+        return 0.0   # _coerce_builtin_action wraps to {"contribution": 0.0}
+```
+
+**Do NOT register the `NoShow` classes in `StrategyRegistry`.** The registry rejects
+duplicate bare names (`game_envs/strategies/registry.py:35-36`: `raise ValueError`), so
+registering both `el_farol`'s and `public_goods`' `NoShow` under bare name `"no_show"`
+would crash module import on the second call. Even if we picked unique bare names like
+`el_farol_no_show`, registration would still expose them in `list_builtins_for_game` and
+require active filtering in two places.
+
+Instead, `NoShow` classes live in their respective strategy modules (so they sit next to
+related code) but are resolved via a special-case branch in `resolve_builtin`:
+
+```python
+# packages/atp-dashboard/atp/dashboard/tournament/builtins.py:resolve_builtin
+# (new branch BEFORE _load_game_strategies lookup)
+
+_NO_SHOW_CLASSES: dict[str, type[Strategy]] = {
+    "el_farol": _import_no_show("game_envs.strategies.el_farol_strategies"),
+    "public_goods": _import_no_show("game_envs.strategies.pg_strategies"),
+}
+
+def resolve_builtin(namespaced_name: str, *, tournament_id, participant_id):
+    game_type, bare_name = namespaced_name.split("/", 1)
+    if bare_name == "no_show":
+        cls = _NO_SHOW_CLASSES.get(game_type)
+        if cls is None:
+            raise BuiltinNotFoundError(
+                f"no-show fill not supported for game {game_type!r}"
+            )
+        return cls()   # NoShow has no seed dependency
+    # ... existing _load_game_strategies path
+```
+
+Where `_import_no_show(module_path)` lazily imports the module and returns its `NoShow`
+class (avoids circular-import issues; mirrors the existing lazy `importlib.import_module`
+pattern in `_load_game_strategies`).
+
+**Side effects of this design:**
+
+- `_load_game_strategies` (and therefore `list_builtins_for_game`) automatically excludes
+  no-show classes because they are not registered. **No filter needed in
+  `list_builtins_for_game`.** This collapses what the Decisions table called "two narrow
+  filter points" into one (roster validation only).
+- Roster validation still rejects `*/no_show` (see below) — without this, an operator
+  passing `el_farol/no_show` would get `BuiltinNotFoundError` from the existing roster
+  resolution probe at `service.py:302`, with a confusing message ("unknown strategy"
+  rather than "reserved strategy").
+
+**Action coercion compatibility** (`service.py:1209-1217`): `_coerce_builtin_action` for
+el_farol does `list(raw)` — `[]` passes through to `{"intervals": []}`. For public_goods
+does `float(raw)` — `0.0` passes through to `{"contribution": 0.0}`. Both are supported
+without changes to coercion logic.
+
+**Roster rejection.** Extend roster validation in `service.create_tournament`
+(`service.py:287-306`) to reject any namespaced entry ending in `/no_show`:
+
+```python
+for entry in roster:
+    if entry.endswith("/no_show"):
+        raise RosterValidationError(
+            f"strategy {entry!r} is reserved for autostart fill and cannot be picked "
+            "explicitly in roster"
+        )
+    # ... existing namespace + resolution checks
+```
+
+**API list-builtins filter is unnecessary** because `NoShow` classes are not in
+`StrategyRegistry`, so `_load_game_strategies` already excludes them via the existing
+module-membership filter. This is the only filter point still required: roster
+validation, above.
 
 ## API Surface
 
@@ -257,16 +381,19 @@ visibility distinct from the existing `deadline_worker.tick_complete` summary li
 | Case | Behavior |
 |---|---|
 | `min_participants is None` (default) | Identical to today: fill never fires; expired pending → cancel. |
-| `count >= num_players` before deadline | Existing `_start_tournament()` in `join()` fires; deadline worker never visits. `had_no_show_fill=False`. |
-| `count < min_participants` at deadline | `cancel_tournament_system(PENDING_TIMEOUT)` — current behavior. |
-| `count == min_participants == num_players − k` at deadline (k ≥ 1) | Fill inserts k no-shows, transitions to ACTIVE, `had_no_show_fill=True`, `no_show_count=k`. |
+| `total_seats >= num_players` before deadline | Existing `_start_tournament()` in `join()` fires; deadline worker never visits. `had_no_show_fill=False`. |
+| `live_user_count < min_participants` at deadline | `cancel_tournament_system(PENDING_TIMEOUT)` — current behavior. |
+| `live_user_count == min_participants == num_players − k` at deadline (k ≥ 1) | Fill inserts k no-shows, transitions to ACTIVE, `had_no_show_fill=True`, `no_show_count=k`. |
 | All slots pre-filled by `roster` at create | `create_tournament` already starts the tournament inline (`service.py:399`); deadline worker never runs the fill path. |
-| **Partial roster, `len(roster) >= min_participants`, no live joins arrive** | At `pending_deadline`, `live_count = len(roster) >= min_participants` → fill `num_players − len(roster)` no-shows, start. (For private tournaments this case is already blocked by the creator-commit check at `service.py:319-329`; it is reachable only for public tournaments.) |
-| `count < min_participants` because of `join → leave` in PENDING | `released_at IS NULL` filter excludes the abandoned row, so the threshold sees only truly-live joins. Tournament cancels, not starts. |
+| **Partial roster, `len(roster) >= min_participants`, ZERO live joins** | `live_user_count = 0 < min_participants` → cancel. The threshold counts only user-owned agents; pre-committed roster builtins do not satisfy the "live" requirement. (This is the corrected semantic vs. rev 3.) |
+| **Partial roster + some live joins** (e.g. `roster=10`, `min_participants=4`, `num_players=20`, 4 live joins arrive) | At deadline `live_user_count=4 >= 4` → fill `20 - (10 + 4) = 6` no-shows, start with 10 builtins + 4 users + 6 no-shows. |
+| `live_user_count < min_participants` because of `join → leave` in PENDING | `released_at IS NULL` filter excludes the abandoned row, so the threshold sees only truly-live joined agents. Tournament cancels, not starts. |
 | Private tournament + low `min_participants` | Existing creator-commit check (`service.py:308-329`) is unchanged: it gates *creation*, not *start*. Creator must still own a tournament-purpose agent OR fill the entire `roster` at create time. |
+| User submits `roster=["el_farol/no_show"]` at create | `RosterValidationError` (HTTP 400). No-show is reserved for autostart fill; explicit picking is rejected. |
+| User calls `GET /api/v1/games/el_farol/builtins` | Response does not include `el_farol/no_show`. Filter applied in `list_builtins_for_game()`. |
 | `mid-game leave()` drops live below `min_participants` | Out of scope for this iteration. Existing `ABANDONED` cascade applies as today. |
 | AD-9 duration cap (`service.py:268-279`) | No change — `max_wall_clock = TOURNAMENT_PENDING_MAX_WAIT_S + total_rounds * round_deadline_s` already accounts for the full pending window; fill consumes that window without lengthening it. |
-| Concurrent `join()` racing the deadline tick | `SELECT … FOR UPDATE` on the Tournament row inside `try_autostart_or_cancel` serializes against `join()`. After the lock, status and live_count are re-read; if join already flipped status to ACTIVE, the worker returns without action. |
+| Concurrent `join()` racing the deadline tick | `SELECT … FOR UPDATE` on the Tournament row inside `try_autostart_or_cancel` serializes against `join()`'s FK lock. After the worker's atomic fill+flip transaction commits and the lock releases, the late `join()` proceeds, observes ACTIVE via its post-flush `refresh()` (see Concurrency Model), and rolls back with `ConflictError`. |
 | `_release_participants` runs at `tournament_completed` | Sets `released_at` on every Participant including no-shows. Expected and tested. |
 | User registers a real agent named `missed-1` | Allowed. The Participant row has `user_id != NULL`, `agent_id != NULL`, derived `kind="user"`. No data ambiguity; only cosmetic overlap in `agent_name`. Documented in API docs. |
 
@@ -336,6 +463,8 @@ ship a regression. It is also the only place we touch the existing `join()` flow
   - `min_participants = 1` → 422 (below floor).
   - `min_participants > num_players` → 422.
   - `min_participants = num_players` → ok, equivalent to default.
+  - `roster=["el_farol/no_show"]` → `RosterValidationError` → HTTP 400.
+  - `roster=["public_goods/no_show"]` → `RosterValidationError` → HTTP 400.
 - `test_service_fill.py` (new):
   - Inserts exactly `num_players − live_count` rows.
   - `agent_name` is `missed-1..missed-N` in insertion order.
@@ -356,11 +485,16 @@ ship a regression. It is also the only place we touch the existing `join()` flow
     `_round_started_payload` helper. Direct dict access (no `.get(..., default)`) is the
     contract.
 - `test_deadlines.py` (extend):
-  - Expired pending with `live_count >= min_participants` AND game in {el_farol,
+  - Expired pending with `live_user_count >= min_participants` AND game in {el_farol,
     public_goods} → fill + start, no cancel.
-  - Expired pending with `live_count < min_participants` → cancel as today.
+  - Expired pending with `live_user_count < min_participants` → cancel as today.
   - Expired pending with `min_participants is None` → cancel as today (regression guard).
   - Expired pending for `prisoners_dilemma` → cancel as today (scope guard).
+  - **`live_user_count` formula**: pre-seed roster=3 builtins + 0 user joins,
+    `min_participants=2` → cancel (roster doesn't satisfy threshold).
+  - **`live_user_count` formula**: pre-seed roster=3 builtins + 2 user joins,
+    `num_players=10`, `min_participants=2` → fill 5 no-shows, start with
+    `total_seats == num_players == 10`.
   - **Concurrent `join()` during fill** (skipped on SQLite due to no real `FOR UPDATE`
     semantics; runs on Postgres in CI). Documents the lock contract: with both transactions
     in flight, the late `join()` either (a) acquired the FK lock first → worker's
@@ -378,19 +512,35 @@ ship a regression. It is also the only place we touch the existing `join()` flow
     `/no_show` suffix).
   - `kind="user"` for a Participant with non-null `user_id`.
 
-**Builtin tests (`atp-games/tests/`)**
+**Builtin tests (`game-environments/tests/strategies/`)**
 
 - `test_no_show_strategies.py`:
-  - `el_farol/no_show` returns `stay_home` for many rounds, irrespective of observation.
-  - `public_goods/no_show` returns `contribute=0` for many rounds.
-  - Both resolve through `resolve_builtin(...)` and round-trip through `BUILTIN_REGISTRY`.
+  - `ElFarolNoShow.choose_action(obs)` returns `[]` for any observation; round-trips
+    through `_coerce_builtin_action(game_type="el_farol", raw=[])` producing
+    `{"intervals": []}`.
+  - `PGNoShow.choose_action(obs)` returns `0.0` for any observation; round-trips through
+    `_coerce_builtin_action(game_type="public_goods", raw=0.0)` producing
+    `{"contribution": 0.0}`.
+  - `resolve_builtin("el_farol/no_show", tournament_id=1, participant_id=1)` returns an
+    `ElFarolNoShow` instance via the special-case branch.
+  - `resolve_builtin("public_goods/no_show", tournament_id=1, participant_id=1)` returns
+    a `PGNoShow` instance via the special-case branch.
+  - `resolve_builtin("prisoners_dilemma/no_show", ...)` raises `BuiltinNotFoundError`
+    (game not in `_NO_SHOW_CLASSES` mapping; only el_farol and public_goods supported).
+  - `list_builtins_for_game("el_farol")` does NOT include `el_farol/no_show` (verified
+    automatically by the registry-membership filter, no special-case logic in the
+    listing path).
+  - `list_builtins_for_game("public_goods")` does NOT include `public_goods/no_show`.
+  - `StrategyRegistry.list_strategies()` does NOT contain `"no_show"` (regression guard
+    against accidental future registration that would crash module import).
 
 **Integration (`tests/integration/dashboard/`)**
 
 - E2E: create `el_farol` with `num_players=5 min_participants=4`, join 4 agents, advance the
   clock past `pending_deadline`, assert tournament transitioned to ACTIVE, the 5th
-  participant exists with `kind="no_show"`, `agent_name="missed-1"`, and the played actions
-  across all rounds are `stay_home`.
+  participant exists with `kind="no_show"`, `agent_name="missed-1"`, `builtin_strategy =
+  "el_farol/no_show"`, and the played actions across all rounds are `{"intervals": []}`
+  (canonical "stay home").
 - E2E completion: same fixture, run the tournament to completion, assert the no-show
   Participant has `released_at` set after `tournament_completed` (mirrors
   `_release_participants` behavior).
