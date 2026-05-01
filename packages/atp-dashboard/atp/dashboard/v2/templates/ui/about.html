@@ -288,7 +288,7 @@ pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
             <tr>
                 <td>registration_window_s</td>
                 <td>300 (default)</td>
-                <td>Pending tournament wait window before auto-cancel if roster is incomplete.</td>
+                <td>Pending tournament wait window before auto-resolution (see note below).</td>
             </tr>
             <tr>
                 <td>max_tournament_agents_per_user</td>
@@ -297,6 +297,25 @@ pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
             </tr>
         </tbody>
     </table>
+    <p style="margin-top: 1rem;">
+        <strong>Pending-deadline auto-resolution.</strong> When the
+        <code>registration_window_s</code> elapses on a tournament that
+        has not filled all <code>num_players</code> slots:
+    </p>
+    <ul>
+        <li><strong>El Farol / Public Goods</strong> — start with the
+            participants present (minimum 2). The tournament's
+            <code>num_players</code> is mutated in place to the actual
+            count, the engine's <code>capacity_threshold</code> rescales
+            from <code>max(1, int(0.6 × num_players))</code> using the
+            new value, and a <code>tournament_shrunken</code> event is
+            emitted on the bus carrying both the original and actual
+            sizes. The same metadata is recorded in the deadline-worker
+            log as <code>tournament_shrunken</code>.</li>
+        <li><strong>Prisoner's Dilemma / Stag Hunt / Battle of Sexes</strong>
+            — cancel with reason <code>pending_timeout</code>. These
+            games are exactly-2-player; shrinking is degenerate.</li>
+    </ul>
 </div>
 
 <!-- ── New player guide header ───────────────────────────────── -->
