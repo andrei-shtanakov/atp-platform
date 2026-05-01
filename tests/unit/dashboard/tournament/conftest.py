@@ -76,8 +76,14 @@ def event_bus() -> TournamentEventBus:
 
 
 @pytest.fixture(autouse=True)
-def _clear_el_farol_cache():
-    """Fixture hygiene for N-player game engine caches."""
+def _clear_n_player_engine_caches():
+    """Fixture hygiene for N-player game engine caches.
+
+    Both ``_el_farol_for`` and ``_pg_for`` are ``functools.lru_cache``-d
+    by num_players; a tournament with N players in one test would
+    otherwise leak its engine instance into the next test's N-player
+    tournament, masking shrink-related state changes.
+    """
     from atp.dashboard.tournament.service import _el_farol_for, _pg_for
 
     _el_farol_for.cache_clear()

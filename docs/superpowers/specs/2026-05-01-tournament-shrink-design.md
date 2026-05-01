@@ -218,9 +218,13 @@ Two modifications, both inside the post-flush block:
    FOR UPDATE between the cached read at the start of `join()` and the post-flush autostart
    check.
 
-The existing idempotency lookups for `Participant` matching `tournament_id` + `agent_id`/`user_id`
-also gain `released_at IS NULL` filters so a previously-released agent can rejoin the SAME
-tournament if needed (this matches the documented intent of `released_at`).
+In `submit_action`, the participant lookups by `tournament_id` + `agent_id` (MCP path)
+and by `tournament_id` + `user_id` (CLI/admin path) gain `released_at IS NULL` filters so
+that an action submission resolves to the currently-active Participant row, not a stale
+released row from a prior leave/kick. Note: `join()`'s existing idempotency block still
+treats a same-tournament released row as terminal (raises
+`ConflictError("previously participated; rejoin not permitted")`); rejoin support is **not**
+in scope for this PR.
 
 ## Deadline worker
 
