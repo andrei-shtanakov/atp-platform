@@ -805,19 +805,38 @@ class TournamentService:
             )
             return
 
+        original_num_players: int | None = None
         if live_count != tournament.num_players:
-            original = tournament.num_players
+            original_num_players = tournament.num_players
             tournament.num_players = live_count
             logger.info(
                 "deadline_worker.tournament_shrunken",
                 extra={
                     "tournament_id": tournament_id,
-                    "original_num_players": original,
+                    "original_num_players": original_num_players,
                     "actual_num_players": live_count,
                 },
             )
 
         await self._start_tournament(tournament)
+
+        # Publish AFTER _start_tournament's internal commit so subscribers
+        # who re-read tournament.num_players see the persisted post-shrink
+        # value. round_started has already fired immediately before this;
+        # subscribers correlate by tournament_id.
+        if original_num_players is not None:
+            await self._bus.publish(
+                TournamentEvent(
+                    event_type="tournament_shrunken",
+                    tournament_id=tournament_id,
+                    round_number=None,
+                    data={
+                        "original_num_players": original_num_players,
+                        "actual_num_players": live_count,
+                    },
+                    timestamp=_utc_now(),
+                )
+            )
 
     async def get_state_for(
         self,

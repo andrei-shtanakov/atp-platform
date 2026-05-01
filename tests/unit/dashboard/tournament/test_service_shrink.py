@@ -83,6 +83,15 @@ async def test_shrinks_when_below_num_players(
     await svc.join(tournament.id, bob, "bob")
     await svc.join(tournament.id, charlie, "charlie")
 
+    captured = []
+    original_publish = event_bus.publish
+
+    async def capture(evt):
+        captured.append(evt)
+        await original_publish(evt)
+
+    event_bus.publish = capture  # type: ignore[method-assign]
+
     await svc.try_shrink_and_start_or_cancel(tournament.id)
 
     await session.refresh(tournament)
@@ -91,6 +100,14 @@ async def test_shrinks_when_below_num_players(
     rounds = await _rounds_for(session, tournament.id)
     assert len(rounds) == 1
     assert rounds[0].round_number == 1
+
+    shrunken = [e for e in captured if e.event_type == "tournament_shrunken"]
+    assert len(shrunken) == 1
+    assert shrunken[0].tournament_id == tournament.id
+    assert shrunken[0].data == {
+        "original_num_players": 5,
+        "actual_num_players": 3,
+    }
 
 
 @pytest.mark.anyio
@@ -118,11 +135,23 @@ async def test_no_shrink_when_full(
         ],
     )
 
+    captured = []
+    original_publish = event_bus.publish
+
+    async def capture(evt):
+        captured.append(evt)
+        await original_publish(evt)
+
+    event_bus.publish = capture  # type: ignore[method-assign]
+
     await svc.try_shrink_and_start_or_cancel(tournament.id)
 
     await session.refresh(tournament)
     assert tournament.num_players == 3
     assert tournament.status == TournamentStatus.ACTIVE
+
+    shrunken = [e for e in captured if e.event_type == "tournament_shrunken"]
+    assert shrunken == []
 
 
 @pytest.mark.anyio

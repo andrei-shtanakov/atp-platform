@@ -30,6 +30,7 @@ EventType = Literal[
     "round_ended",
     "tournament_completed",
     "tournament_cancelled",
+    "tournament_shrunken",
 ]
 
 
