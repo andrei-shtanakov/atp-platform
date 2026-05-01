@@ -77,9 +77,11 @@ def event_bus() -> TournamentEventBus:
 
 @pytest.fixture(autouse=True)
 def _clear_el_farol_cache():
-    """Spec §7.1 fixture hygiene for _el_farol_for lru_cache."""
-    from atp.dashboard.tournament.service import _el_farol_for
+    """Fixture hygiene for N-player game engine caches."""
+    from atp.dashboard.tournament.service import _el_farol_for, _pg_for
 
     _el_farol_for.cache_clear()
+    _pg_for.cache_clear()
     yield
     _el_farol_for.cache_clear()
+    _pg_for.cache_clear()
