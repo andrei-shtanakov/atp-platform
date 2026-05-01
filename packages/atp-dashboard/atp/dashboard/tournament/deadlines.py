@@ -1,7 +1,8 @@
 """Plan 2a deadline worker. Single asyncio task running inside the
 FastAPI lifespan. Two-path scan per tick:
 1. Expired round deadlines -> force_resolve_round.
-2. Expired pending tournaments -> cancel_tournament_system(PENDING_TIMEOUT).
+2. Expired pending tournaments -> shrink/start for El Farol & Public Goods,
+   plain cancel_tournament_system(PENDING_TIMEOUT) for the rest.
 
 Per-iteration outer try/except + per-row inner try/except; one poisoned
 row cannot kill the tick. Hard cancel on shutdown — correctness is
@@ -93,7 +94,8 @@ async def _tick(
     """
     t_start = time.monotonic()
 
-    # Collect expired round IDs and tournament IDs in a read-only session.
+    # Collect expired round IDs and pending tournament routing data in a
+    # read-only session.
     async with session_factory() as scan_session:
         expired_rounds_result = await scan_session.execute(
             select(Round.id)
@@ -105,11 +107,11 @@ async def _tick(
         round_ids = [row[0] for row in expired_rounds_result]
 
         expired_pending_result = await scan_session.execute(
-            select(Tournament.id)
+            select(Tournament.id, Tournament.game_type)
             .where(Tournament.status == TournamentStatus.PENDING)
             .where(Tournament.pending_deadline < _utc_now())
         )
-        tournament_ids = [row[0] for row in expired_pending_result]
+        pending_tournaments = [(row[0], row[1]) for row in expired_pending_result]
 
     # Path 1: expired round deadlines — one session per round so that
     # service.force_resolve_round() can commit before bus.publish fires.
@@ -127,27 +129,32 @@ async def _tick(
             )
 
     # Path 2: expired PENDING tournaments
-    for tournament_id in tournament_ids:
+    for tournament_id, game_type in pending_tournaments:
         try:
             async with session_factory() as session:
                 service = TournamentService(session, bus)
-                await service.cancel_tournament_system(
-                    tournament_id,
-                    reason=CancelReason.PENDING_TIMEOUT,
-                )
-                # cancel_tournament_system/_cancel_impl does not commit — the
-                # session context manager only closes, never commits. Explicit
-                # commit required so the state transition is durable.
+                if game_type in {"el_farol", "public_goods"}:
+                    await service.try_shrink_and_start_or_cancel(tournament_id)
+                else:
+                    await service.cancel_tournament_system(
+                        tournament_id,
+                        reason=CancelReason.PENDING_TIMEOUT,
+                    )
+                # cancel_tournament_system/_cancel_impl does not commit, and
+                # try_shrink_and_start_or_cancel only commits on the start
+                # branch via _start_tournament(). A trailing commit here is
+                # therefore required for cancel/no-op branches and harmless
+                # for already-committed start branches.
                 await session.commit()
         except Exception:
             log.exception(
-                "deadline_worker.pending_cancel_failed",
-                extra={"tournament_id": tournament_id},
+                "deadline_worker.pending_transition_failed",
+                extra={"tournament_id": tournament_id, "game_type": game_type},
             )
 
     log.info(
-        "deadline_worker.tick_complete rounds=%d pending_cancelled=%d elapsed_ms=%d",
+        "deadline_worker.tick_complete rounds=%d pending_processed=%d elapsed_ms=%d",
         len(round_ids),
-        len(tournament_ids),
+        len(pending_tournaments),
         int((time.monotonic() - t_start) * 1000),
     )

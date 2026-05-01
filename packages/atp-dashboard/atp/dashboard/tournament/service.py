@@ -192,6 +192,43 @@ class TournamentService:
         self._session = session
         self._bus = bus
 
+    async def _live_participant_count(self, tournament_id: int) -> int:
+        """Return the number of unreleased participants in a tournament."""
+        count = await self._session.scalar(
+            select(func.count(Participant.id))
+            .where(Participant.tournament_id == tournament_id)
+            .where(Participant.released_at.is_(None))
+        )
+        return int(count or 0)
+
+    async def _play_roster_participants(self, tournament_id: int) -> list[Participant]:
+        """Return the participant roster that should exist in gameplay.
+
+        Pending leavers keep their Participant row for audit / rejoin
+        prevention, but they must not consume an active-game slot if the
+        deadline worker later shrinks a pending tournament and starts it.
+
+        Once a participant has at least one Action row, keep them in the
+        gameplay roster even if they were later released (kick / leave /
+        timeout paths still need a stable player index across rounds).
+        """
+        played_any_round = (
+            select(Action.id).where(Action.participant_id == Participant.id).exists()
+        )
+        participants = (
+            (
+                await self._session.execute(
+                    select(Participant)
+                    .where(Participant.tournament_id == tournament_id)
+                    .where(Participant.released_at.is_(None) | played_any_round)
+                    .order_by(Participant.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return list(participants)
+
     async def create_tournament(
         self,
         creator: User,
@@ -592,12 +629,20 @@ class TournamentService:
         self._session.add(participant)
         try:
             await self._session.flush()
-            count = await self._session.scalar(
-                select(func.count(Participant.id)).where(
-                    Participant.tournament_id == tournament_id
+            # Re-read the tournament after the INSERT so a concurrent
+            # deadline-worker shrink/start that committed while this
+            # join was in flight becomes visible before we decide
+            # whether to start or reject.
+            await self._session.refresh(tournament)
+            if tournament.status != TournamentStatus.PENDING:
+                await self._session.rollback()
+                raise ConflictError(
+                    f"tournament {tournament_id} is {tournament.status!r}, "
+                    "not accepting joins"
                 )
-            )
-            if count == tournament.num_players:
+
+            live_count = await self._live_participant_count(tournament_id)
+            if live_count == tournament.num_players:
                 await self._start_tournament(tournament)
         except IntegrityError as exc:
             constraint_name = self._extract_constraint_name(exc)
@@ -737,6 +782,43 @@ class TournamentService:
             )
         )
 
+    async def try_shrink_and_start_or_cancel(self, tournament_id: int) -> None:
+        """Shrink pending N-player tournaments to the live roster on expiry.
+
+        Used only by the deadline worker for ``el_farol`` and
+        ``public_goods``. Re-checks status under ``FOR UPDATE`` so a
+        concurrent join / cancel / worker tick can win cleanly.
+        """
+        tournament = await self._session.get(
+            Tournament, tournament_id, with_for_update=True
+        )
+        if tournament is None:
+            raise NotFoundError(f"tournament {tournament_id}")
+        if tournament.status != TournamentStatus.PENDING:
+            return
+
+        live_count = await self._live_participant_count(tournament_id)
+        if live_count < 2:
+            await self.cancel_tournament_system(
+                tournament_id,
+                reason=CancelReason.PENDING_TIMEOUT,
+            )
+            return
+
+        if live_count != tournament.num_players:
+            original = tournament.num_players
+            tournament.num_players = live_count
+            logger.info(
+                "deadline_worker.tournament_shrunken",
+                extra={
+                    "tournament_id": tournament_id,
+                    "original_num_players": original,
+                    "actual_num_players": live_count,
+                },
+            )
+
+        await self._start_tournament(tournament)
+
     async def get_state_for(
         self,
         tournament_id: int,
@@ -766,17 +848,7 @@ class TournamentService:
         if tournament is None:
             raise NotFoundError(f"tournament {tournament_id} not found")
 
-        participants = (
-            (
-                await self._session.execute(
-                    select(Participant)
-                    .where(Participant.tournament_id == tournament_id)
-                    .order_by(Participant.id)
-                )
-            )
-            .scalars()
-            .all()
-        )
+        participants = await self._play_roster_participants(tournament_id)
         if agent_id is not None:
             # Agent-keyed lookup — required for MCP multi-agent-per-user.
             my_idx = next(
@@ -972,6 +1044,7 @@ class TournamentService:
                     select(Participant).where(
                         Participant.tournament_id == tournament_id,
                         Participant.agent_id == agent_id,
+                        Participant.released_at.is_(None),
                     )
                 )
             ).scalar_one_or_none()
@@ -987,6 +1060,7 @@ class TournamentService:
                     .where(
                         Participant.tournament_id == tournament_id,
                         Participant.user_id == user.id,
+                        Participant.released_at.is_(None),
                     )
                     .order_by(Participant.id)
                     .limit(1)
@@ -1230,17 +1304,7 @@ class TournamentService:
         actions (submit_action, force_resolve_round, _resolve_round)
         so builtins never stall progress.
         """
-        participants = (
-            (
-                await self._session.execute(
-                    select(Participant)
-                    .where(Participant.tournament_id == tournament.id)
-                    .order_by(Participant.id)
-                )
-            )
-            .scalars()
-            .all()
-        )
+        participants = await self._play_roster_participants(tournament.id)
         builtins = [p for p in participants if p.builtin_strategy is not None]
         if not builtins:
             return 0
@@ -1320,17 +1384,7 @@ class TournamentService:
             .all()
         )
 
-        participants = (
-            (
-                await self._session.execute(
-                    select(Participant)
-                    .where(Participant.tournament_id == tournament.id)
-                    .order_by(Participant.id)
-                )
-            )
-            .scalars()
-            .all()
-        )
+        participants = await self._play_roster_participants(tournament.id)
         idx_by_pid = {p.id: i for i, p in enumerate(participants)}
 
         action_by_idx: dict[int, Action] = {}
@@ -1499,17 +1553,7 @@ class TournamentService:
         # the outer transaction flipping tournament.status.
         await self._write_game_result_for_tournament(tournament)
 
-        participants = (
-            (
-                await self._session.execute(
-                    select(Participant).where(
-                        Participant.tournament_id == tournament.id
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
+        participants = await self._play_roster_participants(tournament.id)
         for p in participants:
             total = await self._session.scalar(
                 select(func.coalesce(func.sum(Action.payoff), 0.0)).where(
@@ -1959,7 +2003,7 @@ class TournamentService:
 
         Task 21 (integration test) validates the full race-guard path.
         """
-        from atp.dashboard.tournament.models import Action, ActionSource, Participant
+        from atp.dashboard.tournament.models import Action, ActionSource
 
         # Load the round with its tournament
         row = await self._session.execute(
@@ -1982,12 +2026,9 @@ class TournamentService:
         )
         submitted_ids = {row[0] for row in submitted_result}
 
-        participants_result = await self._session.execute(
-            select(Participant.id).where(
-                Participant.tournament_id == round_obj.tournament_id
-            )
-        )
-        all_participant_ids = [row[0] for row in participants_result]
+        all_participant_ids = [
+            p.id for p in await self._play_roster_participants(round_obj.tournament_id)
+        ]
 
         game = _game_for(tournament)
         now = _utc_now()
