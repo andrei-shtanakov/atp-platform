@@ -1400,6 +1400,7 @@ async def ui_tournament_detail(
     context = {
         "active_page": "tournaments",
         "tournament": tournament,
+        "tournament_id": tournament_id,
         "creator_name": creator_name,
         "is_admin": is_admin,
         "cancelled_by_name": cancelled_by_name,
@@ -1411,9 +1412,26 @@ async def ui_tournament_detail(
         "user": user,
         "visible_reasoning_action_ids": visible_reasoning_action_ids,
         "cards_match_id": cards_match_id,
+        **_pending_banner_context(tournament),
     }
 
     partial = request.query_params.get("partial")
+    if partial == "pending-banner":
+        # Banner-only partial. The wrapper template needs only the path
+        # id; we deliberately do NOT pass the full Tournament row, so
+        # the contract stays narrow and grep-friendly.
+        banner_ctx = {
+            "tournament_id": tournament_id,
+            **_pending_banner_context(tournament),
+        }
+        response = _templates(request).TemplateResponse(
+            request=request,
+            name="ui/partials/pending_banner_wrapper.html",
+            context=banner_ctx,
+        )
+        # Counter must NOT be served from BFCache or any intermediary.
+        response.headers["Cache-Control"] = "no-store"
+        return response
     if partial == "live":
         return _templates(request).TemplateResponse(
             request=request,

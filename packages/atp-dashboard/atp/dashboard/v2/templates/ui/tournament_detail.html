@@ -9,6 +9,9 @@
 {% block title %}{{ name }} - ATP Platform{% endblock %}
 
 {% block content %}
+{% if pending_banner_show is defined %}
+  {% include "ui/partials/pending_banner_wrapper.html" %}
+{% endif %}
 <h2>{{ name }}{% if show_id_badge %} <small style="color:#888;font-weight:normal;font-size:0.65em">#{{ t.id }}</small>{% endif %}</h2>
 {# LABS-TSA PR-5: one-time join_token reveal. Only rendered when the
    POST handler passes ``join_token_once``; a normal GET never sets this
