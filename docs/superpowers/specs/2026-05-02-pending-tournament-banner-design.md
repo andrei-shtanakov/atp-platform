@@ -1,6 +1,6 @@
 # Pending Tournament Banner — Design
 
-**Status:** Draft
+**Status:** Draft (revision 3 — addresses follow-up reviews 2026-05-02)
 **Date:** 2026-05-02
 **Owner:** prosto.andrey.g@gmail.com
 
@@ -57,11 +57,27 @@ the same banner wrapper, so they both poll the same partial URL.
 
 ### Visibility
 
-The banner inherits the parent page's visibility rule. Private
-tournaments (`join_token IS NOT NULL`) are visible only to admin /
-creator / participants — same as today; if the parent page 404s for a
-viewer, the partial endpoint also 404s (route order: visibility check
-first, then `partial` branch).
+The banner inherits whatever visibility the partial endpoint enforces,
+which is the **detail route's** strict 404 — the partial branch is a
+sub-route of `ui_tournament_detail`, not `ui_tournament_live`.
+
+Important nuance: the live route (`ui_tournament_live`) does NOT raise
+HTTP 404 for invisible tournaments; it renders `match_detail.html` with
+`not_found=True` as an in-page placeholder (see `routes/ui.py:822`).
+That asymmetry doesn't hurt us because:
+
+- The HTMX poll target is `/ui/tournaments/{id}?partial=pending-banner`
+  (the detail route), which DOES 404 invisible tournaments — pollers
+  from the live page never leak data through that channel.
+- The host live page only renders the wrapper when
+  `pending_banner_show=True`. For an invisible tournament the live
+  route hits the `not_found=True` placeholder branch BEFORE calling the
+  helper, so `pending_banner_show` is never set and the include is
+  skipped (the conditional `{% if pending_banner_show is defined %}`
+  guards this).
+
+Net effect for a private tournament + non-allowed viewer: detail page
+404, live page placeholder, banner absent on both.
 
 ## Data model touchpoints
 
@@ -110,24 +126,37 @@ packages/atp-dashboard/atp/dashboard/v2/
 ### Helper shape (`routes/ui.py`)
 
 ```python
+from datetime import UTC
+
 def _pending_banner_context(tournament: Tournament) -> dict[str, Any]:
     """Return template context fragments for the pending banner.
 
     Returns ``{"pending_banner_show": False}`` when the banner is not
     applicable; otherwise returns the full set of four keys.
+
+    NB: ``Tournament.pending_deadline`` is declared as
+    ``Mapped[datetime]`` with no ``timezone=True`` flag, so the value
+    comes back tz-naive. We must coerce to UTC before
+    ``isoformat()`` — otherwise the ISO string lacks a ``Z``/offset
+    suffix and the browser's ``new Date(...)`` will parse it in the
+    user's local timezone, producing a countdown that is wrong by the
+    user-vs-server clock skew. The same pattern is already used at
+    ``routes/ui.py:877-887`` for ``starts_at``.
     """
-    show = (
-        tournament.status == TournamentStatus.PENDING
-        and tournament.tenant_id == DEFAULT_TENANT_ID
-    )
-    if not show:
+    if (
+        tournament.status != TournamentStatus.PENDING
+        or tournament.tenant_id != DEFAULT_TENANT_ID
+    ):
         return {"pending_banner_show": False}
+    deadline = tournament.pending_deadline
+    if deadline.tzinfo is None:
+        deadline = deadline.replace(tzinfo=UTC)
     registered = sum(
         1 for p in tournament.participants if p.released_at is None
     )
     return {
         "pending_banner_show": True,
-        "pending_deadline_iso": tournament.pending_deadline.isoformat(),
+        "pending_deadline_iso": deadline.isoformat(),
         "pending_registered_count": registered,
         "pending_planned_count": tournament.num_players,
     }
@@ -137,12 +166,31 @@ The helper is called from both `ui_tournament_detail` and
 `ui_tournament_live` after the visibility gate has admitted the viewer.
 Spread into the existing context dict via `**_pending_banner_context(t)`.
 
+**Hard prerequisite — eager load in `ui_tournament_live`:** the existing
+`session.get(Tournament, ...)` call at `routes/ui.py:804` does NOT load
+participants. The helper accesses `tournament.participants`, which in
+async SQLAlchemy raises `MissingGreenlet` (HTTP 500), not a silent zero.
+Before this change ships, `ui_tournament_live` MUST be converted to:
+
+```python
+tournament = (
+    await session.execute(
+        select(Tournament)
+        .options(selectinload(Tournament.participants))
+        .where(Tournament.id == tournament_id)
+    )
+).scalar_one_or_none()
+```
+
+`ui_tournament_detail` already eager-loads participants for the
+scoreboard (see `routes/ui.py:1232`); no change needed there.
+
 ### `pending_banner_wrapper.html`
 
 ```jinja
 <div id="pending-banner"
      {% if pending_banner_show %}
-     hx-get="/ui/tournaments/{{ tournament.id }}?partial=pending-banner"
+     hx-get="/ui/tournaments/{{ tournament_id }}?partial=pending-banner"
      hx-trigger="every 10s"
      hx-swap="outerHTML"
      {% endif %}
@@ -182,34 +230,45 @@ HTMX polling stops naturally — no need for explicit cancellation.
 
 ```js
 (function () {
-  function tickAll(root) {
-    const els = (root || document).querySelectorAll(
+  // ONE global interval polls the DOM every second and updates every
+  // ``.js-countdown`` element it finds. This avoids the per-element
+  // interval-leak pitfall: with ``hx-swap="outerHTML"`` the old span
+  // detaches from the document, but a per-element ``setInterval``
+  // keeps firing on the detached node — leaking +1 timer every 10 s
+  // for the duration of the pending phase. A single global interval
+  // is unaffected by swaps; ``querySelectorAll`` simply returns the
+  // current set of elements after each swap.
+  function tickAll() {
+    const els = document.querySelectorAll(
       ".js-countdown[data-deadline-iso]"
     );
     for (const el of els) {
-      if (el._intervalId) {
-        clearInterval(el._intervalId);
-      }
-      const deadline = new Date(el.dataset.deadlineIso).getTime();
-      function tick() {
-        const remainingMs = Math.max(0, deadline - Date.now());
-        const totalSec = Math.floor(remainingMs / 1000);
-        const m = Math.floor(totalSec / 60);
-        const s = totalSec % 60;
-        el.textContent = m + ":" + String(s).padStart(2, "0");
-      }
-      tick();
-      el._intervalId = setInterval(tick, 1000);
+      const deadlineMs = new Date(el.dataset.deadlineIso).getTime();
+      const remainingMs = Math.max(0, deadlineMs - Date.now());
+      const totalSec = Math.floor(remainingMs / 1000);
+      const h = Math.floor(totalSec / 3600);
+      const m = Math.floor((totalSec % 3600) / 60);
+      const s = totalSec % 60;
+      // Multi-hour deadlines render as ``Hh Mm Ss``; sub-hour as
+      // ``M:SS`` so a 5-minute window stays visually compact.
+      el.textContent = h > 0
+        ? h + "h " + m + "m " + s + "s"
+        : m + ":" + String(s).padStart(2, "0");
     }
   }
-  document.addEventListener("DOMContentLoaded", () => tickAll());
-  document.addEventListener("htmx:afterSwap", (e) => tickAll(e.target));
+  // Single timer, started once on page load. No per-element timers,
+  // no rebinding on htmx:afterSwap, no chance of duplication.
+  document.addEventListener("DOMContentLoaded", () => {
+    tickAll();
+    setInterval(tickAll, 1000);
+  });
 })();
 ```
 
-The IIFE keeps helpers off the global namespace. Re-init on
-`htmx:afterSwap` ensures a swapped wrapper element gets a new interval;
-the `clearInterval` guard prevents duplicate timers piling up.
+The IIFE keeps helpers off the global namespace. The single global
+interval handles all `.js-countdown` elements currently in the DOM —
+HTMX swaps replace elements in place, the interval keeps ticking and
+naturally picks up the new ones.
 
 ### Route handler change (`routes/ui.py`)
 
@@ -218,21 +277,50 @@ branch:
 
 ```python
 if partial == "pending-banner":
-    ctx = {"tournament": t, **_pending_banner_context(t)}
-    return templates.TemplateResponse(
+    # Wrapper template needs only the path id, not the full ORM row —
+    # see "Wrapper context contract" note below.
+    ctx = {"tournament_id": t.id, **_pending_banner_context(t)}
+    response = templates.TemplateResponse(
         request=request,
         name="ui/partials/pending_banner_wrapper.html",
         context=ctx,
     )
+    response.headers["Cache-Control"] = "no-store"
+    return response
 ```
+
+**Wrapper context contract:** the wrapper template references
+`tournament_id` (not `tournament.id`) deliberately — it is the minimal
+input the wrapper needs (path id for HTMX URL construction). Both host
+routes must put `tournament_id` in their context:
+
+- `ui_tournament_live` already has the path arg `tournament_id` in
+  scope (and currently in context as `"tournament_id": tournament_id`).
+- `ui_tournament_detail` must add the same key explicitly:
+  `"tournament_id": tournament_id`.
+
+The narrow contract means the partial endpoint can be served without
+loading the full Tournament row into the template context.
 
 In both `ui_tournament_detail` and `ui_tournament_live` full-page
 branches, spread `**_pending_banner_context(t)` into the existing
-context dict.
+context dict. The `match_detail.html` template is also rendered by
+`/ui/matches/{match_id}` (the replay route at `routes/ui.py:652`),
+which has no tournament context — for that caller the spread does NOT
+happen, so the template must conditionally include the wrapper:
 
-In both host templates (`tournament_detail.html`, `match_detail.html`),
-add `{% include "ui/partials/pending_banner_wrapper.html" %}` immediately
-before the existing page `<h2>`.
+```jinja
+{% if pending_banner_show is defined %}
+  {% include "ui/partials/pending_banner_wrapper.html" %}
+{% endif %}
+```
+
+`tournament_detail.html` is only rendered by `ui_tournament_detail`
+which always supplies `pending_banner_show`; the conditional could be
+omitted there but adding it costs nothing and keeps both includes
+identical for grepability.
+
+Add the include immediately before each page's existing `<h2>`.
 
 In `base_ui.html`, add the script tag in `<head>`:
 
@@ -254,7 +342,8 @@ Every 10 s while pending:
   ├─ HTMX fires GET /ui/tournaments/{id}?partial=pending-banner
   ├─ route returns refreshed wrapper + body (counter updated)
   ├─ HTMX swaps outerHTML — wrapper element replaced
-  └─ htmx:afterSwap → JS re-binds countdown to the new <span>
+  └─ Single global JS interval picks up the new <span> on the next
+     1 s tick via querySelectorAll — no rebinding logic needed
 
 When status flips to active (between pulls):
   ├─ next pull returns wrapper with NO hx-trigger, empty body
@@ -273,35 +362,27 @@ When deadline passes but status still pending (race window ≤10 s):
 | Status flips to `active` between pulls | Next pull returns empty wrapper, polling stops, banner gone |
 | Status flips to `cancelled` (rare under shrink) | Same: empty wrapper, polling stops |
 | Deadline expired, status still pending | JS clamps to 0:00; counter still updates; next pull removes banner |
-| `pending_deadline IS NULL` (defensive) | Helper would still emit ISO from `None` → AttributeError; helper returns `pending_banner_show=False` defensively if `pending_deadline is None`. Add explicit check |
+| `Tournament.pending_deadline` is tz-naive | Helper coerces to UTC before `isoformat()` — see helper code above. Without this, JS parses the ISO as the user's local time and the countdown is wrong by the clock skew. |
+| `Tournament.pending_deadline IS NULL` | Schema makes this impossible (`Mapped[datetime]`, `nullable=False`, `server_default=func.now()`). The helper does NOT add a defensive `is not None` guard — that would be dead code per pyrefly and would mask a future schema break that should fail loudly instead. |
 | Viewer's clock is wrong | Countdown is off by the clock skew; counter is server-authoritative; eventually the next pull replaces wrapper with empty when status flips |
 | Tournament not found at partial endpoint | 404 (same as `?partial=live`) |
 | Non-default tenant | `pending_banner_show=False`, empty wrapper rendered |
-| Lazy-load on `tournament.participants` | Both route handlers must `selectinload(Tournament.participants)` before calling helper. The detail route already does this for the scoreboard; verify the live route too. If lazy-load is a risk, helper returns 0 silently rather than raising — but the right fix is eager load. |
-| HTMX swap re-init runs multiple times | `clearInterval(el._intervalId)` before setting new id — no timer accumulation |
+| Lazy-load on `tournament.participants` | Hard prerequisite — see "Hard prerequisite" note next to the helper. Both route handlers MUST eager-load participants. The fix for `ui_tournament_live` is non-optional: without `selectinload(Tournament.participants)` the helper raises `MissingGreenlet` (HTTP 500). No fallback is added in the helper because that would mask deploy bugs. |
+| HTMX swap | Single global interval queries the DOM each tick — no per-element timers, no leak. Old detached spans are garbage-collected normally. |
 | Multiple viewers polling simultaneously | Each viewer hits the route independently. Counter is `len(participants)` — cheap. No new caching needed. |
-| Private tournament + non-allowed viewer | Parent page 404 → partial endpoint also 404 (same visibility gate fires before `partial` branch) |
-
-### Defensive helper update
-
-```python
-def _pending_banner_context(tournament: Tournament) -> dict[str, Any]:
-    show = (
-        tournament.status == TournamentStatus.PENDING
-        and tournament.tenant_id == DEFAULT_TENANT_ID
-        and tournament.pending_deadline is not None
-    )
-    if not show:
-        return {"pending_banner_show": False}
-    ...
-```
+| Private tournament + non-allowed viewer | Parent page 404 (detail route) → partial endpoint also 404, since the partial branch is on the detail route which runs the visibility gate first. The live route renders an in-page placeholder (`not_found=True` flag) for invisible tournaments rather than raising 404, but the partial endpoint lives on the detail route and inherits the detail route's strict 404. The host live page therefore never even reaches the banner-rendering branch when the tournament is invisible — `pending_banner_show=False` triggers the empty-wrapper case. |
+| Multi-hour pending phase (>60 min) | Countdown formats as `Hh Mm Ss` instead of overflowing minutes (e.g. `2h 5m 30s`, not `125:30`). Sub-hour stays compact `M:SS`. |
 
 ## Performance
 
 - Counter is `O(participants)` in Python (no DB hit beyond what scoreboard already loads).
 - 10 s HTMX poll × few admin viewers × pending phase (typically minutes) = negligible load.
-- No caching needed in v1.
-- JS interval is one `setInterval` per page; cleared and reset on swap.
+- No caching needed in v1. The partial endpoint emits
+  `Cache-Control: no-store` to prevent browser back/forward cache from
+  serving a stale counter.
+- JS interval is exactly one global `setInterval` per page, started
+  once on `DOMContentLoaded` and never cleared. HTMX swaps don't
+  affect it.
 
 ## Security
 
@@ -317,18 +398,48 @@ def _pending_banner_context(tournament: Tournament) -> dict[str, Any]:
 - `pending` + DEFAULT_TENANT_ID → returns all 4 fields; counter equals number of un-released participants.
 - `active` / `completed` / `cancelled` → returns `{"pending_banner_show": False}` only.
 - Non-default tenant → `{"pending_banner_show": False}`.
-- `pending_deadline IS None` → `{"pending_banner_show": False}`.
 - Released participants (released_at set) excluded from counter.
+- **Timezone:** when `Tournament.pending_deadline` is tz-naive (the
+  default per the schema), the returned `pending_deadline_iso` ends in
+  `+00:00`. When already tz-aware, it is returned unchanged.
 
 ### Integration (`tests/integration/dashboard/test_pending_banner.py`)
 
 **Status gate:**
 
 - Pending tournament: parent page contains `data-deadline-iso` and
-  `Registered: N`.
+  `Registered: N`. Also assert the ISO string has a UTC marker —
+  `assert "+00:00" in r.text or "Z" in r.text` — otherwise the
+  timezone fix has regressed.
 - Active / completed / cancelled: parent page contains the wrapper
   `<div id="pending-banner">` but with no `hx-trigger` and no body.
 - 404 on `?partial=pending-banner` for non-existent tournament.
+
+**Status flip between pulls (race window):**
+
+- Seed a pending tournament. Fetch `?partial=pending-banner`, assert
+  `hx-trigger` present.
+- Flip the tournament to `active`. Fetch `?partial=pending-banner`
+  again, assert response body has the wrapper element with NO
+  `hx-trigger` and an empty interior. This is the swap that gracefully
+  retires the banner.
+
+**Non-default tenant — parent page integration:**
+
+- Render `/ui/tournaments/{id}` for a tournament with
+  `tenant_id != DEFAULT_TENANT_ID`. Assert the wrapper renders empty
+  (no `hx-trigger`, no body). The unit-level helper test covers the
+  helper's return value; this integration test covers the wrapper's
+  template-level conditional and ensures the tenant filter is wired
+  correctly all the way through.
+
+**Wrapper URL parity (regression for v3 fix):**
+
+- For a pending tournament, fetch both `/ui/tournaments/{id}` and
+  `/ui/tournaments/{id}/live`. Assert each contains
+  `hx-get="/ui/tournaments/{id}?partial=pending-banner"` literally —
+  not `/ui/tournaments/?partial=...` (the bug shape if `tournament_id`
+  is missing from the live route's context).
 
 **Counter accuracy:**
 
@@ -353,8 +464,8 @@ def _pending_banner_context(tournament: Tournament) -> dict[str, Any]:
 
 **Cache headers:**
 
-- The partial endpoint does NOT set `Cache-Control: public` — counter
-  data must not be served from a CDN cache.
+- The partial endpoint emits exactly `Cache-Control: no-store`. Assert
+  the value, not just presence.
 
 ### JS-tick
 
@@ -382,6 +493,9 @@ None. No DB changes, no schema bumps. Single deploy.
   UI shows an empty grid for pending tournaments. The banner improves
   this without changing the cards UI itself; a follow-up could add a
   proper "Waiting for round 1" placeholder.
+- **Inline styles in `pending_banner.html`** — colors and layout are
+  inline for v1. A follow-up can extract a `.pending-banner` CSS class
+  to `static/v2/css/ui.css` once the visual is locked in.
 
 ## References
 
