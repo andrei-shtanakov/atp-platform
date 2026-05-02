@@ -169,18 +169,27 @@ class TestRunnerPopulatesRoundPayoffsForElFarol:
         assert len(ep.round_payoffs) == 3
 
     @pytest.mark.anyio
-    async def test_el_farol_per_day_payoff_equals_happy_count(self) -> None:
+    @pytest.mark.parametrize("scoring_mode", ["happy_only", "happy_minus_crowded"])
+    async def test_el_farol_per_day_payoff_equals_happy_count_no_crowding(
+        self, scoring_mode: str
+    ) -> None:
         # GIVEN a 3-day, 2-agent El Farol match with disjoint contiguous picks
         # (morning [0,1,2] vs evening [13,14,15]) and capacity_threshold=2.
         # Each player fills 3 slots alone → happy=3, crowded=0 per day →
         # per-day step payoff is 3.0 under happy_only (the new default) and
-        # also 3.0 under happy_minus_crowded since crowded=0.
-        ep = await _run_el_farol_match(num_rounds=3)
+        # also 3.0 under happy_minus_crowded since crowded=0 (happy − 0 =
+        # happy). Mode-agnostic by design — runs against both modes to
+        # lock in the equivalence.
+        ep = await _run_el_farol_match(num_rounds=3, scoring_mode=scoring_mode)
 
         # THEN every day records a per-day payoff of 3.0 for both players
         for day_index in range(3):
-            assert ep.round_payoffs[day_index]["player_0"] == pytest.approx(3.0)
-            assert ep.round_payoffs[day_index]["player_1"] == pytest.approx(3.0)
+            for pid in ("player_0", "player_1"):
+                assert ep.round_payoffs[day_index][pid] == pytest.approx(3.0), (
+                    f"per-day payoff for {pid} on day {day_index} should be "
+                    f"3.0 under scoring_mode={scoring_mode!r}, got "
+                    f"{ep.round_payoffs[day_index][pid]}"
+                )
 
     @pytest.mark.anyio
     async def test_el_farol_legacy_mode_round_payoffs_sum_diverges_from_cumulative(
@@ -208,5 +217,6 @@ class TestRunnerPopulatesRoundPayoffsForElFarol:
             )
             assert ep.payoffs[pid] == pytest.approx(90.0), (
                 f"expected cumulative ep.payoffs[{pid}] to equal 90.0 "
-                f"(9 / max(0, 0.1) across 3 days), got {ep.payoffs[pid]}"
+                f"(t_happy=9 / max(t_crowded=0, 0.1) = 9 / 0.1 = 90.0 "
+                f"across 3 days), got {ep.payoffs[pid]}"
             )

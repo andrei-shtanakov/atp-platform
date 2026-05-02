@@ -452,3 +452,29 @@ def test_to_prompt_legacy_describes_ratio_formula():
     assert "happy" in prompt.lower()
     # Legacy: explicit ratio with the 0.1 floor.
     assert "max(total_crowded_slots, 0.1)" in prompt or "max(t_crowded, 0.1)" in prompt
+
+
+def test_get_payoffs_legacy_mode_returns_ratio():
+    """In happy_minus_crowded mode, get_payoffs() returns
+    t_happy / max(t_crowded, 0.1). Direct seeding isolates the formula
+    from the per-round path."""
+    cfg = ElFarolConfig(
+        num_players=2,
+        num_slots=4,
+        max_total_slots=4,
+        capacity_threshold=3,
+        scoring_mode="happy_minus_crowded",
+    )
+    g = ElFarolBar(cfg)
+    g.reset()
+
+    # Seed counters directly. Player 0: t_happy=8, t_crowded=4 → 2.0
+    # Player 1: t_happy=3, t_crowded=0 → 30.0 (floor: max(0, 0.1) = 0.1)
+    g._t_happy["player_0"] = 8.0
+    g._t_crowded["player_0"] = 4.0
+    g._t_happy["player_1"] = 3.0
+    g._t_crowded["player_1"] = 0.0
+
+    final = g.get_payoffs()
+    assert final["player_0"] == pytest.approx(2.0)
+    assert final["player_1"] == pytest.approx(30.0)
