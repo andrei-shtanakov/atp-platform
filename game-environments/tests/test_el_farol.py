@@ -423,8 +423,11 @@ def test_to_prompt_happy_only_describes_no_penalty():
     # New default: no ratio formula, no negative penalty mention.
     assert "t_happy / max" not in prompt
     assert "/ max(total_crowded_slots" not in prompt
-    # Should mention that crowded slots give 0 / no penalty.
-    assert "no penalty" in prompt.lower() or "0" in prompt
+    # Should mention that crowded slots have no penalty. Dropped the
+    # ``or "0" in prompt`` fallback because the prompt unconditionally
+    # contains "0" (slot range, deadline string, etc.) — it would mask
+    # a regression where the "no penalty" phrasing disappears.
+    assert "no penalty" in prompt.lower()
 
 
 def test_to_prompt_legacy_describes_ratio_formula():
