@@ -42,7 +42,7 @@
       <span><a href="/ui/matches">Browse El Farol matches →</a></span>
       {% endif %}
     {% endif %}
-    {% if t.game_type == "el_farol" and t.status == "completed" and not t.join_token %}
+    {% if t.game_type == "el_farol" and t.status == "completed" and t.join_token is none %}
     <span><a href="/ui/tournaments/{{ t.id }}/winners">Winners →</a></span>
     {% endif %}
     <span>

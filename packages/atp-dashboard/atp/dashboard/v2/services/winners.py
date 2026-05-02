@@ -199,9 +199,10 @@ async def _winners_query(
     result = await session.execute(stmt)
     rows = result.all()
 
-    # Dense ranking — ties share a rank; the next non-tied score jumps
-    # to len(seen_so_far) + 1. Pure post-processing keeps the SQL
-    # portable across SQLite (test DB) and Postgres (prod DB).
+    # Competition ranking ("1224" / "rank with gaps") — ties share a
+    # rank; the next non-tied score jumps to len(seen_so_far) + 1
+    # (e.g. ``[100, 100, 90] → [1, 1, 3]``). Pure post-processing keeps
+    # the SQL portable across SQLite (test DB) and Postgres (prod DB).
     #
     # ``_NO_SCORE`` is a unique sentinel so the first iteration always
     # bumps ``rank`` even when the first row's score is None — without
@@ -304,7 +305,7 @@ async def _hall_of_fame_query(
             Agent.name == agg_stmt.c.name,
             Agent.deleted_at.is_(None),
         )
-        .order_by(Agent.updated_at.desc(), Agent.id.desc())
+        .order_by(Agent.id.desc(), Agent.updated_at.desc())
         .limit(1)
         .correlate(agg_stmt)
         .scalar_subquery()

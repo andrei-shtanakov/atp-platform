@@ -340,8 +340,8 @@ async def test_winners_query_all_null_scores_get_rank_one(
     session: AsyncSession,
 ):
     """Regression: when every participant has total_score=None, ranks
-    must still start at 1 (not 0). The dense-ranking sentinel must not
-    collide with NULL scores."""
+    must still start at 1 (not 0). The competition-ranking sentinel
+    must not collide with NULL scores."""
     t = await _make_tournament(session, num_players=2)
     alice = await _make_user(session, "alice")
     bob = await _make_user(session, "bob")
@@ -357,7 +357,7 @@ async def test_winners_query_all_null_scores_get_rank_one(
 
     rows = await _winners_query(session, t.id)
     assert len(rows) == 2
-    # Both NULL-score rows tie at rank 1 (dense ranking, ties share a rank).
+    # Both NULL-score rows tie at rank 1 (competition ranking, ties share a rank).
     assert [r.rank for r in rows] == [1, 1]
 
 
@@ -679,3 +679,62 @@ async def test_hall_of_fame_mixed_extant_and_deleted_versions(
     assert e.agent_name == "alfa"
     # Description comes from the latest non-deleted version (v2).
     assert e.agent_description == "new description"
+
+
+@pytest.mark.anyio
+async def test_hall_of_fame_latest_desc_picks_newest_version_not_most_edited(
+    session: AsyncSession,
+):
+    """Regression for Copilot review on PR #118: ``latest_desc`` must
+    pick the newest VERSION (highest Agent.id), not the most-recently-
+    updated row. If v1 is edited after v2 was created, v2 (higher id)
+    must still win."""
+    alice = await _make_user(session, "alice")
+    # v1 is created first → lower Agent.id.
+    v1 = await _make_agent(
+        session,
+        owner=alice,
+        name="alfa",
+        version="1",
+        description="v1 desc",
+    )
+    # v2 is created second → higher Agent.id.
+    v2 = await _make_agent(
+        session,
+        owner=alice,
+        name="alfa",
+        version="2",
+        description="v2 desc",
+    )
+    # Now simulate "v1 edited after v2 created" — bump v1.updated_at
+    # to be later than v2.updated_at by direct ORM update.
+    v1.updated_at = datetime(2026, 12, 31, 23, 59, 59)
+    v1.description = "v1 edited later"
+    await session.flush()
+
+    t1 = await _make_tournament(session, name="T1")
+    t2 = await _make_tournament(session, name="T2")
+    p1 = await _make_participant(
+        session,
+        tournament=t1,
+        user=alice,
+        agent=v1,
+        agent_name="alfa",
+        total_score=10.0,
+    )
+    p1.released_at = datetime(2026, 5, 1, 13, 0, 0)
+    await session.flush()
+    await _make_participant(
+        session,
+        tournament=t2,
+        user=alice,
+        agent=v2,
+        agent_name="alfa",
+        total_score=20.0,
+    )
+    await session.commit()
+
+    total, entries = await _hall_of_fame_query(session, limit=50, offset=0)
+    assert total == 1
+    # v2 (higher Agent.id) wins regardless of v1's later updated_at.
+    assert entries[0].agent_description == "v2 desc"
