@@ -764,9 +764,31 @@ class ElFarolBar(Game):
     # ------------------------------------------------------------------
 
     def to_prompt(self) -> str:
-        """Describe the El Farol scenario for LLM agents."""
+        """Describe the El Farol scenario for LLM agents.
+
+        Branches on ``ElFarolConfig.scoring_mode`` so the explanation
+        matches the active formula. See ``get_payoffs()`` for the
+        mode-by-mode contract.
+        """
         c = self._ef_config
         slot_hours = c.num_slots * c.slot_duration
+        if c.scoring_mode == "happy_only":
+            scoring_block = [
+                "Scoring:",
+                "  Each happy slot you attend = +1 (no penalty for crowded).",
+                "  round_score = number of happy slots that day.",
+                "  final_score = total happy slots across all days.",
+                f"  (must attend >= {c.min_total_hours} h to avoid disqualification)",
+            ]
+        else:  # happy_minus_crowded
+            scoring_block = [
+                "Scoring:",
+                "  Each happy slot = +1, each crowded slot = −1.",
+                "  round_score = happy slots − crowded slots.",
+                "  final_score = total_happy_slots / max(total_crowded_slots, 0.1)",
+                f"  (must attend >= {c.min_total_hours} h to avoid disqualification)",
+            ]
+
         return "\n".join(
             [
                 f"This is the El Farol Bar Problem with {c.num_players} players.",
@@ -785,9 +807,7 @@ class ElFarolBar(Game):
                 "a slot, it becomes *crowded*.",
                 "- You can only observe past attendance — not what others plan today.",
                 "",
-                "Scoring:",
-                "  score = total_happy_slots / max(total_crowded_slots, 0.1)",
-                f"  (must attend >= {c.min_total_hours} h to avoid disqualification)",
+                *scoring_block,
                 "",
                 "Strategy note:",
                 "  The Nash equilibrium has each player "

@@ -405,3 +405,40 @@ def test_observation_includes_t_crowded_in_both_modes():
         assert "your_t_crowded_slots" in obs.game_state, (
             f"mode={mode} missing your_t_crowded_slots"
         )
+
+
+def test_to_prompt_happy_only_describes_no_penalty():
+    """to_prompt() for happy_only mode must describe the new scoring
+    rule (no penalty for crowded), not the legacy ratio formula."""
+    cfg = ElFarolConfig(
+        num_players=4,
+        num_slots=8,
+        capacity_threshold=2,
+        scoring_mode="happy_only",
+    )
+    g = ElFarolBar(cfg)
+    prompt = g.to_prompt()
+
+    assert "happy" in prompt.lower()
+    # New default: no ratio formula, no negative penalty mention.
+    assert "t_happy / max" not in prompt
+    assert "/ max(total_crowded_slots" not in prompt
+    # Should mention that crowded slots give 0 / no penalty.
+    assert "no penalty" in prompt.lower() or "0" in prompt
+
+
+def test_to_prompt_legacy_describes_ratio_formula():
+    """to_prompt() for happy_minus_crowded mode must describe the
+    legacy ratio formula."""
+    cfg = ElFarolConfig(
+        num_players=4,
+        num_slots=8,
+        capacity_threshold=2,
+        scoring_mode="happy_minus_crowded",
+    )
+    g = ElFarolBar(cfg)
+    prompt = g.to_prompt()
+
+    assert "happy" in prompt.lower()
+    # Legacy: explicit ratio with the 0.1 floor.
+    assert "max(total_crowded_slots, 0.1)" in prompt or "max(t_crowded, 0.1)" in prompt
