@@ -131,6 +131,34 @@ async def _wait_for_completion(
     )
 
 
+async def _check_winners_page(
+    *,
+    server: str,
+    tournament_id: int,
+    expected_agent_names: list[str],
+    verify_ssl: bool,
+) -> None:
+    """Fetch the winners page for the just-completed tournament and
+    assert each expected agent name appears in the rendered HTML.
+
+    Raises ``RuntimeError`` on non-200 status or missing agent names so
+    the caller can convert it into a smoke failure exit.
+    """
+    winners_url = f"{server.rstrip('/')}/ui/tournaments/{tournament_id}/winners"
+    async with httpx.AsyncClient(verify=verify_ssl, timeout=10) as client:
+        resp = await client.get(winners_url)
+    if resp.status_code != 200:
+        raise RuntimeError(
+            f"winners page HTTP {resp.status_code} for tournament "
+            f"{tournament_id}; body={resp.text[:200]!r}"
+        )
+    missing = [name for name in expected_agent_names if name not in resp.text]
+    if missing:
+        raise RuntimeError(
+            f"winners page rendered but missing agent names: {missing!r}"
+        )
+
+
 async def _run() -> int:
     args = _parse_args()
     logging.basicConfig(
@@ -195,6 +223,22 @@ async def _run() -> int:
     bot_results = await asyncio.gather(*bot_tasks, return_exceptions=True)
 
     print(f"tournament {t_id} status={final.get('status')!r}")
+
+    # Smoke-check that the public winners poster renders for the
+    # just-completed tournament — catches route deploy regressions.
+    expected_agent_names = [f"{BOT_AGENT_PREFIX}-{i}" for i in range(NUM_BOTS)]
+    try:
+        await _check_winners_page(
+            server=args.server,
+            tournament_id=t_id,
+            expected_agent_names=expected_agent_names,
+            verify_ssl=verify_ssl,
+        )
+        print(f"  ✓ winners page renders ({len(expected_agent_names)} agents)")
+    except Exception as e:
+        print(f"FAIL: winners page check: {e}", file=sys.stderr)
+        return 1
+
     failures = 0
     for res in bot_results:
         if isinstance(res, Exception):
