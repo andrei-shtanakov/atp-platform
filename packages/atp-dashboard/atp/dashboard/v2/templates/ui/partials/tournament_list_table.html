@@ -18,6 +18,16 @@
             <span class="watch-live-dot"></span>Watch live
         </a>
         {% endif %}
+        {% if t.status in ("pending", "active") and user and (user.is_admin or t.created_by == user.id) %}
+        <a href="#" class="cancel-tournament-link"
+           hx-post="/api/v1/tournaments/{{ t.id }}/cancel"
+           hx-confirm="Cancel tournament #{{ t.id }}? This cannot be undone."
+           hx-swap="none"
+           hx-on::after-request="if(event.detail.successful) htmx.ajax('GET', '/ui/tournaments?partial=1&page={{ page }}', '#tournament-table-body')"
+           title="Cancel this tournament early">
+            Cancel
+        </a>
+        {% endif %}
     </td>
     <td>
         {% if t.status in ("pending", "active") %}
