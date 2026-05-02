@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta
 
 import pytest
@@ -104,10 +105,17 @@ async def test_hof_renders_top_agents(
 
     r = await client.get("/ui/leaderboard/el-farol")
     assert r.status_code == 200
-    # bob (30) ranks above alice (20) by total score
-    bob_idx = r.text.find("beta")
-    alice_idx = r.text.find("alfa")
-    assert 0 < bob_idx < alice_idx
+    # bob (30) ranks above alice (20) by total score.
+    # Extract the leaderboard <tbody> contents — that's where the agent
+    # names should appear in score-DESC order.
+    tbody = re.search(r"<tbody>(.*?)</tbody>", r.text, re.DOTALL)
+    assert tbody is not None, "no <tbody> in HoF response"
+    body = tbody.group(1)
+    beta_idx = body.find("beta")
+    alfa_idx = body.find("alfa")
+    assert 0 <= beta_idx < alfa_idx, (
+        f"expected 'beta' before 'alfa' inside <tbody>, got {beta_idx=} {alfa_idx=}"
+    )
 
 
 @pytest.mark.anyio
@@ -123,3 +131,66 @@ async def test_hof_strict_bounds(
     ):
         r = await client.get(path)
         assert r.status_code == 422, path
+
+
+@pytest.mark.anyio
+async def test_hof_offset_overshoot_shows_back_link_not_empty_message(
+    db_session: AsyncSession,
+    disable_dashboard_auth,
+    client: AsyncClient,
+):
+    """When offset exceeds total but tournaments exist, render a 'no
+    entries on this page' message with a link back to page 1, not the
+    misleading 'no tournaments' empty state."""
+    # Seed exactly one qualifying participant so total=1.
+    starts = datetime(2026, 5, 1, 12, 0, 0)
+    alice = User(
+        username="alice",
+        email="a@e.com",
+        hashed_password="x",
+        is_admin=False,
+        is_active=True,
+    )
+    db_session.add(alice)
+    await db_session.flush()
+    a = Agent(
+        tenant_id=DEFAULT_TENANT_ID,
+        name="alfa",
+        agent_type="tournament",
+        owner_id=alice.id,
+        purpose="tournament",
+    )
+    db_session.add(a)
+    await db_session.flush()
+    t = Tournament(
+        tenant_id=DEFAULT_TENANT_ID,
+        game_type="el_farol",
+        config={"name": "T"},
+        status=TournamentStatus.COMPLETED,
+        starts_at=starts,
+        ends_at=starts + timedelta(minutes=10),
+        num_players=2,
+        total_rounds=5,
+        round_deadline_s=30,
+        join_token=None,
+        pending_deadline=starts,
+    )
+    db_session.add(t)
+    await db_session.flush()
+    db_session.add(
+        Participant(
+            tournament_id=t.id,
+            user_id=alice.id,
+            agent_id=a.id,
+            agent_name="alfa",
+            total_score=10.0,
+        )
+    )
+    await db_session.commit()
+
+    r = await client.get("/ui/leaderboard/el-farol?limit=10&offset=50")
+    assert r.status_code == 200
+    assert "No entries on this page." in r.text
+    assert "Back to first page" in r.text
+    # The misleading empty-state copy must NOT appear:
+    assert "No completed El Farol tournaments yet." not in r.text

@@ -47,8 +47,14 @@
     {% endfor %}
 </nav>
 {% endif %}
-{% else %}
+
+{% elif total == 0 %}
 <p style="color:#888">No completed El Farol tournaments yet.</p>
+{% else %}
+<p style="color:#888">
+    No entries on this page.
+    <a href="/ui/leaderboard/el-farol?limit={{ limit }}&offset=0">Back to first page →</a>
+</p>
 {% endif %}
 
 <p style="margin-top:1.5rem">

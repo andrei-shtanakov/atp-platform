@@ -99,18 +99,18 @@ async def get_hall_of_fame_html(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> HTMLResponse:
-    """Render the public El Farol Hall of Fame with HTMX-style pagination."""
+    """Render the public El Farol Hall of Fame leaderboard page."""
     cache = get_hof_cache()
     key = hof_cache_key(limit=limit, offset=offset)
     cached = cache.get(key)
-    if cached is None:
+    if cached is not None:
+        total, entries = cached
+    else:
         # Module-attribute reference so tests can monkeypatch.
         total, entries = await winners_service._hall_of_fame_query(
             session, limit=limit, offset=offset
         )
         cache.put(key, (total, entries))
-    else:
-        total, entries = cached
 
     page = (offset // limit) + 1
     total_pages = max(1, (total + limit - 1) // limit)
