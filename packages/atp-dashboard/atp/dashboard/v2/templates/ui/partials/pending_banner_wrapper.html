@@ -1,0 +1,16 @@
+{# Wrapper used both at initial page render and as the HTMX swap target.
+   When pending_banner_show is true, the wrapper carries hx-get/-trigger
+   so it polls itself every 10 s. When false, the wrapper renders empty
+   AND without hx-trigger, which gracefully stops HTMX polling once the
+   tournament transitions out of pending. #}
+<div id="pending-banner"
+     {% if pending_banner_show %}
+     hx-get="/ui/tournaments/{{ tournament_id }}?partial=pending-banner"
+     hx-trigger="every 10s"
+     hx-swap="outerHTML"
+     {% endif %}
+>
+  {% if pending_banner_show %}
+    {% include "ui/partials/pending_banner.html" %}
+  {% endif %}
+</div>
