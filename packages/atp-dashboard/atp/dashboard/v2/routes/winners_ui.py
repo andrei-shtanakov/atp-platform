@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import HTMLResponse
 
 from atp.dashboard.models import DEFAULT_TENANT_ID
 from atp.dashboard.tournament.models import Tournament, TournamentStatus
 from atp.dashboard.v2.dependencies import DBSession
+from atp.dashboard.v2.rate_limit import limiter
 from atp.dashboard.v2.services import winners as winners_service
 from atp.dashboard.v2.services.winners import (
     CAPACITY_RATIO,
@@ -36,12 +37,13 @@ def _format_duration(seconds: int) -> str:
 
 
 @router.get("/ui/tournaments/{tournament_id}/winners", response_class=HTMLResponse)
+@limiter.limit("120/minute")
 async def get_winners_html(
     request: Request,
-    response: Response,
     tournament_id: int,
     session: DBSession,
 ) -> HTMLResponse:
+    """Render the winners poster for a completed public El Farol tournament."""
     t = await session.get(Tournament, tournament_id)
     if t is None:
         raise _NOT_FOUND
@@ -68,11 +70,10 @@ async def get_winners_html(
         duration = _format_duration(int((t.ends_at - t.starts_at).total_seconds()))
 
     templates = request.app.state.templates
-    response.headers["Cache-Control"] = _CACHE_CONTROL
     return templates.TemplateResponse(
-        "ui/winners_tournament.html",
-        {
-            "request": request,
+        request=request,
+        name="ui/winners_tournament.html",
+        context={
             "active_page": "tournaments",
             "tournament": t,
             "tournament_name": name,

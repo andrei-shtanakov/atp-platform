@@ -5,40 +5,15 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 import pytest
-from httpx import ASGITransport, AsyncClient
+from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from atp.dashboard.database import Database
 from atp.dashboard.models import DEFAULT_TENANT_ID, Agent, User
 from atp.dashboard.tournament.models import (
     Participant,
     Tournament,
     TournamentStatus,
 )
-from atp.dashboard.v2.dependencies import get_db_session
-from atp.dashboard.v2.factory import create_test_app
-from atp.dashboard.v2.services.winners import reset_caches_for_tests
-
-
-@pytest.fixture(autouse=True)
-def _reset_caches():
-    reset_caches_for_tests()
-    yield
-    reset_caches_for_tests()
-
-
-@pytest.fixture
-async def client(test_database: Database):
-    app = create_test_app()
-
-    async def _override_session():
-        async with test_database.session() as s:
-            yield s
-
-    app.dependency_overrides[get_db_session] = _override_session
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as c:
-        yield c
 
 
 async def _seed_tournament(
