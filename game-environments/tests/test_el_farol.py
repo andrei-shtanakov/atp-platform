@@ -181,8 +181,16 @@ def test_format_state_populated_history_aggregates_attendance():
     assert state["attendance_by_round"][1] == [0, 0, 0, 3]
 
 
-def test_compute_round_payoffs_happy_minus_crowded():
-    g = _game(n=3, num_slots=4)
+def test_compute_round_payoffs_legacy_mode_happy_minus_crowded():
+    g = ElFarolBar(
+        ElFarolConfig(
+            num_players=3,
+            num_slots=4,
+            capacity_threshold=3,
+            max_total_slots=4,
+            scoring_mode="happy_minus_crowded",
+        )
+    )
     actions = {
         0: {"intervals": [[0, 1]]},
         1: {"intervals": [[1, 2]]},
@@ -226,12 +234,11 @@ def test_scoring_mode_validation_rejects_unknown():
         ElFarolConfig(num_players=4, scoring_mode="bogus")  # type: ignore[arg-type]
 
 
-def test_scoring_mode_temporary_default_is_legacy():
-    """Until Task 6 flips it, the default remains happy_minus_crowded
-    so all existing tests keep passing during incremental rollout.
-    Task 6 changes this assertion to assert happy_only."""
+def test_scoring_mode_default_is_happy_only():
+    """The default scoring_mode is happy_only — the new platform-wide
+    rule. Tournament total_score will be sum of per-round happy values."""
     cfg = ElFarolConfig(num_players=4)
-    assert cfg.scoring_mode == "happy_minus_crowded"
+    assert cfg.scoring_mode == "happy_only"
 
 
 def test_scoring_mode_dataclass_round_trip():
