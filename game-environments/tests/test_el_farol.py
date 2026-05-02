@@ -307,3 +307,101 @@ def test_step_happy_only_accumulates_t_happy_and_t_crowded():
     # _t_crowded accumulated despite not being in the formula.
     assert g._t_crowded["player_0"] == 1.0
     assert g._t_happy["player_0"] == 1.0
+
+
+def test_get_payoffs_happy_only_returns_t_happy_sum():
+    """In happy_only mode, get_payoffs() returns t_happy directly
+    (count, not ratio). Crowded slots have no influence on the final."""
+    cfg = ElFarolConfig(
+        num_players=2,
+        num_slots=4,
+        max_total_slots=4,
+        capacity_threshold=3,
+        scoring_mode="happy_only",
+    )
+    g = ElFarolBar(cfg)
+    g.reset()
+
+    # Seed counters directly — bypass step() so the test isolates
+    # get_payoffs() formula from the per-round path.
+    g._t_happy["player_0"] = 5.0
+    g._t_crowded["player_0"] = 3.0
+    g._t_happy["player_1"] = 2.0
+    g._t_crowded["player_1"] = 4.0
+
+    final = g.get_payoffs()
+    # happy_only: final = t_happy (regardless of t_crowded)
+    assert final["player_0"] == 5.0
+    assert final["player_1"] == 2.0
+
+
+def test_get_payoffs_happy_only_disqualification_still_applies():
+    """min_total_hours disqualification applies before the formula in
+    both modes."""
+    cfg = ElFarolConfig(
+        num_players=2,  # engine requires >= 2
+        num_slots=4,
+        max_total_slots=4,
+        capacity_threshold=2,
+        slot_duration=0.5,
+        min_total_hours=10.0,  # require 10h, will not be met
+        scoring_mode="happy_only",
+    )
+    g = ElFarolBar(cfg)
+    g.reset()
+
+    # Attended only 1 slot (0.5 h) — well under 10 h threshold.
+    g._t_happy["player_0"] = 1.0
+    g._t_crowded["player_0"] = 0.0
+
+    final = g.get_payoffs()
+    assert final["player_0"] == 0.0  # disqualified
+
+
+def test_happy_only_per_round_payoff_is_non_negative():
+    """Property test: under happy_only, every per-round payoff ≥ 0
+    regardless of action choices. Under legacy this could be negative."""
+    import random
+
+    cfg = ElFarolConfig(
+        num_players=4,
+        num_slots=8,
+        capacity_threshold=2,
+        max_intervals=2,
+        max_total_slots=4,
+        scoring_mode="happy_only",
+    )
+    g = ElFarolBar(cfg)
+    g.reset()
+    rng = random.Random(42)
+
+    for _ in range(100):
+        actions: dict[int, dict[str, list[list[int]]]] = {}
+        for p_idx in range(cfg.num_players):
+            start = rng.randint(0, cfg.num_slots - 2)
+            end = rng.randint(start, min(start + 2, cfg.num_slots - 1))
+            actions[p_idx] = {"intervals": [[start, end]]}
+        payoffs = g.compute_round_payoffs(actions)
+        for p_idx, p in enumerate(payoffs):
+            assert p >= 0.0, (
+                f"happy_only payoff must be ≥ 0, got {p} for player {p_idx}"
+            )
+
+
+def test_observation_includes_t_crowded_in_both_modes():
+    """observe(player_id) returns your_t_crowded_slots regardless of
+    scoring_mode — telemetry is mode-independent."""
+    for mode in ("happy_only", "happy_minus_crowded"):
+        cfg = ElFarolConfig(
+            num_players=2,
+            num_slots=4,
+            max_total_slots=4,
+            capacity_threshold=3,
+            scoring_mode=mode,  # type: ignore[arg-type]
+        )
+        g = ElFarolBar(cfg)
+        g.reset()
+        obs = g.observe("player_0")
+        assert "your_t_crowded_slots" in obs.game_state, (
+            f"mode={mode} missing your_t_crowded_slots"
+        )

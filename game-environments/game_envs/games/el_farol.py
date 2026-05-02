@@ -709,7 +709,9 @@ class ElFarolBar(Game):
             total_hours = (th + tc) * c.slot_duration
             if total_hours < c.min_total_hours:
                 result[pid] = 0.0  # disqualified
-            else:
+            elif c.scoring_mode == "happy_only":
+                result[pid] = th
+            else:  # happy_minus_crowded
                 result[pid] = th / max(tc, 0.1)
         return result
 
