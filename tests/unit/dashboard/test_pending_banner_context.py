@@ -2,18 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
 from datetime import datetime, timedelta
 
 import pytest
-from sqlalchemy.ext.asyncio import (
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
+from sqlalchemy.ext.asyncio import AsyncSession
 
-import atp.dashboard.tournament.models  # noqa: F401  (register tables)
-from atp.dashboard.models import DEFAULT_TENANT_ID, Agent, Base, User
+from atp.dashboard.models import DEFAULT_TENANT_ID, Agent, User
 from atp.dashboard.tournament.models import (
     Participant,
     Tournament,
@@ -22,19 +16,8 @@ from atp.dashboard.tournament.models import (
 from atp.dashboard.v2.routes.ui import _pending_banner_context
 
 
-@pytest.fixture
-async def session() -> AsyncIterator[AsyncSession]:
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    factory = async_sessionmaker(engine, expire_on_commit=False)
-    async with factory() as sess:
-        yield sess
-    await engine.dispose()
-
-
 async def _make_tournament(
-    session: AsyncSession,
+    db_session: AsyncSession,
     *,
     status: TournamentStatus = TournamentStatus.PENDING,
     tenant_id: str = DEFAULT_TENANT_ID,
@@ -54,17 +37,17 @@ async def _make_tournament(
         join_token=None,
         pending_deadline=starts + timedelta(minutes=15),
     )
-    session.add(t)
-    await session.flush()
+    db_session.add(t)
+    await db_session.flush()
     return t
 
 
 @pytest.mark.anyio
-async def test_pending_default_tenant_returns_full_context(session: AsyncSession):
-    t = await _make_tournament(session)
-    await session.commit()
+async def test_pending_default_tenant_returns_full_context(db_session: AsyncSession):
+    t = await _make_tournament(db_session)
+    await db_session.commit()
     # Refresh to ensure participants relationship is empty list, not unloaded.
-    await session.refresh(t, attribute_names=["participants"])
+    await db_session.refresh(t, attribute_names=["participants"])
 
     ctx = _pending_banner_context(t)
     assert ctx["pending_banner_show"] is True
@@ -76,7 +59,7 @@ async def test_pending_default_tenant_returns_full_context(session: AsyncSession
     ].endswith("Z")
 
 
-async def _make_user(session: AsyncSession, username: str) -> User:
+async def _make_user(db_session: AsyncSession, username: str) -> User:
     u = User(
         username=username,
         email=f"{username}@example.com",
@@ -84,12 +67,12 @@ async def _make_user(session: AsyncSession, username: str) -> User:
         is_admin=False,
         is_active=True,
     )
-    session.add(u)
-    await session.flush()
+    db_session.add(u)
+    await db_session.flush()
     return u
 
 
-async def _make_agent(session: AsyncSession, *, owner: User, name: str) -> Agent:
+async def _make_agent(db_session: AsyncSession, *, owner: User, name: str) -> Agent:
     a = Agent(
         tenant_id=DEFAULT_TENANT_ID,
         name=name,
@@ -97,52 +80,48 @@ async def _make_agent(session: AsyncSession, *, owner: User, name: str) -> Agent
         owner_id=owner.id,
         purpose="tournament",
     )
-    session.add(a)
-    await session.flush()
+    db_session.add(a)
+    await db_session.flush()
     return a
 
 
 @pytest.mark.anyio
-async def test_active_status_returns_show_false(session: AsyncSession):
-    t = await _make_tournament(session, status=TournamentStatus.ACTIVE)
-    await session.commit()
-    await session.refresh(t, attribute_names=["participants"])
+async def test_active_status_returns_show_false(db_session: AsyncSession):
+    t = await _make_tournament(db_session, status=TournamentStatus.ACTIVE)
+    await db_session.commit()
     assert _pending_banner_context(t) == {"pending_banner_show": False}
 
 
 @pytest.mark.anyio
-async def test_completed_status_returns_show_false(session: AsyncSession):
-    t = await _make_tournament(session, status=TournamentStatus.COMPLETED)
-    await session.commit()
-    await session.refresh(t, attribute_names=["participants"])
+async def test_completed_status_returns_show_false(db_session: AsyncSession):
+    t = await _make_tournament(db_session, status=TournamentStatus.COMPLETED)
+    await db_session.commit()
     assert _pending_banner_context(t) == {"pending_banner_show": False}
 
 
 @pytest.mark.anyio
-async def test_cancelled_status_returns_show_false(session: AsyncSession):
-    t = await _make_tournament(session, status=TournamentStatus.CANCELLED)
-    await session.commit()
-    await session.refresh(t, attribute_names=["participants"])
+async def test_cancelled_status_returns_show_false(db_session: AsyncSession):
+    t = await _make_tournament(db_session, status=TournamentStatus.CANCELLED)
+    await db_session.commit()
     assert _pending_banner_context(t) == {"pending_banner_show": False}
 
 
 @pytest.mark.anyio
-async def test_non_default_tenant_returns_show_false(session: AsyncSession):
-    t = await _make_tournament(session, tenant_id="other-tenant")
-    await session.commit()
-    await session.refresh(t, attribute_names=["participants"])
+async def test_non_default_tenant_returns_show_false(db_session: AsyncSession):
+    t = await _make_tournament(db_session, tenant_id="other-tenant")
+    await db_session.commit()
     assert _pending_banner_context(t) == {"pending_banner_show": False}
 
 
 @pytest.mark.anyio
-async def test_counter_excludes_released_participants(session: AsyncSession):
-    t = await _make_tournament(session, num_players=4)
-    alice = await _make_user(session, "alice")
-    bob = await _make_user(session, "bob")
-    carol = await _make_user(session, "carol")
-    a = await _make_agent(session, owner=alice, name="a")
-    b = await _make_agent(session, owner=bob, name="b")
-    c = await _make_agent(session, owner=carol, name="c")
+async def test_counter_excludes_released_participants(db_session: AsyncSession):
+    t = await _make_tournament(db_session, num_players=4)
+    alice = await _make_user(db_session, "alice")
+    bob = await _make_user(db_session, "bob")
+    carol = await _make_user(db_session, "carol")
+    a = await _make_agent(db_session, owner=alice, name="a")
+    b = await _make_agent(db_session, owner=bob, name="b")
+    c = await _make_agent(db_session, owner=carol, name="c")
     # Three participants; one released.
     p1 = Participant(
         tournament_id=t.id, user_id=alice.id, agent_id=a.id, agent_name="a"
@@ -155,9 +134,9 @@ async def test_counter_excludes_released_participants(session: AsyncSession):
         agent_name="c",
         released_at=datetime(2026, 5, 1, 12, 5, 0),
     )
-    session.add_all([p1, p2, p3])
-    await session.commit()
-    await session.refresh(t, attribute_names=["participants"])
+    db_session.add_all([p1, p2, p3])
+    await db_session.commit()
+    await db_session.refresh(t, attribute_names=["participants"])
 
     ctx = _pending_banner_context(t)
     assert ctx["pending_registered_count"] == 2  # carol excluded
