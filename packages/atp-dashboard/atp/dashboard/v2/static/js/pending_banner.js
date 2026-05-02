@@ -15,6 +15,13 @@
     for (var i = 0; i < els.length; i++) {
       var el = els[i];
       var deadlineMs = new Date(el.dataset.deadlineIso).getTime();
+      // Defensive: if the data attribute is empty or malformed, the
+      // arithmetic below produces NaN and the user would see
+      // "NaN:NaN" flashing on every tick. Restore the placeholder.
+      if (isNaN(deadlineMs)) {
+        el.textContent = "—:—";
+        continue;
+      }
       var remainingMs = Math.max(0, deadlineMs - Date.now());
       var totalSec = Math.floor(remainingMs / 1000);
       var h = Math.floor(totalSec / 3600);
