@@ -74,6 +74,8 @@ async def test_completed_tournament_renders_cards_replay_link(
     html = resp.text
     assert "/ui/matches/m-replay-link" in html
     assert "Cards replay" in html
+    assert f"/ui/tournaments/{t.id}/winners" in html
+    assert "Winners →" in html
 
 
 @pytest.mark.anyio

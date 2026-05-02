@@ -42,6 +42,9 @@
       <span><a href="/ui/matches">Browse El Farol matches →</a></span>
       {% endif %}
     {% endif %}
+    {% if t.game_type == "el_farol" and t.status == "completed" and not t.join_token %}
+    <span><a href="/ui/tournaments/{{ t.id }}/winners">Winners →</a></span>
+    {% endif %}
     <span>
         {% if t.status == "completed" and t.starts_at and t.ends_at %}
         {{ t.starts_at.strftime("%b %d, %H:%M") }} — {{ t.ends_at.strftime("%H:%M") }}
