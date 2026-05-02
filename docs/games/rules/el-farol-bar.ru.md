@@ -62,12 +62,12 @@
   число happy слотов в этот день.
 - **Финал `get_payoffs()`**: `t_happy` (сумма happy слотов по всем
   дням), при условии что игрок прошёл порог `min_total_hours`.
-- **Tournament total_score** = сумма per-day payoff'ов = `t_happy`.
+- **Tournament `total_score`** (поле в API ответе турнира) = сумма per-day payoff'ов = `t_happy`.
 
 ### `happy_minus_crowded` (legacy, opt-in)
 
 - Доступен только через явный `ElFarolConfig(scoring_mode=...)`
-  (тесты, atp-games standalone сценарии). В турнирах не плумбится.
+  (тесты, atp-games standalone сценарии). Не доступен через API турниров.
 - **За happy**: +1, **за crowded**: −1.
 - **Per-day payoff**: `happy − crowded`.
 - **Финал `get_payoffs()`**: `t_happy / max(t_crowded, 0.1)` при
