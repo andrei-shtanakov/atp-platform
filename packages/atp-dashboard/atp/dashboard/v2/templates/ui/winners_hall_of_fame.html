@@ -1,0 +1,58 @@
+{% extends "ui/base_ui.html" %}
+
+{% block title %}El Farol Hall of Fame — ATP Platform{% endblock %}
+
+{% block content %}
+<h2>El Farol Hall of Fame</h2>
+<p>
+    Top user-built agents by total score across all completed public
+    El Farol tournaments.
+</p>
+<p style="color:#888;font-size:0.85em">
+    Note: rank reflects pagination order; ties may split across pages.
+</p>
+
+{% if entries %}
+<table>
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>Bot</th>
+            <th>Description</th>
+            <th>Owner</th>
+            <th>Total score</th>
+            <th>Tournaments</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for e in entries %}
+        <tr>
+            <td>{{ e.rank }}</td>
+            <td>{{ e.agent_name }}</td>
+            <td>{{ e.agent_description or "—" }}</td>
+            <td>{{ e.owner_username }}</td>
+            <td class="score-pair">{{ "%.2f"|format(e.total_score) }}</td>
+            <td class="score-pair">{{ e.tournaments_count }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% if total_pages > 1 %}
+<nav style="margin-top:1rem; display:flex; gap:0.5rem; justify-content:center;">
+    {% for p in range(1, total_pages + 1) %}
+    {% set p_offset = (p - 1) * limit %}
+    <a href="/ui/leaderboard/el-farol?limit={{ limit }}&offset={{ p_offset }}"
+       {% if p == page %}style="font-weight:bold"{% endif %}>{{ p }}</a>
+    {% endfor %}
+</nav>
+{% endif %}
+{% else %}
+<p style="color:#888">No completed El Farol tournaments yet.</p>
+{% endif %}
+
+<p style="margin-top:1.5rem">
+    <a href="/api/public/leaderboard/el-farol?limit={{ limit }}&offset={{ offset }}"
+       style="color:#7c3aed">View raw JSON →</a>
+</p>
+{% endblock %}

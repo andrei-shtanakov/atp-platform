@@ -1,0 +1,125 @@
+"""HTML tests for /ui/leaderboard/el-farol."""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta
+
+import pytest
+from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from atp.dashboard.models import DEFAULT_TENANT_ID, Agent, User
+from atp.dashboard.tournament.models import (
+    Participant,
+    Tournament,
+    TournamentStatus,
+)
+
+
+@pytest.mark.anyio
+async def test_hof_empty_state(
+    db_session: AsyncSession,
+    disable_dashboard_auth,
+    client: AsyncClient,
+):
+    r = await client.get("/ui/leaderboard/el-farol")
+    assert r.status_code == 200
+    assert "No completed El Farol tournaments yet." in r.text
+    assert r.headers["Cache-Control"] == "public, s-maxage=60"
+
+
+@pytest.mark.anyio
+async def test_hof_renders_top_agents(
+    db_session: AsyncSession,
+    disable_dashboard_auth,
+    client: AsyncClient,
+):
+    starts = datetime(2026, 5, 1, 12, 0, 0)
+    alice = User(
+        username="alice",
+        email="a@e.com",
+        hashed_password="x",
+        is_admin=False,
+        is_active=True,
+    )
+    bob = User(
+        username="bob",
+        email="b@e.com",
+        hashed_password="x",
+        is_admin=False,
+        is_active=True,
+    )
+    db_session.add_all([alice, bob])
+    await db_session.flush()
+    a = Agent(
+        tenant_id=DEFAULT_TENANT_ID,
+        name="alfa",
+        agent_type="tournament",
+        owner_id=alice.id,
+        purpose="tournament",
+    )
+    b = Agent(
+        tenant_id=DEFAULT_TENANT_ID,
+        name="beta",
+        agent_type="tournament",
+        owner_id=bob.id,
+        purpose="tournament",
+    )
+    db_session.add_all([a, b])
+    await db_session.flush()
+    t = Tournament(
+        tenant_id=DEFAULT_TENANT_ID,
+        game_type="el_farol",
+        config={"name": "T"},
+        status=TournamentStatus.COMPLETED,
+        starts_at=starts,
+        ends_at=starts + timedelta(minutes=10),
+        num_players=2,
+        total_rounds=5,
+        round_deadline_s=30,
+        join_token=None,
+        pending_deadline=starts,
+    )
+    db_session.add(t)
+    await db_session.flush()
+    db_session.add_all(
+        [
+            Participant(
+                tournament_id=t.id,
+                user_id=alice.id,
+                agent_id=a.id,
+                agent_name="alfa",
+                total_score=20.0,
+            ),
+            Participant(
+                tournament_id=t.id,
+                user_id=bob.id,
+                agent_id=b.id,
+                agent_name="beta",
+                total_score=30.0,
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    r = await client.get("/ui/leaderboard/el-farol")
+    assert r.status_code == 200
+    # bob (30) ranks above alice (20) by total score
+    bob_idx = r.text.find("beta")
+    alice_idx = r.text.find("alfa")
+    assert 0 < bob_idx < alice_idx
+
+
+@pytest.mark.anyio
+async def test_hof_strict_bounds(
+    db_session: AsyncSession,
+    disable_dashboard_auth,
+    client: AsyncClient,
+):
+    for path in (
+        "/ui/leaderboard/el-farol?limit=0",
+        "/ui/leaderboard/el-farol?limit=201",
+        "/ui/leaderboard/el-farol?offset=-1",
+    ):
+        r = await client.get(path)
+        assert r.status_code == 422, path

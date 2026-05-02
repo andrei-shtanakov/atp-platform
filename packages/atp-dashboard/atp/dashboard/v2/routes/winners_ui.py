@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse
 
 from atp.dashboard.models import DEFAULT_TENANT_ID
@@ -12,7 +12,9 @@ from atp.dashboard.v2.rate_limit import limiter
 from atp.dashboard.v2.services import winners as winners_service
 from atp.dashboard.v2.services.winners import (
     CAPACITY_RATIO,
+    get_hof_cache,
     get_winners_cache,
+    hof_cache_key,
     winners_cache_key,
 )
 
@@ -84,6 +86,47 @@ async def get_winners_html(
                 "duration": duration,
             },
             "entries": entries,
+        },
+        headers={"Cache-Control": _CACHE_CONTROL},
+    )
+
+
+@router.get("/ui/leaderboard/el-farol", response_class=HTMLResponse)
+@limiter.limit("120/minute")
+async def get_hall_of_fame_html(
+    request: Request,
+    session: DBSession,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> HTMLResponse:
+    """Render the public El Farol Hall of Fame with HTMX-style pagination."""
+    cache = get_hof_cache()
+    key = hof_cache_key(limit=limit, offset=offset)
+    cached = cache.get(key)
+    if cached is None:
+        # Module-attribute reference so tests can monkeypatch.
+        total, entries = await winners_service._hall_of_fame_query(
+            session, limit=limit, offset=offset
+        )
+        cache.put(key, (total, entries))
+    else:
+        total, entries = cached
+
+    page = (offset // limit) + 1
+    total_pages = max(1, (total + limit - 1) // limit)
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="ui/winners_hall_of_fame.html",
+        context={
+            "active_page": "el_farol_hall_of_fame",
+            "entries": entries,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "page": page,
+            "total_pages": total_pages,
         },
         headers={"Cache-Control": _CACHE_CONTROL},
     )
