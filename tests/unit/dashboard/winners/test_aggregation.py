@@ -1,0 +1,332 @@
+"""Unit tests for the winners aggregation helpers."""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta
+
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from atp.dashboard.models import DEFAULT_TENANT_ID, Agent, User
+from atp.dashboard.tournament.models import (
+    Action,
+    Participant,
+    Round,
+    RoundStatus,
+    Tournament,
+    TournamentStatus,
+)
+from atp.dashboard.v2.services.winners import _winners_query
+
+
+async def _make_user(session: AsyncSession, username: str) -> User:
+    u = User(
+        username=username,
+        email=f"{username}@example.com",
+        hashed_password="x",
+        is_admin=False,
+        is_active=True,
+    )
+    session.add(u)
+    await session.flush()
+    return u
+
+
+async def _make_agent(
+    session: AsyncSession,
+    *,
+    owner: User,
+    name: str,
+    description: str | None = None,
+    version: str = "1",
+    deleted_at: datetime | None = None,
+) -> Agent:
+    a = Agent(
+        tenant_id=DEFAULT_TENANT_ID,
+        name=name,
+        agent_type="tournament",
+        owner_id=owner.id,
+        description=description,
+        version=version,
+        deleted_at=deleted_at,
+        purpose="tournament",
+    )
+    session.add(a)
+    await session.flush()
+    return a
+
+
+async def _make_tournament(
+    session: AsyncSession,
+    *,
+    game_type: str = "el_farol",
+    status: TournamentStatus = TournamentStatus.COMPLETED,
+    join_token: str | None = None,
+    name: str = "T",
+    num_players: int = 2,
+    total_rounds: int = 5,
+    starts_at: datetime | None = None,
+    ends_at: datetime | None = None,
+    tenant_id: str = DEFAULT_TENANT_ID,
+) -> Tournament:
+    starts_at = starts_at or datetime(2026, 5, 1, 12, 0, 0)
+    ends_at = ends_at or starts_at + timedelta(minutes=10)
+    t = Tournament(
+        tenant_id=tenant_id,
+        game_type=game_type,
+        config={"name": name},
+        status=status,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        num_players=num_players,
+        total_rounds=total_rounds,
+        round_deadline_s=30,
+        join_token=join_token,
+        pending_deadline=starts_at,
+    )
+    session.add(t)
+    await session.flush()
+    return t
+
+
+async def _make_participant(
+    session: AsyncSession,
+    *,
+    tournament: Tournament,
+    user: User | None = None,
+    agent: Agent | None = None,
+    builtin_strategy: str | None = None,
+    agent_name: str = "agent",
+    total_score: float | None = None,
+) -> Participant:
+    p = Participant(
+        tournament_id=tournament.id,
+        user_id=user.id if user else None,
+        agent_id=agent.id if agent else None,
+        builtin_strategy=builtin_strategy,
+        agent_name=agent_name,
+        total_score=total_score,
+    )
+    session.add(p)
+    await session.flush()
+    return p
+
+
+@pytest.mark.anyio
+async def test_winners_query_returns_empty_for_no_participants(
+    session: AsyncSession,
+):
+    t = await _make_tournament(session)
+    await session.commit()
+
+    rows = await _winners_query(session, t.id)
+    assert rows == []
+
+
+async def _make_round_with_action(
+    session: AsyncSession,
+    *,
+    participant: Participant,
+    round_number: int,
+    payoff: float | None,
+    tokens_in: int | None = None,
+    tokens_out: int | None = None,
+    cost_usd: float | None = None,
+    model_id: str | None = None,
+) -> Action:
+    rnd = Round(
+        tournament_id=participant.tournament_id,
+        round_number=round_number,
+        status=RoundStatus.COMPLETED,
+        deadline=datetime(2026, 5, 1, 12, 0, 0),
+    )
+    session.add(rnd)
+    await session.flush()
+    act = Action(
+        round_id=rnd.id,
+        participant_id=participant.id,
+        action_data={},
+        payoff=payoff,
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        cost_usd=cost_usd,
+        model_id=model_id,
+    )
+    session.add(act)
+    await session.flush()
+    return act
+
+
+@pytest.mark.anyio
+async def test_winners_query_single_participant_with_telemetry(
+    session: AsyncSession,
+):
+    t = await _make_tournament(session)
+    alice = await _make_user(session, "alice")
+    agent = await _make_agent(
+        session, owner=alice, name="alfa", description="greedy spammer"
+    )
+    p = await _make_participant(
+        session,
+        tournament=t,
+        user=alice,
+        agent=agent,
+        agent_name="alfa",
+        total_score=42.0,
+    )
+    await _make_round_with_action(
+        session,
+        participant=p,
+        round_number=1,
+        payoff=42.0,
+        tokens_in=100,
+        tokens_out=80,
+        cost_usd=0.01,
+        model_id="gpt-4o-mini",
+    )
+    await _make_round_with_action(
+        session,
+        participant=p,
+        round_number=2,
+        payoff=0.0,
+        tokens_in=50,
+        tokens_out=40,
+        cost_usd=0.005,
+        model_id="gpt-4o-mini",
+    )
+    await session.commit()
+
+    rows = await _winners_query(session, t.id)
+    assert len(rows) == 1
+    e = rows[0]
+    assert e.rank == 1
+    assert e.agent_name == "alfa"
+    assert e.agent_description == "greedy spammer"
+    assert e.owner_username == "alice"
+    assert e.score == 42.0
+    assert e.tokens_in == 150
+    assert e.tokens_out == 120
+    assert e.cost_usd == pytest.approx(0.015)
+    assert e.model_id == "gpt-4o-mini"
+
+
+@pytest.mark.anyio
+async def test_winners_query_builtin_owner_is_system(session: AsyncSession):
+    t = await _make_tournament(session)
+    p = await _make_participant(
+        session,
+        tournament=t,
+        user=None,
+        agent=None,
+        builtin_strategy="el_farol/random",
+        agent_name="el_farol/random",
+        total_score=10.0,
+    )
+    await _make_round_with_action(session, participant=p, round_number=1, payoff=10.0)
+    await session.commit()
+
+    rows = await _winners_query(session, t.id)
+    assert len(rows) == 1
+    assert rows[0].owner_username == "system"
+    assert rows[0].agent_description == "built-in strategy"
+    assert rows[0].model_id is None  # no telemetry recorded
+    assert rows[0].tokens_in is None
+    assert rows[0].cost_usd is None
+
+
+@pytest.mark.anyio
+async def test_winners_query_archived_agent_gets_suffix(session: AsyncSession):
+    t = await _make_tournament(session)
+    alice = await _make_user(session, "alice")
+    agent = await _make_agent(
+        session,
+        owner=alice,
+        name="alfa",
+        deleted_at=datetime(2026, 5, 1, 11, 0, 0),
+    )
+    await _make_participant(
+        session,
+        tournament=t,
+        user=alice,
+        agent=agent,
+        agent_name="alfa",
+        total_score=5.0,
+    )
+    await session.commit()
+
+    rows = await _winners_query(session, t.id)
+    assert len(rows) == 1
+    assert rows[0].agent_name == "alfa (archived)"
+
+
+@pytest.mark.anyio
+async def test_winners_query_mixed_model_id(session: AsyncSession):
+    t = await _make_tournament(session)
+    alice = await _make_user(session, "alice")
+    agent = await _make_agent(session, owner=alice, name="alfa")
+    p = await _make_participant(
+        session,
+        tournament=t,
+        user=alice,
+        agent=agent,
+        agent_name="alfa",
+        total_score=10.0,
+    )
+    await _make_round_with_action(
+        session, participant=p, round_number=1, payoff=5.0, model_id="gpt-4o-mini"
+    )
+    await _make_round_with_action(
+        session,
+        participant=p,
+        round_number=2,
+        payoff=5.0,
+        model_id="claude-haiku-4-5",
+    )
+    await session.commit()
+
+    rows = await _winners_query(session, t.id)
+    assert rows[0].model_id == "mixed"
+
+
+@pytest.mark.anyio
+async def test_winners_query_dense_rank_with_ties(session: AsyncSession):
+    t = await _make_tournament(session, num_players=3)
+    alice = await _make_user(session, "alice")
+    bob = await _make_user(session, "bob")
+    carol = await _make_user(session, "carol")
+    a = await _make_agent(session, owner=alice, name="a")
+    b = await _make_agent(session, owner=bob, name="b")
+    c = await _make_agent(session, owner=carol, name="c")
+    await _make_participant(
+        session, tournament=t, user=alice, agent=a, agent_name="a", total_score=100.0
+    )
+    await _make_participant(
+        session, tournament=t, user=bob, agent=b, agent_name="b", total_score=100.0
+    )
+    await _make_participant(
+        session, tournament=t, user=carol, agent=c, agent_name="c", total_score=90.0
+    )
+    await session.commit()
+
+    rows = await _winners_query(session, t.id)
+    assert [r.rank for r in rows] == [1, 1, 3]
+
+
+@pytest.mark.anyio
+async def test_winners_query_null_score_sorted_last(session: AsyncSession):
+    t = await _make_tournament(session, num_players=2)
+    alice = await _make_user(session, "alice")
+    bob = await _make_user(session, "bob")
+    a = await _make_agent(session, owner=alice, name="a")
+    b = await _make_agent(session, owner=bob, name="b")
+    await _make_participant(
+        session, tournament=t, user=alice, agent=a, agent_name="a", total_score=None
+    )
+    await _make_participant(
+        session, tournament=t, user=bob, agent=b, agent_name="b", total_score=10.0
+    )
+    await session.commit()
+
+    rows = await _winners_query(session, t.id)
+    assert [r.agent_name for r in rows] == ["b", "a"]
+    assert rows[1].score is None

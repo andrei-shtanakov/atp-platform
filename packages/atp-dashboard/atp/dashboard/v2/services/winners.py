@@ -12,8 +12,12 @@ from __future__ import annotations
 from datetime import datetime
 
 from pydantic import BaseModel, Field
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from atp.dashboard.models import Agent, User
 from atp.dashboard.query_cache import QueryCache
+from atp.dashboard.tournament.models import Action, Participant
 from atp.dashboard.v2.services.el_farol_constants import (
     CAPACITY_RATIO as _CAPACITY_RATIO,
 )
@@ -130,3 +134,90 @@ def reset_caches_for_tests() -> None:
 
 # Re-export for ergonomic import in routes.
 CAPACITY_RATIO = _CAPACITY_RATIO
+
+
+async def _winners_query(
+    session: AsyncSession, tournament_id: int
+) -> list[WinnerEntry]:
+    """Aggregate winners for one tournament.
+
+    Pulls per-participant totals together with optional LLM telemetry
+    summed across the participant's actions. The display name comes
+    from ``Participant.agent_name`` (historical at join time);
+    description and owner are looked up live from ``Agent`` / ``User``.
+    """
+    stmt = (
+        select(
+            Participant.id.label("participant_id"),
+            Participant.agent_name.label("display_name"),
+            Participant.agent_id.label("agent_id"),
+            Participant.builtin_strategy.label("builtin_strategy"),
+            Participant.total_score.label("total_score"),
+            Agent.description.label("agent_description"),
+            Agent.deleted_at.label("agent_deleted_at"),
+            User.username.label("owner_username"),
+            func.sum(Action.tokens_in).label("tokens_in"),
+            func.sum(Action.tokens_out).label("tokens_out"),
+            func.sum(Action.cost_usd).label("cost_usd"),
+            func.min(Action.model_id).label("sample_model"),
+            func.count(func.distinct(Action.model_id)).label("distinct_models"),
+        )
+        .join(Agent, Agent.id == Participant.agent_id, isouter=True)
+        .join(User, User.id == Agent.owner_id, isouter=True)
+        .join(Action, Action.participant_id == Participant.id, isouter=True)
+        .where(Participant.tournament_id == tournament_id)
+        .group_by(Participant.id, Agent.id, User.id)
+        .order_by(
+            Participant.total_score.desc().nulls_last(),
+            Participant.id.asc(),
+        )
+    )
+    result = await session.execute(stmt)
+    rows = result.all()
+
+    # Dense ranking — ties share a rank, the next non-tied score jumps
+    # to len(seen_so_far) + 1. Pure post-processing keeps the SQL
+    # portable across SQLite (test DB) and Postgres (prod DB).
+    entries: list[WinnerEntry] = []
+    rank = 0
+    prev_score: float | None = None
+    seen = 0
+    for row in rows:
+        seen += 1
+        if row.total_score != prev_score:
+            rank = seen
+            prev_score = row.total_score
+
+        if row.agent_id is None:
+            owner_username = "system"
+            description = "built-in strategy"
+            display_name = row.display_name
+        else:
+            owner_username = row.owner_username or "—"
+            description = row.agent_description
+            display_name = row.display_name
+            if row.agent_deleted_at is not None:
+                display_name = f"{display_name} (archived)"
+
+        if row.distinct_models is None or row.distinct_models == 0:
+            model_id: str | None = None
+        elif row.distinct_models == 1:
+            model_id = row.sample_model
+        else:
+            model_id = "mixed"
+
+        entries.append(
+            WinnerEntry(
+                rank=rank,
+                agent_name=display_name,
+                agent_description=description,
+                owner_username=owner_username,
+                score=row.total_score,
+                tokens_in=row.tokens_in,
+                tokens_out=row.tokens_out,
+                cost_usd=row.cost_usd,
+                model_id=model_id,
+            )
+        )
+
+    return entries
