@@ -48,27 +48,37 @@ Default `capacity_threshold = 60` (the example suite below uses a smaller value 
 
 ---
 
-## Per-round payoff
+## Scoring modes (`scoring_mode`)
 
-For each player each day:
+The engine supports two scoring modes. The default is `happy_only`.
+Tournaments always use the default — there is no per-tournament
+opt-in to the legacy mode in v1.
 
-- `happy` — number of slots they attended where occupancy `< threshold`.
-- `crowded` — number of slots they attended where occupancy `≥ threshold`.
+### `happy_only` (default) — simple accumulation
 
-**Payoff that day:** `happy - crowded` (net “good minus bad” in slot units).
+- **Each happy slot**: +1.
+- **Each crowded slot**: 0 (no penalty).
+- **Per-round payoff** (returned by `step()` and
+  `compute_round_payoffs()`): number of happy slots that round.
+- **Standalone final `get_payoffs()`**: `t_happy` (sum of happy slots
+  across all rounds), provided the player meets `min_total_hours`.
+- **Tournament `total_score`** = sum of per-round payoffs = `t_happy`.
 
-Running totals `t_happy` and `t_crowded` are kept in **slots**, not hours.
+### `happy_minus_crowded` (legacy, opt-in)
 
----
+- Reachable only via explicit `ElFarolConfig(scoring_mode=...)` —
+  tests, atp-games standalone scenarios. Not exposed in tournament
+  APIs.
+- **Each happy slot**: +1; **each crowded slot**: −1.
+- **Per-round payoff**: `happy − crowded`.
+- **Standalone final `get_payoffs()`**: `t_happy / max(t_crowded,
+  0.1)`, provided the player meets `min_total_hours`.
 
-## Final score (`get_payoffs`)
-
-After all days:
-
-- If total attendance hours `(t_happy + t_crowded) * slot_duration` are **strictly less than** `min_total_hours`, the player’s final payoff is **0** (disqualification).
-- Otherwise: **`t_happy / max(t_crowded, 0.1)`**.
-
-Default `min_total_hours = 0.0` — hour-based disqualification is off unless you set a positive threshold.
+In both modes:
+- `_t_crowded` is accumulated and surfaced to the player as
+  `your_t_crowded_slots` in observation.
+- `min_total_hours` disqualification applies in `get_payoffs()`
+  identically.
 
 ---
 
@@ -103,6 +113,7 @@ In either case other players’ plans for **today** are **not** revealed — onl
 | `capacity_threshold` | crowding threshold per slot | 60 |
 | `min_total_hours` | minimum hours or final payoff 0 | 0.0 |
 | `slot_duration` | slot length (hours) | 0.5 |
+| `scoring_mode` | scoring mode (see above) | "happy_only" |
 
 Inherited `GameConfig` fields (e.g. `discount_factor`, `noise`, `seed`) apply if used in your scenario.
 
