@@ -8,6 +8,10 @@
 
 {% block title %}{{ name }} - ATP Platform{% endblock %}
 
+{% block extra_scripts %}
+<script src="/static/v2/js/pending_banner.js" defer></script>
+{% endblock %}
+
 {% block content %}
 {% if pending_banner_show is defined %}
   {% include "ui/partials/pending_banner_wrapper.html" %}

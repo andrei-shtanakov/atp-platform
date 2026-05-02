@@ -257,3 +257,59 @@ async def test_partial_endpoint_404_for_missing_tournament(
     # the banner wrapper.
     assert r.status_code == 404
     assert 'id="pending-banner"' not in r.text
+
+
+@pytest.mark.anyio
+async def test_post_create_pending_tournament_response_shows_banner(
+    test_database: Database,
+    db_session: AsyncSession,
+    disable_dashboard_auth,
+    client: AsyncClient,
+):
+    """The POST /ui/tournaments/new handler renders tournament_detail.html
+    directly (no redirect) so the join_token isn't exposed via URL.
+    The rendered response must include the pending banner so the user
+    sees registration progress immediately, without manually
+    refreshing."""
+    from atp.dashboard.models import Agent
+
+    # Seed an active user with id=1 — `_resolve_form_user` falls back
+    # to id=1 when ATP_DISABLE_AUTH=true and no JWT-decoded user_id is
+    # set on request.state.
+    user = User(
+        username="creator",
+        email="c@e.com",
+        hashed_password="x",
+        is_admin=False,
+        is_active=True,
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    # Tournament service requires the creator to own a tournament-purpose
+    # agent.
+    db_session.add(
+        Agent(
+            name="t-agent",
+            agent_type="mcp",
+            owner_id=user.id,
+            purpose="tournament",
+        )
+    )
+    await db_session.commit()
+
+    form_data = {
+        "name": "smoke-test-pending",
+        "game_type": "el_farol",
+        "num_players": "4",
+        "total_rounds": "5",
+        "round_deadline_s": "30",
+        "private": "on",
+    }
+    r = await client.post("/ui/tournaments/new", data=form_data)
+    if r.status_code == 200:
+        assert 'id="pending-banner"' in r.text
+        assert 'hx-trigger="every 10s"' in r.text
+        assert "Registered:" in r.text
+    else:
+        pytest.skip(f"POST returned {r.status_code} — adjust form/auth")

@@ -1210,6 +1210,7 @@ async def ui_tournaments_new_submit(
         context={
             "active_page": "tournaments",
             "tournament": reloaded,
+            "tournament_id": reloaded.id,
             "creator_name": creator_name,
             "cancelled_by_name": None,
             "sorted_rounds": sorted(
@@ -1225,6 +1226,7 @@ async def ui_tournaments_new_submit(
             "is_admin": creator.is_admin,
             "visible_reasoning_action_ids": set(),
             "join_token_once": join_token,
+            **_pending_banner_context(reloaded),
         },
     )
 
@@ -1254,6 +1256,70 @@ def _render_tournament_new_form_error(
     )
 
 
+async def _render_pending_banner_partial(
+    request: Request,
+    session: AsyncSession,
+    tournament_id: int,
+) -> HTMLResponse:
+    """Lightweight handler for the pending-banner HTMX partial.
+
+    Avoids the heavy eager-loads (rounds, actions, timeline) the full
+    detail render requires. Only loads Tournament + participants for
+    the counter, and runs the same visibility gate as the detail
+    route. Returns 404 in the same shape as the detail not_found case.
+    """
+    from atp.dashboard.tournament.models import Tournament as _Tournament
+
+    result = await session.execute(
+        select(_Tournament)
+        .where(_Tournament.id == tournament_id)
+        .options(selectinload(_Tournament.participants))
+    )
+    tournament = result.scalar_one_or_none()
+
+    not_found_resp = _templates(request).TemplateResponse(
+        request=request,
+        name="ui/error.html",
+        context={
+            "error_title": "Not Found",
+            "error_message": f"Tournament #{tournament_id} not found.",
+        },
+        status_code=404,
+    )
+
+    if tournament is None:
+        return not_found_resp
+
+    # Visibility gate (same rules as the full detail handler).
+    user_id = getattr(request.state, "user_id", None)
+    user: User | None = None
+    is_admin = False
+    if user_id:
+        user = await session.get(User, user_id)
+        if user and user.is_admin:
+            is_admin = True
+
+    if not is_admin and tournament.join_token is not None:
+        is_owner = user is not None and tournament.created_by == user.id
+        is_participant = False
+        if user:
+            is_participant = any(p.user_id == user.id for p in tournament.participants)
+        if not is_owner and not is_participant:
+            return not_found_resp
+
+    banner_ctx = {
+        "tournament_id": tournament_id,
+        **_pending_banner_context(tournament),
+    }
+    response = _templates(request).TemplateResponse(
+        request=request,
+        name="ui/partials/pending_banner_wrapper.html",
+        context=banner_ctx,
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 @router.get("/tournaments/{tournament_id}", response_class=HTMLResponse)
 @limiter.limit("120/minute")
 async def ui_tournament_detail(
@@ -1268,6 +1334,10 @@ async def ui_tournament_detail(
         Round,
         Tournament,
     )
+
+    partial = request.query_params.get("partial")
+    if partial == "pending-banner":
+        return await _render_pending_banner_partial(request, session, tournament_id)
 
     result = await session.execute(
         select(Tournament)
@@ -1432,23 +1502,6 @@ async def ui_tournament_detail(
         **banner_ctx_data,
     }
 
-    partial = request.query_params.get("partial")
-    if partial == "pending-banner":
-        # Banner-only partial. The wrapper template needs only the path
-        # id; we deliberately do NOT pass the full Tournament row, so
-        # the contract stays narrow and grep-friendly.
-        banner_ctx = {
-            "tournament_id": tournament_id,
-            **banner_ctx_data,
-        }
-        response = _templates(request).TemplateResponse(
-            request=request,
-            name="ui/partials/pending_banner_wrapper.html",
-            context=banner_ctx,
-        )
-        # Counter must NOT be served from BFCache or any intermediary.
-        response.headers["Cache-Control"] = "no-store"
-        return response
     if partial == "live":
         return _templates(request).TemplateResponse(
             request=request,
