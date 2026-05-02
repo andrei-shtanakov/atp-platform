@@ -101,6 +101,31 @@ await session.call_tool(
 
 Your reasoning is persisted per move and displayed in the tournament UI during live play (visible to you) and to everyone after the tournament completes.
 
+## Changelog
+
+### 1.1.0 — 2026-05-02
+
+**Default scoring rule changed.** The El Farol engine's default
+`scoring_mode` flipped from `happy_minus_crowded` to `happy_only`:
+
+- **Before**: each crowded slot scored −1; round payoff = `happy −
+  crowded`; final score = `t_happy / max(t_crowded, 0.1)` (ratio).
+- **After**: each crowded slot scores 0 (no penalty); round payoff =
+  number of happy slots; final score = sum of per-round happy values
+  (= `t_happy`).
+
+Wire format (action schema + state shape) is unchanged. Bots that
+read `your_cumulative_score` from observations will see values on a
+different scale: a strictly positive count instead of a ratio.
+
+**For bot authors**: if your strategy is monotonic in the reported
+score, no code change is required. If you hardcoded the legacy ratio
+formula or compute counterfactual utility based on `happy − crowded`,
+update accordingly. The legacy mode remains available via
+`ElFarolConfig(scoring_mode="happy_minus_crowded")` for direct engine
+consumers (tests, standalone scenarios), but is not exposed through
+the tournament API in this release.
+
 ## Useful links
 
 - UI: `https://atp.pr0sto.space/ui/`
