@@ -634,13 +634,20 @@ class ElFarolBar(Game):
         # 3. Update player stats and compute payoffs
         # ------------------------------------------------------------------
         payoffs: dict[str, float] = {}
+        mode = self._ef_config.scoring_mode
         for pid in self.player_ids:
             slots = clean[pid]
             happy = sum(1 for s in slots if daily_occupancy[s] < threshold)
             crowded = sum(1 for s in slots if daily_occupancy[s] >= threshold)
+            # Accumulate both counters unconditionally — observation
+            # carries `your_t_crowded_slots` regardless of mode, so the
+            # telemetry surface stays consistent.
             self._t_happy[pid] += happy
             self._t_crowded[pid] += crowded
-            payoffs[pid] = float(happy - crowded)
+            if mode == "happy_only":
+                payoffs[pid] = float(happy)
+            else:  # happy_minus_crowded
+                payoffs[pid] = float(happy - crowded)
 
         # ------------------------------------------------------------------
         # 4. Record attendance history

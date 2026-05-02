@@ -273,3 +273,37 @@ def test_compute_round_payoffs_happy_only_default():
     }
     payoffs = g.compute_round_payoffs(actions)
     assert payoffs == [1.0, 1.0, 1.0]
+
+
+def test_step_happy_only_accumulates_t_happy_and_t_crowded():
+    """In happy_only mode, both _t_happy and _t_crowded must accumulate
+    even though _t_crowded is not in the payoff formula. This keeps
+    observation telemetry (your_t_crowded_slots) consistent across modes."""
+    cfg = ElFarolConfig(
+        num_players=3,
+        num_slots=4,
+        max_total_slots=4,
+        capacity_threshold=3,
+        num_rounds=1,
+        scoring_mode="happy_only",
+    )
+    g = ElFarolBar(cfg)
+    g.reset()
+
+    # Same scenario as compute_round_payoffs test:
+    # slot 1 crowded (3 attendees), slots 0,2 happy.
+    # p0: slot 0 happy + slot 1 crowded → t_happy[p0]=1, t_crowded[p0]=1
+    # NOTE: step() keys actions by string player_id (compute_round_payoffs
+    # keys by int). Adjust template accordingly.
+    actions = {
+        "player_0": {"intervals": [[0, 1]]},
+        "player_1": {"intervals": [[1, 2]]},
+        "player_2": {"intervals": [[0, 1]]},
+    }
+    result = g.step(actions)
+
+    # Per-round payoff = happy (not happy - crowded).
+    assert result.payoffs["player_0"] == 1.0
+    # _t_crowded accumulated despite not being in the formula.
+    assert g._t_crowded["player_0"] == 1.0
+    assert g._t_happy["player_0"] == 1.0
