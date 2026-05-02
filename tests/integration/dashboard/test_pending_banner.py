@@ -173,3 +173,56 @@ async def test_detail_page_non_default_tenant_renders_empty_wrapper(
     assert 'id="pending-banner"' in r.text
     assert "hx-trigger" not in r.text
     assert "Registered:" not in r.text
+
+
+@pytest.mark.anyio
+async def test_live_page_renders_banner_with_correct_wrapper_url(
+    test_database: Database,
+    db_session: AsyncSession,
+    disable_dashboard_auth,
+    client: AsyncClient,
+):
+    """Regression: wrapper template references tournament_id (not
+    tournament.id from a non-existent ORM-row context). If the live
+    route forgets to put tournament_id in the template context, the
+    URL would render as '/ui/tournaments/?partial=pending-banner' and
+    HTMX would 404-loop."""
+    tid = await _seed_pending_tournament(db_session, num_players=4, registered=2)
+    r = await client.get(f"/ui/tournaments/{tid}/live")
+    assert r.status_code == 200
+    assert 'id="pending-banner"' in r.text
+    assert f"/ui/tournaments/{tid}?partial=pending-banner" in r.text
+    assert "/ui/tournaments/?partial=pending-banner" not in r.text
+
+
+@pytest.mark.anyio
+async def test_detail_and_live_pages_have_identical_wrapper_url(
+    test_database: Database,
+    db_session: AsyncSession,
+    disable_dashboard_auth,
+    client: AsyncClient,
+):
+    """Both pages must point HTMX at the same partial URL — that's the
+    contract for 'one partial endpoint serves both hosts'."""
+    tid = await _seed_pending_tournament(db_session, num_players=4, registered=1)
+    r_detail = await client.get(f"/ui/tournaments/{tid}")
+    r_live = await client.get(f"/ui/tournaments/{tid}/live")
+    expected_url = f"/ui/tournaments/{tid}?partial=pending-banner"
+    assert expected_url in r_detail.text
+    assert expected_url in r_live.text
+
+
+@pytest.mark.anyio
+async def test_match_detail_replay_does_not_render_banner(
+    test_database: Database,
+    db_session: AsyncSession,
+    disable_dashboard_auth,
+    client: AsyncClient,
+):
+    """The same match_detail.html template serves /ui/matches/{id} for
+    replay. It must NOT render the banner wrapper there because the
+    replay route has no tournament context. The {% if ... is defined %}
+    guard is what protects this."""
+    r = await client.get("/ui/matches/nonexistent-match")
+    assert r.status_code == 200  # placeholder page
+    assert 'id="pending-banner"' not in r.text

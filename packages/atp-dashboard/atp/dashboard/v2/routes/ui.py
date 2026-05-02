@@ -833,7 +833,12 @@ async def ui_tournament_live(
 
     user = await _get_ui_user(request, session)
 
-    tournament = await session.get(Tournament, tournament_id)
+    result = await session.execute(
+        select(Tournament)
+        .options(selectinload(Tournament.participants))
+        .where(Tournament.id == tournament_id)
+    )
+    tournament = result.scalar_one_or_none()
     visible = tournament is not None and await is_tournament_visible_to(
         session, tournament, user
     )
@@ -938,6 +943,7 @@ async def ui_tournament_live(
             "current_round_deadline_ms": current_round_deadline_ms,
         }
     )
+    context.update(_pending_banner_context(tournament))
 
     return _templates(request).TemplateResponse(
         request=request,
