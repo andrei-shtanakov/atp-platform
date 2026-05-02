@@ -226,3 +226,16 @@ async def test_match_detail_replay_does_not_render_banner(
     r = await client.get("/ui/matches/nonexistent-match")
     assert r.status_code == 200  # placeholder page
     assert 'id="pending-banner"' not in r.text
+
+
+@pytest.mark.anyio
+async def test_pending_banner_js_loaded_on_detail_page(
+    test_database: Database,
+    db_session: AsyncSession,
+    disable_dashboard_auth,
+    client: AsyncClient,
+):
+    tid = await _seed_pending_tournament(db_session, num_players=4)
+    r = await client.get(f"/ui/tournaments/{tid}")
+    assert r.status_code == 200
+    assert "/static/v2/js/pending_banner.js" in r.text
