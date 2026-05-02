@@ -557,6 +557,7 @@ class ElFarolBar(Game):
         crowded = {i for i, c in enumerate(counts) if c >= threshold}
 
         payoffs: list[float] = [0.0] * n
+        mode = self._ef_config.scoring_mode
         for p_idx, slots in enumerate(per_player_slots):
             happy = 0
             crowded_count = 0
@@ -565,7 +566,10 @@ class ElFarolBar(Game):
                     crowded_count += 1
                 else:
                     happy += 1
-            payoffs[p_idx] = float(happy - crowded_count)
+            if mode == "happy_only":
+                payoffs[p_idx] = float(happy)
+            else:  # happy_minus_crowded
+                payoffs[p_idx] = float(happy - crowded_count)
         return payoffs
 
     # ------------------------------------------------------------------

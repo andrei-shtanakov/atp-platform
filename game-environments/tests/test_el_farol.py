@@ -245,3 +245,31 @@ def test_scoring_mode_dataclass_round_trip():
 
     via_replace = replace(original, num_players=8)
     assert via_replace.scoring_mode == "happy_only"
+
+
+def test_compute_round_payoffs_happy_only_default():
+    """In happy_only mode, per-round payoff equals the count of happy
+    slots — crowded slots contribute 0, not −1.
+
+    Scenario: 3 players, threshold=3, slot 1 is crowded (3 attendees).
+        p0 attends slots 0,1 → slot 0 happy, slot 1 crowded → payoff = 1
+        p1 attends slots 1,2 → slot 1 crowded, slot 2 happy → payoff = 1
+        p2 attends slots 0,1 → slot 0 happy, slot 1 crowded → payoff = 1
+    Under happy_minus_crowded these would all be 0."""
+    cfg = ElFarolConfig(
+        num_players=3,
+        num_slots=4,
+        capacity_threshold=3,
+        max_total_slots=4,
+        scoring_mode="happy_only",
+    )
+    g = ElFarolBar(cfg)
+    g.reset()
+
+    actions = {
+        0: {"intervals": [[0, 1]]},
+        1: {"intervals": [[1, 2]]},
+        2: {"intervals": [[0, 1]]},
+    }
+    payoffs = g.compute_round_payoffs(actions)
+    assert payoffs == [1.0, 1.0, 1.0]
