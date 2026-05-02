@@ -1,5 +1,7 @@
 """Tests for El Farol game-layer service-facing methods."""
 
+from dataclasses import asdict, replace
+
 import pytest
 
 from game_envs.core.errors import ValidationError
@@ -220,10 +222,6 @@ def test_format_state_your_history_is_defensive_copy():
 
 def test_scoring_mode_validation_rejects_unknown():
     """Unknown scoring_mode value raises ValueError in __post_init__."""
-    import pytest
-
-    from game_envs.games.el_farol import ElFarolConfig
-
     with pytest.raises(ValueError, match="scoring_mode"):
         ElFarolConfig(num_players=4, scoring_mode="bogus")  # type: ignore[arg-type]
 
@@ -232,8 +230,6 @@ def test_scoring_mode_temporary_default_is_legacy():
     """Until Task 6 flips it, the default remains happy_minus_crowded
     so all existing tests keep passing during incremental rollout.
     Task 6 changes this assertion to assert happy_only."""
-    from game_envs.games.el_farol import ElFarolConfig
-
     cfg = ElFarolConfig(num_players=4)
     assert cfg.scoring_mode == "happy_minus_crowded"
 
@@ -241,10 +237,6 @@ def test_scoring_mode_temporary_default_is_legacy():
 def test_scoring_mode_dataclass_round_trip():
     """ElFarolConfig with explicit scoring_mode survives asdict/replace
     round-trip and remains equal."""
-    from dataclasses import asdict, replace
-
-    from game_envs.games.el_farol import ElFarolConfig
-
     original = ElFarolConfig(num_players=4, scoring_mode="happy_only")
     payload = asdict(original)
     rebuilt = ElFarolConfig(**payload)
