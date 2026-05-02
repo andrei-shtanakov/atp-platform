@@ -245,6 +245,10 @@ class ElFarolConfig(GameConfig):
             strictly in ``(0, 1]``.
         min_total_hours: Minimum hours required to avoid disqualification.
         slot_duration: Duration of each slot in hours (default 0.5 h).
+        scoring_mode: Scoring formula. ``"happy_only"`` (default, +1 per
+            happy slot, 0 per crowded — no penalty) or
+            ``"happy_minus_crowded"`` (legacy opt-in: +1/−1 per slot,
+            ratio final via ``get_payoffs()``).
     """
 
     num_players: int = 100
