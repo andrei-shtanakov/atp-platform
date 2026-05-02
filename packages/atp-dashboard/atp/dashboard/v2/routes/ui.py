@@ -9,7 +9,7 @@ from __future__ import annotations
 import functools
 import logging
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 
@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from atp.dashboard.benchmark.models import Benchmark, Run, RunStatus, TaskResult
-from atp.dashboard.models import Agent, SuiteDefinition, User
+from atp.dashboard.models import DEFAULT_TENANT_ID, Agent, SuiteDefinition, User
 from atp.dashboard.rbac.models import Role, UserRole
 from atp.dashboard.tokens import APIToken, Invite
 from atp.dashboard.tournament.models import Participant, TournamentStatus
@@ -51,6 +51,39 @@ async def _get_ui_user(request: Request, session: DBSession) -> User | None:
     if user is None or not user.is_active:
         return None
     return user
+
+
+def _pending_banner_context(tournament: TournamentModel) -> dict[str, Any]:
+    """Return template context fragments for the pending banner.
+
+    Returns ``{"pending_banner_show": False}`` when the banner is not
+    applicable; otherwise returns the full set of four keys
+    (``pending_banner_show``, ``pending_deadline_iso``,
+    ``pending_registered_count``, ``pending_planned_count``).
+
+    NB: ``Tournament.pending_deadline`` is declared as
+    ``Mapped[datetime]`` with no ``timezone=True``, so the value comes
+    back tz-naive. We coerce to UTC before ``isoformat()`` — otherwise
+    the ISO string lacks a ``Z`` / offset suffix and the browser's
+    ``new Date(...)`` parses it in the user's local timezone, producing
+    a countdown wrong by the user-vs-server clock skew. Same pattern
+    is used at lines ~877-887 for ``starts_at``.
+    """
+    if (
+        tournament.status != TournamentStatus.PENDING
+        or tournament.tenant_id != DEFAULT_TENANT_ID
+    ):
+        return {"pending_banner_show": False}
+    deadline = tournament.pending_deadline
+    if deadline.tzinfo is None:
+        deadline = deadline.replace(tzinfo=UTC)
+    registered = sum(1 for p in tournament.participants if p.released_at is None)
+    return {
+        "pending_banner_show": True,
+        "pending_deadline_iso": deadline.isoformat(),
+        "pending_registered_count": registered,
+        "pending_planned_count": tournament.num_players,
+    }
 
 
 async def _needs_bootstrap(session: DBSession) -> bool:
@@ -790,7 +823,6 @@ async def ui_tournament_live(
     """
     import json
     import os
-    from datetime import UTC
 
     from atp.dashboard.models import GameResult
     from atp.dashboard.tournament.models import Round, RoundStatus, Tournament
