@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from atp.dashboard.database import Database
@@ -142,8 +143,6 @@ async def test_partial_endpoint_after_status_flip_drops_hx_trigger(
     # Flip status; the next pull must return an empty wrapper (no
     # hx-trigger, no inner content) — this is the gracefully-retire
     # swap the design relies on.
-    from sqlalchemy import update
-
     async with test_database.session() as s:
         await s.execute(
             update(Tournament)
