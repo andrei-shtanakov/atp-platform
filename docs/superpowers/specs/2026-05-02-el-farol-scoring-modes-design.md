@@ -1,6 +1,6 @@
 # El Farol Scoring Modes — Design
 
-**Status:** Draft (revision 2 — reflects actual tournament/engine architecture)
+**Status:** Draft (revision 3 — final-review polish)
 **Date:** 2026-05-02
 **Owner:** prosto.andrey.g@gmail.com
 
@@ -10,8 +10,10 @@ Add a configurable `scoring_mode` to the El Farol Bar engine
 (`game-environments/game_envs/games/el_farol.py`) with two values:
 
 - **`happy_only`** (new default) — each happy slot scores +1, each
-  crowded slot scores 0. No penalties. Final / accumulated score =
-  sum of happy slots across all rounds.
+  crowded slot scores 0. No penalties. Standalone final via
+  `get_payoffs()` = `t_happy` (unless disqualified by
+  `min_total_hours`). Tournament `total_score` = sum of per-round
+  `happy` over all resolved rounds.
 - **`happy_minus_crowded`** (legacy, opt-in) — each happy slot scores
   +1, each crowded slot scores −1. The engine's standalone
   `get_payoffs()` final formula remains `t_happy / max(t_crowded, 0.1)`.
@@ -121,12 +123,13 @@ inline as opt-in.
   the new branch and reference both modes.
 - **`get_payoffs` docstring** (`el_farol.py:677`) — describe both
   modes, with `happy_only` as the default.
-- **`to_prompt()`** (`el_farol.py:744`) — this method generates the
-  human-readable game description used in some standalone scenarios.
-  Update it to describe the new default formula. Adding a
-  mode-aware branch is acceptable here if the implementation cost is
-  low; otherwise just describe `happy_only` and add a one-line note
-  that `happy_minus_crowded` legacy mode is available via config.
+- **`to_prompt()`** (`el_farol.py:744`) — generates the human-readable
+  game description used in standalone scenarios. **Must be
+  mode-aware**: branch on `c.scoring_mode` and return the matching
+  description (same shape as the three-method branches above). Treating
+  this as conditional-if-cheap creates tech debt for the future
+  tournament-level config work — the branch is the same five lines
+  regardless.
 
 ### Dashboard "About this game" copy
 
@@ -146,8 +149,11 @@ dashboard since v1 doesn't expose it as a tournament option.
   crowded". Replace "Your round payoff is (happy slots) − (crowded
   slots)" → "Your round payoff is the number of happy slots".
 - `payoff_formula`: replace "Round total = (happy slots) − (crowded
-  slots)" → "Round total = number of happy slots. Tournament total =
-  sum across all rounds."
+  slots)" → "Round total = number of happy slots. In tournament play,
+  the displayed score is the sum of round totals across all rounds."
+  (The `/ui/games/{game}` page is a generic public game-detail page,
+  not tournament-specific, so the wording must accommodate both
+  standalone and tournament framings without overpromising.)
 
 ### Demo agent comment
 
@@ -173,7 +179,9 @@ opt-in to the legacy mode in v1.
 - Each happy slot: +1.
 - Each crowded slot: 0 (no penalty).
 - Per-round payoff: number of happy slots that round.
-- Final / tournament total: sum of happy slots across all rounds.
+- Standalone final via `get_payoffs()`: `t_happy` (unless
+  disqualified by `min_total_hours`).
+- Tournament `total_score`: sum of per-round happy values.
 
 ### `happy_minus_crowded` (legacy, opt-in)
 - Reachable only from direct `ElFarolConfig(scoring_mode=...)`
@@ -258,12 +266,28 @@ Required:
 ### atp-games standalone runner / YAML scenarios
 
 Behaviour changes globally for any scenario that constructs
-`ElFarolConfig()` without an explicit `scoring_mode`. Audit
-`atp-games/` and `examples/test_suites/` for fixtures that depend on
-the legacy formula and either:
-- Tag those fixtures with `scoring_mode: "happy_minus_crowded"` to
-  preserve old behaviour, OR
-- Update their expected payoff values to match the new default.
+`ElFarolConfig()` without an explicit `scoring_mode`.
+
+**Concrete audit list** (from `grep -rln "happy_minus_crowded\|happy
+- crowded\|t_happy / max" --include='*.py' --include='*.yaml'
+--include='*.md'`):
+
+- `game-environments/game_envs/games/el_farol.py` — engine itself
+  (the file we're modifying).
+- `game-environments/tests/test_el_farol.py` — engine unit tests.
+- `atp-games/tests/test_round_payoffs.py` — atp-games runner tests.
+- `tests/unit/games/test_el_farol_state_format.py` — state-format
+  test (verify whether it asserts on payoffs).
+- `examples/test_suites/13_game_el_farol.yaml` — example YAML suite.
+  Audit for any baked-in payoff expectations.
+- `docs/games/rules/el-farol-bar.ru.md`,
+  `docs/games/rules/el-farol-bar.en.md` — rules docs (we're rewriting
+  these).
+
+Each file is either:
+- Tagged with `scoring_mode: "happy_minus_crowded"` to preserve old
+  behaviour as a regression test, OR
+- Updated for the new default's expected payoff values.
 
 ### Existing tests
 
@@ -346,6 +370,12 @@ acceptance gate is "all engine + atp-games + dashboard tests green".
 
 ≥80% on new code (`scoring_mode` field + branches in three methods).
 
+### Acceptance gates (CLAUDE.md hard requirements)
+
+- All engine + atp-games + dashboard tests green.
+- `uv run pyrefly check` clean across all modified files.
+- `uv run ruff check` clean.
+
 ## Migration plan
 
 No data migration. The `scoring_mode` config field is a new
@@ -354,8 +384,29 @@ fine.
 
 The participant-kit changelog + version bump is documented but not
 enforced by the engine — it is a courtesy notice for external bot
-authors. The kit lives in
-`participant-kit-el-farol-en/` and is published independently.
+authors. The kit lives in `participant-kit-el-farol-en/` and is
+published independently.
+
+### Rollout precondition (procedural, not code)
+
+**Before deploying this change to production**, run on the prod DB:
+
+```sql
+SELECT id, status, game_type, num_players, created_at
+FROM tournaments
+WHERE status IN ('pending', 'active') AND game_type = 'el_farol';
+```
+
+- **0 rows** → safe to deploy.
+- **≥1 row** → either wait for those tournaments to complete /
+  cancel them via `POST /api/v1/tournaments/{id}/cancel`, OR
+  explicitly accept that mid-flight rounds will use the new formula
+  and `total_score` will mix old and new per-round values (see Edge
+  cases). The acceptance must be documented in the deploy commit /
+  PR description.
+
+This precondition is operational, not enforced by code, but skipping
+it is the only way to produce surprising mid-tournament behaviour.
 
 ## Open questions
 
@@ -364,7 +415,14 @@ authors. The kit lives in
   to accept `scoring_mode`, store it in `Tournament.config`, plumb
   through `_el_farol_for()` factory (and update its cache key from
   `(num_players,)` to `(num_players, scoring_mode)`), surface in
-  admin UI / REST schema. Estimate: separate ~2-3 task plan.
+  admin UI / REST schema. **Future-tournament legacy semantics
+  (frozen here so the v2 plan doesn't have to re-litigate it):**
+  per-round payoff = `happy − crowded` (already the engine
+  branch); tournament `total_score = sum(happy − crowded)` (which
+  matches what the existing dashboard would compute via
+  `sum(Action.payoff)`). The standalone-runner ratio formula
+  (`t_happy / max(t_crowded, 0.1)`) stays standalone-only and is
+  NOT introduced into tournaments. Estimate: separate ~2-3 task plan.
 - **Bot self-awareness of mode** — observation does not currently
   carry `scoring_mode`. Since v1 ships `happy_only` everywhere
   (tournaments + dashboard copy + rules docs), bots can safely
@@ -373,6 +431,13 @@ authors. The kit lives in
   `scoring_mode`.
 - **About-page mode awareness** — see non-goals; intentionally
   unconditional in v1.
+- **`min_total_hours` engine-vs-tournament asymmetry** — pre-existing
+  before this change. `get_payoffs()` enforces the disqualification;
+  tournament `total_score = sum(Action.payoff)` does NOT. Real
+  sandbagging risk: a bot that stays home 99% of rounds but catches
+  rare happy slots passes in tournaments while being disqualified
+  standalone. Out of scope here, but worth filing a follow-up
+  Linear / GitHub issue so it's not forgotten.
 
 ## References
 
