@@ -1,0 +1,23 @@
+{% extends "ui/base_ui.html" %}
+
+{% block title %}El Farol Hall of Fame — ATP Platform{% endblock %}
+
+{% block content %}
+<h2>El Farol Hall of Fame</h2>
+<p>
+    Top user-built agents by total score across all completed public
+    El Farol tournaments.
+</p>
+<p style="color:#888;font-size:0.85em">
+    Note: rank reflects pagination order; ties may split across pages.
+</p>
+
+<div id="hof-content">
+{% include "ui/partials/winners_hall_of_fame_table.html" %}
+</div>
+
+<p style="margin-top:1.5rem">
+    <a href="/api/public/leaderboard/el-farol?limit={{ limit }}&offset={{ offset }}"
+       style="color:#7c3aed">View raw JSON →</a>
+</p>
+{% endblock %}

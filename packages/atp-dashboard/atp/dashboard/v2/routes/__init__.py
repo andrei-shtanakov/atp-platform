@@ -15,6 +15,7 @@ Each module handles a specific domain of functionality:
 - timeline: Event timeline visualization
 - leaderboard: Performance leaderboard matrix
 - public_leaderboard: Public leaderboard with agent profiles (TASK-802)
+- winners_api: El Farol Hall of Fame JSON endpoint (TASK-winners)
 - marketplace: Test suite marketplace (TASK-803)
 - games: Game-theoretic evaluation results (TASK-920)
 - definitions: Suite definition CRUD and YAML export
@@ -95,6 +96,7 @@ from atp.dashboard.v2.routes.trends import router as trends_router
 from atp.dashboard.v2.routes.upload import router as upload_router
 from atp.dashboard.v2.routes.users import router as users_router
 from atp.dashboard.v2.routes.websocket import router as websocket_router
+from atp.dashboard.v2.routes.winners_api import router as winners_api_router
 
 # Create the main API router that aggregates all sub-routers
 router = APIRouter()
@@ -139,6 +141,7 @@ router.include_router(token_api_router)
 router.include_router(agent_management_api_router)
 router.include_router(invite_api_router)
 router.include_router(builtins_api_router)
+router.include_router(winners_api_router)
 
 __all__ = [
     "router",
@@ -181,4 +184,5 @@ __all__ = [
     "agent_management_api_router",
     "invite_api_router",
     "builtins_api_router",
+    "winners_api_router",
 ]

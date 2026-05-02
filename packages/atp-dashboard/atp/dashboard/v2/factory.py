@@ -247,8 +247,10 @@ def create_app(
     # Mount UI routes (HTMX + Pico CSS frontend)
     from atp.dashboard.v2.routes.admin_ui import router as admin_ui_router
     from atp.dashboard.v2.routes.ui import router as ui_router
+    from atp.dashboard.v2.routes.winners_ui import router as winners_ui_router
 
     app.include_router(ui_router)
+    app.include_router(winners_ui_router)
     app.include_router(admin_ui_router)
 
     # Configure Jinja2 templates

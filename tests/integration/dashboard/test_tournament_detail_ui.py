@@ -77,6 +77,50 @@ async def test_completed_tournament_renders_cards_replay_link(
 
 
 @pytest.mark.anyio
+async def test_completed_public_el_farol_renders_winners_link(
+    v2_app,
+    db_session: AsyncSession,
+    disable_dashboard_auth,
+) -> None:
+    """Discoverability: completed + public + el_farol tournaments must
+    surface a link to the winners poster."""
+    from atp.dashboard.models import GameResult
+    from atp.dashboard.tournament.models import Tournament
+
+    t = Tournament(
+        game_type="el_farol",
+        num_players=2,
+        total_rounds=1,
+        status="completed",
+    )
+    db_session.add(t)
+    await db_session.flush()
+
+    db_session.add(
+        GameResult(
+            game_name="el_farol",
+            game_type="el_farol_interval",
+            num_players=2,
+            num_rounds=1,
+            status="completed",
+            match_id="m-winners-link",
+            tournament_id=t.id,
+        )
+    )
+    await db_session.commit()
+
+    async with AsyncClient(
+        transport=ASGITransport(app=v2_app), base_url="http://test"
+    ) as client:
+        resp = await client.get(f"/ui/tournaments/{t.id}")
+
+    assert resp.status_code == 200
+    html = resp.text
+    assert f"/ui/tournaments/{t.id}/winners" in html
+    assert "Winners →" in html
+
+
+@pytest.mark.anyio
 async def test_cancelled_tournament_has_no_cards_replay_link(
     v2_app,
     db_session: AsyncSession,
@@ -100,3 +144,41 @@ async def test_cancelled_tournament_has_no_cards_replay_link(
 
     assert resp.status_code == 200
     assert "Cards replay" not in resp.text
+    assert "Winners →" not in resp.text
+
+
+@pytest.mark.anyio
+async def test_private_el_farol_tournament_hides_winners_link(
+    v2_app,
+    db_session: AsyncSession,
+    disable_dashboard_auth,
+) -> None:
+    """Private tournaments (join_token set) must NOT expose the
+    winners link, even when status == completed and game_type == el_farol.
+
+    Under ``disable_dashboard_auth`` there is no authenticated user, so
+    the route's visibility check returns 404 for private tournaments
+    before the template renders. That is still a valid negative gate —
+    the link must not appear in either the rendered page or the 404
+    error page.
+    """
+    from atp.dashboard.tournament.models import Tournament
+
+    t = Tournament(
+        game_type="el_farol",
+        num_players=2,
+        total_rounds=1,
+        status="completed",
+        join_token="secret",
+    )
+    db_session.add(t)
+    await db_session.commit()
+
+    async with AsyncClient(
+        transport=ASGITransport(app=v2_app), base_url="http://test"
+    ) as client:
+        resp = await client.get(f"/ui/tournaments/{t.id}")
+
+    assert resp.status_code in (200, 404)
+    assert "Winners →" not in resp.text
+    assert f"/ui/tournaments/{t.id}/winners" not in resp.text

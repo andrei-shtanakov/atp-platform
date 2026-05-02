@@ -1,0 +1,60 @@
+{% extends "ui/base_ui.html" %}
+
+{% block title %}{{ tournament_name }} — Winners — ATP Platform{% endblock %}
+
+{% block content %}
+<h2>{{ tournament_name }} — Winners</h2>
+
+<div class="tournament-meta">
+    <span class="status-badge" style="background:#28a745">completed</span>
+    <span>el_farol</span>
+    <span>Players: {{ header.players }}</span>
+    <span>Days: {{ header.days }}</span>
+    <span>Capacity: {{ header.capacity }}</span>
+    <span>Duration: {{ header.duration or "—" }}</span>
+</div>
+
+{% if entries %}
+<table>
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>Bot</th>
+            <th>Description</th>
+            <th>Owner</th>
+            <th>Score</th>
+            <th>Tokens in</th>
+            <th>Tokens out</th>
+            <th>Cost</th>
+            <th>Model</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for e in entries %}
+        <tr{% if e.rank <= 3 %} style="background:#f8f5ff"{% endif %}>
+            <td>
+                {% if e.rank == 1 %}🥇{% elif e.rank == 2 %}🥈{% elif e.rank == 3 %}🥉{% endif %}
+                {{ e.rank }}
+            </td>
+            <td>{{ e.agent_name }}</td>
+            <td>{{ e.agent_description or "—" }}</td>
+            <td>{{ e.owner_username }}</td>
+            <td class="score-pair" style="color:#7c3aed">
+                {{ "%.2f"|format(e.score) if e.score is not none else "—" }}
+            </td>
+            <td class="score-pair">{{ e.tokens_in if e.tokens_in is not none else "—" }}</td>
+            <td class="score-pair">{{ e.tokens_out if e.tokens_out is not none else "—" }}</td>
+            <td class="score-pair">{{ "%.4f"|format(e.cost_usd) if e.cost_usd is not none else "—" }}</td>
+            <td>{{ e.model_id or "—" }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p style="color:#888">No final scores recorded.</p>
+{% endif %}
+
+<p style="margin-top:1.5rem">
+    <a href="/ui/tournaments/{{ tournament.id }}">← Back to tournament</a>
+</p>
+{% endblock %}

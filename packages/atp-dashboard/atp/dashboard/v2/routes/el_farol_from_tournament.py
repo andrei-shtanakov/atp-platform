@@ -30,13 +30,15 @@ from atp.dashboard.v2.routes.el_farol_dashboard import (
     DashboardRound,
     SlotPayoff,
 )
+from atp.dashboard.v2.services.el_farol_constants import CAPACITY_RATIO
 
 _DEFAULT_COLOR = "#6e7781"
 # El Farol only — for other games, derive prefix from tournament.game_type
 # (see Participant.builtin_strategy format "{game}/{strategy}" in models.py)
 _BUILTIN_PREFIX = "el_farol/"
 _NUM_SLOTS = 16
-_CAPACITY_RATIO = 0.6
+# Local alias for backwards-compat with the existing module-private name.
+_CAPACITY_RATIO = CAPACITY_RATIO
 
 
 def _normalised_intervals(
