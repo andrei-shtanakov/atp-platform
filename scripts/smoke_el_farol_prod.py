@@ -226,6 +226,10 @@ async def _run() -> int:
 
     # Smoke-check that the public winners poster renders for the
     # just-completed tournament — catches route deploy regressions.
+    # The winners page is gated on join_token IS NULL (public only); the
+    # smoke tournament is created without `private=True` so this is
+    # always reachable. If the creation payload above ever sets
+    # ``private=True``, this check will start 404'ing.
     expected_agent_names = [f"{BOT_AGENT_PREFIX}-{i}" for i in range(NUM_BOTS)]
     try:
         await _check_winners_page(
