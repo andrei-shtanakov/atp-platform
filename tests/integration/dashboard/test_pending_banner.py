@@ -239,3 +239,21 @@ async def test_pending_banner_js_loaded_on_detail_page(
     r = await client.get(f"/ui/tournaments/{tid}")
     assert r.status_code == 200
     assert "/static/v2/js/pending_banner.js" in r.text
+
+
+@pytest.mark.anyio
+async def test_partial_endpoint_404_for_missing_tournament(
+    test_database: Database,
+    db_session: AsyncSession,
+    disable_dashboard_auth,
+    client: AsyncClient,
+):
+    """The partial endpoint inherits the detail route's strict 404
+    behaviour for non-existent tournaments (the spec's enumeration
+    guard contract)."""
+    r = await client.get("/ui/tournaments/9999999?partial=pending-banner")
+    # The route renders an error template inside a 404 response — same
+    # shape as the full-page detail 404. The body should NOT contain
+    # the banner wrapper.
+    assert r.status_code == 404
+    assert 'id="pending-banner"' not in r.text

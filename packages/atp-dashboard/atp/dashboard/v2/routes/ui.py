@@ -864,6 +864,13 @@ async def ui_tournament_live(
             request=request, name="ui/match_detail.html", context=context
         )
 
+    # Banner context is gated only on tournament.status == PENDING (per
+    # spec); attach it for every visible tournament so the placeholder
+    # branches below also receive the banner. The helper is cheap and
+    # short-circuits to {"pending_banner_show": False} for non-PENDING
+    # tournaments.
+    context.update(_pending_banner_context(tournament))
+
     # If the tournament is already complete and a replay row exists,
     # send the spectator to the canonical permanent URL.
     if tournament.status == "completed":
@@ -943,7 +950,6 @@ async def ui_tournament_live(
             "current_round_deadline_ms": current_round_deadline_ms,
         }
     )
-    context.update(_pending_banner_context(tournament))
 
     return _templates(request).TemplateResponse(
         request=request,
@@ -1403,6 +1409,11 @@ async def ui_tournament_detail(
             select(GameResult.match_id).where(GameResult.tournament_id == tournament.id)
         )
 
+    # Compute banner context once and reuse for both the full-page and
+    # partial response paths. The helper iterates participants and is
+    # cheap, but calling it twice would be wasteful for the partial path.
+    banner_ctx_data = _pending_banner_context(tournament)
+
     context = {
         "active_page": "tournaments",
         "tournament": tournament,
@@ -1418,7 +1429,7 @@ async def ui_tournament_detail(
         "user": user,
         "visible_reasoning_action_ids": visible_reasoning_action_ids,
         "cards_match_id": cards_match_id,
-        **_pending_banner_context(tournament),
+        **banner_ctx_data,
     }
 
     partial = request.query_params.get("partial")
@@ -1428,7 +1439,7 @@ async def ui_tournament_detail(
         # the contract stays narrow and grep-friendly.
         banner_ctx = {
             "tournament_id": tournament_id,
-            **_pending_banner_context(tournament),
+            **banner_ctx_data,
         }
         response = _templates(request).TemplateResponse(
             request=request,
