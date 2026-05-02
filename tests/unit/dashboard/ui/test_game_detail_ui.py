@@ -130,6 +130,26 @@ def test_action_example_is_valid_json(game_name: str):
     assert isinstance(parsed, dict)
 
 
+def test_game_copy_el_farol_describes_happy_only():
+    """The dashboard 'About' copy for El Farol must describe the new
+    default scoring (happy_only): +1 per happy slot, 0 per crowded
+    (no penalty), round score = number of happy slots."""
+    from atp.dashboard.v2.game_copy import GAME_COPY
+
+    el = GAME_COPY["el_farol"]
+
+    # Tagline + setup must not promise -1 for crowded.
+    assert "−1" not in el.tagline
+    assert "no penalty" in el.setup.lower() or "0 if attendance" in el.setup
+
+    # Rules and payoff_formula describe happy_only.
+    rules_text = " ".join(el.rules)
+    assert "−1" not in rules_text
+    assert "happy" in rules_text.lower()
+    assert "−1" not in el.payoff_formula
+    assert "happy slots" in el.payoff_formula.lower()
+
+
 def test_el_farol_boundary_matches_game_implementation():
     """El Farol public copy must match the code's strict-inequality rule.
 
