@@ -27,6 +27,8 @@ async def test_hof_empty_state(
     assert r.status_code == 200
     assert "No completed El Farol tournaments yet." in r.text
     assert r.headers["Cache-Control"] == "public, s-maxage=60"
+    # The sidebar link must be present (not just the page H2).
+    assert '<a href="/ui/leaderboard/el-farol"' in r.text
 
 
 @pytest.mark.anyio
