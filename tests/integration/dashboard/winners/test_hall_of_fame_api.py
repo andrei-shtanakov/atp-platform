@@ -30,6 +30,23 @@ def _reset_caches():
     reset_caches_for_tests()
 
 
+@pytest.fixture
+async def client(test_database: Database):
+    """AsyncClient pointed at a fresh test app with the DB session
+    overridden to use ``test_database``. Each test gets its own app
+    instance so dependency overrides don't leak across tests."""
+    app = create_test_app()
+
+    async def _override_session():
+        async with test_database.session() as s:
+            yield s
+
+    app.dependency_overrides[get_db_session] = _override_session
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+
+
 async def _seed(session: AsyncSession) -> None:
     alice = User(
         username="alice",
@@ -79,23 +96,13 @@ async def _seed(session: AsyncSession) -> None:
 
 @pytest.mark.anyio
 async def test_hall_of_fame_returns_payload_shape(
-    test_database: Database,
     db_session: AsyncSession,
     disable_dashboard_auth,
+    client: AsyncClient,
 ):
     await _seed(db_session)
 
-    app = create_test_app()
-
-    async def _override_session():
-        async with test_database.session() as s:
-            yield s
-
-    app.dependency_overrides[get_db_session] = _override_session
-
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        r = await client.get("/api/public/leaderboard/el-farol")
+    r = await client.get("/api/public/leaderboard/el-farol")
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["schema_version"] == SCHEMA_VERSION
@@ -113,35 +120,24 @@ async def test_hall_of_fame_returns_payload_shape(
 
 @pytest.mark.anyio
 async def test_hall_of_fame_rejects_out_of_bounds(
-    test_database: Database,
-    db_session: AsyncSession,
     disable_dashboard_auth,
+    client: AsyncClient,
 ):
-    app = create_test_app()
-
-    async def _override_session():
-        async with test_database.session() as s:
-            yield s
-
-    app.dependency_overrides[get_db_session] = _override_session
-
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        for path in (
-            "/api/public/leaderboard/el-farol?limit=0",
-            "/api/public/leaderboard/el-farol?limit=201",
-            "/api/public/leaderboard/el-farol?offset=-1",
-        ):
-            r = await client.get(path)
-            assert r.status_code == 422, path
+    for path in (
+        "/api/public/leaderboard/el-farol?limit=0",
+        "/api/public/leaderboard/el-farol?limit=201",
+        "/api/public/leaderboard/el-farol?offset=-1",
+    ):
+        r = await client.get(path)
+        assert r.status_code == 422, path
 
 
 @pytest.mark.anyio
 async def test_hall_of_fame_pagination_keys_are_distinct_in_cache(
-    test_database: Database,
     db_session: AsyncSession,
     disable_dashboard_auth,
     monkeypatch,
+    client: AsyncClient,
 ):
     """Two consecutive requests with different ``offset`` must NOT share
     a cache hit. Patch ``_hall_of_fame_query`` to count calls."""
@@ -158,20 +154,10 @@ async def test_hall_of_fame_pagination_keys_are_distinct_in_cache(
 
     monkeypatch.setattr(winners_service, "_hall_of_fame_query", _counting)
 
-    app = create_test_app()
-
-    async def _override_session():
-        async with test_database.session() as s:
-            yield s
-
-    app.dependency_overrides[get_db_session] = _override_session
-
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        await client.get("/api/public/leaderboard/el-farol?limit=2&offset=0")
-        await client.get("/api/public/leaderboard/el-farol?limit=2&offset=2")
-        # Second hit at offset=0 should be cached.
-        await client.get("/api/public/leaderboard/el-farol?limit=2&offset=0")
+    await client.get("/api/public/leaderboard/el-farol?limit=2&offset=0")
+    await client.get("/api/public/leaderboard/el-farol?limit=2&offset=2")
+    # Second hit at offset=0 should be cached.
+    await client.get("/api/public/leaderboard/el-farol?limit=2&offset=0")
 
     # Two distinct (limit, offset) keys → two underlying queries; the
     # third request hits the cache and does not append.

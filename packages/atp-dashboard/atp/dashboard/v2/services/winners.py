@@ -137,6 +137,25 @@ def reset_caches_for_tests() -> None:
     _hof_cache = None
 
 
+def winners_cache_key(tournament_id: int) -> str:
+    """Stable cache key for the per-tournament winners cache.
+
+    Encapsulates the underlying ``QueryCache`` key shape so callers do
+    not depend on the private ``_make_key`` method.
+    """
+    return QueryCache._make_key("winners", tournament_id)
+
+
+def hof_cache_key(*, limit: int, offset: int) -> str:
+    """Stable cache key for one Hall-of-Fame page.
+
+    Both ``limit`` and ``offset`` participate in the key — distinct
+    pagination parameters MUST yield distinct cache entries, otherwise
+    the first page's payload would be served for every page.
+    """
+    return QueryCache._make_key("hall_of_fame", limit=limit, offset=offset)
+
+
 # Re-export for ergonomic import in routes.
 CAPACITY_RATIO = _CAPACITY_RATIO
 
@@ -239,6 +258,7 @@ async def _winners_query(
 
 async def _hall_of_fame_query(
     session: AsyncSession,
+    *,
     limit: int,
     offset: int,
 ) -> tuple[int, list[HallEntry]]:

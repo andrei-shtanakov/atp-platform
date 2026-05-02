@@ -10,12 +10,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Query, Response
 
-from atp.dashboard.query_cache import QueryCache
 from atp.dashboard.v2.dependencies import DBSession
 from atp.dashboard.v2.services import winners as winners_service
 from atp.dashboard.v2.services.winners import (
     LeaderboardPayload,
     get_hof_cache,
+    hof_cache_key,
     utc_now,
 )
 
@@ -39,7 +39,7 @@ async def get_hall_of_fame_json(
     422 on violation (no silent clamp).
     """
     cache = get_hof_cache()
-    key = QueryCache._make_key("hall_of_fame", limit=limit, offset=offset)
+    key = hof_cache_key(limit=limit, offset=offset)
     cached = cache.get(key)
     if cached is not None:
         total, entries = cached
