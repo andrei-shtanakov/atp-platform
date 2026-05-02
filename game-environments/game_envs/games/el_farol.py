@@ -10,8 +10,12 @@ Game structure:
   - Players want to maximise time in non-crowded slots.
 
 One *round* in the framework corresponds to one *day* in the original
-simulation. Each player submits a list of slot indices (0 to
-num_slots-1) they plan to attend. The game runs for num_rounds days.
+simulation. Each player submits up to ``max_intervals`` (default 2)
+non-overlapping, non-adjacent intervals of slot indices via
+``{"intervals": [[start, end], ...]}``, covering at most
+``max_total_slots`` (default 8) slots total per day. Slot indices are
+inclusive in ``[0, num_slots-1]``. An empty list means "stay home".
+The game runs for ``num_rounds`` days.
 
 Scoring is mode-dependent (see ``ElFarolConfig.scoring_mode``):
   - ``happy_only`` (default): per-round payoff = number of happy

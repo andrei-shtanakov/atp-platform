@@ -304,7 +304,7 @@ async def test_el_farol_resolve_round_writes_payoffs(
     payoffs, not specific magnitudes."""
     from sqlalchemy import select
 
-    from atp.dashboard.tournament.models import Action
+    from atp.dashboard.tournament.models import Action, Round
     from atp.dashboard.tournament.service import TournamentService
 
     svc = TournamentService(session, event_bus)
@@ -328,7 +328,26 @@ async def test_el_farol_resolve_round_writes_payoffs(
     assert result["status"] == "round_resolved"
     assert result["round_number"] == 1
 
-    actions = (await session.execute(select(Action))).scalars().all()
+    # Filter to the resolved round's actions only — using a no-filter
+    # SELECT would be brittle if the resolve path ever writes Action
+    # rows beyond round 1.
+    resolved_round = (
+        await session.execute(
+            select(Round).where(
+                Round.tournament_id == t.id,
+                Round.round_number == 1,
+            )
+        )
+    ).scalar_one()
+    actions = (
+        (
+            await session.execute(
+                select(Action).where(Action.round_id == resolved_round.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
     assert len(actions) >= 2
     for a in actions:
         assert a.payoff is not None, f"action {a.id} has None payoff"

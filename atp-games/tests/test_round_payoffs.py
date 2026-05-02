@@ -20,7 +20,7 @@ asserts the legacy divergence explicitly under
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 from game_envs.core.state import Observation
@@ -71,14 +71,14 @@ async def _run_el_farol_match(
     *,
     num_rounds: int = 3,
     capacity_threshold: int = 2,
-    scoring_mode: str = "happy_only",
+    scoring_mode: Literal["happy_only", "happy_minus_crowded"] = "happy_only",
 ) -> EpisodeResult:
     """Run a 2-agent El Farol match and return the first episode result."""
     config = ElFarolConfig(
         num_players=2,
         num_rounds=num_rounds,
         capacity_threshold=capacity_threshold,
-        scoring_mode=scoring_mode,  # type: ignore[arg-type]
+        scoring_mode=scoring_mode,
     )
     game = ElFarolBar(config)
     agents = {
@@ -171,7 +171,7 @@ class TestRunnerPopulatesRoundPayoffsForElFarol:
     @pytest.mark.anyio
     @pytest.mark.parametrize("scoring_mode", ["happy_only", "happy_minus_crowded"])
     async def test_el_farol_per_day_payoff_equals_happy_count_no_crowding(
-        self, scoring_mode: str
+        self, scoring_mode: Literal["happy_only", "happy_minus_crowded"]
     ) -> None:
         # GIVEN a 3-day, 2-agent El Farol match with disjoint contiguous picks
         # (morning [0,1,2] vs evening [13,14,15]) and capacity_threshold=2.
