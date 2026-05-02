@@ -3,8 +3,8 @@
 The two query helpers (``_winners_query`` and ``_hall_of_fame_query``)
 are the single source of truth for both the JSON API
 (``routes/winners_api.py``) and the HTML pages
-(``routes/winners_ui.py``). Caching uses ``QueryCache`` with semantic
-keys built via ``QueryCache._make_key``.
+(``routes/winners_ui.py``). Cache keys are built from query parameters
+via the QueryCache key builder.
 """
 
 from __future__ import annotations
@@ -14,7 +14,9 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from atp.dashboard.query_cache import QueryCache
-from atp.dashboard.v2.routes.el_farol_from_tournament import _CAPACITY_RATIO
+from atp.dashboard.v2.services.el_farol_constants import (
+    CAPACITY_RATIO as _CAPACITY_RATIO,
+)
 
 # Pin the schema version on the JSON contract. Bump on any
 # breaking change to ``LeaderboardPayload``.
@@ -81,7 +83,13 @@ class LeaderboardPayload(BaseModel):
 # both caches at 60 s makes invalidation trivial if we ever add a
 # mutable post-completion field (e.g. moderator-added annotations).
 _WINNERS_CACHE_TTL_S = 60
+# Per-tournament winners cache is keyed by tournament_id; cardinality is
+# bounded by the number of completed public tournaments.
 _WINNERS_CACHE_MAX = 256
+
+# Hall of Fame cache is keyed by (limit, offset) pagination pairs;
+# cardinality is bounded by reasonable browsing depth.
+_HOF_CACHE_MAX = 64
 
 _winners_cache: QueryCache[list[WinnerEntry]] | None = None
 _hof_cache: QueryCache[tuple[int, list[HallEntry]]] | None = None
@@ -107,7 +115,7 @@ def get_hof_cache() -> QueryCache[tuple[int, list[HallEntry]]]:
     global _hof_cache
     if _hof_cache is None:
         _hof_cache = QueryCache(
-            max_size=_WINNERS_CACHE_MAX,
+            max_size=_HOF_CACHE_MAX,
             ttl_seconds=_WINNERS_CACHE_TTL_S,
         )
     return _hof_cache
