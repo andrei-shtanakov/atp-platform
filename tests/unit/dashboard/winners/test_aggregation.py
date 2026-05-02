@@ -412,8 +412,20 @@ async def test_hall_of_fame_aggregates_versions_of_same_agent(
     session: AsyncSession,
 ):
     alice = await _make_user(session, "alice")
-    v1 = await _make_agent(session, owner=alice, name="alfa", version="1")
-    v2 = await _make_agent(session, owner=alice, name="alfa", version="2")
+    v1 = await _make_agent(
+        session,
+        owner=alice,
+        name="alfa",
+        version="1",
+        description="old desc",
+    )
+    v2 = await _make_agent(
+        session,
+        owner=alice,
+        name="alfa",
+        version="2",
+        description="new desc",
+    )
     t1 = await _make_tournament(session, name="T1")
     t2 = await _make_tournament(session, name="T2")
     await _make_participant(
@@ -437,6 +449,8 @@ async def test_hall_of_fame_aggregates_versions_of_same_agent(
     total, entries = await _hall_of_fame_query(session, limit=50, offset=0)
     assert total == 1  # one logical agent, two versions collapsed
     assert entries[0].total_score == 30.0
+    # I-1 regression guard: latest version (highest Agent.id) wins.
+    assert entries[0].agent_description == "new desc"
 
 
 @pytest.mark.anyio
@@ -606,3 +620,62 @@ async def test_hall_of_fame_pagination(session: AsyncSession):
     assert [e.rank for e in page2] == [3, 4]
     assert page1[0].total_score == 40.0
     assert page2[0].total_score == 20.0
+
+
+@pytest.mark.anyio
+async def test_hall_of_fame_mixed_extant_and_deleted_versions(
+    session: AsyncSession,
+):
+    """When an agent has v1 soft-deleted and v2 live, the lineage row
+    must show no ``(archived)`` suffix and use v2's description (the
+    latest non-deleted version)."""
+    alice = await _make_user(session, "alice")
+    v1_deleted = await _make_agent(
+        session,
+        owner=alice,
+        name="alfa",
+        version="1",
+        description="old description",
+        deleted_at=datetime(2026, 5, 1, 10, 0, 0),
+    )
+    v2_live = await _make_agent(
+        session,
+        owner=alice,
+        name="alfa",
+        version="2",
+        description="new description",
+    )
+    t1 = await _make_tournament(session, name="T1")
+    t2 = await _make_tournament(session, name="T2")
+
+    # Same uq_participant_agent_active workaround used elsewhere — the
+    # first participant must be released before the second flush since
+    # both reference (different versions of) the same agent name.
+    p1 = await _make_participant(
+        session,
+        tournament=t1,
+        user=alice,
+        agent=v1_deleted,
+        agent_name="alfa",
+        total_score=10.0,
+    )
+    p1.released_at = datetime(2026, 5, 1, 13, 0, 0)
+    await session.flush()
+    await _make_participant(
+        session,
+        tournament=t2,
+        user=alice,
+        agent=v2_live,
+        agent_name="alfa",
+        total_score=20.0,
+    )
+    await session.commit()
+
+    total, entries = await _hall_of_fame_query(session, limit=50, offset=0)
+    assert total == 1
+    e = entries[0]
+    assert e.total_score == 30.0
+    # Lineage has at least one extant version → no archived suffix.
+    assert e.agent_name == "alfa"
+    # Description comes from the latest non-deleted version (v2).
+    assert e.agent_description == "new description"

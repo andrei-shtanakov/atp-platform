@@ -284,7 +284,7 @@ async def _hall_of_fame_query(
             Agent.name == agg_stmt.c.name,
             Agent.deleted_at.is_(None),
         )
-        .order_by(Agent.updated_at.desc())
+        .order_by(Agent.updated_at.desc(), Agent.id.desc())
         .limit(1)
         .correlate(agg_stmt)
         .scalar_subquery()
@@ -322,12 +322,20 @@ async def _hall_of_fame_query(
     )
 
     count_stmt = select(func.count()).select_from(agg_stmt)
-    total = (await session.execute(count_stmt)).scalar_one() or 0
+    total = (await session.execute(count_stmt)).scalar_one()
 
     result = await session.execute(page_stmt)
     rows = result.all()
 
     entries: list[HallEntry] = []
+    # Hall-of-Fame ``rank`` is the pagination index (offset + i + 1),
+    # NOT a dense score-rank. Ties in ``total_score`` are broken
+    # deterministically by ``(owner_id, name)`` in the ORDER BY above,
+    # but ranks are still consecutive positions — so two agents with
+    # identical scores receive different ranks. This differs from
+    # ``_winners_query`` (per-tournament) which applies dense ranking;
+    # the spec keeps them distinct because per-tournament rank is the
+    # tournament outcome and HoF rank is a leaderboard position.
     for i, row in enumerate(rows):
         rank = offset + i + 1
         if row.has_extant:
