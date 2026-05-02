@@ -149,6 +149,16 @@ def test_game_copy_el_farol_describes_happy_only():
     assert "−1" not in el.payoff_formula
     assert "happy slots" in el.payoff_formula.lower()
 
+    # Task 7 deliverable: payoff_formula must distinguish per-round
+    # score ("round total") from tournament aggregate ("sum of round
+    # totals" / "displayed score"). The /ui/games/{game} page is
+    # generic, so the wording must accommodate both framings.
+    assert "round total" in el.payoff_formula.lower()
+    assert (
+        "sum of" in el.payoff_formula.lower()
+        or "displayed score" in el.payoff_formula.lower()
+    )
+
 
 def test_el_farol_boundary_matches_game_implementation():
     """El Farol public copy must match the code's strict-inequality rule.
