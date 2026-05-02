@@ -2,8 +2,16 @@
 
 {% block title %}ATP · El Farol · Match {{ match_id }}{% endblock %}
 
+{% block extra_scripts %}
+<script src="/static/v2/js/pending_banner.js" defer></script>
+{% endblock %}
+
 {% block content %}
 <link rel="stylesheet" href="/static/v2/css/el_farol.css">
+
+{% if pending_banner_show is defined %}
+  {% include "ui/partials/pending_banner_wrapper.html" %}
+{% endif %}
 
 <div style="padding:8px 16px"><a href="{{ back_link_href }}">← {{ back_link_label }}</a></div>
 

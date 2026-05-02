@@ -9,7 +9,7 @@ from __future__ import annotations
 import functools
 import logging
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 
@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from atp.dashboard.benchmark.models import Benchmark, Run, RunStatus, TaskResult
-from atp.dashboard.models import Agent, SuiteDefinition, User
+from atp.dashboard.models import DEFAULT_TENANT_ID, Agent, SuiteDefinition, User
 from atp.dashboard.rbac.models import Role, UserRole
 from atp.dashboard.tokens import APIToken, Invite
 from atp.dashboard.tournament.models import Participant, TournamentStatus
@@ -51,6 +51,39 @@ async def _get_ui_user(request: Request, session: DBSession) -> User | None:
     if user is None or not user.is_active:
         return None
     return user
+
+
+def _pending_banner_context(tournament: TournamentModel) -> dict[str, Any]:
+    """Return template context fragments for the pending banner.
+
+    Returns ``{"pending_banner_show": False}`` when the banner is not
+    applicable; otherwise returns the full set of four keys
+    (``pending_banner_show``, ``pending_deadline_iso``,
+    ``pending_registered_count``, ``pending_planned_count``).
+
+    NB: ``Tournament.pending_deadline`` is declared as
+    ``Mapped[datetime]`` with no ``timezone=True``, so the value comes
+    back tz-naive. We coerce to UTC before ``isoformat()`` — otherwise
+    the ISO string lacks a ``Z`` / offset suffix and the browser's
+    ``new Date(...)`` parses it in the user's local timezone, producing
+    a countdown wrong by the user-vs-server clock skew. Same pattern
+    is used at lines ~877-887 for ``starts_at``.
+    """
+    if (
+        tournament.status != TournamentStatus.PENDING
+        or tournament.tenant_id != DEFAULT_TENANT_ID
+    ):
+        return {"pending_banner_show": False}
+    deadline = tournament.pending_deadline
+    if deadline.tzinfo is None:
+        deadline = deadline.replace(tzinfo=UTC)
+    registered = sum(1 for p in tournament.participants if p.released_at is None)
+    return {
+        "pending_banner_show": True,
+        "pending_deadline_iso": deadline.isoformat(),
+        "pending_registered_count": registered,
+        "pending_planned_count": tournament.num_players,
+    }
 
 
 async def _needs_bootstrap(session: DBSession) -> bool:
@@ -790,7 +823,6 @@ async def ui_tournament_live(
     """
     import json
     import os
-    from datetime import UTC
 
     from atp.dashboard.models import GameResult
     from atp.dashboard.tournament.models import Round, RoundStatus, Tournament
@@ -801,7 +833,12 @@ async def ui_tournament_live(
 
     user = await _get_ui_user(request, session)
 
-    tournament = await session.get(Tournament, tournament_id)
+    result = await session.execute(
+        select(Tournament)
+        .options(selectinload(Tournament.participants))
+        .where(Tournament.id == tournament_id)
+    )
+    tournament = result.scalar_one_or_none()
     visible = tournament is not None and await is_tournament_visible_to(
         session, tournament, user
     )
@@ -826,6 +863,13 @@ async def ui_tournament_live(
         return _templates(request).TemplateResponse(
             request=request, name="ui/match_detail.html", context=context
         )
+
+    # Banner context is gated only on tournament.status == PENDING (per
+    # spec); attach it for every visible tournament so the placeholder
+    # branches below also receive the banner. The helper is cheap and
+    # short-circuits to {"pending_banner_show": False} for non-PENDING
+    # tournaments.
+    context.update(_pending_banner_context(tournament))
 
     # If the tournament is already complete and a replay row exists,
     # send the spectator to the canonical permanent URL.
@@ -1166,6 +1210,7 @@ async def ui_tournaments_new_submit(
         context={
             "active_page": "tournaments",
             "tournament": reloaded,
+            "tournament_id": reloaded.id,
             "creator_name": creator_name,
             "cancelled_by_name": None,
             "sorted_rounds": sorted(
@@ -1181,6 +1226,7 @@ async def ui_tournaments_new_submit(
             "is_admin": creator.is_admin,
             "visible_reasoning_action_ids": set(),
             "join_token_once": join_token,
+            **_pending_banner_context(reloaded),
         },
     )
 
@@ -1210,6 +1256,70 @@ def _render_tournament_new_form_error(
     )
 
 
+async def _render_pending_banner_partial(
+    request: Request,
+    session: AsyncSession,
+    tournament_id: int,
+) -> HTMLResponse:
+    """Lightweight handler for the pending-banner HTMX partial.
+
+    Avoids the heavy eager-loads (rounds, actions, timeline) the full
+    detail render requires. Only loads Tournament + participants for
+    the counter, and runs the same visibility gate as the detail
+    route. Returns 404 in the same shape as the detail not_found case.
+    """
+    from atp.dashboard.tournament.models import Tournament as _Tournament
+
+    result = await session.execute(
+        select(_Tournament)
+        .where(_Tournament.id == tournament_id)
+        .options(selectinload(_Tournament.participants))
+    )
+    tournament = result.scalar_one_or_none()
+
+    not_found_resp = _templates(request).TemplateResponse(
+        request=request,
+        name="ui/error.html",
+        context={
+            "error_title": "Not Found",
+            "error_message": f"Tournament #{tournament_id} not found.",
+        },
+        status_code=404,
+    )
+
+    if tournament is None:
+        return not_found_resp
+
+    # Visibility gate (same rules as the full detail handler).
+    user_id = getattr(request.state, "user_id", None)
+    user: User | None = None
+    is_admin = False
+    if user_id:
+        user = await session.get(User, user_id)
+        if user and user.is_admin:
+            is_admin = True
+
+    if not is_admin and tournament.join_token is not None:
+        is_owner = user is not None and tournament.created_by == user.id
+        is_participant = False
+        if user:
+            is_participant = any(p.user_id == user.id for p in tournament.participants)
+        if not is_owner and not is_participant:
+            return not_found_resp
+
+    banner_ctx = {
+        "tournament_id": tournament_id,
+        **_pending_banner_context(tournament),
+    }
+    response = _templates(request).TemplateResponse(
+        request=request,
+        name="ui/partials/pending_banner_wrapper.html",
+        context=banner_ctx,
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 @router.get("/tournaments/{tournament_id}", response_class=HTMLResponse)
 @limiter.limit("120/minute")
 async def ui_tournament_detail(
@@ -1224,6 +1334,10 @@ async def ui_tournament_detail(
         Round,
         Tournament,
     )
+
+    partial = request.query_params.get("partial")
+    if partial == "pending-banner":
+        return await _render_pending_banner_partial(request, session, tournament_id)
 
     result = await session.execute(
         select(Tournament)
@@ -1365,9 +1479,15 @@ async def ui_tournament_detail(
             select(GameResult.match_id).where(GameResult.tournament_id == tournament.id)
         )
 
+    # Compute banner context once and reuse for both the full-page and
+    # partial response paths. The helper iterates participants and is
+    # cheap, but calling it twice would be wasteful for the partial path.
+    banner_ctx_data = _pending_banner_context(tournament)
+
     context = {
         "active_page": "tournaments",
         "tournament": tournament,
+        "tournament_id": tournament_id,
         "creator_name": creator_name,
         "is_admin": is_admin,
         "cancelled_by_name": cancelled_by_name,
@@ -1379,9 +1499,9 @@ async def ui_tournament_detail(
         "user": user,
         "visible_reasoning_action_ids": visible_reasoning_action_ids,
         "cards_match_id": cards_match_id,
+        **banner_ctx_data,
     }
 
-    partial = request.query_params.get("partial")
     if partial == "live":
         return _templates(request).TemplateResponse(
             request=request,
