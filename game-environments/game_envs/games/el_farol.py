@@ -27,7 +27,7 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 
@@ -251,6 +251,10 @@ class ElFarolConfig(GameConfig):
     capacity_ratio: float = 0.6
     min_total_hours: float = 0.0
     slot_duration: float = 0.5  # hours
+    # Scoring mode — see docs/games/rules/el-farol-bar.{ru,en}.md.
+    # Default is "happy_minus_crowded" during incremental rollout; the
+    # final commit flips it to "happy_only".
+    scoring_mode: Literal["happy_only", "happy_minus_crowded"] = "happy_minus_crowded"
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -283,6 +287,11 @@ class ElFarolConfig(GameConfig):
             )
         if self.slot_duration <= 0:
             raise ValueError(f"slot_duration must be > 0, got {self.slot_duration}")
+        if self.scoring_mode not in {"happy_only", "happy_minus_crowded"}:
+            raise ValueError(
+                f"scoring_mode must be 'happy_only' or "
+                f"'happy_minus_crowded', got {self.scoring_mode!r}"
+            )
 
 
 # ---------------------------------------------------------------------------
