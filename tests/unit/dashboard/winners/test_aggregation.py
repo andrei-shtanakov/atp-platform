@@ -16,7 +16,10 @@ from atp.dashboard.tournament.models import (
     Tournament,
     TournamentStatus,
 )
-from atp.dashboard.v2.services.winners import _winners_query
+from atp.dashboard.v2.services.winners import (
+    _hall_of_fame_query,
+    _winners_query,
+)
 
 
 async def _make_user(session: AsyncSession, username: str) -> User:
@@ -356,3 +359,250 @@ async def test_winners_query_all_null_scores_get_rank_one(
     assert len(rows) == 2
     # Both NULL-score rows tie at rank 1 (dense ranking, ties share a rank).
     assert [r.rank for r in rows] == [1, 1]
+
+
+@pytest.mark.anyio
+async def test_hall_of_fame_query_empty_when_no_tournaments(
+    session: AsyncSession,
+):
+    total, entries = await _hall_of_fame_query(session, limit=50, offset=0)
+    assert total == 0
+    assert entries == []
+
+
+@pytest.mark.anyio
+async def test_hall_of_fame_aggregates_two_tournaments(session: AsyncSession):
+    alice = await _make_user(session, "alice")
+    agent = await _make_agent(session, owner=alice, name="alfa")
+    t1 = await _make_tournament(session, name="T1")
+    t2 = await _make_tournament(session, name="T2")
+    p1 = await _make_participant(
+        session,
+        tournament=t1,
+        user=alice,
+        agent=agent,
+        agent_name="alfa",
+        total_score=10.0,
+    )
+    # Releasing the first participant unblocks the
+    # ``uq_participant_agent_active`` partial-unique index so the same
+    # agent can be seated again in a later tournament.
+    p1.released_at = datetime(2026, 5, 1, 13, 0, 0)
+    await session.flush()
+    await _make_participant(
+        session,
+        tournament=t2,
+        user=alice,
+        agent=agent,
+        agent_name="alfa",
+        total_score=15.0,
+    )
+    await session.commit()
+
+    total, entries = await _hall_of_fame_query(session, limit=50, offset=0)
+    assert total == 1
+    assert entries[0].total_score == 25.0
+    assert entries[0].tournaments_count == 2
+    assert entries[0].agent_name == "alfa"
+    assert entries[0].owner_username == "alice"
+
+
+@pytest.mark.anyio
+async def test_hall_of_fame_aggregates_versions_of_same_agent(
+    session: AsyncSession,
+):
+    alice = await _make_user(session, "alice")
+    v1 = await _make_agent(session, owner=alice, name="alfa", version="1")
+    v2 = await _make_agent(session, owner=alice, name="alfa", version="2")
+    t1 = await _make_tournament(session, name="T1")
+    t2 = await _make_tournament(session, name="T2")
+    await _make_participant(
+        session,
+        tournament=t1,
+        user=alice,
+        agent=v1,
+        agent_name="alfa",
+        total_score=10.0,
+    )
+    await _make_participant(
+        session,
+        tournament=t2,
+        user=alice,
+        agent=v2,
+        agent_name="alfa",
+        total_score=20.0,
+    )
+    await session.commit()
+
+    total, entries = await _hall_of_fame_query(session, limit=50, offset=0)
+    assert total == 1  # one logical agent, two versions collapsed
+    assert entries[0].total_score == 30.0
+
+
+@pytest.mark.anyio
+async def test_hall_of_fame_excludes_builtins(session: AsyncSession):
+    alice = await _make_user(session, "alice")
+    agent = await _make_agent(session, owner=alice, name="alfa")
+    t = await _make_tournament(session)
+    await _make_participant(
+        session,
+        tournament=t,
+        user=alice,
+        agent=agent,
+        agent_name="alfa",
+        total_score=10.0,
+    )
+    await _make_participant(
+        session,
+        tournament=t,
+        user=None,
+        agent=None,
+        builtin_strategy="el_farol/random",
+        agent_name="el_farol/random",
+        total_score=8.0,
+    )
+    await session.commit()
+
+    total, entries = await _hall_of_fame_query(session, limit=50, offset=0)
+    assert total == 1
+    assert entries[0].agent_name == "alfa"
+
+
+@pytest.mark.anyio
+async def test_hall_of_fame_excludes_private_tournaments(
+    session: AsyncSession,
+):
+    alice = await _make_user(session, "alice")
+    agent = await _make_agent(session, owner=alice, name="alfa")
+    pub = await _make_tournament(session, name="public")
+    priv = await _make_tournament(session, name="private", join_token="secret")
+    p_pub = await _make_participant(
+        session,
+        tournament=pub,
+        user=alice,
+        agent=agent,
+        agent_name="alfa",
+        total_score=10.0,
+    )
+    # Release the public-tournament participant so the same agent can be
+    # seated in the private tournament without violating the partial
+    # unique index on (agent_id) WHERE released_at IS NULL.
+    p_pub.released_at = datetime(2026, 5, 1, 13, 0, 0)
+    await session.flush()
+    await _make_participant(
+        session,
+        tournament=priv,
+        user=alice,
+        agent=agent,
+        agent_name="alfa",
+        total_score=99.0,
+    )
+    await session.commit()
+
+    total, entries = await _hall_of_fame_query(session, limit=50, offset=0)
+    assert total == 1
+    assert entries[0].total_score == 10.0  # private tournament excluded
+
+
+@pytest.mark.anyio
+async def test_hall_of_fame_excludes_other_tenants(session: AsyncSession):
+    alice = await _make_user(session, "alice")
+    agent = await _make_agent(session, owner=alice, name="alfa")
+    t = await _make_tournament(session, tenant_id="other-tenant")
+    await _make_participant(
+        session,
+        tournament=t,
+        user=alice,
+        agent=agent,
+        agent_name="alfa",
+        total_score=42.0,
+    )
+    await session.commit()
+
+    total, entries = await _hall_of_fame_query(session, limit=50, offset=0)
+    assert total == 0
+
+
+@pytest.mark.anyio
+async def test_hall_of_fame_archived_lineage(session: AsyncSession):
+    alice = await _make_user(session, "alice")
+    deleted = await _make_agent(
+        session,
+        owner=alice,
+        name="alfa",
+        version="1",
+        deleted_at=datetime(2026, 5, 1, 0, 0, 0),
+    )
+    t = await _make_tournament(session)
+    await _make_participant(
+        session,
+        tournament=t,
+        user=alice,
+        agent=deleted,
+        agent_name="alfa",
+        total_score=10.0,
+    )
+    await session.commit()
+
+    total, entries = await _hall_of_fame_query(session, limit=50, offset=0)
+    assert total == 1
+    assert entries[0].agent_name == "alfa (archived)"
+    assert entries[0].agent_description is None
+
+
+@pytest.mark.anyio
+async def test_hall_of_fame_ordering_and_tiebreaker(session: AsyncSession):
+    alice = await _make_user(session, "alice")
+    bob = await _make_user(session, "bob")
+    a = await _make_agent(session, owner=alice, name="z")
+    b = await _make_agent(session, owner=bob, name="a")
+    t = await _make_tournament(session, num_players=2)
+    # Tie on score — tiebreaker is owner_id ASC, then name ASC.
+    await _make_participant(
+        session,
+        tournament=t,
+        user=alice,
+        agent=a,
+        agent_name="z",
+        total_score=10.0,
+    )
+    await _make_participant(
+        session,
+        tournament=t,
+        user=bob,
+        agent=b,
+        agent_name="a",
+        total_score=10.0,
+    )
+    await session.commit()
+
+    total, entries = await _hall_of_fame_query(session, limit=50, offset=0)
+    assert total == 2
+    # alice has lower id (created first), so she wins the tiebreaker.
+    assert entries[0].owner_username == "alice"
+    assert entries[1].owner_username == "bob"
+
+
+@pytest.mark.anyio
+async def test_hall_of_fame_pagination(session: AsyncSession):
+    t = await _make_tournament(session, num_players=4)
+    for i, score in enumerate([40, 30, 20, 10], start=1):
+        u = await _make_user(session, f"u{i}")
+        ag = await _make_agent(session, owner=u, name=f"agent{i}")
+        await _make_participant(
+            session,
+            tournament=t,
+            user=u,
+            agent=ag,
+            agent_name=f"agent{i}",
+            total_score=float(score),
+        )
+    await session.commit()
+
+    total, page1 = await _hall_of_fame_query(session, limit=2, offset=0)
+    total2, page2 = await _hall_of_fame_query(session, limit=2, offset=2)
+    assert total == 4 and total2 == 4
+    assert [e.rank for e in page1] == [1, 2]
+    assert [e.rank for e in page2] == [3, 4]
+    assert page1[0].total_score == 40.0
+    assert page2[0].total_score == 20.0

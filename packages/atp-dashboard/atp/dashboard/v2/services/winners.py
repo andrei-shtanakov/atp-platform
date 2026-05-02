@@ -9,15 +9,20 @@ via the QueryCache key builder.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import and_, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from atp.dashboard.models import Agent, User
+from atp.dashboard.models import DEFAULT_TENANT_ID, Agent, User
 from atp.dashboard.query_cache import QueryCache
-from atp.dashboard.tournament.models import Action, Participant
+from atp.dashboard.tournament.models import (
+    Action,
+    Participant,
+    Tournament,
+    TournamentStatus,
+)
 from atp.dashboard.v2.services.el_farol_constants import (
     CAPACITY_RATIO as _CAPACITY_RATIO,
 )
@@ -230,3 +235,122 @@ async def _winners_query(
         )
 
     return entries
+
+
+async def _hall_of_fame_query(
+    session: AsyncSession,
+    limit: int,
+    offset: int,
+) -> tuple[int, list[HallEntry]]:
+    """Return (total_count, page) for the El Farol Hall of Fame.
+
+    Identity: ``(tenant_id, owner_id, agent.name)``. Versions of the
+    same agent are aggregated. Builtin participants and rows with NULL
+    ``total_score`` are excluded.
+    """
+    base_filters = and_(
+        Tournament.tenant_id == DEFAULT_TENANT_ID,
+        Agent.tenant_id == DEFAULT_TENANT_ID,
+        Tournament.game_type == "el_farol",
+        Tournament.status == TournamentStatus.COMPLETED,
+        Tournament.join_token.is_(None),
+        Participant.agent_id.is_not(None),
+        Participant.total_score.is_not(None),
+    )
+
+    # Aggregation grouped by logical agent.
+    agg_stmt = (
+        select(
+            Agent.tenant_id.label("tenant_id"),
+            Agent.owner_id.label("owner_id"),
+            Agent.name.label("name"),
+            func.sum(Participant.total_score).label("total_score"),
+            func.count(func.distinct(Participant.tournament_id)).label(
+                "tournaments_count"
+            ),
+        )
+        .join(Tournament, Tournament.id == Participant.tournament_id)
+        .join(Agent, Agent.id == Participant.agent_id)
+        .where(base_filters)
+        .group_by(Agent.tenant_id, Agent.owner_id, Agent.name)
+    ).subquery("agg")
+
+    # Latest non-deleted description for the (owner, name) pair.
+    latest_desc = (
+        select(Agent.description)
+        .where(
+            Agent.tenant_id == agg_stmt.c.tenant_id,
+            Agent.owner_id == agg_stmt.c.owner_id,
+            Agent.name == agg_stmt.c.name,
+            Agent.deleted_at.is_(None),
+        )
+        .order_by(Agent.updated_at.desc())
+        .limit(1)
+        .correlate(agg_stmt)
+        .scalar_subquery()
+    )
+
+    has_extant = (
+        exists()
+        .where(
+            Agent.tenant_id == agg_stmt.c.tenant_id,
+            Agent.owner_id == agg_stmt.c.owner_id,
+            Agent.name == agg_stmt.c.name,
+            Agent.deleted_at.is_(None),
+        )
+        .correlate(agg_stmt)
+    )
+
+    page_stmt = (
+        select(
+            agg_stmt.c.owner_id,
+            agg_stmt.c.name,
+            agg_stmt.c.total_score,
+            agg_stmt.c.tournaments_count,
+            User.username.label("owner_username"),
+            latest_desc.label("description"),
+            has_extant.label("has_extant"),
+        )
+        .join(User, User.id == agg_stmt.c.owner_id, isouter=True)
+        .order_by(
+            agg_stmt.c.total_score.desc(),
+            agg_stmt.c.owner_id.asc(),
+            agg_stmt.c.name.asc(),
+        )
+        .limit(limit)
+        .offset(offset)
+    )
+
+    count_stmt = select(func.count()).select_from(agg_stmt)
+    total = (await session.execute(count_stmt)).scalar_one() or 0
+
+    result = await session.execute(page_stmt)
+    rows = result.all()
+
+    entries: list[HallEntry] = []
+    for i, row in enumerate(rows):
+        rank = offset + i + 1
+        if row.has_extant:
+            agent_name = row.name
+            description = row.description
+        else:
+            agent_name = f"{row.name} (archived)"
+            description = None
+
+        entries.append(
+            HallEntry(
+                rank=rank,
+                owner_username=row.owner_username or "—",
+                agent_name=agent_name,
+                agent_description=description,
+                total_score=float(row.total_score),
+                tournaments_count=int(row.tournaments_count),
+            )
+        )
+
+    return int(total), entries
+
+
+def utc_now() -> datetime:
+    """Server time used for ``LeaderboardPayload.generated_at``."""
+    return datetime.now(tz=UTC)
