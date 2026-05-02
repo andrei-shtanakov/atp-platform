@@ -175,12 +175,18 @@ async def _winners_query(
     result = await session.execute(stmt)
     rows = result.all()
 
-    # Dense ranking — ties share a rank, the next non-tied score jumps
+    # Dense ranking — ties share a rank; the next non-tied score jumps
     # to len(seen_so_far) + 1. Pure post-processing keeps the SQL
     # portable across SQLite (test DB) and Postgres (prod DB).
+    #
+    # ``_NO_SCORE`` is a unique sentinel so the first iteration always
+    # bumps ``rank`` even when the first row's score is None — without
+    # it, a tournament whose participants all have NULL scores would
+    # get rank=0 (None != None is False in Python).
+    _NO_SCORE = object()
     entries: list[WinnerEntry] = []
     rank = 0
-    prev_score: float | None = None
+    prev_score: object = _NO_SCORE
     seen = 0
     for row in rows:
         seen += 1
@@ -199,8 +205,11 @@ async def _winners_query(
             if row.agent_deleted_at is not None:
                 display_name = f"{display_name} (archived)"
 
-        if row.distinct_models is None or row.distinct_models == 0:
-            model_id: str | None = None
+        # COUNT(DISTINCT ...) returns 0 (never NULL) when there are no
+        # action rows — drop the redundant ``is None`` guard.
+        model_id: str | None
+        if row.distinct_models == 0:
+            model_id = None
         elif row.distinct_models == 1:
             model_id = row.sample_model
         else:

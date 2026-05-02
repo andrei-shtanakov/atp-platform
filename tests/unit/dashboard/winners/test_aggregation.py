@@ -330,3 +330,29 @@ async def test_winners_query_null_score_sorted_last(session: AsyncSession):
     rows = await _winners_query(session, t.id)
     assert [r.agent_name for r in rows] == ["b", "a"]
     assert rows[1].score is None
+
+
+@pytest.mark.anyio
+async def test_winners_query_all_null_scores_get_rank_one(
+    session: AsyncSession,
+):
+    """Regression: when every participant has total_score=None, ranks
+    must still start at 1 (not 0). The dense-ranking sentinel must not
+    collide with NULL scores."""
+    t = await _make_tournament(session, num_players=2)
+    alice = await _make_user(session, "alice")
+    bob = await _make_user(session, "bob")
+    a = await _make_agent(session, owner=alice, name="a")
+    b = await _make_agent(session, owner=bob, name="b")
+    await _make_participant(
+        session, tournament=t, user=alice, agent=a, agent_name="a", total_score=None
+    )
+    await _make_participant(
+        session, tournament=t, user=bob, agent=b, agent_name="b", total_score=None
+    )
+    await session.commit()
+
+    rows = await _winners_query(session, t.id)
+    assert len(rows) == 2
+    # Both NULL-score rows tie at rank 1 (dense ranking, ties share a rank).
+    assert [r.rank for r in rows] == [1, 1]
