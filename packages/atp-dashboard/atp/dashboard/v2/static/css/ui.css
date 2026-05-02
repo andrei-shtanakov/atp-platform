@@ -247,6 +247,37 @@ body {
     text-decoration: underline;
 }
 
+.cancel-tournament-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 4px;
+    margin-left: 10px;
+    padding: 2px 8px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.4;
+    color: #fff;
+    background: #dc3545;
+    border: 1px solid #dc3545;
+    border-radius: 3px;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.cancel-tournament-link:hover {
+    background: #b02a37;
+    border-color: #b02a37;
+    color: #fff;
+    text-decoration: none;
+}
+
+.cancel-tournament-link::before {
+    content: "■";
+    font-size: 0.7rem;
+    line-height: 1;
+}
+
 .watch-live-dot {
     display: inline-block;
     width: 7px;
