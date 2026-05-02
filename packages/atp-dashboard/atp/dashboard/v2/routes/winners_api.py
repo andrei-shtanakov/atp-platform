@@ -8,9 +8,10 @@ for anonymous read endpoints.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Query, Request, Response
 
 from atp.dashboard.v2.dependencies import DBSession
+from atp.dashboard.v2.rate_limit import limiter
 from atp.dashboard.v2.services import winners as winners_service
 from atp.dashboard.v2.services.winners import (
     LeaderboardPayload,
@@ -27,7 +28,9 @@ _CACHE_CONTROL = "public, s-maxage=60"
 
 
 @router.get("/el-farol", response_model=LeaderboardPayload)
+@limiter.limit("120/minute")
 async def get_hall_of_fame_json(
+    request: Request,
     session: DBSession,
     response: Response,
     limit: int = Query(default=50, ge=1, le=200),

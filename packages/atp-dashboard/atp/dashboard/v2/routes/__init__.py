@@ -15,6 +15,7 @@ Each module handles a specific domain of functionality:
 - timeline: Event timeline visualization
 - leaderboard: Performance leaderboard matrix
 - public_leaderboard: Public leaderboard with agent profiles (TASK-802)
+- winners_api: El Farol Hall of Fame JSON endpoint (TASK-winners)
 - marketplace: Test suite marketplace (TASK-803)
 - games: Game-theoretic evaluation results (TASK-920)
 - definitions: Suite definition CRUD and YAML export

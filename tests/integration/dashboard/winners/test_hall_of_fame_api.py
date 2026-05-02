@@ -132,3 +132,28 @@ async def test_hall_of_fame_pagination_keys_are_distinct_in_cache(
     # Two distinct (limit, offset) keys → two underlying queries; the
     # third request hits the cache and does not append.
     assert calls == [(2, 0), (2, 2)]
+
+
+@pytest.mark.anyio
+async def test_hall_of_fame_html_and_json_return_same_top_entry(
+    db_session: AsyncSession,
+    disable_dashboard_auth,
+    client: AsyncClient,
+):
+    """The shared ``_hall_of_fame_query`` must yield the same top
+    entry whether consumed via HTML or JSON. Catches future drift."""
+    await _seed(db_session)
+
+    json_r = await client.get("/api/public/leaderboard/el-farol")
+    html_r = await client.get("/ui/leaderboard/el-farol")
+    assert json_r.status_code == 200
+    assert html_r.status_code == 200
+
+    top = json_r.json()["entries"][0]
+    # Both surfaces must mention the top agent name; the JSON gives the
+    # exact value and the HTML must contain it inside <tbody>.
+    assert top["agent_name"] in html_r.text
+    assert top["owner_username"] in html_r.text
+    # The score formatted by the template is "%.2f" — JSON value must
+    # round to the same string.
+    assert f"{top['total_score']:.2f}" in html_r.text

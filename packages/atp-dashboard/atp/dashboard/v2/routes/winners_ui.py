@@ -98,6 +98,7 @@ async def get_hall_of_fame_html(
     session: DBSession,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    partial: int = Query(default=0, ge=0, le=1),
 ) -> HTMLResponse:
     """Render the public El Farol Hall of Fame leaderboard page."""
     cache = get_hof_cache()
@@ -116,9 +117,14 @@ async def get_hall_of_fame_html(
     total_pages = max(1, (total + limit - 1) // limit)
 
     templates = request.app.state.templates
+    template_name = (
+        "ui/partials/winners_hall_of_fame_table.html"
+        if partial
+        else "ui/winners_hall_of_fame.html"
+    )
     return templates.TemplateResponse(
         request=request,
-        name="ui/winners_hall_of_fame.html",
+        name=template_name,
         context={
             "active_page": "el_farol_hall_of_fame",
             "entries": entries,

@@ -89,6 +89,11 @@ async def test_winners_page_renders_for_completed_public_tournament(
     assert "Capacity: 1" in r.text  # max(1, int(0.6 * 2)) = 1
     assert "12m 4s" in r.text
     assert r.headers["Cache-Control"] == "public, s-maxage=60"
+    # Telemetry-free participant: tokens / cost / model columns render "—".
+    # The seed creates a participant but no Action rows, so all three
+    # telemetry aggregates are NULL → rendered as "—".
+    # At least: description, tokens_in, tokens_out, cost, model.
+    assert r.text.count("—") >= 4
 
 
 @pytest.mark.anyio

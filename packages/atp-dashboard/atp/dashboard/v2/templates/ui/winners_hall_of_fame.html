@@ -12,50 +12,9 @@
     Note: rank reflects pagination order; ties may split across pages.
 </p>
 
-{% if entries %}
-<table>
-    <thead>
-        <tr>
-            <th>#</th>
-            <th>Bot</th>
-            <th>Description</th>
-            <th>Owner</th>
-            <th>Total score</th>
-            <th>Tournaments</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for e in entries %}
-        <tr>
-            <td>{{ e.rank }}</td>
-            <td>{{ e.agent_name }}</td>
-            <td>{{ e.agent_description or "—" }}</td>
-            <td>{{ e.owner_username }}</td>
-            <td class="score-pair">{{ "%.2f"|format(e.total_score) }}</td>
-            <td class="score-pair">{{ e.tournaments_count }}</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-
-{% if total_pages > 1 %}
-<nav style="margin-top:1rem; display:flex; gap:0.5rem; justify-content:center;">
-    {% for p in range(1, total_pages + 1) %}
-    {% set p_offset = (p - 1) * limit %}
-    <a href="/ui/leaderboard/el-farol?limit={{ limit }}&offset={{ p_offset }}"
-       {% if p == page %}style="font-weight:bold"{% endif %}>{{ p }}</a>
-    {% endfor %}
-</nav>
-{% endif %}
-
-{% elif total == 0 %}
-<p style="color:#888">No completed El Farol tournaments yet.</p>
-{% else %}
-<p style="color:#888">
-    No entries on this page.
-    <a href="/ui/leaderboard/el-farol?limit={{ limit }}&offset=0">Back to first page →</a>
-</p>
-{% endif %}
+<div id="hof-content">
+{% include "ui/partials/winners_hall_of_fame_table.html" %}
+</div>
 
 <p style="margin-top:1.5rem">
     <a href="/api/public/leaderboard/el-farol?limit={{ limit }}&offset={{ offset }}"

@@ -196,3 +196,19 @@ async def test_hof_offset_overshoot_shows_back_link_not_empty_message(
     assert "Back to first page" in r.text
     # The misleading empty-state copy must NOT appear:
     assert "No completed El Farol tournaments yet." not in r.text
+
+
+@pytest.mark.anyio
+async def test_hof_partial_swap_returns_table_fragment_only(
+    db_session: AsyncSession,
+    disable_dashboard_auth,
+    client: AsyncClient,
+):
+    """``?partial=1`` returns only the table-body fragment for HTMX swap,
+    NOT the full page (no ``<h2>`` heading, no sidebar)."""
+    r = await client.get("/ui/leaderboard/el-farol?partial=1")
+    assert r.status_code == 200
+    # Empty leaderboard renders the "no tournaments" message in the
+    # partial. The full-page heading must be absent.
+    assert "El Farol Hall of Fame" not in r.text  # only on the H2 in full page
+    assert "No completed El Farol tournaments yet." in r.text
