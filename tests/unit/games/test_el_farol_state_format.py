@@ -138,8 +138,16 @@ def test_format_state_populated_history_aggregates_attendance():
     assert state["attendance_by_round"][1] == [0, 0, 0, 3]
 
 
-def test_compute_round_payoffs_happy_minus_crowded():
-    g = _game(n=3, num_slots=4)
+def test_compute_round_payoffs_legacy_mode_happy_minus_crowded():
+    g = ElFarolBar(
+        ElFarolConfig(
+            num_players=3,
+            num_slots=4,
+            capacity_threshold=3,
+            max_total_slots=4,
+            scoring_mode="happy_minus_crowded",
+        )
+    )
     actions = {
         0: {"intervals": [[0, 1]]},
         1: {"intervals": [[1, 2]]},

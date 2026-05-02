@@ -10,16 +10,25 @@ Game structure:
   - Players want to maximise time in non-crowded slots.
 
 One *round* in the framework corresponds to one *day* in the original
-simulation.  Each player submits a list of slot indices (0 to
-num_slots-1) they plan to attend.  The game runs for num_rounds days.
+simulation. Each player submits up to ``max_intervals`` (default 2)
+non-overlapping, non-adjacent intervals of slot indices via
+``{"intervals": [[start, end], ...]}``, covering at most
+``max_total_slots`` (default 8) slots total per day. Slot indices are
+inclusive in ``[0, num_slots-1]``. An empty list means "stay home".
+The game runs for ``num_rounds`` days.
 
-Payoff per round:
-  happy_slots - crowded_slots   (net non-crowded slots attended that day)
+Scoring is mode-dependent (see ``ElFarolConfig.scoring_mode``):
+  - ``happy_only`` (default): per-round payoff = number of happy
+    slots that day. Final ``get_payoffs()`` = ``t_happy``. No penalty
+    for crowded slots.
+  - ``happy_minus_crowded`` (legacy, opt-in): per-round payoff =
+    ``happy − crowded``. Final ``get_payoffs()`` = ``t_happy /
+    max(t_crowded, 0.1)``.
 
-Final payoffs (get_payoffs):
-  t_happy / max(t_crowded, 0.1) for each player.
-  Players who attended fewer than min_total_hours hours in total
-  receive a disqualification penalty of 0.
+Both modes apply ``min_total_hours`` disqualification in
+``get_payoffs()``: players who attended fewer than the configured
+hours receive 0 regardless of the formula. ``_t_crowded`` is
+accumulated and surfaced in observation in both modes.
 """
 
 from __future__ import annotations
@@ -27,7 +36,7 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 
@@ -240,6 +249,10 @@ class ElFarolConfig(GameConfig):
             strictly in ``(0, 1]``.
         min_total_hours: Minimum hours required to avoid disqualification.
         slot_duration: Duration of each slot in hours (default 0.5 h).
+        scoring_mode: Scoring formula. ``"happy_only"`` (default, +1 per
+            happy slot, 0 per crowded — no penalty) or
+            ``"happy_minus_crowded"`` (legacy opt-in: +1/−1 per slot,
+            ratio final via ``get_payoffs()``).
     """
 
     num_players: int = 100
@@ -251,6 +264,11 @@ class ElFarolConfig(GameConfig):
     capacity_ratio: float = 0.6
     min_total_hours: float = 0.0
     slot_duration: float = 0.5  # hours
+    # Scoring mode — see docs/games/rules/el-farol-bar.{ru,en}.md.
+    # ``happy_only`` (default) gives +1 per happy slot, 0 per crowded;
+    # ``happy_minus_crowded`` is a legacy opt-in for tests and
+    # standalone scenarios that depend on the old formula.
+    scoring_mode: Literal["happy_only", "happy_minus_crowded"] = "happy_only"
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -283,6 +301,11 @@ class ElFarolConfig(GameConfig):
             )
         if self.slot_duration <= 0:
             raise ValueError(f"slot_duration must be > 0, got {self.slot_duration}")
+        if self.scoring_mode not in {"happy_only", "happy_minus_crowded"}:
+            raise ValueError(
+                f"scoring_mode must be 'happy_only' or "
+                f"'happy_minus_crowded', got {self.scoring_mode!r}"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -510,7 +533,11 @@ class ElFarolBar(Game):
         }
 
     def compute_round_payoffs(self, actions: dict[int, dict[str, Any]]) -> list[float]:
-        """Per-round payoff = happy slots − crowded slots (spec §3.3).
+        """Per-round payoff per player for one round.
+
+        Branches on ``ElFarolConfig.scoring_mode``:
+          - ``happy_only`` (default): ``payoff = number of happy slots``.
+          - ``happy_minus_crowded``: ``payoff = happy − crowded``.
 
         Args:
             actions: participant_idx -> ``{"intervals": [[start, end], ...]}``.
@@ -548,6 +575,7 @@ class ElFarolBar(Game):
         crowded = {i for i, c in enumerate(counts) if c >= threshold}
 
         payoffs: list[float] = [0.0] * n
+        mode = self._ef_config.scoring_mode
         for p_idx, slots in enumerate(per_player_slots):
             happy = 0
             crowded_count = 0
@@ -556,7 +584,10 @@ class ElFarolBar(Game):
                     crowded_count += 1
                 else:
                     happy += 1
-            payoffs[p_idx] = float(happy - crowded_count)
+            if mode == "happy_only":
+                payoffs[p_idx] = float(happy)
+            else:  # happy_minus_crowded
+                payoffs[p_idx] = float(happy - crowded_count)
         return payoffs
 
     # ------------------------------------------------------------------
@@ -621,13 +652,20 @@ class ElFarolBar(Game):
         # 3. Update player stats and compute payoffs
         # ------------------------------------------------------------------
         payoffs: dict[str, float] = {}
+        mode = self._ef_config.scoring_mode
         for pid in self.player_ids:
             slots = clean[pid]
             happy = sum(1 for s in slots if daily_occupancy[s] < threshold)
             crowded = sum(1 for s in slots if daily_occupancy[s] >= threshold)
+            # Accumulate both counters unconditionally — observation
+            # carries `your_t_crowded_slots` regardless of mode, so the
+            # telemetry surface stays consistent.
             self._t_happy[pid] += happy
             self._t_crowded[pid] += crowded
-            payoffs[pid] = float(happy - crowded)
+            if mode == "happy_only":
+                payoffs[pid] = float(happy)
+            else:  # happy_minus_crowded
+                payoffs[pid] = float(happy - crowded)
 
         # ------------------------------------------------------------------
         # 4. Record attendance history
@@ -677,9 +715,18 @@ class ElFarolBar(Game):
     def get_payoffs(self) -> dict[str, float]:
         """Compute final payoffs.
 
-        Returns:
-            score = t_happy / max(t_crowded, 0.1) per player.
-            Players who attended fewer than min_total_hours hours receive 0.
+        Returns one float per player. The formula depends on
+        ``ElFarolConfig.scoring_mode``:
+
+        - ``happy_only`` (default): ``result = t_happy`` (count of
+          happy slots accumulated across all rounds).
+        - ``happy_minus_crowded`` (legacy): ``result = t_happy /
+          max(t_crowded, 0.1)`` (ratio).
+
+        Both modes apply ``min_total_hours`` disqualification first —
+        a player who attended fewer hours than the threshold gets 0
+        regardless of the formula. The ``max(t_crowded, 0.1)`` floor
+        in legacy mode prevents division by zero.
         """
         c = self._ef_config
         result: dict[str, float] = {}
@@ -689,7 +736,9 @@ class ElFarolBar(Game):
             total_hours = (th + tc) * c.slot_duration
             if total_hours < c.min_total_hours:
                 result[pid] = 0.0  # disqualified
-            else:
+            elif c.scoring_mode == "happy_only":
+                result[pid] = th
+            else:  # happy_minus_crowded
                 result[pid] = th / max(tc, 0.1)
         return result
 
@@ -742,9 +791,31 @@ class ElFarolBar(Game):
     # ------------------------------------------------------------------
 
     def to_prompt(self) -> str:
-        """Describe the El Farol scenario for LLM agents."""
+        """Describe the El Farol scenario for LLM agents.
+
+        Branches on ``ElFarolConfig.scoring_mode`` so the explanation
+        matches the active formula. See ``get_payoffs()`` for the
+        mode-by-mode contract.
+        """
         c = self._ef_config
         slot_hours = c.num_slots * c.slot_duration
+        if c.scoring_mode == "happy_only":
+            scoring_block = [
+                "Scoring:",
+                "  Each happy slot you attend = +1 (no penalty for crowded).",
+                "  round_score = number of happy slots that day.",
+                "  final_score = total happy slots across all days.",
+                f"  (must attend >= {c.min_total_hours} h to avoid disqualification)",
+            ]
+        else:  # happy_minus_crowded
+            scoring_block = [
+                "Scoring:",
+                "  Each happy slot = +1, each crowded slot = −1.",
+                "  round_score = happy slots − crowded slots.",
+                "  final_score = total_happy_slots / max(total_crowded_slots, 0.1)",
+                f"  (must attend >= {c.min_total_hours} h to avoid disqualification)",
+            ]
+
         return "\n".join(
             [
                 f"This is the El Farol Bar Problem with {c.num_players} players.",
@@ -763,9 +834,7 @@ class ElFarolBar(Game):
                 "a slot, it becomes *crowded*.",
                 "- You can only observe past attendance — not what others plan today.",
                 "",
-                "Scoring:",
-                "  score = total_happy_slots / max(total_crowded_slots, 0.1)",
-                f"  (must attend >= {c.min_total_hours} h to avoid disqualification)",
+                *scoring_block,
                 "",
                 "Strategy note:",
                 "  The Nash equilibrium has each player "

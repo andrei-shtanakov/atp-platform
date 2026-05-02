@@ -297,10 +297,14 @@ async def test_el_farol_resolve_round_writes_payoffs(
     bob: User,
     event_bus: TournamentEventBus,
 ) -> None:
-    """El Farol round resolves synchronously on last submit; payoffs are written."""
+    """El Farol round resolves synchronously on last submit; payoffs are
+    written. Under the happy_only default (no penalty for crowded
+    slots), both players attending slot 0 (count=2 >= threshold=1)
+    score 0.0 — the test verifies the resolve path writes deterministic
+    payoffs, not specific magnitudes."""
     from sqlalchemy import select
 
-    from atp.dashboard.tournament.models import Action
+    from atp.dashboard.tournament.models import Action, Round
     from atp.dashboard.tournament.service import TournamentService
 
     svc = TournamentService(session, event_bus)
@@ -316,19 +320,40 @@ async def test_el_farol_resolve_round_writes_payoffs(
     await svc.join(t.id, bob, "bob")
 
     # Both players attend slot 0 — with capacity_threshold = max(1, int(0.6*2)) = 1,
-    # slot 0 will be crowded (count >= threshold) → each gets 0 happy - 1 crowded = -1.
+    # slot 0 is crowded (count >= threshold). Under happy_only, crowded
+    # slots score 0 (no penalty), so each gets payoff 0.0.
     await svc.submit_action(t.id, alice, action={"intervals": [[0, 0]]})
     result = await svc.submit_action(t.id, bob, action={"intervals": [[0, 0]]})
 
     assert result["status"] == "round_resolved"
     assert result["round_number"] == 1
 
-    actions = (await session.execute(select(Action))).scalars().all()
+    # Filter to the resolved round's actions only — using a no-filter
+    # SELECT would be brittle if the resolve path ever writes Action
+    # rows beyond round 1.
+    resolved_round = (
+        await session.execute(
+            select(Round).where(
+                Round.tournament_id == t.id,
+                Round.round_number == 1,
+            )
+        )
+    ).scalar_one()
+    actions = (
+        (
+            await session.execute(
+                select(Action).where(Action.round_id == resolved_round.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
     assert len(actions) >= 2
     for a in actions:
         assert a.payoff is not None, f"action {a.id} has None payoff"
-        # Both attended the same crowded slot → payoff should be -1.0 each
-        assert a.payoff == -1.0
+        # Both attended the same crowded slot → payoff = 0.0 (happy_only,
+        # no penalty for crowded).
+        assert a.payoff == 0.0
 
 
 @pytest.mark.anyio
@@ -339,28 +364,58 @@ async def test_el_farol_resolve_round_payoffs_differ_on_choice(
     bob: User,
     event_bus: TournamentEventBus,
 ) -> None:
-    """Alice attends crowded slot, Bob stays home → different payoffs."""
+    """Under happy_only, players who pick a happy slot earn +1 per
+    happy slot while players who pick a crowded slot earn 0. With
+    num_players=4 (capacity_threshold = max(1, int(0.6*4)) = 2),
+    a slot with 1 attendee is happy and a slot with 2+ is crowded.
+
+    Scenario:
+      Alice picks slot 0 alone → count[0]=1 < 2 → happy → payoff = 1.0
+      Bob picks slot 1 with Carol & Dave → count[1]=3 >= 2 → crowded → payoff = 0.0
+    """
     from sqlalchemy import select
 
     from atp.dashboard.tournament.models import Action, Participant
     from atp.dashboard.tournament.service import TournamentService
+
+    # Create two extra users so the tournament can fill num_players=4.
+    carol = User(
+        username="carol",
+        email="carol@example.com",
+        hashed_password="x",
+        is_admin=False,
+        is_active=True,
+    )
+    dave = User(
+        username="dave",
+        email="dave@example.com",
+        hashed_password="x",
+        is_admin=False,
+        is_active=True,
+    )
+    session.add_all([carol, dave])
+    await session.flush()
 
     svc = TournamentService(session, event_bus)
     t, _ = await svc.create_tournament(
         creator=admin_user,
         name="ef",
         game_type="el_farol",
-        num_players=2,
+        num_players=4,
         total_rounds=1,
         round_deadline_s=30,
     )
     await svc.join(t.id, alice, "alice")
     await svc.join(t.id, bob, "bob")
+    await svc.join(t.id, carol, "carol")
+    await svc.join(t.id, dave, "dave")
 
-    # Alice picks slot 0 alone (count=1, threshold=1 → CROWDED → -1 payoff)
-    # Bob stays home (intervals=[] → 0 payoff)
+    # Alice picks slot 0 alone (count=1, threshold=2 → happy → payoff = 1.0)
+    # Bob/Carol/Dave pile into slot 1 (count=3, threshold=2 → crowded → payoff = 0.0)
     await svc.submit_action(t.id, alice, action={"intervals": [[0, 0]]})
-    await svc.submit_action(t.id, bob, action={"intervals": []})
+    await svc.submit_action(t.id, bob, action={"intervals": [[1, 1]]})
+    await svc.submit_action(t.id, carol, action={"intervals": [[1, 1]]})
+    await svc.submit_action(t.id, dave, action={"intervals": [[1, 1]]})
 
     # Look up participant → action mapping
     participants = (
@@ -390,7 +445,8 @@ async def test_el_farol_resolve_round_payoffs_differ_on_choice(
         .first()
     )
 
-    assert alice_action.payoff == -1.0
+    # Differ on choice: Alice picked happy → +1, Bob picked crowded → 0.
+    assert alice_action.payoff == 1.0
     assert bob_action.payoff == 0.0
 
 

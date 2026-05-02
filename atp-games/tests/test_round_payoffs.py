@@ -1,28 +1,26 @@
 """Phase 4 TDD tests: GameRunner populates EpisodeResult.round_payoffs.
 
 Phase 4 adds a new ``round_payoffs: list[dict[str, float]]`` field to
-``EpisodeResult``.  The runner appends one dict per resolved day, where each
-dict maps ``player_id -> per_day_payoff`` and ``per_day_payoff`` equals
-``step_result.payoffs[player_id]`` from the underlying game step.
+``EpisodeResult``. The runner appends one dict per resolved day, where
+each dict maps ``player_id -> per_day_payoff`` and ``per_day_payoff``
+equals ``step_result.payoffs[player_id]`` from the underlying game step.
 
 Invariant note
 --------------
-The plan's invariant ``sum(round_payoffs[*][pid]) == ep.payoffs[pid]`` only
-holds for games whose ``get_payoffs()`` is a cumulative sum of per-day
-payoffs (e.g. Prisoner's Dilemma).  El Farol's ``get_payoffs()`` uses a
-non-linear ``t_happy / max(t_crowded, 0.1)`` formula and therefore
-intentionally diverges from the per-day sum; one test below asserts the
-divergence explicitly so the expected behavior is documented.
-
-Expected failure modes before Phase 4 implementation:
-  * ``EpisodeResult`` has no ``round_payoffs`` attribute yet, so every test
-    that touches ``ep.round_payoffs`` (or the constructor default) fails
-    with an ``AttributeError`` / ``TypeError`` on unknown kw.
+The plan's invariant ``sum(round_payoffs[*][pid]) == ep.payoffs[pid]``
+holds for games whose ``get_payoffs()`` is a cumulative sum of
+per-day payoffs (e.g. Prisoner's Dilemma, El Farol in the new
+``happy_only`` mode where final = t_happy = sum of per-day happy
+counts). It does NOT hold for El Farol in legacy
+``happy_minus_crowded`` mode, where ``get_payoffs()`` uses a
+non-linear ``t_happy / max(t_crowded, 0.1)`` ratio. One test below
+asserts the legacy divergence explicitly under
+``scoring_mode="happy_minus_crowded"``.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 from game_envs.core.state import Observation
@@ -73,12 +71,14 @@ async def _run_el_farol_match(
     *,
     num_rounds: int = 3,
     capacity_threshold: int = 2,
+    scoring_mode: Literal["happy_only", "happy_minus_crowded"] = "happy_only",
 ) -> EpisodeResult:
     """Run a 2-agent El Farol match and return the first episode result."""
     config = ElFarolConfig(
         num_players=2,
         num_rounds=num_rounds,
         capacity_threshold=capacity_threshold,
+        scoring_mode=scoring_mode,
     )
     game = ElFarolBar(config)
     agents = {
@@ -154,8 +154,11 @@ class TestRunnerPopulatesRoundPayoffsForPD:
 
 
 class TestRunnerPopulatesRoundPayoffsForElFarol:
-    """El Farol: per-day payoffs are captured, but cumulative ``ep.payoffs``
-    uses a non-linear formula that intentionally diverges from the sum."""
+    """El Farol: per-day payoffs are always captured. Cumulative
+    ``ep.payoffs`` equals the sum of per-day payoffs in the new
+    ``happy_only`` default; in legacy ``happy_minus_crowded`` mode the
+    cumulative formula is non-linear and intentionally diverges from
+    the sum."""
 
     @pytest.mark.anyio
     async def test_el_farol_round_payoffs_length_equals_num_days(self) -> None:
@@ -166,34 +169,46 @@ class TestRunnerPopulatesRoundPayoffsForElFarol:
         assert len(ep.round_payoffs) == 3
 
     @pytest.mark.anyio
-    async def test_el_farol_per_day_matches_happy_minus_crowded(self) -> None:
+    @pytest.mark.parametrize("scoring_mode", ["happy_only", "happy_minus_crowded"])
+    async def test_el_farol_per_day_payoff_equals_happy_count_no_crowding(
+        self, scoring_mode: Literal["happy_only", "happy_minus_crowded"]
+    ) -> None:
         # GIVEN a 3-day, 2-agent El Farol match with disjoint contiguous picks
         # (morning [0,1,2] vs evening [13,14,15]) and capacity_threshold=2.
         # Each player fills 3 slots alone → happy=3, crowded=0 per day →
-        # per-day step payoff is 3.0.
-        ep = await _run_el_farol_match(num_rounds=3)
+        # per-day step payoff is 3.0 under happy_only (the new default) and
+        # also 3.0 under happy_minus_crowded since crowded=0 (happy − 0 =
+        # happy). Mode-agnostic by design — runs against both modes to
+        # lock in the equivalence.
+        ep = await _run_el_farol_match(num_rounds=3, scoring_mode=scoring_mode)
 
         # THEN every day records a per-day payoff of 3.0 for both players
         for day_index in range(3):
-            assert ep.round_payoffs[day_index]["player_0"] == pytest.approx(3.0)
-            assert ep.round_payoffs[day_index]["player_1"] == pytest.approx(3.0)
+            for pid in ("player_0", "player_1"):
+                assert ep.round_payoffs[day_index][pid] == pytest.approx(3.0), (
+                    f"per-day payoff for {pid} on day {day_index} should be "
+                    f"3.0 under scoring_mode={scoring_mode!r}, got "
+                    f"{ep.round_payoffs[day_index][pid]}"
+                )
 
     @pytest.mark.anyio
-    async def test_el_farol_round_payoffs_sum_diverges_from_cumulative(
+    async def test_el_farol_legacy_mode_round_payoffs_sum_diverges_from_cumulative(
         self,
     ) -> None:
-        # GIVEN the same 3-day El Farol match
-        # (morning vs evening, threshold=2, num_players=2, num_rounds=3)
-        ep = await _run_el_farol_match(num_rounds=3)
+        # GIVEN the same 3-day El Farol match in LEGACY happy_minus_crowded
+        # mode (morning vs evening, threshold=2, num_players=2, num_rounds=3).
+        # Under happy_only this divergence does not exist: final = t_happy =
+        # sum of per-day happy counts.
+        ep = await _run_el_farol_match(num_rounds=3, scoring_mode="happy_minus_crowded")
 
         # THEN per-day payoffs sum to 9.0 (3 happy slots × 3 days) for each
         # player, but ep.payoffs uses the non-linear
         #    t_happy / max(t_crowded, 0.1)
         # formula — with t_crowded=0 across 3 days, t_happy=9, that yields
-        # 9 / 0.1 = 90.0.  This divergence is intentional: El Farol's
+        # 9 / 0.1 = 90.0.  This divergence is intentional: El Farol's legacy
         # cumulative payoff is NOT a simple sum of per-day payoffs, so the
         # plan's invariant (sum == ep.payoffs) only applies to linear games
-        # such as Prisoner's Dilemma.
+        # such as Prisoner's Dilemma (and to El Farol in happy_only mode).
         for pid in ("player_0", "player_1"):
             daily_sum = sum(rp[pid] for rp in ep.round_payoffs)
             assert daily_sum == pytest.approx(9.0), (
@@ -202,5 +217,6 @@ class TestRunnerPopulatesRoundPayoffsForElFarol:
             )
             assert ep.payoffs[pid] == pytest.approx(90.0), (
                 f"expected cumulative ep.payoffs[{pid}] to equal 90.0 "
-                f"(9 / max(0, 0.1) across 3 days), got {ep.payoffs[pid]}"
+                f"(t_happy=9 / max(t_crowded=0, 0.1) = 9 / 0.1 = 90.0 "
+                f"across 3 days), got {ep.payoffs[pid]}"
             )

@@ -261,7 +261,7 @@ GAME_COPY: dict[str, GameCopy] = {
             "platform divides each night into 16 time slots; each "
             "player picks up to 8 slots to attend. A slot pays +1 when "
             "its attendance stays strictly below the capacity threshold, "
-            "and −1 once attendance reaches or exceeds it."
+            "and 0 if attendance reaches or exceeds it (no penalty)."
         ),
         point=(
             "El Farol is the archetypal example of bounded rationality "
@@ -277,10 +277,10 @@ GAME_COPY: dict[str, GameCopy] = {
             "Each round, every player simultaneously submits up to two "
             "non-overlapping, non-adjacent contiguous intervals of slots.",
             "For each slot you attend, you get +1 if attendance is "
-            "strictly below the capacity threshold (happy), or −1 if "
-            "attendance reaches or exceeds the threshold (crowded).",
-            "Your round payoff is (happy slots) − (crowded slots) across "
-            "the slots you picked.",
+            "strictly below the capacity threshold (happy), or 0 if "
+            "attendance reaches or exceeds the threshold (crowded). "
+            "There is no penalty for crowded slots.",
+            "Your round payoff is the number of happy slots you picked.",
         ],
         action_example='{"intervals": [[0, 3], [7, 10]]}',
         action_notes=(
@@ -292,9 +292,11 @@ GAME_COPY: dict[str, GameCopy] = {
         ),
         payoff_formula=(
             "For each slot s you attend, payoff is +1 if "
-            "attendance(s) < capacity_threshold (happy), −1 if "
-            "attendance(s) ≥ capacity_threshold (crowded). "
-            "Round total = (happy slots) − (crowded slots)."
+            "attendance(s) < capacity_threshold (happy), 0 if "
+            "attendance(s) ≥ capacity_threshold (crowded — no "
+            "penalty). Round total = number of happy slots. In "
+            "tournament play, the displayed score is the sum of "
+            "round totals across all rounds."
         ),
         available=True,
         references=[

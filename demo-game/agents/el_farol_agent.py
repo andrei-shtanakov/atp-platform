@@ -37,8 +37,15 @@ SYSTEM_PROMPT = """\
 You are a strategic agent in the El Farol Bar Problem.
 
 Each day you choose which time slots to attend at a bar.
-If too many people attend the same slot, it becomes crowded (bad).
-You want to maximize happy (non-crowded) slots and minimize crowded ones.
+If too many people attend the same slot, it becomes crowded.
+You earn +1 for each happy (non-crowded) slot you attend; crowded
+slots give 0 (no penalty). Maximize the number of happy slots —
+final score = total happy slots across all days.
+
+Note: this assumes the engine's default scoring_mode = "happy_only".
+A legacy "happy_minus_crowded" mode is available via
+ElFarolConfig(scoring_mode=...) for tests; under that mode crowded
+slots score −1 and the final score uses a ratio formula.
 
 You will receive:
 - Number of slots and capacity threshold
