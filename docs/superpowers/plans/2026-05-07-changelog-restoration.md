@@ -28,8 +28,8 @@ Files created or modified by this plan, with the responsibility of each:
 | `packages/atp-sdk/CHANGELOG.md` | create | Per-package changelog (already at 2.0.0 on PyPI; seeds with `[2.0.0]`). |
 | `docs/migrations/2026-04-el-farol-intervals.md` | create | El Farol action format migration. |
 | `docs/migrations/2026-05-el-farol-scoring.md` | create | El Farol scoring-mode default migration. |
-| `docs/migrations/2026-04-mcp-purpose-gating.md` | create | MCP `purpose` claim handshake migration. Content derived from `git show d0f11e2`. |
-| `docs/migrations/<additional>.md` | create (conditional) | Any extra breaking changes surfaced by Task 1's audit. |
+| `docs/migrations/2026-04-mcp-purpose-gating.md` | create | MCP `purpose` claim handshake migration. Content derived from `git show d0f11e26`. |
+| `docs/migrations/2026-04-legacy-agents-endpoint.md` | create | `POST /api/agents` → 410 Gone migration (PR #53 / LABS-54 Phase 2, `e1ab0436`). Surfaced by Task 1 audit. |
 | `scripts/ci/check_changelog.sh` | create | Bash script implementing the CI gate logic. |
 | `.github/workflows/changelog.yml` | create | GitHub Actions workflow that invokes the script on PR events. |
 | `tests/ci/__init__.py` | create | Package marker for the new test directory. |
@@ -303,7 +303,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   See `docs/migrations/2026-05-el-farol-scoring.md`. (#121)
 - **MCP tournament tools**: now require an explicit `purpose` claim in the
   auth handshake. Tools reject calls without it.
-  See `docs/migrations/2026-04-mcp-purpose-gating.md`. (commit d0f11e2)
+  See `docs/migrations/2026-04-mcp-purpose-gating.md`. (commit d0f11e26)
+- **`POST /api/agents` returns `410 Gone`**: the legacy ownerless
+  agent-creation endpoint that worked at v1.0.0 is permanently retired.
+  Stale clients now fail loudly with `Deprecation` / `Sunset` / `Link:
+  ...; rel="successor-version"` headers pointing at `POST /api/v1/agents`.
+  The replacement endpoint resolves ownership from the caller's JWT and
+  enforces per-user, per-purpose quotas.
+  See `docs/migrations/2026-04-legacy-agents-endpoint.md`. (#53)
 
 ### Added / Changed / Fixed
 
@@ -315,7 +322,7 @@ system, container-isolated code-exec evaluator, MCP tournament server.
 ## [1.0.0] - 2026-02-13
 ```
 
-If Task 1 surfaced additional breaking changes, append a bullet for each one under `### Breaking Changes`. Bullet format must match the existing three: bold topic, sentence body, link to migration guide, parenthesised PR/commit ref.
+Task 1 audit confirmed one additional breaking change (legacy agents endpoint) — already included in the bullet list above. If you discover further breakages while writing CHANGELOG bullets, append a bullet for each one under `### Breaking Changes`. Bullet format must match the existing four: bold topic, sentence body, link to migration guide, parenthesised PR/commit ref.
 
 The line `## [2.0.0] - YYYY-MM-DD` keeps the literal placeholder `YYYY-MM-DD`. The maintainer fills it at tag time per CONTRIBUTING.md.
 
@@ -770,6 +777,161 @@ git commit -m "docs(migrations): add 2026-04-mcp-purpose-gating guide"
 
 ---
 
+## Task 8b: Migration guide — legacy agents endpoint (410 Gone)
+
+**Files:**
+- Create: `docs/migrations/2026-04-legacy-agents-endpoint.md`
+
+This task was added after the Task 1 audit identified `POST /api/agents → 410 Gone` (PR #53 / LABS-54 Phase 2, commit `e1ab0436`) as a fourth breaking change.
+
+- [ ] **Step 1: Confirm the deprecation contract**
+
+Run:
+```bash
+git show e1ab0436 --stat
+git show e1ab0436 -- 'atp/dashboard/v2/routes/' 'packages/atp-dashboard/atp/dashboard/v2/routes/'
+```
+
+Confirm four facts from the diff (note them down for use in step 2):
+- The 410 response includes the headers `Deprecation`, `Sunset`, and `Link: <…>; rel="successor-version"`.
+- The exact `Sunset` header value (likely a literal RFC 1123 date or an ISO date in the source code). The guide MUST reproduce this verbatim, not a placeholder.
+- The successor URL is `POST /api/v1/agents`.
+- The successor endpoint resolves ownership from the caller's JWT and enforces per-user / per-purpose quotas.
+
+If the diff says something different from the facts above, use what's actually in the diff — the spec/audit captured them at audit time but the migration guide must match the code.
+
+- [ ] **Step 2: Write the file**
+
+Create `docs/migrations/2026-04-legacy-agents-endpoint.md`:
+
+````markdown
+# Migration: `POST /api/agents` is gone — use `POST /api/v1/agents`
+
+**Affected versions:** before PR #53 (LABS-54 Phase 2, merged 2026-04) → after
+**Affected components:** clients calling the legacy ownerless agent-creation
+endpoint (`POST /api/agents`).
+**PR / commit:** #53 (`e1ab0436`)
+
+## What changed
+
+The legacy `POST /api/agents` endpoint that worked at v1.0.0 has been
+retired. It now returns `410 Gone` and emits the deprecation header trio:
+
+- `Deprecation: true`
+- `Sunset: <retirement-date>`
+- `Link: <https://api.example.com/api/v1/agents>; rel="successor-version"`
+
+The replacement is `POST /api/v1/agents`. The replacement resolves
+ownership from the caller's JWT (no anonymous agents) and enforces
+per-user, per-purpose quotas.
+
+## Why
+
+The ownerless agent-creation path was the foundation for the agent-quota
+and per-purpose-token security work (LABS-54, LABS-TSA). Keeping it
+around as a 201-returning shadow path would have undermined those
+controls — every quota and ownership check would need a "but not via the
+legacy endpoint" carve-out. Returning 410 + a successor URL lets stale
+clients fail loudly and points them at the correct route.
+
+## Before
+
+```http
+POST /api/agents HTTP/1.1
+Host: api.example.com
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "name": "my-agent",
+  "purpose": "tournament"
+}
+```
+
+```http
+HTTP/1.1 201 Created
+Content-Type: application/json
+
+{"agent_id": "...", "name": "my-agent", ...}
+```
+
+## After
+
+```http
+POST /api/v1/agents HTTP/1.1
+Host: api.example.com
+Authorization: Bearer <user-or-admin-token>
+Content-Type: application/json
+
+{
+  "name": "my-agent",
+  "purpose": "tournament"
+}
+```
+
+```http
+HTTP/1.1 201 Created
+Content-Type: application/json
+
+{"agent_id": "...", "name": "my-agent", "owner_id": <jwt-user-id>, ...}
+```
+
+A request to the old URL responds:
+
+```http
+HTTP/1.1 410 Gone
+Deprecation: true
+Sunset: <date>
+Link: <https://api.example.com/api/v1/agents>; rel="successor-version"
+Content-Type: application/json
+
+{"detail": "POST /api/agents is permanently retired. Use POST /api/v1/agents."}
+```
+
+## How to migrate
+
+1. Change the URL from `POST /api/agents` to `POST /api/v1/agents`.
+2. Make sure the caller's bearer token resolves to a real user (user-level
+   `atp_u_*` tokens or admin JWTs work; legacy unowned API keys do not).
+3. The request body (`name`, `purpose`) is unchanged. The response now
+   includes `owner_id` derived from the JWT.
+4. If you hit `429 Too Many Requests` after migrating, you've hit the
+   per-user / per-purpose quota — see `ATP_MAX_AGENTS_PER_USER` and the
+   purpose-specific limits in `CLAUDE.md`.
+
+## Backward compatibility
+
+None. The 410 response is permanent. No grace period, no flag to
+re-enable the old endpoint. Clients must update.
+
+## References
+
+- Endpoint definition (new):
+  `packages/atp-dashboard/atp/dashboard/v2/routes/agent_management_api.py`.
+- Endpoint retirement (legacy `410 Gone` response):
+  `packages/atp-dashboard/atp/dashboard/v2/routes/agents.py` (search for
+  `410` or `Sunset`).
+- Commit: `e1ab0436` (PR #53, LABS-54 Phase 2).
+````
+
+- [ ] **Step 3: Sanity check**
+
+```bash
+wc -l docs/migrations/2026-04-legacy-agents-endpoint.md
+grep -c '^## ' docs/migrations/2026-04-legacy-agents-endpoint.md
+grep -E '<[a-z][a-z0-9-]*>' docs/migrations/2026-04-legacy-agents-endpoint.md
+```
+≥ 30 lines, ≥ 6 headings, **zero** matches on the placeholder regex. The regex `<[a-z][a-z0-9-]*>` only matches lowercase-with-dashes content (e.g., `<date>`, `<retirement-date>`) — URL angle brackets like `<https://api.example.com/...>` don't match because they contain `:`, `/`, `.`. If grep prints any lines, replace the leftover `<…>` markers with concrete values pulled from the `e1ab0436` diff in step 1.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add docs/migrations/2026-04-legacy-agents-endpoint.md
+git commit -m "docs(migrations): add 2026-04-legacy-agents-endpoint guide"
+```
+
+---
+
 ## Task 9: CI gate — script + workflow + tests
 
 **Files:**
@@ -1200,6 +1362,7 @@ EXPECTED_MIGRATIONS = {
     "2026-04-el-farol-intervals.md",
     "2026-05-el-farol-scoring.md",
     "2026-04-mcp-purpose-gating.md",
+    "2026-04-legacy-agents-endpoint.md",
 }
 
 EXPECTED_HEADINGS = {
