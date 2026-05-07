@@ -1278,15 +1278,26 @@ fi
 
 # Step C: parse `git diff --unified=0` for added (+) lines and check whether
 # any of their post-image line numbers fall inside [u_start, u_end).
+# Hunk header format: @@ -a,b +c,d @@ — extract `c` (post-image start line).
+# Uses portable awk constructs (BSD- and GNU-compatible) instead of the
+# gawk-only 3-argument match().
 added_in_unreleased=$(git diff --unified=0 "$BASE_SHA" "$HEAD_SHA" -- CHANGELOG.md \
   | awk -v u_start="$u_start" -v u_end="$u_end" '
     /^@@/ {
-      # Hunk header: @@ -a,b +c,d @@
-      match($0, /\+([0-9]+)(,([0-9]+))?/, m)
-      cur = m[1] + 0
+      # Walk fields to find the one that begins with "+" and parse "c[,d]".
+      cur = 0
+      for (i = 1; i <= NF; i++) {
+        if (substr($i, 1, 1) == "+") {
+          val = substr($i, 2)
+          n = split(val, parts, ",")
+          cur = parts[1] + 0
+          break
+        }
+      }
       next
     }
     /^\+\+\+/ { next }
+    /^---/ { next }
     /^\+/ {
       if (cur >= u_start && cur < u_end) { found = 1 }
       cur += 1

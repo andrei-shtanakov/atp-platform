@@ -111,8 +111,8 @@ re-enable the old endpoint. Clients must update.
 ## Timeline
 
 - **Sunset date:** 2026-04-17 12:00 GMT (retirement target; actual removal was 2026-04-18)
-- **Deprecation status:** The Deprecation header was set to `true` at the time
-  of the v410 response.
+- **Deprecation status:** The Deprecation header is set to `true` on the
+  410 Gone response.
 - **Successor:** The replacement endpoint is active immediately at the same API
   version and host. No parallel operation period.
 

@@ -72,9 +72,12 @@ def test_migration_guide_no_unfilled_placeholders() -> None:
     for name in EXPECTED_MIGRATIONS:
         path = MIGRATIONS_DIR / name
         text = path.read_text(encoding="utf-8")
-        # Allow Markdown emphasis/HTML like `<br>` or `</em>` if needed,
-        # but reject anything matching `<lowercase-with-dashes>` which is
-        # how the spec template marks placeholders.
+        # Reject anything matching `<lowercase[-with-dashes]>` which is how
+        # the spec template marks placeholders. By design this also rejects
+        # raw HTML like `<br>` — migration guides should stay in plain
+        # Markdown, no inline HTML. URL angle brackets (`<https://...>`)
+        # and uppercase placeholders (`<TOKEN>`) are allowed because they
+        # don't match the regex.
         import re
 
         bad = re.findall(r"<[a-z][a-z0-9-]*(?:-[a-z0-9]+)*>", text)
