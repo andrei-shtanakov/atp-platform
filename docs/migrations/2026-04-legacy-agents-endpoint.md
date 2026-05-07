@@ -32,7 +32,7 @@ clients fail loudly and points them at the correct route.
 ```http
 POST /api/agents HTTP/1.1
 Host: api.example.com
-Authorization: Bearer <token>
+Authorization: Bearer <TOKEN>
 Content-Type: application/json
 
 {
@@ -53,7 +53,7 @@ Content-Type: application/json
 ```http
 POST /api/v1/agents HTTP/1.1
 Host: api.example.com
-Authorization: Bearer <user-or-admin-token>
+Authorization: Bearer <USER_OR_ADMIN_TOKEN>
 Content-Type: application/json
 
 {
