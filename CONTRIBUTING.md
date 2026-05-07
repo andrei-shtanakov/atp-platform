@@ -98,3 +98,55 @@ See `atp/catalog/builtin/coding/file-operations.yaml` as a reference.
 5. Address review feedback; all CI checks must pass before merge
 
 For significant changes (new adapter type, new game, protocol changes), open an issue first to discuss the design.
+
+## Releases & Changelog
+
+### Changelog rule
+
+Every PR labelled `breaking` or `feat` must add a bullet under
+`## [Unreleased]` in `CHANGELOG.md`. Bug fixes are optional but encouraged.
+
+The `changelog` GitHub Actions workflow (`.github/workflows/changelog.yml`)
+enforces this on label change. If you remove the `feat`/`breaking` label
+the gate goes away — this is intentional. The goal is a reminder, not a
+hard wall. If a stricter check is ever needed, the next layer is parsing
+PR titles for conventional-commit prefixes; that's a follow-up, not in
+this workflow.
+
+### Routing — which CHANGELOG?
+
+- Changes that affect the platform / CLI / dashboard / engines (El Farol,
+  PD, etc.) → root `CHANGELOG.md`.
+- Changes that affect a specific distributable package
+  (`atp-platform-sdk`, `game-environments`, `atp-adapters`, `atp-core`,
+  `atp-dashboard`) → `packages/<name>/CHANGELOG.md`.
+- When in doubt, write the bullet in both — the root entry can just point
+  to the package one.
+
+Sub-packages are versioned independently. The root `pyproject.toml`'s
+`version` describes the platform / CLI; each `packages/atp-*/pyproject.toml`
+tracks its own release cadence.
+
+### Cutting a release
+
+1. Open a release PR. Replace `## [Unreleased]` with
+   `## [X.Y.Z] - <today's date>` and add a fresh empty `## [Unreleased]`
+   above it. Update linkbacks at the bottom of the file.
+2. Bump `version` in the relevant `pyproject.toml`. Root for platform /
+   CLI releases; sub-package `pyproject.toml` for SDK / package releases.
+3. Merge the release PR.
+4. Tag the merge commit:
+   ```bash
+   git tag -a vX.Y.Z <merge-commit-sha> -m "Release X.Y.Z"
+   git push origin vX.Y.Z
+   ```
+5. Open the GitHub Release UI for the new tag. Title: `vX.Y.Z`. Body:
+   paste the contents of the `## [X.Y.Z]` section from `CHANGELOG.md`
+   directly. Do **not** rely on GitHub's auto-generated release notes —
+   they group by PR title and label and ignore CHANGELOG entirely, so
+   the result drifts from the actual changelog.
+6. **PyPI publish is not automatic.** Tagging produces only the GitHub
+   Release. Publishing to PyPI requires a separate workflow run (or
+   manual `uv build` + `uv publish` if the workflow is missing). After
+   publishing, smoke-test the release with `pip install <package>==X.Y.Z`
+   from a clean venv.

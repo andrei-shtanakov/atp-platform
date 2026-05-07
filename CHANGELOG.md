@@ -5,6 +5,44 @@ All notable changes to the ATP Platform will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [2.0.0] - YYYY-MM-DD
+
+### Breaking Changes
+
+- **El Farol action format**: replaced flat `{"slots": [...]}` with
+  interval-based `{"intervals": [[start, end], ...]}`. Old format is now
+  rejected; `sanitize` coerces invalid input to a safe action.
+  See `docs/migrations/2026-04-el-farol-intervals.md`. (#105)
+- **El Farol default scoring**: default `scoring_mode` flipped from
+  `happy_minus_crowded` (ratio of happy to crowded slots) to `happy_only`
+  (raw count of happy slots, no penalty for crowded). Tournaments use the
+  new default; legacy mode is opt-in via `ElFarolConfig(scoring_mode=...)`
+  and not exposed through the tournament API.
+  See `docs/migrations/2026-05-el-farol-scoring.md`. (#121)
+- **MCP tournament tools (`/mcp`)**: now require an agent-scoped token
+  (`atp_a_*`) issued for an agent whose `purpose` is `"tournament"`.
+  User-level tokens (`atp_u_*`), admin sessions, and tokens for
+  `"benchmark"`-purpose agents are rejected with HTTP 403. The benchmark
+  API (`/api/v1/benchmarks/*`) is symmetrically gated — it rejects
+  tournament-purpose tokens with 403.
+  See `docs/migrations/2026-04-mcp-purpose-gating.md`. (commit d0f11e26)
+- **`POST /api/agents` returns `410 Gone`**: the legacy ownerless
+  agent-creation endpoint that worked at v1.0.0 is permanently retired.
+  Stale clients now fail loudly with `Deprecation` / `Sunset` / `Link:
+  ...; rel="successor-version"` headers pointing at `POST /api/v1/agents`.
+  The replacement endpoint resolves ownership from the caller's JWT and
+  enforces per-user, per-purpose quotas.
+  See `docs/migrations/2026-04-legacy-agents-endpoint.md`. (#53)
+
+### Added / Changed / Fixed
+
+For non-breaking changes between 1.0.0 and 2.0.0, see `git log v1.0.0..v2.0.0`.
+Highlights: pending-tournament banner, El Farol winners dashboard + Hall of
+Fame, benchmark API event streaming, agent ownership quotas, RBAC + invite
+system, container-isolated code-exec evaluator, MCP tournament server.
+
 ## [1.0.0] - 2026-02-13
 
 Initial public release of ATP (Agent Test Platform) — a framework-agnostic
@@ -65,4 +103,6 @@ platform for testing and evaluating AI agents.
 - Natural language test generation
 - Trace import and storage tracking
 
-[1.0.0]: https://github.com/anthropics/atp-platform/releases/tag/v1.0.0
+[Unreleased]: https://github.com/andrei-shtanakov/atp-platform/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/andrei-shtanakov/atp-platform/compare/v1.0.0...v2.0.0
+[1.0.0]: https://github.com/andrei-shtanakov/atp-platform/releases/tag/v1.0.0
