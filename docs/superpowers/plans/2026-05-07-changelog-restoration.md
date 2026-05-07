@@ -301,8 +301,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   new default; legacy mode is opt-in via `ElFarolConfig(scoring_mode=...)`
   and not exposed through the tournament API.
   See `docs/migrations/2026-05-el-farol-scoring.md`. (#121)
-- **MCP tournament tools**: now require an explicit `purpose` claim in the
-  auth handshake. Tools reject calls without it.
+- **MCP tournament tools (`/mcp`)**: now require an agent-scoped token
+  (`atp_a_*`) issued for an agent whose `purpose` is `"tournament"`.
+  User-level tokens (`atp_u_*`), admin sessions, and tokens for
+  `"benchmark"`-purpose agents are rejected with HTTP 403. The benchmark
+  API (`/api/v1/benchmarks/*`) is symmetrically gated — it rejects
+  tournament-purpose tokens with 403.
   See `docs/migrations/2026-04-mcp-purpose-gating.md`. (commit d0f11e26)
 - **`POST /api/agents` returns `410 Gone`**: the legacy ownerless
   agent-creation endpoint that worked at v1.0.0 is permanently retired.
@@ -684,76 +688,130 @@ Expected: file exists, ≥ 20 lines.
 
 - [ ] **Step 2: Build the migration guide content**
 
-Open `docs/migrations/2026-04-mcp-purpose-gating.md` and write content following this exact skeleton, substituting `<…>` placeholders with the verbatim values from `/tmp/mcp-gating-findings.md`:
+**Important reframing from Task 2 findings:** This migration is NOT about adding a handshake claim. The `agent_purpose` field is a database column on `APIToken`, snapshotted from `Agent.purpose` at token issuance. The HTTP request shape for `/mcp` is unchanged. The migration is about *which token* you use, not *how you call*.
+
+Open `docs/migrations/2026-04-mcp-purpose-gating.md` and write content matching this exact structure, with concrete values pulled verbatim from `/tmp/mcp-gating-findings.md`:
 
 ````markdown
-# Migration: MCP tournament tools require `purpose` claim
+# Migration: MCP tournament tools require an agent-scoped tournament token
 
-**Affected versions:** before commit `d0f11e2` (LABS-TSA, 2026-04) → after
+**Affected versions:** before commit `d0f11e26` (LABS-TSA, 2026-04) → after
 **Affected components:** ATP MCP tournament server (`/mcp` SSE endpoint),
-clients calling `join_tournament`, `make_move`, `get_current_state`, etc.
-**PR / commit:** `d0f11e2`
+clients calling `join_tournament`, `make_move`, `get_current_state`,
+`list_tournaments`, `get_tournament`, `get_history`, `leave_tournament`.
+The benchmark API (`/api/v1/benchmarks/*`) is symmetrically gated.
+**PR / commit:** `d0f11e26` (LABS-TSA PR-3)
 
 ## What changed
 
-MCP tournament tools now require an explicit `<purpose-field-name>` claim
-in the auth handshake. Tools reject calls without it with HTTP
-`<status-code>`.
+`/mcp` now rejects requests whose token does not belong to a
+tournament-purpose agent. The HTTP request shape is unchanged — the gate
+runs against the token row server-side, not the request payload.
+
+Specifically, the `MCPAuthMiddleware` reads `agent_purpose` from
+request state (populated by `JWTUserStateMiddleware` from the token's
+snapshot column) and rejects with HTTP 403 if it is `NULL` or anything
+other than `"tournament"`. Symmetrically, the benchmark API rejects
+tokens whose `agent_purpose` is `"tournament"`.
 
 ## Why
 
-<one-sentence motivation taken from the commit body or PR description —
-typically: "purpose-gating prevents accidental use of tournament tools
-during exploratory tool listing and gives the server an audit trail of
-*what* the client is trying to do, not just *who* is calling.">
+Before this gate, any authenticated bearer token (user-level, admin,
+or any agent-scoped token regardless of its agent's purpose) could
+call MCP tournament tools. That undermined per-purpose isolation and
+made it impossible to audit which agent population was actively
+playing. Gating by the token's snapshotted `agent_purpose` matches
+how the agent was *registered* without adding a per-call claim, and
+keeps stale tokens from drifting if the agent's purpose later changes.
 
 ## Before
 
-```<lang>
-<old-handshake-payload-from-findings>
-```
-
-Old clients that omit `<purpose-field-name>` get:
-```
-HTTP <status-code>
-<error-body-from-findings>
-```
+A client at v1.0.0 (or any pre-`d0f11e26` snapshot) could authenticate
+to `/mcp` with any of:
+- A user-level token (`atp_u_*`).
+- An admin session JWT.
+- An agent-scoped token (`atp_a_*`) for an agent of any purpose.
 
 ## After
 
-```<lang>
-<new-handshake-payload-from-findings>
+`/mcp` accepts only agent-scoped tokens (`atp_a_*`) issued for an
+agent created with `purpose="tournament"`.
+
+Old tokens that no longer qualify see:
+
+```
+HTTP/1.1 403 Forbidden
+Content-Type: application/json
+
+{"error": "forbidden", "detail": "MCP requires an agent-scoped token (atp_a_*)"}
 ```
 
-Allowed `<purpose-field-name>` values: <list-from-findings>.
+For tokens that *are* agent-scoped but belong to a `"benchmark"` agent:
+
+```
+HTTP/1.1 403 Forbidden
+Content-Type: application/json
+
+{"error": "forbidden", "detail": "MCP is tournament-agents only; this token belongs to a benchmark agent"}
+```
+
+For unauthenticated requests (no Bearer token at all): HTTP 401 with
+`{"error": "unauthorized", "detail": "Bearer JWT required"}`.
 
 ## How to migrate
 
-1. Update your MCP client to declare `<purpose-field-name>` in
-   `<location-from-findings>` (e.g. handshake header, init params).
-2. Pick a value that matches your use case from the allowed list:
-   <restate-list>.
-3. If you use the official Python SDK (`atp-platform-sdk`), upgrade to
-   `>= 2.0.0` — the SDK auto-declares `<purpose-field-name>` in
-   `<sdk-file-from-findings>`. No client-side change needed beyond
-   bumping the dependency.
-4. For custom MCP clients, add the field to your handshake builder.
-   Reference implementation:
-   `<sdk-file-from-findings>:<line-range>`.
+1. Make sure you have an agent created with `purpose="tournament"`. Use
+   the `/ui/agents` dashboard page or `POST /api/v1/agents` with body
+   `{"agent_type": "...", "purpose": "tournament", ...}`. The default
+   purpose is `"benchmark"`, so you must pass `"tournament"` explicitly.
+2. Issue a fresh API token for that tournament agent. Visit
+   `/ui/tokens` and pick the agent from the dropdown, or call
+   `POST /api/v1/tokens` with `{"agent_id": "<AGENT_ID>", ...}`. The
+   resulting token's prefix will be `atp_a_*`. The token row
+   snapshots `agent_purpose="tournament"` at issuance — there is no
+   client-side knob to set.
+3. Use the new `atp_a_*` token in the `Authorization: Bearer …` header
+   for all `/mcp` calls. No other request-shape change.
+4. If you were previously using a `atp_u_*` user token or an admin
+   session JWT for MCP calls, you must switch to an agent-scoped
+   tournament token — there is no way to make user-level tokens
+   eligible.
+5. Symmetric for benchmarks: agents created with `purpose="benchmark"`
+   call `/api/v1/benchmarks/*` only; `/mcp` is closed to them.
 
 ## Backward compatibility
 
-None. The gate is hard — old clients without `<purpose-field-name>` are
-rejected. There is no fallback or grace period.
+- Tokens issued before the `agent_purpose` snapshot column existed
+  have a NULL snapshot. The middleware falls back to a lazy join on
+  `Agent.purpose` (cached in-process by token hash). Such tokens may
+  keep working if their agent is `"tournament"`, but reissuing the
+  token after the migration is recommended for clarity.
+- There is **no opt-out** of the gate. Before migrating, sanity-check
+  via the dashboard that the agent you intend to use was registered
+  with `purpose="tournament"`.
+- The Python SDK (`atp-platform-sdk`) does **not** auto-declare a
+  purpose claim because there is no claim. The SDK accepts whatever
+  bearer token you give it; the server decides eligibility based on
+  the token row.
 
 ## References
 
-- Server-side enforcement: `<server-file-from-findings>`.
-- SDK auto-declare: `<sdk-file-from-findings>`.
-- Commit: `d0f11e2`.
+- Server-side enforcement:
+  `packages/atp-dashboard/atp/dashboard/mcp/auth.py:97-116`
+  (`MCPAuthMiddleware`).
+- Token-state population:
+  `packages/atp-dashboard/atp/dashboard/v2/rate_limit.py:298-316`
+  (`JWTUserStateMiddleware`).
+- Token issuance snapshot:
+  `packages/atp-dashboard/atp/dashboard/v2/routes/token_api.py`
+  (`create_token_for_user`).
+- Agent purpose field:
+  `packages/atp-dashboard/atp/dashboard/v2/routes/agent_management_api.py`
+  (`create_agent_for_user` — `purpose: Literal["benchmark", "tournament"] = "benchmark"`).
+- Commit: `d0f11e26` (LABS-TSA PR-3).
 ````
 
-Every `<…>` placeholder must be replaced with concrete content from `/tmp/mcp-gating-findings.md`. Do **not** leave any `<…>` markers in the final file.
+The exact line numbers above come from `/tmp/mcp-gating-findings.md`. If your reading of the diff produces different line numbers (e.g., because the file moved between the audit and now), use the current line numbers — but verify the code excerpt on those lines still says what the findings file claims.
 
 - [ ] **Step 3: Verify no placeholders survived**
 
