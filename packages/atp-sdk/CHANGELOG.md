@@ -7,7 +7,7 @@ Platform-level changes go in the root `CHANGELOG.md`.
 
 ## [Unreleased]
 
-## [2.0.0] - YYYY-MM-DD
+## [2.0.0] - 2026-04-18
 
 ### Added
 
