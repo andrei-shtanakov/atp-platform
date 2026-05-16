@@ -64,7 +64,7 @@ pyrefly type checking is effectively disabled: CI workflow uses `continue-on-err
 ---
 
 ### TASK-1303: Complete dashboard v2 migration, remove v1 monolith
-🔴 P0 | 🟡 IN_PROGRESS | Est: 6-8h
+🔴 P0 | 🔄 IN PROGRESS | Est: 6-8h
 
 **Description:**
 `atp/dashboard/app.py` (4,864 lines) is the largest file in the codebase. Dashboard v2 refactoring (`atp/dashboard/v2/`) is started with proper routes/services separation (28 route files, 4 service files) but v1 is still present and deprecated.
@@ -114,7 +114,7 @@ TASK-919 (Alympics-Style Benchmark Suite) executor recorded "success" but `phase
 
 **Checklist:**
 - [x] Check if `alympics_lite.yaml` exists and is functional
-- [x] Check if `atp benchmark --suite=alympics` command works
+- [x] Check if `atp game benchmark --suite=alympics` command works
 - [x] Check for composite scoring implementation
 - [x] Verify categories: strategic reasoning, cooperation, fairness, robustness
 - [x] Run integration test with builtin strategies
