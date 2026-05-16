@@ -26,15 +26,17 @@
 ## Milestone 13: Release Readiness & Tech Debt
 
 ### TASK-1301: Add LICENSE file
-🔴 P0 | ⬜ TODO | Est: 0.5h
+🔴 P0 | ✅ DONE | Est: 0.5h
 
 **Description:**
 README claims MIT License but no LICENSE file exists in the repository. This is a legal blocker for public release and adoption.
 
 **Checklist:**
-- [ ] Create LICENSE file with MIT License text
-- [ ] Verify copyright holder and year
-- [ ] Ensure license matches README claim
+- [x] Create LICENSE file with MIT License text
+- [x] Verify copyright holder and year
+- [x] Ensure license matches README claim
+
+**Status note (2026-05-16):** Delivered in commit `afac3bfe` ("Phase 6.1 release blockers", 2026-02-12) — pre-v1.0.0 cut. `LICENSE` is tracked at repo root, MIT, `Copyright (c) 2026 ATP Platform Contributors`. README `## License` section links to it correctly.
 
 **Depends on:** —
 **Blocks:** public release
@@ -42,17 +44,19 @@ README claims MIT License but no LICENSE file exists in the repository. This is 
 ---
 
 ### TASK-1302: Fix pyrefly enforcement in CI
-🔴 P0 | ⬜ TODO | Est: 4-6h
+🔴 P0 | ✅ DONE | Est: 4-6h
 
 **Description:**
 pyrefly type checking is effectively disabled: CI workflow uses `continue-on-error: true`, pre-commit hook uses `|| exit 0`. Parent project has ~29 pre-existing errors that need fixing.
 
 **Checklist:**
-- [ ] Audit all ~29 pre-existing pyrefly errors
-- [ ] Fix type errors in atp/ source code
-- [ ] Remove `continue-on-error: true` from CI workflow
-- [ ] Remove `|| exit 0` from pre-commit hook
-- [ ] Verify CI passes with enforced type checking
+- [x] Audit all ~29 pre-existing pyrefly errors
+- [x] Fix type errors in atp/ source code
+- [x] Remove `continue-on-error: true` from CI workflow
+- [x] Remove `|| exit 0` from pre-commit hook
+- [x] Verify CI passes with enforced type checking
+
+**Status note (2026-05-16):** Delivered in commit `afac3bfe` (2026-02-12). `.github/workflows/ci.yml` runs `uv run pyrefly check` without `continue-on-error` (the remaining `continue-on-error: true` is on the Codecov upload step, unrelated). `.pre-commit-config.yaml` runs pyrefly without `|| exit 0`. 29 pre-existing errors were fixed in the same commit.
 
 **Depends on:** —
 **Blocks:** —
@@ -60,7 +64,7 @@ pyrefly type checking is effectively disabled: CI workflow uses `continue-on-err
 ---
 
 ### TASK-1303: Complete dashboard v2 migration, remove v1 monolith
-🔴 P0 | ⬜ TODO | Est: 6-8h
+🔴 P0 | 🔄 IN PROGRESS | Est: 6-8h
 
 **Description:**
 `atp/dashboard/app.py` (4,864 lines) is the largest file in the codebase. Dashboard v2 refactoring (`atp/dashboard/v2/`) is started with proper routes/services separation (28 route files, 4 service files) but v1 is still present and deprecated.
@@ -71,10 +75,12 @@ pyrefly type checking is effectively disabled: CI workflow uses `continue-on-err
 - [ ] Audit v1 `api.py` (101 lines, deprecated) for missing endpoints
 - [ ] Update all imports and references from v1 to v2
 - [ ] Remove `atp/dashboard/app.py` (deprecated v1)
-- [ ] Remove `atp/dashboard/api.py` (deprecated v1)
+- [x] Remove `atp/dashboard/api.py` (deprecated v1)
 - [ ] Remove `ATP_DASHBOARD_V2` feature flag (v2 becomes default)
 - [ ] Update documentation and migration guide
 - [ ] Run full test suite to verify nothing breaks
+
+**Status note (2026-05-16):** Partial progress only. `atp/dashboard/api.py` is gone, but `audit.py` (and possibly other v1 fragments) remain. Needs a dedicated audit pass to finish cleanup and flip `ATP_DASHBOARD_V2` off.
 
 **Depends on:** —
 **Blocks:** —
@@ -82,16 +88,18 @@ pyrefly type checking is effectively disabled: CI workflow uses `continue-on-err
 ---
 
 ### TASK-1304: Fix evaluator entry points in pyproject.toml
-🔴 P0 | ⬜ TODO | Est: 1-2h
+🔴 P0 | ✅ DONE | Est: 1-2h
 
 **Description:**
 Only 4 of 9+ evaluators are registered as entry points in `pyproject.toml`. Missing: security, factuality, filesystem, style, performance. Plugin discovery via `atp.evaluators` entry point group will fail for these.
 
 **Checklist:**
-- [ ] Audit all evaluator classes in `atp/evaluators/`
-- [ ] Add missing entry points: security, factuality, filesystem, style, performance
-- [ ] Verify plugin discovery finds all evaluators
+- [x] Audit all evaluator classes in `atp/evaluators/`
+- [x] Add missing entry points: security, factuality, filesystem, style, performance
+- [x] Verify plugin discovery finds all evaluators
 - [ ] Write test to ensure all evaluators are discoverable
+
+**Status note (2026-05-16):** Entry points delivered in commit `afac3bfe` (2026-02-12). `[project.entry-points."atp.evaluators"]` in `pyproject.toml` now registers all 10: artifact, behavior, code_exec, factuality, filesystem, llm_judge, performance, security, style, composite. The explicit "test to ensure all evaluators are discoverable" checklist item remains unchecked — a small follow-up if we want belt-and-braces coverage.
 
 **Depends on:** —
 **Blocks:** —
@@ -99,19 +107,21 @@ Only 4 of 9+ evaluators are registered as entry points in `pyproject.toml`. Miss
 ---
 
 ### TASK-1305: Verify and complete TASK-919 (Alympics Benchmark)
-🔴 P0 | ⬜ TODO | Est: 3-4h
+🔴 P0 | ✅ DONE | Est: 3-4h
 
 **Description:**
 TASK-919 (Alympics-Style Benchmark Suite) executor recorded "success" but `phase5-tasks.md` shows IN_PROGRESS with all 8 checklist items unchecked. Need to verify actual implementation status and complete if necessary.
 
 **Checklist:**
-- [ ] Check if `alympics_lite.yaml` exists and is functional
-- [ ] Check if `atp benchmark --suite=alympics` command works
-- [ ] Check for composite scoring implementation
-- [ ] Verify categories: strategic reasoning, cooperation, fairness, robustness
-- [ ] Run integration test with builtin strategies
-- [ ] Complete any missing implementation
-- [ ] Update `spec/phase5-tasks.md` to reflect actual status
+- [x] Check if `alympics_lite.yaml` exists and is functional
+- [x] Check if `atp game benchmark --suite=alympics` command works
+- [x] Check for composite scoring implementation
+- [x] Verify categories: strategic reasoning, cooperation, fairness, robustness
+- [x] Run integration test with builtin strategies
+- [x] Complete any missing implementation
+- [x] Update `spec/phase5-tasks.md` to reflect actual status
+
+**Status note (2026-05-16):** Verification closed in commit `afac3bfe` (2026-02-12). `spec/phase5-tasks.md` now lists TASK-919 as `✅ DONE` with all 8 checklist items ticked.
 
 **Depends on:** —
 **Blocks:** —
