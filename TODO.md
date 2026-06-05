@@ -151,6 +151,16 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
 - [ ] **Fix UI routes test isolation**: `.value` bug in analytics/home templates, UNIQUE constraint collision.
 - [ ] **Benchmark API scoring**: wire up evaluators instead of the naive score (100 if completed else 0).
 
+## Security / Dependencies
+
+- [ ] **Upgrade fastapi → starlette ≥ 1.0.1** (Dependabot CVE-2026-48710, GHSA-86qp-5c8j-p5mr, medium).
+  Starlette `<= 1.0.0` misses `Host` header validation → `request.url.path` can be poisoned,
+  **bypassing path-based security checks**. ⚠️ Relevant: the dashboard uses **path-based RBAC**
+  (`require_permission` on routes); prod sits behind nginx+TLS which validates `Host` (mitigates,
+  not eliminates). Not a simple bump — `fastapi 0.128.0` pins `starlette<0.51.0,>=0.40.0`, and the
+  only patched release is `1.0.1`, so this needs a fastapi version that supports Starlette 1.0
+  (watch for Starlette 1.0 breaking changes). idna alert closed separately (bumped to 3.15).
+
 ## Admin tournament GUI follow-ups (deferred from 2026-04-20 spec)
 
 Spec: `docs/superpowers/specs/2026-04-20-admin-tournament-gui-design.md`
