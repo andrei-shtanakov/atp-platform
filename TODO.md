@@ -147,6 +147,11 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
 
 ## Dashboard UI
 
+- [ ] **CLI run-history page `/ui/executions`**: SuiteExecution history (from `atp test`) is
+  only reachable via the JSON API — no HTML page renders it (`/ui/*` is wired to the
+  separate benchmark `Run` model). New page: list + detail + per-run statistics +
+  failure-cause breakdown. Plan: [`spec/dashboard-execution-history.md`](spec/dashboard-execution-history.md).
+  Prereq fix already done: `SuiteExecutionSummary.agent_id` → `int | None` (CLI stores NULL).
 - [ ] **Chart.js in Analytics**: status pie chart, score histogram, per-agent line chart (templates/ui/analytics.html).
 - [ ] **Fix UI routes test isolation**: `.value` bug in analytics/home templates, UNIQUE constraint collision.
 - [ ] **Benchmark API scoring**: wire up evaluators instead of the naive score (100 if completed else 0).
