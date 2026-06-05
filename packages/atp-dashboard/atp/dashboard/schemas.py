@@ -49,7 +49,7 @@ class SuiteExecutionSummary(BaseModel):
 
     id: int
     suite_name: str
-    agent_id: int
+    agent_id: int | None = None
     agent_name: str | None = None
     started_at: datetime
     completed_at: datetime | None
