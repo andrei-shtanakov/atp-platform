@@ -882,3 +882,23 @@ class TestBedrockProvider:
 
         assert result.passed is True
         mock_client.messages.create.assert_awaited_once()
+
+    @pytest.mark.anyio
+    async def test_track_cost_uses_resolved_model_and_provider(self) -> None:
+        """Regression: cost records use the resolved model/provider, not 'unknown'.
+
+        The Bedrock default model is resolved into ``_model`` (not ``_config.model``),
+        so cost tracking must read ``_model``/``_provider`` to avoid recording
+        'unknown' / a hardcoded provider.
+        """
+        tracker = AsyncMock()
+        evaluator = LLMJudgeEvaluator(
+            LLMJudgeConfig(provider="bedrock"), cost_tracker=tracker
+        )
+
+        await evaluator._track_cost(input_tokens=10, output_tokens=5)
+
+        tracker.track.assert_awaited_once()
+        event = tracker.track.call_args.args[0]
+        assert event.model == DEFAULT_BEDROCK_MODEL
+        assert event.provider == "bedrock"

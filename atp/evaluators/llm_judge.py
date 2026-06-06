@@ -104,8 +104,9 @@ class LLMJudgeConfig(BaseModel):
 
     provider: str | None = Field(
         None,
-        description="LLM provider (anthropic, openai, or bedrock). "
-        "Auto-detected from settings if not set.",
+        description="LLM provider (anthropic, openai, or bedrock). If not set, "
+        "auto-detected from the environment (ANTHROPIC_API_KEY / OPENAI_API_KEY), "
+        "defaulting to anthropic.",
     )
     api_key: str | None = Field(None, description="API key")
     aws_region: str | None = Field(
@@ -573,8 +574,8 @@ Important:
             await tracker.track(
                 CostEvent(
                     timestamp=datetime.now(),
-                    provider="anthropic",
-                    model=self._config.model or "unknown",
+                    provider=self._provider or "anthropic",
+                    model=self._model or "unknown",
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,
                     test_id=self._test_id,
