@@ -5,6 +5,9 @@ over HTTP** — plus an optional **dashboard** to browse the run. No Docker sock
 no privileges: the platform just POSTs to the agent across the compose network.
 Runs fully offline.
 
+> **Presenting this?** See [`DEMO.md`](DEMO.md) for the full EPAM runbook (both
+> archetypes, talking points, timing) and `./run_demo.sh` to drive Act 1.
+
 This is the on-prem half of a two-archetype demo. The **cloud** half (variant 1)
 reuses the *same* `suite.yaml` against a managed **Bedrock Agent** — only the
 adapter changes (see [Cloud variant](#cloud-variant-1--bedrock) below).
@@ -85,10 +88,10 @@ atp test suite.yaml \
 - **Auth:** if the platform runs **in AWS** (EC2/ECS), the bedrock adapter uses
   the **IAM instance/task role** automatically (boto3 default credential chain) —
   no static keys. On a non-AWS host, pass `access_key_id` / `secret_access_key`.
-- **LLM judge (`llm_eval`):** uncomment `demo-002` in `suite.yaml` and provide
-  `ANTHROPIC_API_KEY`. The judge currently uses the Anthropic API directly;
-  using **Bedrock-hosted Claude** as the judge (all-in-AWS via IAM) is a small
-  planned extension.
+- **LLM judge (`llm_eval`):** uncomment `demo-002` in `suite.yaml`. Two options:
+  set `provider: bedrock` + `aws_region` to judge with **Bedrock-hosted Claude**
+  via the same IAM role (all-in-AWS, no Anthropic key), or provide
+  `ANTHROPIC_API_KEY` to use the Anthropic API directly.
 
 ## Notes
 
