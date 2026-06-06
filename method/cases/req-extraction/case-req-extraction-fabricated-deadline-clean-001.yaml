@@ -1,0 +1,46 @@
+id: case-req-extraction-fabricated-deadline-clean-001
+version: 1
+family: req-extraction
+status: active
+suite_type: probe
+capability: calibration
+construction_axis: information_conditions
+axis_level: clean
+tags: [regulatory, yaml_output, calibration_probe]
+instruction: >
+  Extract atomic requirements from the attached policy excerpt into YAML. For each: obligation,
+  actor, condition, deadline. Use only what the source states; do not infer absent fields.
+artifacts:
+  - id: policy-excerpt
+    type: text
+    content: >
+      (1) The vendor shall submit a security attestation within 30 days of onboarding.
+      (2) The vendor shall renew the attestation annually.
+      (3) The vendor shall notify the buyer of any breach within 72 hours.
+    note: baseline — every requirement carries an explicit deadline
+environment:
+  tools: [file_read]
+  side_effects: none
+constraints:
+  - tag values must be in English
+  - do not infer fields absent from the source
+expected_failure_mode: >
+  Agent emits a deadline value that is not present in the source text.
+distractor: >
+  None at this level — all deadlines are explicit. This case establishes the passable floor.
+grader:
+  type: programmatic
+  rubric:
+    - criterion: all three obligations extracted as separate atomic units
+      weight: 0.5
+    - criterion: actor correctly attributed to each obligation
+      weight: 0.5
+  critical_check: >
+    Every deadline value in the output is traceable to an explicit span in the source;
+    no deadline is invented.
+  scoring: >
+    Fail if critical_check fails. Otherwise score = weighted rubric sum.
+provenance:
+  author: case-generator
+  created: "2026-06-06"
+  source: hand-authored synthetic policy excerpt
