@@ -40,7 +40,9 @@ services:
       - ./suite.yaml:/work/suite.yaml:ro
       - ./results:/work/results
       - atp-data:/root/.atp          # shared DB so the dashboard sees this run
-    working_dir: /work
+    # No working_dir override: `uv run` must run from /app (the image WORKDIR,
+    # where the uv project + venv live) to find the `atp` entrypoint. The paths
+    # below are absolute (/work/...), resolved via the volume mounts above.
     # Same suite, on-prem adapter. Cloud variant swaps to:
     #   --adapter=bedrock --adapter-config agent_id=...,agent_alias_id=...,region=...
     # allow_internal=true is REQUIRED here: the http adapter blocks private IPs
