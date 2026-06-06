@@ -1,8 +1,9 @@
 # ATP Compose Demo — On-Prem (variant 2)
 
-Two containers via docker-compose: the **ATP platform** tests an **agent over
-HTTP**. No Docker socket, no privileges — the platform just POSTs to the agent
-across the compose network. Runs fully offline.
+Two core containers via docker-compose — the **ATP platform** tests an **agent
+over HTTP** — plus an optional **dashboard** to browse the run. No Docker socket,
+no privileges: the platform just POSTs to the agent across the compose network.
+Runs fully offline.
 
 This is the on-prem half of a two-archetype demo. The **cloud** half (variant 1)
 reuses the *same* `suite.yaml` against a managed **Bedrock Agent** — only the

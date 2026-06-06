@@ -41,7 +41,9 @@ tests:
           path: "output.txt"
       - type: "behavior"
         config:
-          check: "no_errors"
+          # BehaviorEvaluator reads the `no_errors` key (not `check: ...`);
+          # this fails the test if the trace/response contains error events.
+          no_errors: true
 
   # --- Cloud / LLM-judge variant (optional) -------------------------------
   # Demonstrates llm_eval via Claude. Requires ANTHROPIC_API_KEY in the env of
