@@ -93,15 +93,26 @@ class LLMJudgeCost(BaseModel):
         return input_cost + output_cost
 
 
+# Default Bedrock model id for the judge. Bedrock model ids are
+# account/region-specific (on-demand id or inference-profile); override via
+# config ``model`` to match what is enabled in your account.
+DEFAULT_BEDROCK_MODEL = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+
+
 class LLMJudgeConfig(BaseModel):
     """Configuration for LLM Judge evaluator."""
 
     provider: str | None = Field(
         None,
-        description="LLM provider (anthropic or openai). "
+        description="LLM provider (anthropic, openai, or bedrock). "
         "Auto-detected from settings if not set.",
     )
     api_key: str | None = Field(None, description="API key")
+    aws_region: str | None = Field(
+        None,
+        description="AWS region for the 'bedrock' provider "
+        "(Bedrock-hosted Claude judge via IAM credentials).",
+    )
     model: str | None = Field(
         None,
         description="Model to use for evaluation. "
@@ -153,8 +164,9 @@ class LLMJudgeEvaluator(Evaluator):
         self._provider = self._config.provider
         self._model = self._config.model
 
-        # Try ATP settings
-        if not self._model:
+        # Try ATP settings (skip for bedrock: the settings default is an
+        # Anthropic-API model id, which a Bedrock client cannot use).
+        if not self._model and self._provider != "bedrock":
             try:
                 from atp.core.settings import get_settings
 
@@ -173,9 +185,13 @@ class LLMJudgeEvaluator(Evaluator):
             else:
                 self._provider = "anthropic"
 
-        self._model = self._model or (
-            "gpt-4o-mini" if self._provider == "openai" else "claude-sonnet-4-20250514"
-        )
+        if not self._model:
+            if self._provider == "openai":
+                self._model = "gpt-4o-mini"
+            elif self._provider == "bedrock":
+                self._model = DEFAULT_BEDROCK_MODEL
+            else:
+                self._model = "claude-sonnet-4-20250514"
 
         self._client: Any = None
         self._total_cost = LLMJudgeCost(model=self._model)
@@ -209,6 +225,20 @@ class LLMJudgeEvaluator(Evaluator):
                     self._client = AsyncOpenAI(api_key=self._config.api_key)
                 else:
                     self._client = AsyncOpenAI()
+            elif self._provider == "bedrock":
+                try:
+                    import anthropic
+                except ImportError as e:
+                    raise RuntimeError(
+                        "anthropic package is required for the Bedrock LLM judge. "
+                        "Install it with: uv add 'anthropic[bedrock]'"
+                    ) from e
+                # AsyncAnthropicBedrock uses the boto3 default credential chain,
+                # so an EC2/ECS IAM role works with no static keys.
+                client_kwargs: dict[str, Any] = {}
+                if self._config.aws_region:
+                    client_kwargs["aws_region"] = self._config.aws_region
+                self._client = anthropic.AsyncAnthropicBedrock(**client_kwargs)
             else:
                 try:
                     import anthropic

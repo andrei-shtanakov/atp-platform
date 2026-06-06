@@ -6,6 +6,7 @@ import pytest
 
 from atp.evaluators.llm_judge import (
     BUILTIN_CRITERIA,
+    DEFAULT_BEDROCK_MODEL,
     LLMJudgeConfig,
     LLMJudgeCost,
     LLMJudgeEvaluator,
@@ -818,3 +819,66 @@ class TestRegistry:
         registry = get_registry()
         evaluator = registry.create("llm_judge")
         assert isinstance(evaluator, LLMJudgeEvaluator)
+
+
+class TestBedrockProvider:
+    """Tests for the Bedrock-hosted Claude judge provider (all-in-AWS via IAM)."""
+
+    def test_config_accepts_bedrock_provider_and_region(self) -> None:
+        """LLMJudgeConfig accepts provider='bedrock' and an aws_region."""
+        config = LLMJudgeConfig(provider="bedrock", aws_region="us-east-1")
+        assert config.provider == "bedrock"
+        assert config.aws_region == "us-east-1"
+
+    def test_bedrock_resolves_default_model(self) -> None:
+        """A bedrock evaluator defaults to a Bedrock model id, not the API id."""
+        evaluator = LLMJudgeEvaluator(LLMJudgeConfig(provider="bedrock"))
+        assert evaluator._provider == "bedrock"
+        assert evaluator._model == DEFAULT_BEDROCK_MODEL
+
+    def test_get_client_builds_anthropic_bedrock_with_region(self) -> None:
+        """_get_client builds AsyncAnthropicBedrock and forwards the region."""
+        import anthropic
+
+        evaluator = LLMJudgeEvaluator(
+            LLMJudgeConfig(provider="bedrock", aws_region="eu-west-1", model="x")
+        )
+        with patch.object(
+            anthropic, "AsyncAnthropicBedrock", return_value="CLIENT"
+        ) as ctor:
+            client = evaluator._get_client()
+
+        assert client == "CLIENT"
+        ctor.assert_called_once()
+        assert ctor.call_args.kwargs.get("aws_region") == "eu-west-1"
+
+    @pytest.mark.anyio
+    async def test_evaluate_bedrock_uses_messages_create(
+        self,
+        sample_task: TestDefinition,
+        response_with_file_artifact: ATPResponse,
+    ) -> None:
+        """A bedrock judge routes through the shared messages.create path."""
+        evaluator = LLMJudgeEvaluator(
+            LLMJudgeConfig(provider="bedrock", model="x", enable_cost_tracking=False)
+        )
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text='{"score": 0.9, "explanation": "ok"}')]
+        mock_response.usage.input_tokens = 10
+        mock_response.usage.output_tokens = 5
+
+        with patch.object(evaluator, "_get_client") as mock_get_client:
+            mock_client = AsyncMock()
+            mock_client.messages.create = AsyncMock(return_value=mock_response)
+            mock_get_client.return_value = mock_client
+
+            assertion = Assertion(
+                type="llm_eval",
+                config={"criteria": "factual_accuracy", "threshold": 0.7},
+            )
+            result = await evaluator.evaluate(
+                sample_task, response_with_file_artifact, [], assertion
+            )
+
+        assert result.passed is True
+        mock_client.messages.create.assert_awaited_once()
