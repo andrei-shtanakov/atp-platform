@@ -1,0 +1,75 @@
+# ATP on-prem demo (variant 2): platform + agent, both containerized.
+#
+# The platform tests the agent over HTTP across the compose network — no Docker
+# socket, no privileges. The same suite.yaml also drives the cloud variant
+# (Bedrock Agent) by swapping only the adapter.
+#
+# Docker:
+#   docker compose up --build -d agent dashboard
+#   docker compose run --rm atp          # one-shot test run
+#   open http://localhost:8080/ui/        # browse the run (auth disabled)
+#   docker compose down -v
+#
+# Podman (rootless — preferred on-prem):
+#   podman compose up --build -d agent dashboard
+#   podman compose run --rm atp
+
+services:
+  # ---- Agent under test: long-lived HTTP service -------------------------
+  agent:
+    build: ./agent
+    image: atp-demo-http-agent:latest
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ---- ATP platform: one-shot test runner --------------------------------
+  atp:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: atp-platform:latest
+    depends_on:
+      agent:
+        condition: service_healthy
+    volumes:
+      - ./suite.yaml:/work/suite.yaml:ro
+      - ./results:/work/results
+      - atp-data:/root/.atp          # shared DB so the dashboard sees this run
+    working_dir: /work
+    # Same suite, on-prem adapter. Cloud variant swaps to:
+    #   --adapter=bedrock --adapter-config agent_id=...,agent_alias_id=...,region=...
+    # allow_internal=true is REQUIRED here: the http adapter blocks private IPs
+    # (SSRF guard), and the compose service name resolves to a private address.
+    command: >
+      uv run atp test /work/suite.yaml
+      --adapter=http
+      --adapter-config endpoint=http://agent:8000/execute,allow_internal=true
+      --output=json
+      --output-file=/work/results/results.json
+
+  # ---- ATP dashboard: browse run history at /ui/ -------------------------
+  dashboard:
+    image: atp-platform:latest
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - ATP_SECRET_KEY=demo-secret-change-me
+      - ATP_DISABLE_AUTH=true
+    volumes:
+      - atp-data:/root/.atp           # same volume as the atp runner
+    command: uv run atp dashboard --host 0.0.0.0 --port 8080
+
+volumes:
+  atp-data:
+
+networks:
+  default:
+    name: atp-compose-demo
