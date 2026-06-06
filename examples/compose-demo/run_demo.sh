@@ -10,30 +10,31 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# Pick a compose CLI: prefer docker, fall back to podman.
+# Pick a compose CLI: prefer docker, fall back to podman. Use an array so the
+# multi-word "docker compose" is invoked without relying on word-splitting.
 if docker compose version >/dev/null 2>&1; then
-  COMPOSE="docker compose"
+  COMPOSE=(docker compose)
 elif podman compose version >/dev/null 2>&1; then
-  COMPOSE="podman compose"
+  COMPOSE=(podman compose)
 elif command -v podman-compose >/dev/null 2>&1; then
-  COMPOSE="podman-compose"
+  COMPOSE=(podman-compose)
 else
   echo "error: need 'docker compose' or 'podman compose'." >&2
   exit 1
 fi
-echo "==> using: ${COMPOSE}"
+echo "==> using: ${COMPOSE[*]}"
 
 if [[ "${1:-}" == "down" ]]; then
-  ${COMPOSE} down -v
+  "${COMPOSE[@]}" down -v
   echo "==> torn down."
   exit 0
 fi
 
 echo "==> building & starting agent + dashboard ..."
-${COMPOSE} up --build -d agent dashboard
+"${COMPOSE[@]}" up --build -d agent dashboard
 
 echo "==> running the suite over the http adapter ..."
-${COMPOSE} run --rm atp
+"${COMPOSE[@]}" run --rm atp
 
 echo
 echo "==> done. Open the dashboard:  http://localhost:8080/ui/"

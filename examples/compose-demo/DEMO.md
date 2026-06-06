@@ -106,22 +106,28 @@ judge provider to Bedrock-hosted Claude:
 
 ## Act 3 — Depth (~3 min, pick what lands)
 
-Run any of these against the on-prem agent (no cloud needed):
+Run these through the compose network (the `agent` service is only `expose`d,
+not published to the host — so reach it as `agent:8000` via `compose run`, not
+`localhost`):
 
 **Statistics over repeated runs** — agents are non-deterministic, one run lies:
 ```bash
-atp test suite.yaml --adapter=http \
-  --adapter-config endpoint=http://localhost:8000/execute,allow_internal=true \
+docker compose run --rm atp uv run atp test /work/suite.yaml \
+  --adapter=http \
+  --adapter-config endpoint=http://agent:8000/execute,allow_internal=true \
   --runs=20
 ```
 Show mean / 95% CI / coefficient of variation / **stability** (stable→critical)
 and `success_rate` per test.
 
-**CI-ready reporters:**
+**CI-ready reporters** (`--output` picks the format, `--output-file` the path):
 ```bash
-atp test suite.yaml --adapter=http ... --format=junit -o results.xml
+docker compose run --rm atp uv run atp test /work/suite.yaml \
+  --adapter=http \
+  --adapter-config endpoint=http://agent:8000/execute,allow_internal=true \
+  --output=junit --output-file=/work/results/results.xml
 ```
-JUnit/JSON for pipelines; console for humans; HTML for sharing.
+JUnit/JSON for pipelines; console for humans.
 
 **History & trends:** in `/ui/` show multiple runs accumulating; mention
 `atp baseline compare` (Welch's t-test regression detection) and `atp trend`.

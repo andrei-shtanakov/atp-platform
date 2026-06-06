@@ -88,10 +88,10 @@ atp test suite.yaml \
 - **Auth:** if the platform runs **in AWS** (EC2/ECS), the bedrock adapter uses
   the **IAM instance/task role** automatically (boto3 default credential chain) —
   no static keys. On a non-AWS host, pass `access_key_id` / `secret_access_key`.
-- **LLM judge (`llm_eval`):** uncomment `demo-002` in `suite.yaml` and provide
-  `ANTHROPIC_API_KEY`. The judge currently uses the Anthropic API directly;
-  using **Bedrock-hosted Claude** as the judge (all-in-AWS via IAM) is a small
-  planned extension.
+- **LLM judge (`llm_eval`):** uncomment `demo-002` in `suite.yaml`. Two options:
+  set `provider: bedrock` + `aws_region` to judge with **Bedrock-hosted Claude**
+  via the same IAM role (all-in-AWS, no Anthropic key), or provide
+  `ANTHROPIC_API_KEY` to use the Anthropic API directly.
 
 ## Notes
 
