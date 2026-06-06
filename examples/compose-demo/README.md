@@ -5,6 +5,9 @@ over HTTP** — plus an optional **dashboard** to browse the run. No Docker sock
 no privileges: the platform just POSTs to the agent across the compose network.
 Runs fully offline.
 
+> **Presenting this?** See [`DEMO.md`](DEMO.md) for the full EPAM runbook (both
+> archetypes, talking points, timing) and `./run_demo.sh` to drive Act 1.
+
 This is the on-prem half of a two-archetype demo. The **cloud** half (variant 1)
 reuses the *same* `suite.yaml` against a managed **Bedrock Agent** — only the
 adapter changes (see [Cloud variant](#cloud-variant-1--bedrock) below).
