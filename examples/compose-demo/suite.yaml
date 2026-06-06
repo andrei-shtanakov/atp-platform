@@ -1,0 +1,61 @@
+# ATP demo suite — adapter-neutral.
+#
+# The agent binding (which adapter, which endpoint) is supplied at RUN time via
+# --adapter / --adapter-config, NOT baked here. That is the whole point of the
+# demo: the same suite runs against
+#   - an HTTP agent container (on-prem, variant 2), and
+#   - a managed Bedrock Agent (cloud, variant 1)
+# by swapping only the adapter.
+#
+# Assertions below are deterministic and offline (no LLM judge required), so the
+# on-prem run is green without any API key. To show the cloud llm_eval story,
+# uncomment the demo-002 block and provide ANTHROPIC_API_KEY.
+
+test_suite: "compose-demo"
+version: "1.0"
+description: >
+  On-prem demo: the ATP platform tests an agent over HTTP, both running as
+  containers in docker-compose. Same suite also runs in the cloud variant.
+
+defaults:
+  runs_per_test: 1
+  constraints:
+    timeout_seconds: 30
+    max_steps: 5
+  scoring:
+    quality_weight: 0.0
+    completeness_weight: 0.7
+    efficiency_weight: 0.3
+    cost_weight: 0.0
+
+tests:
+  - id: "demo-001"
+    name: "Agent produces an output artifact"
+    tags: ["demo", "smoke"]
+    task:
+      description: "Produce an output file that summarizes the task."
+      expected_artifacts: ["output.txt"]
+    assertions:
+      - type: "artifact_exists"
+        config:
+          path: "output.txt"
+      - type: "behavior"
+        config:
+          # BehaviorEvaluator reads the `no_errors` key (not `check: ...`);
+          # this fails the test if the trace/response contains error events.
+          no_errors: true
+
+  # --- Cloud / LLM-judge variant (optional) -------------------------------
+  # Demonstrates llm_eval via Claude. Requires ANTHROPIC_API_KEY in the env of
+  # whichever process runs `atp test`. Works with any adapter (http or bedrock).
+  #
+  # - id: "demo-002"
+  #   name: "Answer quality (LLM judge)"
+  #   tags: ["demo", "llm-eval"]
+  #   task:
+  #     description: "Explain in one sentence what the ATP platform does."
+  #   assertions:
+  #     - type: "llm_eval"
+  #       config:
+  #         criteria: "completeness"
+  #         threshold: 0.7
