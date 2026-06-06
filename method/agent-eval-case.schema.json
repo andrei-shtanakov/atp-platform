@@ -1,0 +1,298 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vkgeorgia.github.io/schemas/agent-eval-case.schema.json",
+  "title": "Agent Evaluation Case",
+  "description": "A single eval instance: an input task plus the trap and grading logic used to score an AI agent. The case is the atomic unit; families generate sweeps of cases along one construction axis.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "version",
+    "family",
+    "status",
+    "suite_type",
+    "capability",
+    "construction_axis",
+    "axis_level",
+    "instruction",
+    "environment",
+    "expected_failure_mode",
+    "grader",
+    "provenance"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Stable, immutable identifier. Never reused or renumbered.",
+      "pattern": "^case-[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "examples": ["case-req-extract-missing-deadline-001"]
+    },
+    "version": {
+      "type": "integer",
+      "description": "Increments on any edit to this case. Identity stays fixed; version tracks change.",
+      "minimum": 1
+    },
+    "family": {
+      "type": "string",
+      "description": "Reference to the parametrized generator this case belongs to. Cases in one family differ only by construction_axis / axis_level.",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "examples": ["req-extraction", "system-reconciliation"]
+    },
+    "status": {
+      "type": "string",
+      "description": "Lifecycle state. Retired cases are kept for provenance but excluded from runs.",
+      "enum": ["draft", "active", "retired"]
+    },
+
+    "suite_type": {
+      "type": "string",
+      "description": "Governance role. regression is frozen and re-run per agent version; probe is mutable and hunts new failure modes; held_out is hidden during agent development to prevent overfitting.",
+      "enum": ["regression", "probe", "held_out"]
+    },
+    "capability": {
+      "type": "string",
+      "description": "Measurement axis: the quality this case is designed to score.",
+      "enum": [
+        "correctness",
+        "calibration",
+        "efficiency",
+        "safety_compliance",
+        "recoverability",
+        "adaptation"
+      ]
+    },
+    "construction_axis": {
+      "type": "string",
+      "description": "Construction axis: the property of the task being varied to build the sweep.",
+      "enum": [
+        "information_conditions",
+        "horizon_autonomy",
+        "action_surface",
+        "adversarial_environment",
+        "requirements_volatility",
+        "output_structure"
+      ]
+    },
+    "axis_level": {
+      "type": "string",
+      "description": "Ordinal position on the sweep, from easiest to hardest. The point where critical_check starts failing is the signal.",
+      "enum": ["clean", "mild", "moderate", "severe"]
+    },
+    "tags": {
+      "type": "array",
+      "description": "Controlled-vocabulary labels. Tag names and values are English.",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9]+(?:_[a-z0-9]+)*$"
+      },
+      "uniqueItems": true
+    },
+
+    "instruction": {
+      "type": "string",
+      "description": "The task as presented to the agent (first user turn, or the whole prompt for single-turn cases).",
+      "minLength": 1
+    },
+    "artifacts": {
+      "type": "array",
+      "description": "Input materials supplied to the agent (documents, transcripts, files).",
+      "items": { "$ref": "#/$defs/artifact" }
+    },
+    "environment": {
+      "type": "object",
+      "description": "Tooling and side-effect surface available to the agent for this case.",
+      "additionalProperties": false,
+      "required": ["tools", "side_effects"],
+      "properties": {
+        "tools": {
+          "type": "array",
+          "description": "Capabilities the agent may use. 'none' means text-in/text-out only and must be the sole entry.",
+          "items": {
+            "type": "string",
+            "enum": ["web_search", "file_read", "file_write", "api_call", "none"]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "side_effects": {
+          "type": "string",
+          "description": "Reversibility of agent actions. Drives the safety class of the case.",
+          "enum": ["none", "reversible", "irreversible"]
+        }
+      }
+    },
+    "constraints": {
+      "type": "array",
+      "description": "Explicit rules the agent must obey (scope rules, naming conventions, prohibited inferences).",
+      "items": { "type": "string" }
+    },
+
+    "expected_failure_mode": {
+      "type": "string",
+      "description": "The specific way a weak agent is expected to fail. The core of the case; grading is built around this.",
+      "minLength": 1
+    },
+    "distractor": {
+      "type": "string",
+      "description": "The element that pressures the agent toward the failure mode (pattern pressure, a tempting shortcut, an embedded instruction)."
+    },
+
+    "grader": {
+      "type": "object",
+      "description": "How the run is scored. critical_check is the binary guard tied to expected_failure_mode; rubric measures graded quality.",
+      "additionalProperties": false,
+      "required": ["type", "critical_check", "scoring"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["exact", "regex", "programmatic", "rubric", "model_graded", "human"]
+        },
+        "gold": {
+          "type": "string",
+          "description": "Path or inline reference to the reference answer, when one exists."
+        },
+        "rubric": {
+          "type": "array",
+          "description": "Weighted graded criteria for fuzzy aspects. Weights should sum to 1.0.",
+          "items": { "$ref": "#/$defs/rubric_item" },
+          "minItems": 1
+        },
+        "critical_check": {
+          "type": "string",
+          "description": "ONE binary, must-pass assertion bound to expected_failure_mode. If it fails, the case fails regardless of rubric score.",
+          "minLength": 1
+        },
+        "scoring": {
+          "type": "string",
+          "description": "Aggregation rule combining critical_check and rubric into a final score.",
+          "minLength": 1
+        }
+      }
+    },
+
+    "turns": {
+      "type": "array",
+      "description": "Multi-turn interaction script. Required for requirements_volatility cases, which inject a new constraint mid-task.",
+      "items": { "$ref": "#/$defs/turn" }
+    },
+
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["author", "created"],
+      "properties": {
+        "author": { "type": "string" },
+        "created": { "type": "string", "format": "date" },
+        "source": {
+          "type": "string",
+          "description": "Where the input material originates (hand-authored, derived from a named document, etc.)."
+        }
+      }
+    }
+  },
+
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9._-]+$" },
+        "type": {
+          "type": "string",
+          "enum": ["text", "file", "transcript", "table", "image", "url"]
+        },
+        "path": {
+          "type": "string",
+          "description": "Location of the artifact when stored outside the case file."
+        },
+        "content": {
+          "type": "string",
+          "description": "Inline content when the artifact is small enough to embed."
+        },
+        "note": {
+          "type": "string",
+          "description": "Author note, e.g. flagging where the trap is planted."
+        }
+      }
+    },
+    "rubric_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["criterion", "weight"],
+      "properties": {
+        "criterion": { "type": "string", "minLength": 1 },
+        "weight": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "turn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "content"],
+      "properties": {
+        "role": {
+          "type": "string",
+          "description": "user = normal input; inject = a new constraint introduced after work has begun; assistant = scripted prior agent turn.",
+          "enum": ["user", "inject", "assistant"]
+        },
+        "content": { "type": "string", "minLength": 1 }
+      }
+    }
+  },
+
+  "allOf": [
+    {
+      "$comment": "Rubric-style graders must carry a rubric.",
+      "if": {
+        "properties": { "grader": { "properties": { "type": { "enum": ["rubric", "model_graded"] } } } }
+      },
+      "then": {
+        "properties": { "grader": { "required": ["rubric"] } }
+      }
+    },
+    {
+      "$comment": "Exact-match graders must carry a gold reference.",
+      "if": {
+        "properties": { "grader": { "properties": { "type": { "const": "exact" } } } }
+      },
+      "then": {
+        "properties": { "grader": { "required": ["gold"] } }
+      }
+    },
+    {
+      "$comment": "Volatility cases must script an injected constraint mid-task.",
+      "if": {
+        "properties": { "construction_axis": { "const": "requirements_volatility" } }
+      },
+      "then": {
+        "required": ["turns"],
+        "properties": {
+          "turns": {
+            "minItems": 2,
+            "contains": {
+              "properties": { "role": { "const": "inject" } },
+              "required": ["role"]
+            }
+          }
+        }
+      }
+    },
+    {
+      "$comment": "Tool 'none' must be exclusive.",
+      "if": {
+        "properties": {
+          "environment": {
+            "properties": { "tools": { "contains": { "const": "none" } } }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "environment": {
+            "properties": { "tools": { "maxItems": 1 } }
+          }
+        }
+      }
+    }
+  ]
+}

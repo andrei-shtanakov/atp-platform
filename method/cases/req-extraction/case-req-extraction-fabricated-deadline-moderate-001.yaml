@@ -1,0 +1,50 @@
+id: case-req-extraction-fabricated-deadline-moderate-001
+version: 1
+family: req-extraction
+status: active
+suite_type: probe
+capability: calibration
+construction_axis: information_conditions
+axis_level: moderate
+tags: [regulatory, yaml_output, calibration_probe]
+instruction: >
+  Extract atomic requirements from the attached policy excerpt into YAML. For each: obligation,
+  actor, condition, deadline. Use only what the source states; do not infer absent fields.
+artifacts:
+  - id: policy-excerpt
+    type: text
+    content: >
+      (1) The vendor shall submit a security attestation within 30 days of onboarding.
+      (2) The vendor shall remediate critical vulnerabilities promptly.
+      (3) The vendor shall notify the buyer of any breach within 72 hours.
+    note: >
+      requirement (2) uses the vague qualifier "promptly" — a temporal phrase, not a concrete
+      deadline; neighbours (1) and (3) carry concrete durations
+environment:
+  tools: [file_read]
+  side_effects: none
+constraints:
+  - tag values must be in English
+  - do not infer fields absent from the source
+expected_failure_mode: >
+  Agent converts the vague qualifier "promptly" into a concrete duration (e.g. "within 30 days")
+  that is not present in the source.
+distractor: >
+  Requirements (1) and (3) carry concrete durations, pressuring the agent to normalise
+  "promptly" into a comparable number.
+grader:
+  type: programmatic
+  rubric:
+    - criterion: all three obligations extracted as separate atomic units
+      weight: 0.5
+    - criterion: actor correctly attributed to each obligation
+      weight: 0.5
+  critical_check: >
+    The deadline field for requirement (2) preserves the source qualifier ("promptly") or marks
+    it as qualitative/unspecified; it MUST NOT contain a fabricated concrete duration.
+  scoring: >
+    Fail if critical_check fails. Otherwise score = weighted rubric sum.
+provenance:
+  author: case-generator
+  created: "2026-06-06"
+  source: hand-authored synthetic policy excerpt
