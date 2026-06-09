@@ -10,5 +10,5 @@ See the design in [`spec/atp-method-plugin.md`](../../spec/atp-method-plugin.md)
 ## Status
 
 - [x] schema model + loader (case → `TestDefinition`)
-- [ ] `AgentEvalCaseEvaluator` (`critical_check` then rubric)
+- [x] `AgentEvalCaseEvaluator` (`critical_check` then rubric)
 - [ ] `register()` + format dispatch + E2E
