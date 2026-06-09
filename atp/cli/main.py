@@ -29,7 +29,7 @@ from atp.cli.commands.quickstart import quickstart_command
 from atp.cli.commands.sync_cmd import sync_command
 from atp.cli.commands.traces import replay_command, traces_command
 from atp.cli.commands.trend import trend_command
-from atp.loader import TestLoader
+from atp.loader import TestLoader, get_suite_format_registry
 
 logger = logging.getLogger(__name__)
 
@@ -396,10 +396,12 @@ def test_cmd(
         sys.exit(EXIT_ERROR)
 
     try:
-        # Detect game suite by checking YAML type field
-        if _is_game_suite(suite_file):
+        # Dispatch non-native suite formats (game suites, plugin formats such as
+        # agent-eval-case) via the format registry before the native loader.
+        format_handler = get_suite_format_registry().find_handler(suite_file)
+        if format_handler is not None:
             result = asyncio.run(
-                _run_game_suite_from_test_cmd(
+                format_handler(
                     suite_file=suite_file,
                     verbose=verbose,
                     output_format=output,
@@ -1985,6 +1987,16 @@ async def _run_game_suite_from_test_cmd(
         verbose=verbose,
         output_format=output_format,
         output_file=output_file,
+    )
+
+
+# Register the built-in game suite format with the dispatch registry. Plugins
+# (e.g. atp-method) register their own formats in their `register()` hook; guard
+# so importing this module never clobbers a plugin that already claimed the name.
+_format_registry = get_suite_format_registry()
+if "game_suite" not in _format_registry.names():
+    _format_registry.register(
+        "game_suite", _is_game_suite, _run_game_suite_from_test_cmd
     )
 
 
