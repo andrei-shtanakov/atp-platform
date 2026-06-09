@@ -11,12 +11,42 @@ from atp_method.schema import AgentEvalCase
 def test_all_example_cases_validate(example_cases_dir: Path) -> None:
     """Every shipped req-extraction example case parses and validates."""
     files = sorted(example_cases_dir.glob("*.yaml"))
-    assert len(files) == 3
+    assert len(files) >= 1  # don't hard-code the count; new cases are expected
     for f in files:
         case = AgentEvalCase.model_validate(yaml.safe_load(f.read_text()))
         assert case.id.startswith("case-req-extraction-")
         assert case.family == "req-extraction"
         assert case.capability == "calibration"
+
+
+def test_duplicate_tools_rejected() -> None:
+    """environment.tools must be unique (schema uniqueItems)."""
+    with pytest.raises(ValueError, match="duplicate"):
+        AgentEvalCase.model_validate(_minimal(tools=["file_read", "file_read"]))
+
+
+def test_invalid_created_date_rejected() -> None:
+    """provenance.created must be an ISO date (schema format: date)."""
+    doc = _minimal()
+    doc["provenance"]["created"] = "June 9, 2026"
+    with pytest.raises(ValueError, match="ISO date"):
+        AgentEvalCase.model_validate(doc)
+
+
+def test_invalid_tag_pattern_rejected() -> None:
+    """Tags must match the controlled-vocabulary pattern."""
+    doc = _minimal()
+    doc["tags"] = ["Has-Caps"]
+    with pytest.raises(ValueError, match="tags must match"):
+        AgentEvalCase.model_validate(doc)
+
+
+def test_duplicate_tags_rejected() -> None:
+    """Tags must be unique (schema uniqueItems)."""
+    doc = _minimal()
+    doc["tags"] = ["dup", "dup"]
+    with pytest.raises(ValueError, match="unique"):
+        AgentEvalCase.model_validate(doc)
 
 
 def test_none_tool_must_be_exclusive() -> None:

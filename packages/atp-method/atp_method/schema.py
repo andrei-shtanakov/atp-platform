@@ -8,9 +8,14 @@ presence, volatility turns, exclusive ``none`` tool) are enforced as validators.
 
 from __future__ import annotations
 
+import re
+from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+# Tag controlled-vocabulary pattern from the JSON schema.
+_TAG_RE = re.compile(r"^[a-z0-9]+(?:_[a-z0-9]+)*$")
 
 Status = Literal["draft", "active", "retired"]
 SuiteType = Literal["regression", "probe", "held_out"]
@@ -79,8 +84,10 @@ class Environment(BaseModel):
     side_effects: SideEffects
 
     @model_validator(mode="after")
-    def validate_none_exclusive(self) -> Environment:
-        """'none' must be the sole tool entry (text-in/text-out only)."""
+    def validate_tools(self) -> Environment:
+        """Tools are unique (schema uniqueItems) and 'none' is the sole entry."""
+        if len(self.tools) != len(set(self.tools)):
+            raise ValueError("environment.tools must not contain duplicates")
         if "none" in self.tools and len(self.tools) > 1:
             raise ValueError("tool 'none' must be the only entry in environment.tools")
         return self
@@ -116,6 +123,18 @@ class Provenance(BaseModel):
     created: str
     source: str | None = None
 
+    @field_validator("created")
+    @classmethod
+    def validate_created_is_iso_date(cls, v: str) -> str:
+        """Schema declares format: date — require an ISO YYYY-MM-DD string."""
+        try:
+            date.fromisoformat(v)
+        except ValueError as e:
+            raise ValueError(
+                f"provenance.created must be an ISO date (YYYY-MM-DD): {v!r}"
+            ) from e
+        return v
+
 
 class AgentEvalCase(BaseModel):
     """A single agent-eval-case: an input task plus its trap and grading logic."""
@@ -140,6 +159,17 @@ class AgentEvalCase(BaseModel):
     grader: Grader
     turns: list[Turn] = Field(default_factory=list)
     provenance: Provenance
+
+    @field_validator("tags")
+    @classmethod
+    def validate_tags(cls, v: list[str]) -> list[str]:
+        """Tags are unique and match the controlled-vocabulary pattern."""
+        if len(v) != len(set(v)):
+            raise ValueError("tags must be unique")
+        bad = [t for t in v if not _TAG_RE.match(t)]
+        if bad:
+            raise ValueError(f"tags must match {_TAG_RE.pattern}; offending: {bad}")
+        return v
 
     @model_validator(mode="after")
     def validate_volatility_turns(self) -> AgentEvalCase:
