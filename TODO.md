@@ -170,7 +170,9 @@ Plan: [`spec/atp-method-plugin.md`](spec/atp-method-plugin.md). Make `method/`
   pydantic model + case→`TestDefinition` loader.
 - [x] **Slice 4 — plugin evaluator**: `AgentEvalCaseEvaluator` (`critical_check` then rubric),
   delegating model calls to the platform LLM judge.
-- [ ] **Slice 5 — register() + dispatch + E2E**: `atp test method/cases/*.yaml` runs the sweep.
+- [x] **Slice 5 — register() + dispatch + E2E**: `atp.plugins` entry-point loader +
+  suite-source registry; `atp test method/cases/` loads a case or a whole sweep and
+  runs the normal adapter/orchestrator/evaluator path. Plugin is complete.
 
 ## Admin tournament GUI follow-ups (deferred from 2026-04-20 spec)
 

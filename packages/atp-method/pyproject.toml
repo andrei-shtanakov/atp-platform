@@ -22,8 +22,8 @@ dependencies = [
     "atp-platform>=1.0.0",
 ]
 
-# Note: the atp.plugins entry point is added in a later slice, once plugin.py
-# (register + format dispatch) exists.
+[project.entry-points."atp.plugins"]
+method = "atp_method.plugin:register"
 
 [build-system]
 requires = ["hatchling"]
