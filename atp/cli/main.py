@@ -1991,10 +1991,13 @@ async def _run_game_suite_from_test_cmd(
 
 
 # Register the built-in game suite format with the dispatch registry. Plugins
-# (e.g. atp-method) register their own formats in their `register()` hook.
-get_suite_format_registry().register(
-    "game_suite", _is_game_suite, _run_game_suite_from_test_cmd
-)
+# (e.g. atp-method) register their own formats in their `register()` hook; guard
+# so importing this module never clobbers a plugin that already claimed the name.
+_format_registry = get_suite_format_registry()
+if "game_suite" not in _format_registry.names():
+    _format_registry.register(
+        "game_suite", _is_game_suite, _run_game_suite_from_test_cmd
+    )
 
 
 def main() -> None:

@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from atp.loader.format_dispatch import SuiteFormatRegistry, get_suite_format_registry
 
 
@@ -50,8 +52,10 @@ def test_register_override_by_name(tmp_path: Path) -> None:
     assert reg.names() == ["demo"]
 
 
-def test_detector_exception_is_skipped(tmp_path: Path) -> None:
-    """A detector that raises is skipped, not fatal."""
+def test_detector_exception_is_skipped(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A detector that raises is skipped (not fatal) but logged at debug."""
     reg = SuiteFormatRegistry()
 
     def _boom(_p: Path) -> bool:
@@ -61,7 +65,9 @@ def test_detector_exception_is_skipped(tmp_path: Path) -> None:
     reg.register("ok", lambda p: True, _handler)
     f = tmp_path / "s.yaml"
     f.write_text("x")
-    assert reg.find_handler(f) is _handler
+    with caplog.at_level("DEBUG", logger="atp.loader.format_dispatch"):
+        assert reg.find_handler(f) is _handler
+    assert any("boom" in r.message for r in caplog.records)
 
 
 def test_singleton_accessor() -> None:

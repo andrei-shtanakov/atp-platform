@@ -12,9 +12,12 @@ in their ``register()`` hook; the CLI registers the built-in game format.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Coroutine
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # Inspect a suite file and report whether it belongs to this format.
 SuiteFormatDetector = Callable[[Path], bool]
@@ -60,11 +63,19 @@ class SuiteFormatRegistry:
         Returns:
             The matching handler, or None if no format claims the file.
         """
-        for _name, detector, handler in self._formats:
+        for name, detector, handler in self._formats:
             try:
                 if detector(suite_file):
                     return handler
             except Exception:
+                # A malformed file simply isn't this format — keep scanning. Log
+                # at debug so a detector coding bug is still observable.
+                logger.debug(
+                    "Suite format detector %r raised on %s; skipping",
+                    name,
+                    suite_file,
+                    exc_info=True,
+                )
                 continue
         return None
 
