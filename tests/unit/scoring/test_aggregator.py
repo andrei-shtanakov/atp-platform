@@ -785,3 +785,52 @@ class TestScoreCalculationExamples:
         assert "final_score" in breakdown
         assert "components" in breakdown
         assert 0 <= scored.score <= 100
+
+
+class TestCriticalHardGate:
+    """Tests for the hard-gate primitive: a failed critical check fails the test
+    regardless of the weighted rubric score (native home for
+    agent-eval-case grader.critical_check)."""
+
+    def test_eval_result_critical_defaults_false(self) -> None:
+        """EvalResult.critical defaults to False (backward compatible)."""
+        r = EvalResult(evaluator="artifact", checks=[])
+        assert r.critical is False
+
+    def test_failed_critical_zeroes_score_and_fails(self) -> None:
+        """A failed critical result zeroes the score even if other checks pass."""
+        aggregator = ScoreAggregator()
+        results = [
+            EvalResult(
+                evaluator="critical_check",
+                checks=[EvalCheck(name="trap", passed=False, score=0.0)],
+                critical=True,
+            ),
+            EvalResult(
+                evaluator="artifact",
+                checks=[EvalCheck(name="rubric", passed=True, score=1.0)],
+            ),
+        ]
+        scored = aggregator.score_test_result("case-001", results)
+
+        assert scored.passed is False
+        assert scored.score == 0.0  # hard gate overrides the weighted rubric
+
+    def test_passed_critical_does_not_gate(self) -> None:
+        """A passed critical result leaves normal scoring intact."""
+        aggregator = ScoreAggregator()
+        results = [
+            EvalResult(
+                evaluator="critical_check",
+                checks=[EvalCheck(name="trap", passed=True, score=1.0)],
+                critical=True,
+            ),
+            EvalResult(
+                evaluator="artifact",
+                checks=[EvalCheck(name="rubric", passed=True, score=1.0)],
+            ),
+        ]
+        scored = aggregator.score_test_result("case-002", results)
+
+        assert scored.passed is True
+        assert scored.score > 0.0

@@ -792,6 +792,9 @@ async def _run_suite(
                         run.events,
                         assertion,
                     )
+                    # Propagate the hard-gate flag so scoring can fail the test
+                    # outright when a critical assertion fails.
+                    eval_result.critical = assertion.critical
                     eval_results_list.append(eval_result)
                 except Exception as e:
                     click.echo(

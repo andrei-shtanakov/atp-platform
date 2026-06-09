@@ -143,6 +143,11 @@ class Assertion(BaseModel):
     config: dict[str, Any] = Field(
         default_factory=dict, description="Assertion configuration"
     )
+    critical: bool = Field(
+        default=False,
+        description="Hard gate: if this assertion fails, the test fails with "
+        "score 0 regardless of the weighted rubric.",
+    )
 
 
 class ScoringWeights(BaseModel):

@@ -47,6 +47,11 @@ class EvalResult(BaseModel):
     checks: list[EvalCheck] = Field(
         default_factory=list, description="List of check results"
     )
+    critical: bool = Field(
+        default=False,
+        description="Hard gate: if this result fails, the whole test fails with "
+        "score 0 regardless of the weighted rubric (set from Assertion.critical).",
+    )
 
     @property
     def passed(self) -> bool:
