@@ -19,3 +19,9 @@ def example_cases_dir() -> Path:
 def clean_case_path(example_cases_dir: Path) -> Path:
     """The 'clean' level example case."""
     return example_cases_dir / "case-req-extraction-fabricated-deadline-clean-001.yaml"
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    """Run async tests on asyncio (anyio, per project convention)."""
+    return "asyncio"

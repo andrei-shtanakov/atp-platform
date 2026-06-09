@@ -1,5 +1,6 @@
 """atp-method: run agent-eval-case methodology cases through ATP."""
 
+from atp_method.evaluators import AgentEvalCaseEvaluator
 from atp_method.loader import (
     METHOD_CRITICAL_CHECK,
     METHOD_RUBRIC,
@@ -10,6 +11,7 @@ from atp_method.schema import AgentEvalCase
 
 __all__ = [
     "AgentEvalCase",
+    "AgentEvalCaseEvaluator",
     "case_to_test_definition",
     "load_case",
     "METHOD_CRITICAL_CHECK",

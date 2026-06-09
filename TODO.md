@@ -168,7 +168,8 @@ Plan: [`spec/atp-method-plugin.md`](spec/atp-method-plugin.md). Make `method/`
   `_is_game_suite` branch in `atp test` with a `{detector → handler}` registry.
 - [x] **Slice 3 — plugin schema + loader**: `packages/atp-method/` — `agent-eval-case`
   pydantic model + case→`TestDefinition` loader.
-- [ ] **Slice 4 — plugin evaluator**: `AgentEvalCaseEvaluator` (`critical_check` then rubric).
+- [x] **Slice 4 — plugin evaluator**: `AgentEvalCaseEvaluator` (`critical_check` then rubric),
+  delegating model calls to the platform LLM judge.
 - [ ] **Slice 5 — register() + dispatch + E2E**: `atp test method/cases/*.yaml` runs the sweep.
 
 ## Admin tournament GUI follow-ups (deferred from 2026-04-20 spec)

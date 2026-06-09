@@ -17,7 +17,9 @@ classifiers = [
 dependencies = [
     "pydantic>=2.0",
     "pyyaml>=6.0",
-    "atp-core>=1.0.0",
+    # atp-platform provides both the loader models (atp.loader) and the
+    # evaluator base + LLM judge (atp.evaluators) the plugin builds on.
+    "atp-platform>=1.0.0",
 ]
 
 # Note: the atp.plugins entry point is added in a later slice, once plugin.py
@@ -47,11 +49,11 @@ source = ["atp_method"]
 project-includes = ["atp_method/**/*.py"]
 
 [tool.uv.sources]
-atp-core = { workspace = true }
+atp-platform = { workspace = true }
 
 [dependency-groups]
 dev = [
-    "atp-core",
+    "atp-platform",
     "pytest>=9.0.2",
     "pytest-anyio>=0.0.0",
     "pytest-cov>=7.0.0",
