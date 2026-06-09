@@ -122,6 +122,13 @@ class TestAssertion:
 
         assert assertion.type == "artifact_exists"
         assert assertion.config == {}
+        assert assertion.critical is False
+
+    def test_assertion_critical_flag(self):
+        """Test the hard-gate critical flag can be set."""
+        assertion = Assertion(type="artifact_exists", critical=True)
+
+        assert assertion.critical is True
 
     def test_assertion_with_config(self):
         """Test assertion with configuration."""

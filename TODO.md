@@ -156,6 +156,20 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
 - [ ] **Fix UI routes test isolation**: `.value` bug in analytics/home templates, UNIQUE constraint collision.
 - [ ] **Benchmark API scoring**: wire up evaluators instead of the naive score (100 if completed else 0).
 
+## `atp-method` plugin — run methodology cases via ATP
+
+Plan: [`spec/atp-method-plugin.md`](spec/atp-method-plugin.md). Make `method/`
+(agent-eval-case methodology, PR #140) runnable through the platform as a plugin.
+
+- [ ] **Slice 1 — core hard-gate**: `Assertion.critical` + `EvalResult.critical` +
+  `ScoreAggregator` hard-fails on a failed critical check (native home for
+  `grader.critical_check`).
+- [ ] **Slice 2 — core format-dispatch registry**: replace the hardcoded
+  `_is_game_suite` branch in `atp test` with a `{detector → handler}` registry.
+- [ ] **Slice 3 — plugin schema + loader**: `agent-eval-case` model + case→`TestDefinition`.
+- [ ] **Slice 4 — plugin evaluator**: `AgentEvalCaseEvaluator` (`critical_check` then rubric).
+- [ ] **Slice 5 — register() + dispatch + E2E**: `atp test method/cases/*.yaml` runs the sweep.
+
 ## Admin tournament GUI follow-ups (deferred from 2026-04-20 spec)
 
 Spec: `docs/superpowers/specs/2026-04-20-admin-tournament-gui-design.md`

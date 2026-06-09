@@ -409,9 +409,13 @@ class ScoreAggregator:
 
         all_passed = all(result.passed for result in eval_results)
 
+        # Hard gate: a failed critical check fails the test with score 0,
+        # regardless of the weighted rubric (agent-eval-case grader.critical_check).
+        critical_failed = any(r.critical and not r.passed for r in eval_results)
+
         return ScoredTestResult(
             test_id=test_id,
-            score=breakdown.final_score,
+            score=0.0 if critical_failed else breakdown.final_score,
             breakdown=breakdown,
-            passed=all_passed,
+            passed=all_passed and not critical_failed,
         )
