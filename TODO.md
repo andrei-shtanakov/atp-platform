@@ -161,12 +161,13 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
 Plan: [`spec/atp-method-plugin.md`](spec/atp-method-plugin.md). Make `method/`
 (agent-eval-case methodology, PR #140) runnable through the platform as a plugin.
 
-- [ ] **Slice 1 — core hard-gate**: `Assertion.critical` + `EvalResult.critical` +
+- [x] **Slice 1 — core hard-gate** (#142): `Assertion.critical` + `EvalResult.critical` +
   `ScoreAggregator` hard-fails on a failed critical check (native home for
   `grader.critical_check`).
-- [ ] **Slice 2 — core format-dispatch registry**: replace the hardcoded
+- [x] **Slice 2 — core format-dispatch registry** (#143): replace the hardcoded
   `_is_game_suite` branch in `atp test` with a `{detector → handler}` registry.
-- [ ] **Slice 3 — plugin schema + loader**: `agent-eval-case` model + case→`TestDefinition`.
+- [x] **Slice 3 — plugin schema + loader**: `packages/atp-method/` — `agent-eval-case`
+  pydantic model + case→`TestDefinition` loader.
 - [ ] **Slice 4 — plugin evaluator**: `AgentEvalCaseEvaluator` (`critical_check` then rubric).
 - [ ] **Slice 5 — register() + dispatch + E2E**: `atp test method/cases/*.yaml` runs the sweep.
 
