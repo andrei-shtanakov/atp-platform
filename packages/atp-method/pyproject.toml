@@ -1,0 +1,59 @@
+[project]
+name = "atp-method"
+version = "0.1.0"
+description = "ATP plugin: run agent-eval-case methodology cases through the platform"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{ name = "ATP Platform Contributors" }]
+keywords = ["ai-agents", "atp", "evaluation", "methodology", "agent-eval-case"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "pydantic>=2.0",
+    "pyyaml>=6.0",
+    "atp-core>=1.0.0",
+]
+
+# Note: the atp.plugins entry point is added in a later slice, once plugin.py
+# (register + format dispatch) exists.
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["atp_method"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["atp_method"]
+
+[tool.pyrefly]
+project-includes = ["atp_method/**/*.py"]
+
+[tool.uv.sources]
+atp-core = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "atp-core",
+    "pytest>=9.0.2",
+    "pytest-anyio>=0.0.0",
+    "pytest-cov>=7.0.0",
+    "ruff>=0.14.0",
+]
