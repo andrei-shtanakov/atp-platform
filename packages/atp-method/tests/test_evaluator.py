@@ -121,3 +121,80 @@ async def test_unsupported_assertion_type() -> None:
     assertion = Assertion(type="something_else", config={})
     result = await ev.evaluate(_task(), _response(), [], assertion)
     assert result.checks[0].passed is False
+
+
+class RecordingJudge(Evaluator):
+    """Captures the prompts it is asked to grade; can simulate a judge failure."""
+
+    def __init__(self, score: float = 1.0, return_empty: bool = False) -> None:
+        self.prompts: list[str] = []
+        self._score = score
+        self._return_empty = return_empty
+
+    @property
+    def name(self) -> str:
+        return "recording"
+
+    async def evaluate(
+        self,
+        task: TestDefinition,
+        response: ATPResponse,
+        trace: list,
+        assertion: Assertion,
+    ) -> EvalResult:
+        self.prompts.append(assertion.config.get("prompt", ""))
+        if self._return_empty:
+            return EvalResult(evaluator="recording", checks=[])
+        return EvalResult(
+            evaluator="recording",
+            checks=[EvalCheck(name="x", passed=True, score=self._score)],
+        )
+
+
+@pytest.mark.anyio
+async def test_rubric_normalizes_by_weight_sum() -> None:
+    """Weights that don't sum to 1 are normalized, not clamped."""
+    ev = AgentEvalCaseEvaluator(judge=FakeJudge(0.6))
+    assertion = Assertion(
+        type=METHOD_RUBRIC,
+        config={
+            "rubric": [
+                {"criterion": "c1", "weight": 1.0},
+                {"criterion": "c2", "weight": 1.0},
+            ]
+        },
+    )
+    result = await ev.evaluate(_task(), _response(), [], assertion)
+    # (1*0.6 + 1*0.6) / 2 = 0.6 — not clamped to 1.0
+    assert result.checks[0].score == pytest.approx(0.6)
+
+
+@pytest.mark.anyio
+async def test_rubric_judge_failure_flagged() -> None:
+    """A per-criterion judge failure is recorded in details, not silent."""
+    ev = AgentEvalCaseEvaluator(judge=RecordingJudge(return_empty=True))
+    assertion = Assertion(
+        type=METHOD_RUBRIC, config={"rubric": [{"criterion": "c1", "weight": 1.0}]}
+    )
+    result = await ev.evaluate(_task(), _response(), [], assertion)
+    item = result.checks[0].details["items"][0]
+    assert item["judge_failed"] is True
+    assert item["score"] == 0.0
+
+
+@pytest.mark.anyio
+async def test_critical_prompt_includes_gold() -> None:
+    """When the case supplies a gold reference, it reaches the judge prompt."""
+    judge = RecordingJudge(score=1.0)
+    ev = AgentEvalCaseEvaluator(judge=judge)
+    assertion = Assertion(
+        type=METHOD_CRITICAL_CHECK,
+        critical=True,
+        config={
+            "check": "c",
+            "expected_failure_mode": "f",
+            "gold": "the reference answer",
+        },
+    )
+    await ev.evaluate(_task(), _response(), [], assertion)
+    assert any("the reference answer" in p for p in judge.prompts)

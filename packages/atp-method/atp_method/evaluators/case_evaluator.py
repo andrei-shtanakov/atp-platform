@@ -58,7 +58,13 @@ class AgentEvalCaseEvaluator(Evaluator):
         prompt: str,
         threshold: float,
     ) -> EvalCheck | None:
-        """Run one model-graded judgement via a synthetic llm_eval assertion."""
+        """Run one model-graded judgement via a synthetic llm_eval assertion.
+
+        No artifact ``path`` is set, so the judge grades the agent's primary
+        output (the first response artifact with content). agent-eval-case has no
+        output-artifact selector; grading a specific one among several is a
+        follow-up that would require extending the case format.
+        """
         synthetic = Assertion(
             type="llm_eval", config={"prompt": prompt, "threshold": threshold}
         )
@@ -98,12 +104,16 @@ class AgentEvalCaseEvaluator(Evaluator):
     ) -> EvalResult:
         check_text = assertion.config.get("check", "")
         failure_mode = assertion.config.get("expected_failure_mode", "")
+        gold = assertion.config.get("gold")
         prompt = (
             "Grade whether the agent output passes ONE binary check. "
             "Return score 1.0 if the check holds, 0.0 if it fails.\n"
             f"Check (must pass): {check_text}\n"
             f"Failure mode to detect: {failure_mode}\n"
         )
+        # Give the judge the reference answer the case author supplied, if any.
+        if gold:
+            prompt += f"Reference (gold): {gold}\n"
         check = await self._judge_score(
             task, response, trace, prompt, CRITICAL_THRESHOLD
         )
@@ -153,7 +163,8 @@ class AgentEvalCaseEvaluator(Evaluator):
             )
 
         weighted = 0.0
-        items: list[dict[str, float | str]] = []
+        total_weight = 0.0
+        items: list[dict[str, float | str | bool]] = []
         for item in rubric:
             criterion = str(item["criterion"])
             weight = float(item["weight"])
@@ -165,9 +176,22 @@ class AgentEvalCaseEvaluator(Evaluator):
             check = await self._judge_score(task, response, trace, prompt, 0.0)
             score = check.score if check is not None else 0.0
             weighted += weight * score
-            items.append({"criterion": criterion, "weight": weight, "score": score})
+            total_weight += weight
+            entry: dict[str, float | str | bool] = {
+                "criterion": criterion,
+                "weight": weight,
+                "score": score,
+            }
+            if check is None:
+                # Surface a judge failure instead of silently scoring 0.
+                entry["judge_failed"] = True
+            items.append(entry)
 
-        weighted = min(max(weighted, 0.0), 1.0)
+        # Normalize by the actual weight sum: the schema does not enforce
+        # weights==1.0 (that lives in the authoring linter), so mis-specified
+        # weights must not distort the score via raw clamping.
+        score = weighted / total_weight if total_weight > 0 else 0.0
+        score = min(max(score, 0.0), 1.0)
         # Rubric is graded, not a gate: it always "passes" and contributes its
         # weighted score; the hard gate is the separate critical_check.
         return EvalResult(
@@ -176,7 +200,7 @@ class AgentEvalCaseEvaluator(Evaluator):
                 EvalCheck(
                     name="rubric",
                     passed=True,
-                    score=weighted,
+                    score=score,
                     message="weighted rubric score",
                     details={"items": items},
                 )
