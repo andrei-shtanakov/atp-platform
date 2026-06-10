@@ -98,6 +98,9 @@ analytics = [
 ]
 llm = [
     "anthropic>=0.76.0",
+    # The LLM judge supports an openai provider (and OpenAI-compatible local
+    # servers via base_url), so the openai client belongs in the llm extra too.
+    "openai>=2.15.0",
 ]
 all = [
     "atp-adapters[cloud]",

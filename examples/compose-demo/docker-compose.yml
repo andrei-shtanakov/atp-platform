@@ -48,7 +48,7 @@ services:
     # allow_internal=true is REQUIRED here: the http adapter blocks private IPs
     # (SSRF guard), and the compose service name resolves to a private address.
     command: >
-      uv run atp test /work/suite.yaml
+      uv run --no-sync atp test /work/suite.yaml
       --adapter=http
       --adapter-config endpoint=http://agent:8000/execute,allow_internal=true
       --output=json
@@ -67,7 +67,7 @@ services:
       - ATP_DISABLE_AUTH=true
     volumes:
       - atp-data:/root/.atp           # same volume as the atp runner
-    command: uv run atp dashboard --host 0.0.0.0 --port 8080
+    command: uv run --no-sync atp dashboard --host 0.0.0.0 --port 8080
 
   # ===== Methodology profile (--profile method) ===========================
   # Runs the agent-eval-case sweep (method/cases/req-extraction) against an
@@ -129,7 +129,7 @@ services:
     # Same platform, methodology content. critical_check hard-gates the trap;
     # --runs surfaces the curve of collapse across clean/moderate/severe.
     command: >
-      uv run atp test /work/method/cases/req-extraction
+      uv run --no-sync atp test /work/method/cases/req-extraction
       --adapter=http
       --adapter-config endpoint=http://agent-llm:8000/execute,allow_internal=true
       --runs=5
