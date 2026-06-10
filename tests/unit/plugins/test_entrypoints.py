@@ -1,17 +1,47 @@
-"""Tests for the atp.plugins entry-point loader."""
+"""Tests for the atp.plugins entry-point loader (hermetic — entry points stubbed)."""
 
-from atp.plugins.entrypoints import load_entrypoint_plugins
+from unittest.mock import patch
 
-
-def test_load_is_idempotent() -> None:
-    """First (forced) load runs hooks; a subsequent non-forced call is a no-op."""
-    first = load_entrypoint_plugins(force=True)
-    assert isinstance(first, list)
-    second = load_entrypoint_plugins()  # already loaded → no-op
-    assert second == []
+import atp.plugins.entrypoints as ep_mod
 
 
-def test_force_reruns() -> None:
-    """force=True re-runs the hooks and returns the registered names."""
-    result = load_entrypoint_plugins(force=True)
-    assert isinstance(result, list)
+class _FakeEntryPoint:
+    def __init__(self, name: str, hook) -> None:
+        self.name = name
+        self._hook = hook
+
+    def load(self):
+        return self._hook
+
+
+def test_runs_each_register_hook() -> None:
+    """Each discovered entry point's register hook is loaded and called."""
+    calls: list[str] = []
+    ep = _FakeEntryPoint("demo", lambda: calls.append("ran"))
+    ep_mod._loaded = False
+    with patch.object(ep_mod, "entry_points", return_value=[ep]) as mock_eps:
+        result = ep_mod.load_entrypoint_plugins(force=True)
+    mock_eps.assert_called_once_with(group="atp.plugins")
+    assert result == ["demo"]
+    assert calls == ["ran"]
+
+
+def test_idempotent() -> None:
+    """A second, non-forced call is a no-op once loaded."""
+    ep_mod._loaded = False
+    with patch.object(ep_mod, "entry_points", return_value=[]):
+        assert ep_mod.load_entrypoint_plugins(force=True) == []
+        assert ep_mod.load_entrypoint_plugins() == []
+
+
+def test_broken_hook_is_skipped() -> None:
+    """A register hook that raises is logged and skipped, not fatal."""
+
+    def boom() -> None:
+        raise RuntimeError("bad plugin")
+
+    ep = _FakeEntryPoint("broken", boom)
+    ep_mod._loaded = False
+    with patch.object(ep_mod, "entry_points", return_value=[ep]):
+        result = ep_mod.load_entrypoint_plugins(force=True)
+    assert result == []

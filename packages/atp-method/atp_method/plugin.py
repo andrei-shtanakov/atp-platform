@@ -28,8 +28,8 @@ def register() -> None:
 
     registry = get_registry()
     registry.register("agent_eval_case", AgentEvalCaseEvaluator)
-    registry._register_assertion_mapping(METHOD_CRITICAL_CHECK, "agent_eval_case")
-    registry._register_assertion_mapping(METHOD_RUBRIC, "agent_eval_case")
+    registry.register_assertion_mapping(METHOD_CRITICAL_CHECK, "agent_eval_case")
+    registry.register_assertion_mapping(METHOD_RUBRIC, "agent_eval_case")
 
     get_suite_source_registry().register(
         "agent_eval_case", is_agent_eval_case, load_suite

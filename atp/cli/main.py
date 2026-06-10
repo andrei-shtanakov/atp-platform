@@ -400,8 +400,10 @@ def test_cmd(
         sys.exit(EXIT_ERROR)
 
     try:
-        # Dispatch non-native suite formats (game suites, plugin formats such as
-        # agent-eval-case) via the format registry before the native loader.
+        # Run-level dispatch: formats with their own execution path (e.g. game
+        # suites) are handled here, before loading. Source formats that parse
+        # into a normal TestSuite (e.g. agent-eval-case) are handled by the
+        # suite-source registry at the load step below.
         format_handler = get_suite_format_registry().find_handler(suite_file)
         if format_handler is not None:
             result = asyncio.run(
