@@ -7,7 +7,9 @@
       "Action": [
         "bedrock:InvokeAgent"
       ],
-      "Resource": "*"
+      "Resource": [
+        "arn:aws:bedrock:REGION:ACCOUNT_ID:agent-alias/AGENT_ID/ALIAS_ID"
+      ]
     },
     {
       "Sid": "InvokeBedrockModelForJudge",
@@ -16,7 +18,9 @@
         "bedrock:InvokeModel",
         "bedrock:InvokeModelWithResponseStream"
       ],
-      "Resource": "*"
+      "Resource": [
+        "arn:aws:bedrock:REGION::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0"
+      ]
     }
   ]
 }

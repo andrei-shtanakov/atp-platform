@@ -27,10 +27,11 @@ It grants exactly two things:
 - `bedrock:InvokeAgent` — the bedrock adapter invokes the agent under test;
 - `bedrock:InvokeModel*` — the Bedrock-Claude judge invokes the model.
 
-> **Production:** scope each statement's `Resource` from `*` to the specific ARNs
-> — the agent alias (`arn:aws:bedrock:<region>:<acct>:agent-alias/<AGENT_ID>/<ALIAS_ID>`)
-> and the model / inference-profile
-> (`arn:aws:bedrock:<region>::foundation-model/<MODEL_ID>`).
+The policy ships **scoped to placeholder ARNs** (no `Resource: "*"`). Replace
+`REGION`, `ACCOUNT_ID`, `AGENT_ID`, `ALIAS_ID`, and the model id with your values
+— the agent alias (`arn:aws:bedrock:REGION:ACCOUNT_ID:agent-alias/AGENT_ID/ALIAS_ID`)
+and the model / inference-profile
+(`arn:aws:bedrock:REGION::foundation-model/<MODEL_ID>`).
 
 ## 2. Compute
 
@@ -38,7 +39,12 @@ It grants exactly two things:
 
 Launch an instance (Amazon Linux 2023) with:
 - the IAM role from step 1,
-- [`user-data.sh`](user-data.sh) (installs Docker, builds the image, starts the dashboard).
+- [`user-data.sh`](user-data.sh) (installs Docker, builds the image, starts the
+  dashboard **bound to localhost** with auth enabled).
+
+> **Do not** open port 8080 in the security group. Reach the dashboard via an SSH
+> tunnel: `ssh -L 8080:localhost:8080 ec2-user@<instance>`, then
+> `http://localhost:8080/ui/`.
 
 > ⚠️ **IMDSv2 hop limit.** A container reaches the instance role via the metadata
 > service. With the default hop limit of **1**, containers cannot read it. Set the
@@ -72,8 +78,8 @@ docker run --rm \
 
 No `ANTHROPIC_API_KEY`, no AWS keys — both the agent and the judge use the IAM
 role. The same `critical_check` hard-gates the trap; `--runs` surfaces the curve
-of collapse. The run is stored in the shared `atp-data` volume, browsable at the
-dashboard (`http://<instance>:8080/ui/`).
+of collapse. The run is stored in the shared `atp-data` volume, browsable in the
+dashboard via the SSH tunnel above (`http://localhost:8080/ui/`).
 
 ## The pitch in one line
 
