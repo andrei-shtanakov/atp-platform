@@ -35,13 +35,23 @@ def health() -> dict[str, str]:
 
 
 def _build_prompt(task: dict[str, Any]) -> str:
-    """Render the instruction plus any inline input artifacts into a prompt."""
+    """Render only what the agent should legitimately see into the prompt.
+
+    Includes the instruction, each inline artifact's type + content, and the
+    constraints. Author-side metadata is deliberately excluded: `note` flags where
+    the trap is planted and `distractor` describes the trap's pressure — feeding
+    either to the agent would leak the trap and corrupt the evaluation. `path`
+    (external artifacts) and `turns` (multi-turn scripts) are out of scope for this
+    single-turn demo agent.
+    """
     parts = [task.get("description", "")]
     input_data = task.get("input_data") or {}
     for artifact in input_data.get("artifacts", []):
         content = artifact.get("content")
         if content:
-            parts.append(f"\n--- {artifact.get('id', 'artifact')} ---\n{content}")
+            aid = artifact.get("id", "artifact")
+            atype = artifact.get("type", "artifact")
+            parts.append(f"\n--- {aid} ({atype}) ---\n{content}")
     constraints = input_data.get("constraints") or []
     if constraints:
         parts.append("\nConstraints:\n" + "\n".join(f"- {c}" for c in constraints))
@@ -57,11 +67,14 @@ async def execute(request: Request) -> JSONResponse:
     task: dict[str, Any] = payload.get("task") or {}
 
     prompt = _build_prompt(task)
+    # Omit the auth header when no key is set — some local OpenAI-compatible
+    # servers reject an empty Bearer token.
+    headers = {"Authorization": f"Bearer {LLM_API_KEY}"} if LLM_API_KEY else {}
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
                 f"{LLM_BASE_URL}/chat/completions",
-                headers={"Authorization": f"Bearer {LLM_API_KEY}"},
+                headers=headers,
                 json={
                     "model": LLM_MODEL,
                     "messages": [{"role": "user", "content": prompt}],
