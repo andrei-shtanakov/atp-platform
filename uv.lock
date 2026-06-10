@@ -13,6 +13,7 @@ members = [
     "atp-core",
     "atp-dashboard",
     "atp-games",
+    "atp-method",
     "atp-platform",
     "atp-platform-sdk",
     "game-environments",
@@ -354,6 +355,41 @@ dev = [
 ]
 
 [[package]]
+name = "atp-method"
+version = "0.1.0"
+source = { editable = "packages/atp-method" }
+dependencies = [
+    { name = "atp-platform" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "atp-platform" },
+    { name = "pytest" },
+    { name = "pytest-anyio" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "atp-platform", editable = "." },
+    { name = "pydantic", specifier = ">=2.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "atp-platform", editable = "." },
+    { name = "pytest", specifier = ">=9.0.2" },
+    { name = "pytest-anyio", specifier = ">=0.0.0" },
+    { name = "pytest-cov", specifier = ">=7.0.0" },
+    { name = "ruff", specifier = ">=0.14.0" },
+]
+
+[[package]]
 name = "atp-platform"
 version = "2.0.0"
 source = { editable = "." }
@@ -409,6 +445,7 @@ enterprise = [
 ]
 llm = [
     { name = "anthropic" },
+    { name = "openai" },
 ]
 tui = [
     { name = "rich" },
@@ -472,6 +509,7 @@ requires-dist = [
     { name = "greenlet", specifier = ">=3.3.1" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "jinja2", specifier = ">=3.1.6" },
+    { name = "openai", marker = "extra == 'llm'", specifier = ">=2.15.0" },
     { name = "pillow", specifier = ">=12.1.1" },
     { name = "pyjwt", specifier = ">=2.12.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
