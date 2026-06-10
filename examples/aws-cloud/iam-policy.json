@@ -1,0 +1,22 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "InvokeBedrockAgentUnderTest",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:InvokeAgent"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "InvokeBedrockModelForJudge",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
