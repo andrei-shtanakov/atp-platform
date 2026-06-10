@@ -902,3 +902,42 @@ class TestBedrockProvider:
         event = tracker.track.call_args.args[0]
         assert event.model == DEFAULT_BEDROCK_MODEL
         assert event.provider == "bedrock"
+
+
+class TestOpenAIBaseUrl:
+    """Tests for the OpenAI-compatible base_url (air-gapped judge)."""
+
+    def test_config_accepts_base_url(self) -> None:
+        config = LLMJudgeConfig(provider="openai", base_url="http://local:11434/v1")
+        assert config.base_url == "http://local:11434/v1"
+
+    def test_base_url_implies_openai_provider(self, monkeypatch) -> None:
+        """A base_url with no explicit provider routes to openai."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        ev = LLMJudgeEvaluator(LLMJudgeConfig(base_url="http://local:11434/v1"))
+        assert ev._provider == "openai"
+
+    def test_env_base_url_and_model(self, monkeypatch) -> None:
+        """ATP_JUDGE_BASE_URL / ATP_JUDGE_MODEL configure the judge from env."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.setenv("ATP_JUDGE_BASE_URL", "http://local:8000/v1")
+        monkeypatch.setenv("ATP_JUDGE_MODEL", "llama3.1")
+        ev = LLMJudgeEvaluator(LLMJudgeConfig())
+        assert ev._provider == "openai"
+        assert ev._base_url == "http://local:8000/v1"
+        assert ev._model == "llama3.1"
+
+    def test_get_client_forwards_base_url(self) -> None:
+        """_get_client passes base_url to AsyncOpenAI."""
+        import openai
+
+        ev = LLMJudgeEvaluator(
+            LLMJudgeConfig(
+                provider="openai", base_url="http://local:11434/v1", model="x"
+            )
+        )
+        with patch.object(openai, "AsyncOpenAI", return_value="CLIENT") as ctor:
+            client = ev._get_client()
+        assert client == "CLIENT"
+        assert ctor.call_args.kwargs.get("base_url") == "http://local:11434/v1"

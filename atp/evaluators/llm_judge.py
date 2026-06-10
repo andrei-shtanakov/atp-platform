@@ -109,6 +109,11 @@ class LLMJudgeConfig(BaseModel):
         "defaulting to anthropic.",
     )
     api_key: str | None = Field(None, description="API key")
+    base_url: str | None = Field(
+        None,
+        description="OpenAI-compatible base URL for the 'openai' provider "
+        "(e.g. a local Ollama/vLLM server) — enables an air-gapped judge.",
+    )
     aws_region: str | None = Field(
         None,
         description="AWS region for the 'bedrock' provider "
@@ -164,6 +169,17 @@ class LLMJudgeEvaluator(Evaluator):
 
         self._provider = self._config.provider
         self._model = self._config.model
+
+        # Air-gapped judge: an OpenAI-compatible base URL (config or
+        # ATP_JUDGE_BASE_URL) routes to a local model. It implies the openai
+        # provider and an optional ATP_JUDGE_MODEL override. Resolved first so it
+        # wins over the settings/default model below.
+        self._base_url = self._config.base_url or _os.environ.get("ATP_JUDGE_BASE_URL")
+        if self._base_url:
+            if not self._provider:
+                self._provider = "openai"
+            if not self._model:
+                self._model = _os.environ.get("ATP_JUDGE_MODEL") or self._model
 
         # Try ATP settings (skip for bedrock: the settings default is an
         # Anthropic-API model id, which a Bedrock client cannot use).
@@ -222,10 +238,12 @@ class LLMJudgeEvaluator(Evaluator):
                         "openai package is required for OpenAI LLM eval. "
                         "Install it with: uv add openai"
                     ) from e
+                openai_kwargs: dict[str, Any] = {}
                 if self._config.api_key:
-                    self._client = AsyncOpenAI(api_key=self._config.api_key)
-                else:
-                    self._client = AsyncOpenAI()
+                    openai_kwargs["api_key"] = self._config.api_key
+                if self._base_url:
+                    openai_kwargs["base_url"] = self._base_url
+                self._client = AsyncOpenAI(**openai_kwargs)
             elif self._provider == "bedrock":
                 try:
                     import anthropic
