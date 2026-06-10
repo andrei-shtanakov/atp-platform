@@ -1,6 +1,6 @@
 # Spec: `atp-method` plugin — run agent-eval-case methodology cases via ATP
 
-**Status:** in progress (slice 1)
+**Status:** done (2026-06-10) — all 5 slices merged (PRs #142–#146).
 **Created:** 2026-06-09
 **Decision:** the `method/` methodology is a self-contained domain that evolves on
 its own cadence → ship it as a **plugin**, not by merging its concepts into the
@@ -55,18 +55,32 @@ belongs in core.
 | `grader` (type=programmatic) | `code_exec` / `artifact` |
 | `family` / `axis_level` / `capability` / `suite_type` | `tags` (sweep analysis + governance) |
 
-## Build sequence (layered, TDD; each slice its own PR)
+## Build sequence (layered, TDD; each slice its own PR) — DONE
 
-1. **Core hard-gate** — `Assertion.critical` (loader), `EvalResult.critical`
-   (core/results), `ScoreAggregator.score_test_result` hard-fail when a critical
-   result fails, CLI eval loop propagates `assertion.critical`. *(this PR)*
-2. **Core format-dispatch registry** — replace the hardcoded `_is_game_suite`
-   branch with a registry `{detector → handler}`; migrate the game branch onto it.
-3. **Plugin: schema + loader** — `agent-eval-case` pydantic model + case→
+1. ✅ **Core hard-gate** (#142) — `Assertion.critical`, `EvalResult.critical`,
+   `ScoreAggregator` hard-fail when a critical result fails, CLI propagates
+   `assertion.critical`.
+2. ✅ **Core format-dispatch registry** (#143) — replaced the hardcoded
+   `_is_game_suite` branch with `{detector → handler}`; migrated the game branch.
+3. ✅ **Plugin: schema + loader** (#144) — `agent-eval-case` pydantic model + case→
    `TestDefinition` mapping; tested on the 3 `req-extraction` example cases.
-4. **Plugin: evaluator** — `AgentEvalCaseEvaluator` (`critical_check` then rubric).
-5. **Plugin: register() + dispatch** — wire entry point so
-   `atp test method/cases/...yaml` runs; E2E sweep against the demo agent.
+4. ✅ **Plugin: evaluator** (#145) — `AgentEvalCaseEvaluator` (`critical_check` then
+   weighted rubric), delegating model calls to the platform LLM judge.
+5. ✅ **Plugin: register() + dispatch + E2E** (#146).
+
+### Refinements discovered during implementation
+
+- **Two registries, not one.** Slice 2's `format_dispatch` is *run-level* (a format
+  with its own execution path, e.g. game suites). agent-eval-case is a *source*
+  format — it parses into a normal `TestSuite` and reuses the native adapter /
+  orchestrator / evaluator / reporter path — so slice 5 added a complementary
+  *loader-level* seam, `atp.loader.suite_source.SuiteSourceRegistry`. The plugin
+  registers there; `_run_suite` (and thus `--adapter`) is reused unchanged.
+- **Entry-point loader.** The `atp.plugins` group was declared (atp-games) but
+  never invoked. Slice 5 added `atp.plugins.entrypoints.load_entrypoint_plugins()`,
+  called once at CLI startup, which runs every plugin's `register()` hook.
+- **Public registry API.** Added `EvaluatorRegistry.register_assertion_mapping()`
+  so plugins don't reach into the private `_register_assertion_mapping`.
 
 ## Package layout
 
