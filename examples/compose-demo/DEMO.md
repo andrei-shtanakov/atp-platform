@@ -115,9 +115,9 @@ in the cloud variant.
 
 ```bash
 cd examples/compose-demo
+# Air-gapped: one local model serves BOTH the agent and the grader (no keys).
 export LLM_BASE_URL=http://host.docker.internal:11434/v1   # e.g. Ollama / vLLM
 export LLM_MODEL=llama3.1 LLM_API_KEY=local
-export ANTHROPIC_API_KEY=sk-...                            # the grader (judge)
 docker compose --profile method up --build -d agent-llm dashboard
 docker compose --profile method run --rm atp-method
 open http://localhost:8080/ui/
@@ -134,9 +134,11 @@ open http://localhost:8080/ui/
 - Cloud variant: identical cases, `--adapter=bedrock` + `llm_eval provider=bedrock`
   — methodology graded by Bedrock-Claude, all via IAM.
 
-> **Judge:** this run grades with the Anthropic API (`ANTHROPIC_API_KEY`). A fully
-> air-gapped grader (judge on a local model) needs `base_url` support in the LLM
-> judge — a small follow-up. The *agent* is already local-capable via `LLM_BASE_URL`.
+> **Judge:** by default the grader reuses the agent's local model (air-gapped,
+> via the judge's `base_url` / `ATP_JUDGE_BASE_URL`, which the compose file points
+> at `LLM_BASE_URL`) — no external calls. To grade with a hosted Anthropic judge
+> instead, comment out `ATP_JUDGE_BASE_URL` in the `atp-method` service and set
+> `ANTHROPIC_API_KEY`. The cloud variant uses Bedrock-Claude via IAM.
 
 ---
 
