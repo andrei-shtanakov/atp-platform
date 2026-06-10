@@ -76,7 +76,7 @@ services:
   # Air-gapped (default): point the agent at a local model; the grader reuses the
   # same model automatically — no external calls, no keys.
   #   export LLM_BASE_URL=http://host.docker.internal:11434/v1   # e.g. Ollama
-  #   export LLM_MODEL=llama3.1 LLM_API_KEY=local
+  #   export LLM_MODEL=llama3.1            # LLM_API_KEY unset → no auth header
   #
   # Hosted grader instead: comment out the atp-method ATP_JUDGE_BASE_URL line and
   # set ANTHROPIC_API_KEY.
@@ -116,7 +116,7 @@ services:
       # the agent (air-gapped) — the judge's base_url points at the agent's
       # LLM_BASE_URL, so one local model serves both. To use a hosted Anthropic
       # judge instead, comment out the ATP_JUDGE_BASE_URL line below and set
-      # ANTHROPIC_API_KEY. (Flat interpolation only — podman-compose does not
+      # ANTHROPIC_API_KEY. (Flat interpolation only — podman compose does not
       # support nested ${A-${B}} defaults.)
       - ATP_JUDGE_BASE_URL=${LLM_BASE_URL:-https://api.openai.com/v1}
       - ATP_JUDGE_MODEL=${LLM_MODEL:-gpt-4o-mini}

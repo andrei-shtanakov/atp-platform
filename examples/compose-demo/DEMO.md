@@ -117,7 +117,7 @@ in the cloud variant.
 cd examples/compose-demo
 # Air-gapped: one local model serves BOTH the agent and the grader (no keys).
 export LLM_BASE_URL=http://host.docker.internal:11434/v1   # e.g. Ollama / vLLM
-export LLM_MODEL=llama3.1 LLM_API_KEY=local
+export LLM_MODEL=llama3.1                  # LLM_API_KEY unset → no auth header, no keys
 docker compose --profile method up --build -d agent-llm dashboard
 docker compose --profile method run --rm atp-method
 open http://localhost:8080/ui/
