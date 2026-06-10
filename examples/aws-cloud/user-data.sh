@@ -4,7 +4,9 @@
 # so the Bedrock adapter and the Bedrock-Claude judge work with no static keys.
 #
 # After boot, run a sweep from the instance — see README.md.
-set -euxo pipefail
+# Note: no `-x` — command tracing would echo the generated ATP_SECRET_KEY into
+# the cloud-init logs.
+set -euo pipefail
 
 dnf install -y docker git
 systemctl enable --now docker

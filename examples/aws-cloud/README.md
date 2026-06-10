@@ -94,6 +94,7 @@ env vars are all that change.
   image with the `postgres` extra).
 - **Cost:** every agent and judge call is a paid Bedrock invocation — keep
   `--runs` modest for a demo.
-- The Bedrock judge needs `anthropic[bedrock]`; the image's `--extra llm` +
-  `--all-packages` install the required clients (boto3 ships with the bedrock
-  adapter).
+- The Bedrock paths need `boto3` (the agent adapter and the judge's
+  `AsyncAnthropicBedrock`). The image installs it via `--extra bedrock`, alongside
+  `--extra llm` (anthropic + openai) and `--all-packages` (plugins) — see the
+  `Dockerfile`. `boto3` is otherwise an optional extra, not a base dependency.

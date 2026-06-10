@@ -11,9 +11,11 @@ RUN pip install uv
 # `atp test` can dispatch plugin formats. Run with `uv run --no-sync` afterwards
 # so the runtime does not prune the extra members back out.
 COPY . .
-# --extra llm brings the LLM-judge clients (anthropic + openai); the openai
-# client also serves OpenAI-compatible local servers for an air-gapped judge.
-RUN uv sync --no-dev --all-packages --extra llm
+# --extra llm brings the LLM-judge clients (anthropic + openai; openai also
+# serves OpenAI-compatible local servers for an air-gapped judge). --extra
+# bedrock adds boto3, required by both the Bedrock adapter (agent under test) and
+# the Bedrock-Claude judge (AsyncAnthropicBedrock) in the all-in-AWS variant.
+RUN uv sync --no-dev --all-packages --extra llm --extra bedrock
 
 # Default: show version
 CMD ["uv", "run", "--no-sync", "atp", "version"]
