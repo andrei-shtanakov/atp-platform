@@ -941,3 +941,16 @@ class TestOpenAIBaseUrl:
             client = ev._get_client()
         assert client == "CLIENT"
         assert ctor.call_args.kwargs.get("base_url") == "http://local:11434/v1"
+
+    def test_base_url_without_model_avoids_claude_default(self, monkeypatch) -> None:
+        """Regression: base_url + no model must not pull a Claude settings default.
+
+        Otherwise an openai client would be handed an Anthropic model id and fail.
+        """
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("ATP_JUDGE_MODEL", raising=False)
+        ev = LLMJudgeEvaluator(LLMJudgeConfig(base_url="http://local:11434/v1"))
+        assert ev._provider == "openai"
+        assert not ev._model.startswith("claude")
+        assert ev._model == "gpt-4o-mini"

@@ -178,12 +178,19 @@ class LLMJudgeEvaluator(Evaluator):
         if self._base_url:
             if not self._provider:
                 self._provider = "openai"
+            elif self._provider != "openai":
+                logger.warning(
+                    "base_url is only used by the 'openai' provider; ignored for "
+                    "provider %r",
+                    self._provider,
+                )
             if not self._model:
                 self._model = _os.environ.get("ATP_JUDGE_MODEL") or self._model
 
-        # Try ATP settings (skip for bedrock: the settings default is an
-        # Anthropic-API model id, which a Bedrock client cannot use).
-        if not self._model and self._provider != "bedrock":
+        # Try ATP settings for the default model. Skipped for bedrock and for a
+        # base_url judge: the settings default is an Anthropic-API model id, which
+        # neither a Bedrock client nor a local OpenAI-compatible server can use.
+        if not self._model and self._provider != "bedrock" and not self._base_url:
             try:
                 from atp.core.settings import get_settings
 
