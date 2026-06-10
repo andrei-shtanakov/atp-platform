@@ -156,10 +156,13 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
 - [ ] **Fix UI routes test isolation**: `.value` bug in analytics/home templates, UNIQUE constraint collision.
 - [ ] **Benchmark API scoring**: wire up evaluators instead of the naive score (100 if completed else 0).
 
-## `atp-method` plugin — run methodology cases via ATP
+## ~~`atp-method` plugin — run methodology cases via ATP~~ ✅ DONE 2026-06-10
 
-Plan: [`spec/atp-method-plugin.md`](spec/atp-method-plugin.md). Make `method/`
-(agent-eval-case methodology, PR #140) runnable through the platform as a plugin.
+Plan: [`spec/atp-method-plugin.md`](spec/atp-method-plugin.md). `method/`
+(agent-eval-case methodology) now runs through the platform as a plugin:
+`atp test method/cases/<case-or-dir>` loads a case or a whole sweep and runs the
+normal adapter/orchestrator/evaluator path, with `critical_check` hard-gating.
+Shipped across PRs #142–#146.
 
 - [x] **Slice 1 — core hard-gate** (#142): `Assertion.critical` + `EvalResult.critical` +
   `ScoreAggregator` hard-fails on a failed critical check (native home for
