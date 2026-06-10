@@ -1,6 +1,6 @@
 # Spec: `atp-method` plugin — run agent-eval-case methodology cases via ATP
 
-**Status:** ✅ DONE 2026-06-10 — all 5 slices merged (PRs #142–#146).
+**Status:** done (2026-06-10) — all 5 slices merged (PRs #142–#146).
 **Created:** 2026-06-09
 **Decision:** the `method/` methodology is a self-contained domain that evolves on
 its own cadence → ship it as a **plugin**, not by merging its concepts into the
