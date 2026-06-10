@@ -71,9 +71,15 @@ services:
 
   # ===== Methodology profile (--profile method) ===========================
   # Runs the agent-eval-case sweep (method/cases/req-extraction) against an
-  # LLM-backed agent to reveal the "curve of collapse". Requires:
-  #   - an LLM endpoint for the agent  (LLM_BASE_URL / LLM_MODEL / LLM_API_KEY)
-  #   - a judge key for the grader      (ANTHROPIC_API_KEY)
+  # LLM-backed agent to reveal the "curve of collapse".
+  #
+  # Air-gapped (default): point the agent at a local model; the grader reuses the
+  # same model automatically — no external calls, no keys.
+  #   export LLM_BASE_URL=http://host.docker.internal:11434/v1   # e.g. Ollama
+  #   export LLM_MODEL=llama3.1            # LLM_API_KEY unset → no auth header
+  #
+  # Hosted grader instead: comment out the atp-method ATP_JUDGE_BASE_URL line and
+  # set ANTHROPIC_API_KEY.
   #
   #   docker compose --profile method up --build -d agent-llm dashboard
   #   docker compose --profile method run --rm atp-method
@@ -106,7 +112,15 @@ services:
       agent-llm:
         condition: service_healthy
     environment:
-      # The grader (LLMJudgeEvaluator) auto-detects anthropic from this key.
+      # Grader (LLMJudgeEvaluator). By default it reuses the SAME local model as
+      # the agent (air-gapped) — the judge's base_url points at the agent's
+      # LLM_BASE_URL, so one local model serves both. To use a hosted Anthropic
+      # judge instead, comment out the ATP_JUDGE_BASE_URL line below and set
+      # ANTHROPIC_API_KEY. (Flat interpolation only — podman compose does not
+      # support nested ${A-${B}} defaults.)
+      - ATP_JUDGE_BASE_URL=${LLM_BASE_URL:-https://api.openai.com/v1}
+      - ATP_JUDGE_MODEL=${LLM_MODEL:-gpt-4o-mini}
+      - OPENAI_API_KEY=${LLM_API_KEY:-local}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     volumes:
       - ../../method:/work/method:ro   # the case files (plugin code is in the image)
