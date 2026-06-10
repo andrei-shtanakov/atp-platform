@@ -954,3 +954,36 @@ class TestOpenAIBaseUrl:
         assert ev._provider == "openai"
         assert not ev._model.startswith("claude")
         assert ev._model == "gpt-4o-mini"
+
+
+class TestJudgeEnvConfig:
+    """Env steering of the judge (ATP_JUDGE_PROVIDER / REGION / MODEL)."""
+
+    def test_env_provider_bedrock(self, monkeypatch) -> None:
+        """ATP_JUDGE_PROVIDER=bedrock selects the bedrock provider + default model."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.setenv("ATP_JUDGE_PROVIDER", "bedrock")
+        monkeypatch.delenv("ATP_JUDGE_MODEL", raising=False)
+        ev = LLMJudgeEvaluator(LLMJudgeConfig())
+        assert ev._provider == "bedrock"
+        assert ev._model == DEFAULT_BEDROCK_MODEL
+
+    def test_env_region_forwarded_to_bedrock_client(self, monkeypatch) -> None:
+        """ATP_JUDGE_REGION is forwarded to AsyncAnthropicBedrock."""
+        import anthropic
+
+        monkeypatch.setenv("ATP_JUDGE_PROVIDER", "bedrock")
+        monkeypatch.setenv("ATP_JUDGE_REGION", "eu-west-1")
+        ev = LLMJudgeEvaluator(LLMJudgeConfig(model="x"))
+        with patch.object(
+            anthropic, "AsyncAnthropicBedrock", return_value="CLIENT"
+        ) as ctor:
+            client = ev._get_client()
+        assert client == "CLIENT"
+        assert ctor.call_args.kwargs.get("aws_region") == "eu-west-1"
+
+    def test_config_provider_wins_over_env(self, monkeypatch) -> None:
+        """Explicit config.provider takes precedence over ATP_JUDGE_PROVIDER."""
+        monkeypatch.setenv("ATP_JUDGE_PROVIDER", "bedrock")
+        ev = LLMJudgeEvaluator(LLMJudgeConfig(provider="anthropic", model="x"))
+        assert ev._provider == "anthropic"

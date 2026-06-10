@@ -167,13 +167,19 @@ class LLMJudgeEvaluator(Evaluator):
         # Resolve provider and model from config / settings / env
         import os as _os
 
-        self._provider = self._config.provider
-        self._model = self._config.model
+        # Config wins, then env (ATP_JUDGE_*). The env knobs let the methodology
+        # evaluator (which constructs a default judge) be steered without code —
+        # e.g. ATP_JUDGE_PROVIDER=bedrock + ATP_JUDGE_REGION for an all-in-AWS
+        # judge, or ATP_JUDGE_BASE_URL for a local one.
+        self._provider = self._config.provider or _os.environ.get("ATP_JUDGE_PROVIDER")
+        self._model = self._config.model or _os.environ.get("ATP_JUDGE_MODEL")
+        self._aws_region = self._config.aws_region or _os.environ.get(
+            "ATP_JUDGE_REGION"
+        )
 
         # Air-gapped judge: an OpenAI-compatible base URL (config or
         # ATP_JUDGE_BASE_URL) routes to a local model. It implies the openai
-        # provider and an optional ATP_JUDGE_MODEL override. Resolved first so it
-        # wins over the settings/default model below.
+        # provider. Resolved before the settings/default model below.
         self._base_url = self._config.base_url or _os.environ.get("ATP_JUDGE_BASE_URL")
         if self._base_url:
             if not self._provider:
@@ -184,8 +190,6 @@ class LLMJudgeEvaluator(Evaluator):
                     "provider %r",
                     self._provider,
                 )
-            if not self._model:
-                self._model = _os.environ.get("ATP_JUDGE_MODEL") or self._model
 
         # Try ATP settings for the default model. Skipped for bedrock and for a
         # base_url judge: the settings default is an Anthropic-API model id, which
@@ -262,8 +266,8 @@ class LLMJudgeEvaluator(Evaluator):
                 # AsyncAnthropicBedrock uses the boto3 default credential chain,
                 # so an EC2/ECS IAM role works with no static keys.
                 client_kwargs: dict[str, Any] = {}
-                if self._config.aws_region:
-                    client_kwargs["aws_region"] = self._config.aws_region
+                if self._aws_region:
+                    client_kwargs["aws_region"] = self._aws_region
                 self._client = anthropic.AsyncAnthropicBedrock(**client_kwargs)
             else:
                 try:
