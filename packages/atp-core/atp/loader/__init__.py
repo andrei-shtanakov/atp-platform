@@ -7,6 +7,10 @@ from atp.loader.format_dispatch import (
 )
 from atp.loader.loader import TestLoader
 from atp.loader.models import ChaosSettings, TestDefinition, TestSuite
+from atp.loader.suite_source import (
+    SuiteSourceRegistry,
+    get_suite_source_registry,
+)
 
 __all__ = [
     "TestLoader",
@@ -16,4 +20,6 @@ __all__ = [
     "ChaosSettings",
     "SuiteFormatRegistry",
     "get_suite_format_registry",
+    "SuiteSourceRegistry",
+    "get_suite_source_registry",
 ]

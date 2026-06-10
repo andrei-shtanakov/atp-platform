@@ -29,7 +29,11 @@ from atp.cli.commands.quickstart import quickstart_command
 from atp.cli.commands.sync_cmd import sync_command
 from atp.cli.commands.traces import replay_command, traces_command
 from atp.cli.commands.trend import trend_command
-from atp.loader import TestLoader, get_suite_format_registry
+from atp.loader import (
+    TestLoader,
+    get_suite_format_registry,
+    get_suite_source_registry,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -396,8 +400,10 @@ def test_cmd(
         sys.exit(EXIT_ERROR)
 
     try:
-        # Dispatch non-native suite formats (game suites, plugin formats such as
-        # agent-eval-case) via the format registry before the native loader.
+        # Run-level dispatch: formats with their own execution path (e.g. game
+        # suites) are handled here, before loading. Source formats that parse
+        # into a normal TestSuite (e.g. agent-eval-case) are handled by the
+        # suite-source registry at the load step below.
         format_handler = get_suite_format_registry().find_handler(suite_file)
         if format_handler is not None:
             result = asyncio.run(
@@ -410,9 +416,14 @@ def test_cmd(
             )
             sys.exit(EXIT_SUCCESS if result else EXIT_FAILURE)
 
-        # Load test suite
-        loader = TestLoader()
-        suite = loader.load_file(suite_file)
+        # Load test suite. A registered source format (e.g. agent-eval-case)
+        # parses into a TestSuite and then runs the normal adapter/orchestrator
+        # path; otherwise fall back to the native loader.
+        source_loader = get_suite_source_registry().find_loader(suite_file)
+        if source_loader is not None:
+            suite = source_loader(suite_file)
+        else:
+            suite = TestLoader().load_file(suite_file)
 
         # Apply tag filtering
         if tags:
@@ -2008,7 +2019,11 @@ def main() -> None:
     """
     from dotenv import load_dotenv
 
+    from atp.plugins.entrypoints import load_entrypoint_plugins
+
     load_dotenv(override=False)
+    # Wire installed plugins (atp.plugins register hooks) before dispatching.
+    load_entrypoint_plugins()
     cli(auto_envvar_prefix="ATP")
 
 

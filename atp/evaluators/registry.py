@@ -107,11 +107,22 @@ class EvaluatorRegistry:
         """
         self._evaluators[evaluator_type] = evaluator_class
 
+    def register_assertion_mapping(
+        self, assertion_type: str, evaluator_type: str
+    ) -> None:
+        """Map an assertion type to a registered evaluator.
+
+        Public API for plugins: pair with :meth:`register` to expose new
+        assertion types (e.g. ``register("agent_eval_case", Cls)`` then
+        ``register_assertion_mapping("method_critical_check", "agent_eval_case")``).
+        """
+        self._assertion_mappings[assertion_type] = evaluator_type
+
     def _register_assertion_mapping(
         self, assertion_type: str, evaluator_type: str
     ) -> None:
-        """Map an assertion type to its evaluator."""
-        self._assertion_mappings[assertion_type] = evaluator_type
+        """Internal alias kept for built-in registrations."""
+        self.register_assertion_mapping(assertion_type, evaluator_type)
 
     def unregister(self, evaluator_type: str) -> bool:
         """

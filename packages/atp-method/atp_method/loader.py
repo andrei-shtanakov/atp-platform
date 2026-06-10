@@ -15,7 +15,13 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from atp.loader.models import Assertion, Constraints, TaskDefinition, TestDefinition
+from atp.loader.models import (
+    Assertion,
+    Constraints,
+    TaskDefinition,
+    TestDefinition,
+    TestSuite,
+)
 
 from atp_method.schema import AgentEvalCase
 
@@ -112,3 +118,39 @@ def load_case(path: str | Path) -> TestDefinition:
         doc = yaml.safe_load(f)
     case = AgentEvalCase.model_validate(doc)
     return case_to_test_definition(case)
+
+
+def _case_files(path: Path) -> list[Path]:
+    """Resolve a path to the case file(s): a directory expands to its *.yaml."""
+    return sorted(path.glob("*.yaml")) if path.is_dir() else [path]
+
+
+def is_agent_eval_case(path: str | Path) -> bool:
+    """Detect an agent-eval-case source (a single file or a directory of cases).
+
+    Recognized by the distinctive ``construction_axis`` field plus a ``grader``
+    carrying a ``critical_check`` — present in every case, absent from native ATP
+    suites and game suites.
+    """
+    files = _case_files(Path(path))
+    if not files:
+        return False
+    try:
+        doc = yaml.safe_load(files[0].read_text())
+    except Exception:
+        return False
+    grader = doc.get("grader") if isinstance(doc, dict) else None
+    return (
+        isinstance(doc, dict)
+        and "construction_axis" in doc
+        and isinstance(grader, dict)
+        and "critical_check" in grader
+    )
+
+
+def load_suite(path: str | Path, name: str | None = None) -> TestSuite:
+    """Load one case file or a directory of cases (a sweep) into a TestSuite."""
+    p = Path(path)
+    tests = [load_case(f) for f in _case_files(p)]
+    suite_name = name or (p.name if p.is_dir() else p.stem)
+    return TestSuite(test_suite=suite_name, tests=tests)
