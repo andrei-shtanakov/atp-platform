@@ -69,6 +69,59 @@ services:
       - atp-data:/root/.atp           # same volume as the atp runner
     command: uv run atp dashboard --host 0.0.0.0 --port 8080
 
+  # ===== Methodology profile (--profile method) ===========================
+  # Runs the agent-eval-case sweep (method/cases/req-extraction) against an
+  # LLM-backed agent to reveal the "curve of collapse". Requires:
+  #   - an LLM endpoint for the agent  (LLM_BASE_URL / LLM_MODEL / LLM_API_KEY)
+  #   - a judge key for the grader      (ANTHROPIC_API_KEY)
+  #
+  #   docker compose --profile method up --build -d agent-llm dashboard
+  #   docker compose --profile method run --rm atp-method
+
+  # ---- LLM-backed agent under test ---------------------------------------
+  agent-llm:
+    build: ./agent-llm
+    image: atp-demo-llm-agent:latest
+    profiles: ["method"]
+    expose:
+      - "8000"
+    environment:
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.openai.com/v1}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ---- ATP runner: the methodology sweep ---------------------------------
+  atp-method:
+    image: atp-platform:latest
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    profiles: ["method"]
+    depends_on:
+      agent-llm:
+        condition: service_healthy
+    environment:
+      # The grader (LLMJudgeEvaluator) auto-detects anthropic from this key.
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    volumes:
+      - ../../method:/work/method:ro   # the case files (plugin code is in the image)
+      - ./results:/work/results
+      - atp-data:/root/.atp
+    # Same platform, methodology content. critical_check hard-gates the trap;
+    # --runs surfaces the curve of collapse across clean/moderate/severe.
+    command: >
+      uv run atp test /work/method/cases/req-extraction
+      --adapter=http
+      --adapter-config endpoint=http://agent-llm:8000/execute,allow_internal=true
+      --runs=5
+      --output=json
+      --output-file=/work/results/method-results.json
+
 volumes:
   atp-data:
 

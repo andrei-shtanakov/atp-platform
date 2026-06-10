@@ -1,0 +1,106 @@
+"""LLM-backed ATP HTTP agent for the methodology demo.
+
+Unlike the deterministic echo agent, this one actually attempts the task by
+calling an OpenAI-compatible chat-completions endpoint. That makes the
+agent-eval-case *trap* meaningful: a capable model passes the ``clean`` level but
+tends to fabricate a value on ``severe`` — the "curve of collapse" the sweep is
+built to reveal.
+
+Configuration (env):
+  LLM_BASE_URL   OpenAI-compatible base URL (default https://api.openai.com/v1).
+                 Point at a local server (Ollama, vLLM, ...) for an air-gapped run.
+  LLM_MODEL      model name (default gpt-4o-mini).
+  LLM_API_KEY    API key (use any non-empty value for local servers that ignore it).
+"""
+
+import os
+import time
+from typing import Any
+
+import httpx
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+
+app = FastAPI(title="ATP Methodology Demo Agent")
+
+LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://api.openai.com/v1")
+LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-4o-mini")
+LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    """Liveness probe for the compose healthcheck."""
+    return {"status": "ok"}
+
+
+def _build_prompt(task: dict[str, Any]) -> str:
+    """Render the instruction plus any inline input artifacts into a prompt."""
+    parts = [task.get("description", "")]
+    input_data = task.get("input_data") or {}
+    for artifact in input_data.get("artifacts", []):
+        content = artifact.get("content")
+        if content:
+            parts.append(f"\n--- {artifact.get('id', 'artifact')} ---\n{content}")
+    constraints = input_data.get("constraints") or []
+    if constraints:
+        parts.append("\nConstraints:\n" + "\n".join(f"- {c}" for c in constraints))
+    return "\n".join(parts)
+
+
+@app.post("/execute")
+async def execute(request: Request) -> JSONResponse:
+    """Handle an ATPRequest: call the LLM, return its answer as an artifact."""
+    start = time.perf_counter()
+    payload: dict[str, Any] = await request.json()
+    task_id: str = payload.get("task_id", "unknown")
+    task: dict[str, Any] = payload.get("task") or {}
+
+    prompt = _build_prompt(task)
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                f"{LLM_BASE_URL}/chat/completions",
+                headers={"Authorization": f"Bearer {LLM_API_KEY}"},
+                json={
+                    "model": LLM_MODEL,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.0,
+                },
+            )
+            resp.raise_for_status()
+            body = resp.json()
+            answer = body["choices"][0]["message"]["content"]
+            usage = body.get("usage", {})
+    except Exception as e:  # noqa: BLE001 — report the failure as an ATP failure
+        return JSONResponse(
+            {
+                "task_id": task_id,
+                "status": "failed",
+                "error": f"LLM call failed: {e}",
+                "metrics": {"wall_time_seconds": round(time.perf_counter() - start, 4)},
+            }
+        )
+
+    expected = task.get("expected_artifacts") or ["output.txt"]
+    return JSONResponse(
+        {
+            "task_id": task_id,
+            "status": "completed",
+            "artifacts": [
+                {
+                    "type": "file",
+                    "path": expected[0],
+                    "content": answer,
+                    "content_type": "text/plain",
+                }
+            ],
+            "metrics": {
+                "wall_time_seconds": round(time.perf_counter() - start, 4),
+                "input_tokens": usage.get("prompt_tokens"),
+                "output_tokens": usage.get("completion_tokens"),
+                "total_tokens": usage.get("total_tokens"),
+                "llm_calls": 1,
+            },
+        }
+    )

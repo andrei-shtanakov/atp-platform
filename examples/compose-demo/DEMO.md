@@ -104,6 +104,42 @@ judge provider to Bedrock-hosted Claude:
 
 ---
 
+## Act 2b — Methodology: the curve of collapse (~5 min)
+
+The strongest part of the pitch. Instead of a toy suite, run a real
+**agent-eval-case sweep** (`method/cases/req-extraction`) — a family of cases at
+rising difficulty (`clean → moderate → severe`) built around one **trap**:
+fabricating a deadline absent from the source. The methodology runs through the
+platform via the `atp-method` plugin; the **same** adapter swap reaches Bedrock
+in the cloud variant.
+
+```bash
+cd examples/compose-demo
+export LLM_BASE_URL=http://host.docker.internal:11434/v1   # e.g. Ollama / vLLM
+export LLM_MODEL=llama3.1 LLM_API_KEY=local
+export ANTHROPIC_API_KEY=sk-...                            # the grader (judge)
+docker compose --profile method up --build -d agent-llm dashboard
+docker compose --profile method run --rm atp-method
+open http://localhost:8080/ui/
+```
+
+**What to show / say:**
+- The console report across the three levels: the agent **passes `clean`** and
+  **collapses at `severe`** — `critical_check` catches the fabricated deadline,
+  the **hard gate** forces score 0 regardless of the rubric.
+- That collapse point *is the signal*: it locates where the agent breaks, not a
+  single pass/fail at an arbitrary difficulty. `--runs=5` makes it statistical.
+- Point at the governance/sweep tags (`level_severe`, `capability_calibration`,
+  `suite_probe`) — the same metadata drives filtering and trend analysis.
+- Cloud variant: identical cases, `--adapter=bedrock` + `llm_eval provider=bedrock`
+  — methodology graded by Bedrock-Claude, all via IAM.
+
+> **Judge:** this run grades with the Anthropic API (`ANTHROPIC_API_KEY`). A fully
+> air-gapped grader (judge on a local model) needs `base_url` support in the LLM
+> judge — a small follow-up. The *agent* is already local-capable via `LLM_BASE_URL`.
+
+---
+
 ## Act 3 — Depth (~3 min, pick what lands)
 
 Run these through the compose network (the `agent` service is only `expose`d,
