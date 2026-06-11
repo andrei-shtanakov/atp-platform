@@ -12,6 +12,7 @@
             <th>ID</th>
             <th>Suite</th>
             <th>Agent</th>
+            <th>Model</th>
             <th>Status</th>
             <th>Tests</th>
             <th>Success Rate</th>
@@ -28,6 +29,12 @@
             </td>
             <td>{{ execution.suite_name }}</td>
             <td>{{ execution.agent_name or "—" }}</td>
+            <td>
+                {{ execution.model or "—" }}
+                {% if execution.adapter %}
+                <br><small style="color:var(--pico-muted-color,#888);">via {{ execution.adapter }}</small>
+                {% endif %}
+            </td>
             <td>
                 {% set s = execution.status %}
                 {% if s == "completed" %}
@@ -75,7 +82,7 @@
         </tr>
         {% else %}
         <tr>
-            <td colspan="9" style="text-align:center;color:var(--pico-muted-color,#888);">No test runs yet.</td>
+            <td colspan="10" style="text-align:center;color:var(--pico-muted-color,#888);">No test runs yet.</td>
         </tr>
         {% endfor %}
     </tbody>

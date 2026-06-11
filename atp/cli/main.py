@@ -281,6 +281,17 @@ def version_cmd() -> None:
     help="Adapter configuration as key=value pairs",
 )
 @click.option(
+    "--model",
+    "model",
+    type=str,
+    default=None,
+    help=(
+        "Model label recorded with the run (e.g. 'qwen2.5:7b'). A black-box "
+        "agent's model is opaque to ATP, so this is an operator-supplied tag "
+        "for telling runs of different models apart in the dashboard."
+    ),
+)
+@click.option(
     "--runs",
     type=int,
     default=None,
@@ -346,6 +357,7 @@ def test_cmd(
     parallel: int,
     adapter: str,
     adapter_config: tuple[str, ...],
+    model: str | None,
     runs: int | None,
     fail_fast: bool,
     sandbox: bool,
@@ -474,6 +486,7 @@ def test_cmd(
                 adapter_type=adapter,
                 adapter_config=config_dict,
                 agent_name=agent_name,
+                model=model,
                 parallel=parallel,
                 runs_per_test=runs,
                 fail_fast=fail_fast,
@@ -544,6 +557,17 @@ def test_cmd(
     help="Adapter configuration as key=value pairs",
 )
 @click.option(
+    "--model",
+    "model",
+    type=str,
+    default=None,
+    help=(
+        "Model label recorded with the run (e.g. 'qwen2.5:7b'). A black-box "
+        "agent's model is opaque to ATP, so this is an operator-supplied tag "
+        "for telling runs of different models apart in the dashboard."
+    ),
+)
+@click.option(
     "--runs",
     type=int,
     default=None,
@@ -609,6 +633,7 @@ def run(
     parallel: int,
     adapter: str,
     adapter_config: tuple[str, ...],
+    model: str | None,
     runs: int | None,
     fail_fast: bool,
     sandbox: bool,
@@ -635,6 +660,7 @@ def run(
         parallel=parallel,
         adapter=adapter,
         adapter_config=adapter_config,
+        model=model,
         runs=runs,
         fail_fast=fail_fast,
         sandbox=sandbox,
@@ -653,6 +679,7 @@ async def _run_suite(
     adapter_type: str,
     adapter_config: dict[str, Any],
     agent_name: str,
+    model: str | None,
     parallel: int,
     runs_per_test: int,
     fail_fast: bool,
@@ -907,6 +934,8 @@ async def _run_suite(
             agent_name=agent_name,
             runs_per_test=runs_per_test,
             scored_results=all_scored_results,
+            adapter=adapter_type,
+            model=model,
         )
 
     return result.success
@@ -949,6 +978,8 @@ async def _save_results_to_db(
     agent_name: str,
     runs_per_test: int,
     scored_results: dict[str, Any] | None = None,
+    adapter: str | None = None,
+    model: str | None = None,
 ) -> None:
     """Save test results to the dashboard database.
 
@@ -958,6 +989,8 @@ async def _save_results_to_db(
         agent_name: Name of the agent
         runs_per_test: Number of runs per test
         scored_results: Per-test scored results (test_id → ScoredTestResult)
+        adapter: Adapter type the suite ran under (e.g. "http").
+        model: Operator-supplied model label (--model), or None.
     """
     from datetime import datetime
 
@@ -985,6 +1018,8 @@ async def _save_results_to_db(
                 agent_name=agent_name,
                 runs_per_test=runs_per_test,
                 started_at=result.start_time,
+                adapter=adapter,
+                model=model,
             )
 
             # Save each test result
