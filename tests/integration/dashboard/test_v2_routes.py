@@ -490,7 +490,8 @@ class TestV2ExecutionUIRoutes:
             resp = await client.get("/ui/executions")
         assert resp.status_code == 200
         assert "qwen2.5:7b" in resp.text
-        assert "http" in resp.text
+        # Exact rendered subtitle, not a bare "http" that any URL would satisfy.
+        assert "via http" in resp.text
 
     @pytest.mark.anyio
     async def test_execution_detail_shows_model(
@@ -504,6 +505,8 @@ class TestV2ExecutionUIRoutes:
             resp = await client.get(f"/ui/executions/{execution_id}")
         assert resp.status_code == 200
         assert "qwen2.5:7b" in resp.text
+        # The header labels both; cover the adapter the docstring promises.
+        assert "Adapter:" in resp.text
 
     @pytest.mark.anyio
     async def test_execution_detail_404(
