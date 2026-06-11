@@ -20,7 +20,7 @@ results are directly comparable.
 ## What you'll see — two archetypes, one suite
 
 | | **On-prem (variant 2)** | **Cloud (variant 1)** |
-|--|--|--|
+|---|---|---|
 | Agent under test | container LLM agent over HTTP | managed **Bedrock Agent** |
 | Adapter | `--adapter=http` | `--adapter=bedrock` |
 | Grader (judge) | local model (Ollama/vLLM) — air-gapped | **Bedrock-Claude** via IAM role |
