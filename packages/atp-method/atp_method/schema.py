@@ -35,7 +35,7 @@ ConstructionAxis = Literal[
     "requirements_volatility",
     "output_structure",
 ]
-AxisLevel = Literal["clean", "mild", "moderate", "severe"]
+AxisLevel = Literal["clean", "mild", "moderate", "severe", "very_severe"]
 ToolName = Literal["web_search", "file_read", "file_write", "api_call", "none"]
 SideEffects = Literal["none", "reversible", "irreversible"]
 ArtifactType = Literal["text", "file", "transcript", "table", "image", "url"]
