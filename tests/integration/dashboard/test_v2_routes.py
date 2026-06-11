@@ -450,3 +450,115 @@ class TestV2RouteConsistency:
         for prefix in expected_prefixes:
             matching_routes = [r for r in routes if r.startswith(prefix)]
             assert len(matching_routes) > 0, f"No routes found for {prefix}"
+
+
+class TestV2ExecutionUIRoutes:
+    """Test the server-rendered execution-history UI routes."""
+
+    @pytest.mark.anyio
+    async def test_executions_list(self, v2_app, test_data, disable_dashboard_auth):
+        """GET /ui/executions returns 200 with a seeded suite/agent name."""
+        async with AsyncClient(
+            transport=ASGITransport(app=v2_app), base_url="http://test"
+        ) as client:
+            resp = await client.get("/ui/executions")
+        assert resp.status_code == 200
+        assert "test-suite" in resp.text
+        assert "agent-one" in resp.text
+
+    @pytest.mark.anyio
+    async def test_execution_detail(self, v2_app, test_data, disable_dashboard_auth):
+        """GET /ui/executions/{id} returns 200 with a seeded test name."""
+        execution_id = test_data["suites"][0].id
+        async with AsyncClient(
+            transport=ASGITransport(app=v2_app), base_url="http://test"
+        ) as client:
+            resp = await client.get(f"/ui/executions/{execution_id}")
+        assert resp.status_code == 200
+        assert "First Test" in resp.text
+
+    @pytest.mark.anyio
+    async def test_execution_detail_404(
+        self, v2_app, test_data, disable_dashboard_auth
+    ):
+        """GET /ui/executions/99999 returns a 404 Not Found page."""
+        async with AsyncClient(
+            transport=ASGITransport(app=v2_app), base_url="http://test"
+        ) as client:
+            resp = await client.get("/ui/executions/99999")
+        assert resp.status_code == 404
+        assert "Not Found" in resp.text
+
+    @pytest.mark.anyio
+    async def test_execution_detail_htmx_partial(
+        self, v2_app, test_data, disable_dashboard_auth
+    ):
+        """HTMX request with HX-Target: execution-tests returns a partial."""
+        execution_id = test_data["suites"][0].id
+        async with AsyncClient(
+            transport=ASGITransport(app=v2_app), base_url="http://test"
+        ) as client:
+            resp = await client.get(
+                f"/ui/executions/{execution_id}",
+                headers={
+                    "HX-Request": "true",
+                    "HX-Target": "execution-tests",
+                },
+            )
+        assert resp.status_code == 200
+        # Partial must not include the base layout navigation.
+        assert "sidebar-nav" not in resp.text
+        assert 'id="execution-tests"' in resp.text
+
+    @pytest.mark.anyio
+    async def test_execution_detail_failure_causes(
+        self, v2_app, test_database, disable_dashboard_auth
+    ):
+        """A failed run renders the Failure Causes section with its error."""
+        now = datetime.now()
+        async with test_database.session_factory() as session:
+            suite = SuiteExecution(
+                suite_name="fail-suite",
+                agent_name="agent-x",
+                started_at=now,
+                status="completed",
+                total_tests=1,
+                passed_tests=0,
+                failed_tests=1,
+                success_rate=0.0,
+                runs_per_test=1,
+            )
+            session.add(suite)
+            await session.flush()
+            test = TestExecution(
+                suite_execution_id=suite.id,
+                test_id="t-fail",
+                test_name="Failing Test",
+                started_at=now,
+                total_runs=1,
+                successful_runs=0,
+                success=False,
+                status="failed",
+            )
+            session.add(test)
+            await session.flush()
+            session.add(
+                RunResult(
+                    test_execution_id=test.id,
+                    run_number=1,
+                    started_at=now,
+                    response_status="failed",
+                    success=False,
+                    error="boom: connection lost",
+                )
+            )
+            await session.commit()
+            suite_id = suite.id
+
+        async with AsyncClient(
+            transport=ASGITransport(app=v2_app), base_url="http://test"
+        ) as client:
+            resp = await client.get(f"/ui/executions/{suite_id}")
+        assert resp.status_code == 200
+        assert "Failure Causes" in resp.text
+        assert "boom" in resp.text

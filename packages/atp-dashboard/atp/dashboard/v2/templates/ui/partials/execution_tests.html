@@ -1,0 +1,101 @@
+<div id="execution-tests"
+     {% if execution.status == "running" %}
+     hx-get="/ui/executions/{{ execution.id }}"
+     hx-target="#execution-tests"
+     hx-swap="outerHTML"
+     hx-trigger="every 5s"
+     {% endif %}>
+
+<script>
+function toggleDetail(row) {
+    var detail = row.nextElementSibling;
+    if (detail && detail.classList.contains('detail-row')) {
+        detail.style.display = detail.style.display === 'table-row' ? 'none' : 'table-row';
+    }
+}
+</script>
+
+<table>
+    <thead>
+        <tr>
+            <th>Test</th>
+            <th>Runs</th>
+            <th>Success</th>
+            <th>Score</th>
+            <th>Status</th>
+            <th>Duration</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for te in test_executions %}
+        <tr class="task-row" onclick="toggleDetail(this)">
+            <td>{{ te.test_name }}</td>
+            <td>{{ te.successful_runs }}/{{ te.total_runs }}</td>
+            <td>
+                {% if te.success %}
+                <mark class="status-badge" style="background:#2d9e5f;">Pass</mark>
+                {% else %}
+                <mark class="status-badge" style="background:#c0392b;">Fail</mark>
+                {% endif %}
+            </td>
+            <td>{% if te.score is not none %}{{ "%.1f"|format(te.score) }}{% else %}—{% endif %}</td>
+            <td>{{ te.status }}</td>
+            <td>
+                {% if te.duration_seconds is not none %}
+                    {% set duration = te.duration_seconds %}
+                    {% if duration >= 60 %}
+                        {{ "%.0f"|format(duration / 60) }}m {{ "%.0f"|format(duration % 60) }}s
+                    {% else %}
+                        {{ "%.0f"|format(duration) }}s
+                    {% endif %}
+                {% else %}
+                    —
+                {% endif %}
+            </td>
+        </tr>
+        <tr class="detail-row">
+            <td colspan="6">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Run</th>
+                            <th>Status</th>
+                            <th>Error</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for rr in run_results_map.get(te.id, []) %}
+                        <tr>
+                            <td>{{ rr.run_number }}</td>
+                            <td>{{ rr.response_status }}</td>
+                            <td>
+                                {% if rr.error %}
+                                {{ rr.error[:120] }}{% if rr.error|length > 120 %}…{% endif %}
+                                {% else %}
+                                —
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="3" style="text-align:center;color:#888;">No run results.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% if te.statistics %}
+                <details>
+                    <summary>Statistics JSON</summary>
+                    <pre><code>{{ te.statistics|tojson(indent=2) }}</code></pre>
+                </details>
+                {% endif %}
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="6" style="text-align:center;color:#888;">No test results yet.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
