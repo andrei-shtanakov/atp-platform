@@ -1023,6 +1023,7 @@ async def _save_results_to_db(
             )
 
             # Save each test result
+            test_passes: list[bool] = []
             for test_result in result.tests:
                 test_exec = await storage.create_test_execution(
                     suite_execution=suite_exec,
@@ -1042,29 +1043,47 @@ async def _save_results_to_db(
                             events=run_result.events,
                         )
 
-                # Update test execution with results
-                test_score = None
-                if scored_results and test_result.test.id in scored_results:
-                    scored = scored_results[test_result.test.id]
-                    test_score = scored.score
+                # The dashboard headline is evaluation pass/fail, so use the
+                # scored result's `passed` (which hard-gates on a failed
+                # critical_check) — a test that ran fine but scored 0 must read
+                # as Fail, not Pass. Fall back to execution success only when the
+                # test wasn't scored. `status` stays execution-based: the test
+                # still "completed" even when it failed the evaluation.
+                scored = (
+                    scored_results.get(test_result.test.id)
+                    if scored_results
+                    else None
+                )
+                test_score = scored.score if scored is not None else None
+                # A test passes only if it BOTH executed successfully AND passed
+                # evaluation. Gating on execution success keeps a failed run
+                # (status="failed") from ever showing success=True just because
+                # the scorer happened to mark it passed.
+                eval_passed = scored.passed if scored is not None else True
+                test_passed = test_result.success and eval_passed
+                test_passes.append(test_passed)
 
                 await storage.update_test_execution(
                     test_exec,
                     completed_at=datetime.now(tz=UTC),
                     successful_runs=sum(1 for r in test_result.runs if r.success),
-                    success=test_result.success,
+                    success=test_passed,
                     score=test_score,
                     status="completed" if test_result.success else "failed",
                 )
 
-            # Update suite execution
+            # Update suite execution. passed_tests / success_rate count
+            # evaluation passes, not mere execution, so the headline matches the
+            # per-test Pass/Fail badges.
+            total = len(result.tests)
+            passed = sum(1 for p in test_passes if p)
             await storage.update_suite_execution(
                 suite_exec,
                 completed_at=datetime.now(tz=UTC),
-                total_tests=len(result.tests),
-                passed_tests=sum(1 for t in result.tests if t.success),
-                failed_tests=sum(1 for t in result.tests if not t.success),
-                success_rate=result.success_rate,
+                total_tests=total,
+                passed_tests=passed,
+                failed_tests=total - passed,
+                success_rate=(passed / total) if total else 0.0,
                 status="completed" if result.success else "failed",
             )
 
