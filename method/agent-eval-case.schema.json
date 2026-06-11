@@ -76,7 +76,7 @@
     "axis_level": {
       "type": "string",
       "description": "Ordinal position on the sweep, from easiest to hardest. The point where critical_check starts failing is the signal.",
-      "enum": ["clean", "mild", "moderate", "severe"]
+      "enum": ["clean", "mild", "moderate", "severe", "very_severe"]
     },
     "tags": {
       "type": "array",
