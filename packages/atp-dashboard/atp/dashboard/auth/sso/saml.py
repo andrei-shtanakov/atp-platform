@@ -11,15 +11,36 @@ This module provides SAML 2.0-based SSO functionality including:
 The implementation uses python3-saml library which is based on OneLogin's toolkit.
 """
 
+from __future__ import annotations
+
 import secrets
 from enum import StrEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
-from onelogin.saml2.auth import OneLogin_Saml2_Auth
-from onelogin.saml2.idp_metadata_parser import OneLogin_Saml2_IdPMetadataParser
-from onelogin.saml2.settings import OneLogin_Saml2_Settings
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+# python3-saml (the ``onelogin`` package) ships only in the optional
+# ``enterprise`` extra. Import it lazily so the dashboard still boots when SAML
+# SSO isn't installed — the module's classes remain importable (annotations are
+# strings via the __future__ import above) and only actually *using* SAML
+# raises a clear error. See _require_saml().
+#
+# The ``if not TYPE_CHECKING`` fallback keeps the type checker seeing the real
+# OneLogin types (it analyses only the successful import) while giving the
+# runtime a defined name when the package is absent.
+try:
+    from onelogin.saml2.auth import OneLogin_Saml2_Auth
+    from onelogin.saml2.idp_metadata_parser import OneLogin_Saml2_IdPMetadataParser
+    from onelogin.saml2.settings import OneLogin_Saml2_Settings
+
+    _SAML_AVAILABLE = True
+except ImportError:  # pragma: no cover - exercised only without the extra
+    _SAML_AVAILABLE = False
+    if not TYPE_CHECKING:
+        OneLogin_Saml2_Auth = None
+        OneLogin_Saml2_IdPMetadataParser = None
+        OneLogin_Saml2_Settings = None
 
 
 class SAMLProvider(StrEnum):
@@ -346,6 +367,22 @@ class SAMLUserProvisioningError(SAMLError):
     pass
 
 
+def _require_saml() -> None:
+    """Raise if the optional SAML dependency (python3-saml) isn't installed.
+
+    Called at every entry point that actually touches the OneLogin toolkit, so
+    a dashboard built without the ``enterprise`` extra still imports and runs —
+    it just rejects SAML use with an actionable message instead of crashing at
+    import time.
+    """
+    if not _SAML_AVAILABLE:
+        raise SAMLConfigurationError(
+            "SAML SSO requires the 'python3-saml' package, which is not "
+            "installed. Install the dashboard's 'enterprise' extra "
+            "(e.g. `uv sync --extra enterprise`) to enable SAML."
+        )
+
+
 def _prepare_request_from_url(
     url: str,
     post_data: dict[str, Any] | None = None,
@@ -395,7 +432,11 @@ class SAMLManager:
 
         Args:
             config: SAML configuration
+
+        Raises:
+            SAMLConfigurationError: If python3-saml isn't installed.
         """
+        _require_saml()
         self.config = config
         self._settings: OneLogin_Saml2_Settings | None = None
 
@@ -808,6 +849,7 @@ def parse_idp_metadata(metadata_xml: str) -> dict[str, Any]:
     Raises:
         SAMLConfigurationError: If metadata parsing fails
     """
+    _require_saml()
     try:
         idp_data = OneLogin_Saml2_IdPMetadataParser.parse(metadata_xml)
         return idp_data.get("idp", {})
@@ -827,6 +869,7 @@ def parse_idp_metadata_url(metadata_url: str) -> dict[str, Any]:
     Raises:
         SAMLConfigurationError: If metadata fetch or parsing fails
     """
+    _require_saml()
     try:
         idp_data = OneLogin_Saml2_IdPMetadataParser.parse_remote(metadata_url)
         return idp_data.get("idp", {})
