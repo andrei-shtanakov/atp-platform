@@ -1055,9 +1055,12 @@ async def _save_results_to_db(
                     else None
                 )
                 test_score = scored.score if scored is not None else None
-                test_passed = (
-                    scored.passed if scored is not None else test_result.success
-                )
+                # A test passes only if it BOTH executed successfully AND passed
+                # evaluation. Gating on execution success keeps a failed run
+                # (status="failed") from ever showing success=True just because
+                # the scorer happened to mark it passed.
+                eval_passed = scored.passed if scored is not None else True
+                test_passed = test_result.success and eval_passed
                 test_passes.append(test_passed)
 
                 await storage.update_test_execution(
