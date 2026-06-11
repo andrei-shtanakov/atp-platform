@@ -62,10 +62,7 @@ class TestDatabase:
         # Tables should be created without error
         await db.close()
 
-    @pytest.mark.anyio
-    async def test_create_tables_includes_rbac_tables(
-        self, temp_db_path: str
-    ) -> None:
+    def test_create_tables_includes_rbac_tables(self, tmp_path: Path) -> None:
         """create_all must build the RBAC tables even from a CLI-style process.
 
         Regression: the RBAC models were only imported inside _seed_default_roles
@@ -73,17 +70,39 @@ class TestDatabase:
         e.g. the CLI's `atp test` DB writer — created a DB without a `roles`
         table and then crashed seeding it ("no such table: roles"). database.py
         now imports them at module scope so create_all always sees them.
-        """
-        from sqlalchemy import inspect as sa_inspect
 
-        db = Database(url=temp_db_path)
-        await db.create_tables()
-        async with db.engine.connect() as conn:
-            tables = await conn.run_sync(
-                lambda sync_conn: set(sa_inspect(sync_conn).get_table_names())
-            )
-        await db.close()
-        assert {"roles", "role_permissions", "user_roles"} <= tables
+        Runs in a fresh interpreter on purpose: ``Base.metadata`` is process-
+        global, so once any earlier test imports the RBAC models the tables are
+        registered for the rest of the session and an in-process assertion would
+        pass even if database.py stopped importing them. A clean subprocess
+        imports only ``atp.dashboard.database`` (and its package __init__, which
+        does not pull in RBAC), so it fails if the module-scope import is reverted.
+        """
+        import subprocess
+        import sys
+
+        db_path = tmp_path / "rbac.db"
+        code = (
+            "import sys, sqlite3, asyncio\n"
+            "from atp.dashboard.database import Database\n"
+            "p = sys.argv[1]\n"
+            "async def main():\n"
+            "    db = Database(url=f'sqlite+aiosqlite:///{p}')\n"
+            "    await db.create_tables()\n"
+            "    await db.close()\n"
+            "asyncio.run(main())\n"
+            "conn = sqlite3.connect(p)\n"
+            "tables = {r[0] for r in conn.execute("
+            "\"SELECT name FROM sqlite_master WHERE type='table'\")}\n"
+            "missing = {'roles', 'role_permissions', 'user_roles'} - tables\n"
+            "raise SystemExit(f'missing tables: {sorted(missing)}' if missing else 0)\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code, str(db_path)],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
 
     @pytest.mark.anyio
     async def test_drop_tables(self, temp_db_path: str) -> None:
