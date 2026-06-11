@@ -62,7 +62,8 @@ def test_load_suite_file_and_sweep(
 ) -> None:
     """A single file loads one test; a directory loads the whole sweep."""
     assert len(load_suite(clean_case_path).tests) == 1
-    assert len(load_suite(example_cases_dir).tests) == 3
+    # The req-extraction sweep: clean / moderate / severe / very_severe.
+    assert len(load_suite(example_cases_dir).tests) == 4
 
 
 @pytest.mark.anyio
