@@ -11,7 +11,7 @@ import logging
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -20,7 +20,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from atp.dashboard.benchmark.models import Benchmark, Run, RunStatus, TaskResult
-from atp.dashboard.models import DEFAULT_TENANT_ID, Agent, SuiteDefinition, User
+from atp.dashboard.failure_analysis import (
+    RunResultLike,
+    compute_failure_breakdown,
+)
+from atp.dashboard.models import (
+    DEFAULT_TENANT_ID,
+    Agent,
+    RunResult,
+    SuiteDefinition,
+    SuiteExecution,
+    User,
+)
 from atp.dashboard.rbac.models import Role, UserRole
 from atp.dashboard.tokens import APIToken, Invite
 from atp.dashboard.tournament.models import Participant, TournamentStatus
@@ -1624,6 +1635,121 @@ async def ui_run_detail(
     return _templates(request).TemplateResponse(
         request=request,
         name="ui/run_detail.html",
+        context=context,
+    )
+
+
+@router.get("/executions", response_class=HTMLResponse)
+@limiter.limit("120/minute")
+async def ui_executions(
+    request: Request,
+    session: DBSession,
+    page: int = 1,
+) -> HTMLResponse:
+    """Render the CLI suite-execution history list page."""
+    user = await _get_ui_user(request, session)
+    per_page = 50
+    offset = (page - 1) * per_page
+
+    result = await session.execute(select(func.count(SuiteExecution.id)))
+    total = result.scalar() or 0
+
+    stmt = (
+        select(SuiteExecution)
+        .order_by(SuiteExecution.started_at.desc())
+        .limit(per_page)
+        .offset(offset)
+    )
+    result = await session.execute(stmt)
+    executions = result.scalars().all()
+
+    total_pages = (total + per_page - 1) // per_page
+
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/executions.html",
+        context={
+            "active_page": "executions",
+            "executions": executions,
+            "page": page,
+            "total_pages": total_pages,
+            "total": total,
+            "user": user,
+        },
+    )
+
+
+@router.get("/executions/{execution_id}", response_class=HTMLResponse)
+@limiter.limit("120/minute")
+async def ui_execution_detail(
+    request: Request,
+    execution_id: int,
+    session: DBSession,
+) -> HTMLResponse:
+    """Render a suite-execution detail page or its HTMX tests partial."""
+    user = await _get_ui_user(request, session)
+    stmt = (
+        select(SuiteExecution)
+        .where(SuiteExecution.id == execution_id)
+        .options(selectinload(SuiteExecution.test_executions))
+    )
+    result = await session.execute(stmt)
+    execution = result.scalar_one_or_none()
+
+    if execution is None:
+        return _templates(request).TemplateResponse(
+            request=request,
+            name="ui/error.html",
+            context={
+                "error_title": "Not Found",
+                "error_message": f"Execution #{execution_id} not found.",
+            },
+            status_code=404,
+        )
+
+    test_executions = list(execution.test_executions)
+    test_ids = [te.id for te in test_executions]
+
+    run_results_map: dict[int, list[RunResult]] = {te_id: [] for te_id in test_ids}
+    all_run_results: list[RunResult] = []
+    if test_ids:
+        rr_result = await session.execute(
+            select(RunResult)
+            .where(RunResult.test_execution_id.in_(test_ids))
+            .order_by(RunResult.run_number)
+        )
+        for run_result in rr_result.scalars().all():
+            run_results_map[run_result.test_execution_id].append(run_result)
+            all_run_results.append(run_result)
+
+    # cast: RunResult satisfies RunResultLike at runtime (response_status + error),
+    # but its SQLAlchemy Mapped[...] columns aren't seen as plain attributes by the
+    # type checker, so the Protocol match needs a bridge here.
+    failure_breakdown = compute_failure_breakdown(
+        cast(list[RunResultLike], all_run_results)
+    )
+
+    context = {
+        "active_page": "executions",
+        "execution": execution,
+        "test_executions": test_executions,
+        "run_results_map": run_results_map,
+        "failure_breakdown": failure_breakdown,
+        "user": user,
+    }
+
+    # HTMX partial response (polling refresh of the tests table)
+    is_htmx = request.headers.get("HX-Request") == "true"
+    if is_htmx and request.headers.get("HX-Target", "") == "execution-tests":
+        return _templates(request).TemplateResponse(
+            request=request,
+            name="ui/partials/execution_tests.html",
+            context=context,
+        )
+
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/execution_detail.html",
         context=context,
     )
 

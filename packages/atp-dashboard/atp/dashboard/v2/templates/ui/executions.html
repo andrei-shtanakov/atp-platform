@@ -1,0 +1,99 @@
+{% extends "ui/base_ui.html" %}
+
+{% block title %}Test Runs - ATP Platform{% endblock %}
+
+{% block content %}
+<h2>Test Runs</h2>
+<p>{{ total }} suite execution{{ "s" if total != 1 else "" }} recorded</p>
+
+<table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Suite</th>
+            <th>Agent</th>
+            <th>Status</th>
+            <th>Tests</th>
+            <th>Success Rate</th>
+            <th>Runs/Test</th>
+            <th>Started</th>
+            <th>Duration</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for execution in executions %}
+        <tr>
+            <td>
+                <a href="/ui/executions/{{ execution.id }}">#{{ execution.id }}</a>
+            </td>
+            <td>{{ execution.suite_name }}</td>
+            <td>{{ execution.agent_name or "—" }}</td>
+            <td>
+                {% set s = execution.status %}
+                {% if s == "completed" %}
+                <mark style="background:var(--pico-color-green-550,#2d9e5f);color:#fff;padding:2px 8px;border-radius:4px;">{{ s }}</mark>
+                {% elif s == "running" %}
+                <mark style="background:var(--pico-color-azure-550,#1b6bb0);color:#fff;padding:2px 8px;border-radius:4px;">{{ s }}</mark>
+                {% elif s == "failed" %}
+                <mark style="background:var(--pico-color-red-550,#c0392b);color:#fff;padding:2px 8px;border-radius:4px;">{{ s }}</mark>
+                {% else %}
+                <mark style="background:#aaa;color:#fff;padding:2px 8px;border-radius:4px;">{{ s }}</mark>
+                {% endif %}
+            </td>
+            <td>{{ execution.passed_tests }}/{{ execution.total_tests }}</td>
+            <td>
+                {% if execution.total_tests > 0 %}
+                {{ "%.1f"|format(execution.success_rate * 100) }}%
+                {% else %}
+                —
+                {% endif %}
+            </td>
+            <td>{{ execution.runs_per_test }}</td>
+            <td>
+                {% if execution.started_at %}
+                {{ execution.started_at.strftime("%Y-%m-%d %H:%M") }}
+                {% else %}
+                —
+                {% endif %}
+            </td>
+            <td>
+                {% if execution.duration_seconds is not none %}
+                    {% set duration = execution.duration_seconds %}
+                    {% if duration >= 3600 %}
+                        {{ "%.0f"|format(duration / 3600) }}h {{ "%.0f"|format((duration % 3600) / 60) }}m
+                    {% elif duration >= 60 %}
+                        {{ "%.0f"|format(duration / 60) }}m {{ "%.0f"|format(duration % 60) }}s
+                    {% else %}
+                        {{ "%.0f"|format(duration) }}s
+                    {% endif %}
+                {% elif execution.status == "running" %}
+                    running...
+                {% else %}
+                    —
+                {% endif %}
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="9" style="text-align:center;color:var(--pico-muted-color,#888);">No test runs yet.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% if total_pages > 1 %}
+<nav>
+    <ul>
+        {% for p in range(1, total_pages + 1) %}
+        <li>
+            {% if p == page %}
+            <a href="#" aria-current="page"><strong>{{ p }}</strong></a>
+            {% else %}
+            <a href="/ui/executions?page={{ p }}">{{ p }}</a>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+</nav>
+{% endif %}
+{% endblock %}
