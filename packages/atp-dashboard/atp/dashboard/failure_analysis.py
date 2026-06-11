@@ -97,11 +97,16 @@ def compute_failure_breakdown(
             continue
 
         status_counts[status] += 1
+        # Only errors with actual text become samples — a failure with no
+        # message still counts toward the status, but contributes no empty
+        # bullet to the UI's sample list.
+        if not run.error:
+            continue
         seen = samples_by_status[status]
         if len(seen) < MAX_SAMPLE_ERRORS:
             key = _normalize_error(run.error)
             if key not in seen:
-                seen[key] = run.error or ""
+                seen[key] = run.error
 
     causes = [
         FailureCause(

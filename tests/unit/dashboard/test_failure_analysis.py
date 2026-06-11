@@ -113,11 +113,23 @@ def test_causes_sorted_by_count_desc() -> None:
     assert result.failed_runs == 6
 
 
-def test_none_error_handled() -> None:
+def test_none_error_produces_no_sample() -> None:
+    # A failure with no message still counts, but adds no empty-string sample
+    # (which would render as a blank bullet in the UI).
     runs = [_run("failed", None), _run("failed", None)]
 
     result = compute_failure_breakdown(runs)
 
     cause = result.causes[0]
     assert cause.count == 2
-    assert cause.sample_errors == [""]
+    assert cause.sample_errors == []
+
+
+def test_mixed_none_and_real_error_keeps_only_real_sample() -> None:
+    runs = [_run("failed", None), _run("failed", "boom"), _run("failed", "")]
+
+    result = compute_failure_breakdown(runs)
+
+    cause = result.causes[0]
+    assert cause.count == 3
+    assert cause.sample_errors == ["boom"]

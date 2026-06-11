@@ -10,7 +10,16 @@
 function toggleDetail(row) {
     var detail = row.nextElementSibling;
     if (detail && detail.classList.contains('detail-row')) {
-        detail.style.display = detail.style.display === 'table-row' ? 'none' : 'table-row';
+        var open = detail.style.display === 'table-row';
+        detail.style.display = open ? 'none' : 'table-row';
+        row.setAttribute('aria-expanded', open ? 'false' : 'true');
+    }
+}
+// Keyboard access: Enter/Space toggle the focused row, like a button.
+function toggleDetailKey(event, row) {
+    if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        toggleDetail(row);
     }
 }
 </script>
@@ -28,7 +37,8 @@ function toggleDetail(row) {
     </thead>
     <tbody>
         {% for te in test_executions %}
-        <tr class="task-row" onclick="toggleDetail(this)">
+        <tr class="task-row" tabindex="0" role="button" aria-expanded="false"
+            onclick="toggleDetail(this)" onkeydown="toggleDetailKey(event, this)">
             <td>{{ te.test_name }}</td>
             <td>{{ te.successful_runs }}/{{ te.total_runs }}</td>
             <td>
