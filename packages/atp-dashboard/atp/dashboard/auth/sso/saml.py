@@ -377,9 +377,10 @@ def _require_saml() -> None:
     """
     if not _SAML_AVAILABLE:
         raise SAMLConfigurationError(
-            "SAML SSO requires the 'python3-saml' package, which is not "
-            "installed. Install the dashboard's 'enterprise' extra "
-            "(e.g. `uv sync --extra enterprise`) to enable SAML."
+            "SAML SSO requires the 'python3-saml' package, which could not be "
+            "imported. Install the dashboard's 'enterprise' extra "
+            "(e.g. `uv sync --extra enterprise`); if it is already installed, "
+            "check its native dependency 'xmlsec'."
         )
 
 
@@ -434,7 +435,7 @@ class SAMLManager:
             config: SAML configuration
 
         Raises:
-            SAMLConfigurationError: If python3-saml isn't installed.
+            SAMLConfigurationError: If python3-saml could not be imported.
         """
         _require_saml()
         self.config = config
@@ -847,7 +848,8 @@ def parse_idp_metadata(metadata_xml: str) -> dict[str, Any]:
         Dictionary with extracted IdP configuration
 
     Raises:
-        SAMLConfigurationError: If metadata parsing fails
+        SAMLConfigurationError: If python3-saml could not be imported, or if
+            metadata parsing fails.
     """
     _require_saml()
     try:
@@ -867,7 +869,8 @@ def parse_idp_metadata_url(metadata_url: str) -> dict[str, Any]:
         Dictionary with extracted IdP configuration
 
     Raises:
-        SAMLConfigurationError: If metadata fetch or parsing fails
+        SAMLConfigurationError: If python3-saml could not be imported, or if
+            metadata fetch or parsing fails.
     """
     _require_saml()
     try:

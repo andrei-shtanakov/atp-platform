@@ -528,6 +528,14 @@ class TestOptionalSAMLDependency:
             importlib.import_module("atp.dashboard.auth")
             saml = importlib.import_module("atp.dashboard.auth.sso.saml")
             return saml, saved
+        except BaseException:
+            # Import failed unexpectedly: the caller never receives `saved` and
+            # so can't run _restore. Restore sys.modules here before re-raising
+            # so a failure doesn't leave onelogin-blocked modules cached and
+            # cascade into every later test.
+            builtins.__import__ = real_import
+            TestOptionalSAMLDependency._restore(saved)
+            raise
         finally:
             builtins.__import__ = real_import
 
