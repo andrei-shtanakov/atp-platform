@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+import atp.dashboard.rbac.models as _rbac_models  # noqa: F401  — register ORM models
 import atp.dashboard.tokens as _tokens_models  # noqa: F401  — register ORM models
 from atp.dashboard.models import Base
 
