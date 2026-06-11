@@ -128,10 +128,13 @@ services:
       - atp-data:/root/.atp
     # Same platform, methodology content. critical_check hard-gates the trap;
     # --runs surfaces the curve of collapse across clean/moderate/severe.
+    # --model tags the run with the local model so the dashboard's run-history
+    # pages can tell qwen2.5:7b apart from llama3.2:3b at a glance.
     command: >
       uv run --no-sync atp test /work/method/cases/req-extraction
       --adapter=http
       --adapter-config endpoint=http://agent-llm:8000/execute,allow_internal=true
+      --model=${LLM_MODEL:-gpt-4o-mini}
       --runs=5
       --output=json
       --output-file=/work/results/method-results.json

@@ -125,7 +125,29 @@ class TestResultStorageAgent:
 
         assert execution.agent_name == "cli-http-agent"
         assert execution.agent_id is None
+        # adapter/model default to None when the CLI does not supply them.
+        assert execution.adapter is None
+        assert execution.model is None
         mock_session.add.assert_called_once()
+
+    @pytest.mark.anyio
+    async def test_create_suite_execution_by_name_records_adapter_and_model(
+        self,
+    ) -> None:
+        """The --adapter/--model identity is persisted on the SuiteExecution."""
+        mock_session = AsyncMock()
+        storage = ResultStorage(mock_session)
+
+        execution = await storage.create_suite_execution_by_name(
+            suite_name="req-extraction",
+            agent_name="ollama",
+            runs_per_test=3,
+            adapter="http",
+            model="qwen2.5:7b",
+        )
+
+        assert execution.adapter == "http"
+        assert execution.model == "qwen2.5:7b"
 
 
 class TestResultStorageSuiteExecution:

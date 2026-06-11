@@ -158,6 +158,11 @@ class SuiteExecution(Base):
     agent_name: Mapped[str] = mapped_column(
         String(100), nullable=False, server_default=""
     )
+    # What the agent ran under. `adapter` is always known to the platform (the
+    # --adapter flag); `model` is an operator-supplied label (--model) since a
+    # black-box agent's model is opaque to ATP. Both nullable for older rows.
+    adapter: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     # Execution metadata
     started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)

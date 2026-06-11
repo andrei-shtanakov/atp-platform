@@ -73,6 +73,8 @@ async def test_data(test_database: Database) -> dict:
             failed_tests=1,
             success_rate=0.67,
             status="completed",
+            adapter="http",
+            model="qwen2.5:7b",
         )
         suite2 = SuiteExecution(
             suite_name="test-suite",
@@ -476,6 +478,32 @@ class TestV2ExecutionUIRoutes:
             resp = await client.get(f"/ui/executions/{execution_id}")
         assert resp.status_code == 200
         assert "First Test" in resp.text
+
+    @pytest.mark.anyio
+    async def test_executions_list_shows_model(
+        self, v2_app, test_data, disable_dashboard_auth
+    ):
+        """The list surfaces the run's model label and adapter."""
+        async with AsyncClient(
+            transport=ASGITransport(app=v2_app), base_url="http://test"
+        ) as client:
+            resp = await client.get("/ui/executions")
+        assert resp.status_code == 200
+        assert "qwen2.5:7b" in resp.text
+        assert "http" in resp.text
+
+    @pytest.mark.anyio
+    async def test_execution_detail_shows_model(
+        self, v2_app, test_data, disable_dashboard_auth
+    ):
+        """The detail header surfaces the run's model and adapter."""
+        execution_id = test_data["suites"][0].id
+        async with AsyncClient(
+            transport=ASGITransport(app=v2_app), base_url="http://test"
+        ) as client:
+            resp = await client.get(f"/ui/executions/{execution_id}")
+        assert resp.status_code == 200
+        assert "qwen2.5:7b" in resp.text
 
     @pytest.mark.anyio
     async def test_execution_detail_404(

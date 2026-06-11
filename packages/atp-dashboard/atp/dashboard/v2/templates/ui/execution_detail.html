@@ -63,6 +63,12 @@
 <div class="run-meta">
     Suite: <strong>{{ execution.suite_name }}</strong>
     &middot; Agent: <strong>{{ execution.agent_name or "—" }}</strong>
+    {% if execution.model %}
+    &middot; Model: <strong>{{ execution.model }}</strong>
+    {% endif %}
+    {% if execution.adapter %}
+    &middot; Adapter: <strong>{{ execution.adapter }}</strong>
+    {% endif %}
     {% if execution.started_at %}
     &middot; Started: {{ execution.started_at.strftime("%Y-%m-%d %H:%M") }}
     {% endif %}

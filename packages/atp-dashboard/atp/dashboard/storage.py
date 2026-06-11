@@ -133,6 +133,8 @@ class ResultStorage:
         agent_name: str,
         runs_per_test: int = 1,
         started_at: datetime | None = None,
+        adapter: str | None = None,
+        model: str | None = None,
     ) -> SuiteExecution:
         """Create a SuiteExecution with only agent_name (no Agent row).
 
@@ -146,6 +148,10 @@ class ResultStorage:
             agent_name: Name of the agent that ran the suite (denormalized string).
             runs_per_test: Number of runs per test.
             started_at: Execution start time.
+            adapter: Adapter type the suite ran under (e.g. "http"). Always
+                known to the platform.
+            model: Operator-supplied model label (--model); None for black-box
+                agents whose model ATP cannot observe.
 
         Returns:
             SuiteExecution instance, flushed but not committed.
@@ -157,6 +163,8 @@ class ResultStorage:
             runs_per_test=runs_per_test,
             started_at=started_at or datetime.now(tz=UTC),
             status="running",
+            adapter=adapter,
+            model=model,
         )
         self._session.add(execution)
         await self._session.flush()
