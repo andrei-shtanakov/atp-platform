@@ -490,3 +490,77 @@ class TestExceptions:
 
 # NOTE: User provisioning and role assignment tests are in
 # tests/unit/dashboard/auth/test_post_auth.py (covers complete_auth pipeline)
+
+
+class TestOptionalSAMLDependency:
+    """The dashboard must boot when python3-saml (onelogin) isn't installed.
+
+    Regression: auth.sso imported saml.py, which imported `onelogin`
+    unconditionally. Without the optional `enterprise` extra the whole
+    dashboard crashed at import (`ModuleNotFoundError: No module named
+    'onelogin'`). The import is now lazy; only *using* SAML raises.
+    """
+
+    @staticmethod
+    def _reimport_without_onelogin() -> Any:
+        """Reimport auth + saml with `onelogin` import forced to fail."""
+        import builtins
+        import importlib
+        import sys
+
+        blocked = ("onelogin", "atp.dashboard.auth")
+        saved = {
+            name: mod for name, mod in sys.modules.items() if name.startswith(blocked)
+        }
+        for name in saved:
+            sys.modules.pop(name, None)
+
+        real_import = builtins.__import__
+
+        def fake_import(name: str, *args: Any, **kwargs: Any) -> Any:
+            if name.startswith("onelogin"):
+                raise ImportError("simulated: onelogin not installed")
+            return real_import(name, *args, **kwargs)
+
+        builtins.__import__ = fake_import  # type: ignore[assignment]
+        try:
+            # The whole auth chain must import without onelogin present.
+            importlib.import_module("atp.dashboard.auth")
+            saml = importlib.import_module("atp.dashboard.auth.sso.saml")
+            return saml, saved
+        except BaseException:
+            # Import failed unexpectedly: the caller never receives `saved` and
+            # so can't run _restore. Restore sys.modules here before re-raising
+            # so a failure doesn't leave onelogin-blocked modules cached and
+            # cascade into every later test.
+            builtins.__import__ = real_import
+            TestOptionalSAMLDependency._restore(saved)
+            raise
+        finally:
+            builtins.__import__ = real_import
+
+    @staticmethod
+    def _restore(saved: dict[str, Any]) -> None:
+        import importlib
+        import sys
+
+        for name in [
+            n for n in sys.modules if n.startswith(("onelogin", "atp.dashboard.auth"))
+        ]:
+            sys.modules.pop(name, None)
+        sys.modules.update(saved)
+        # Re-establish the real modules for the rest of the session.
+        importlib.import_module("atp.dashboard.auth")
+
+    def test_imports_and_rejects_use_without_onelogin(self) -> None:
+        saml, saved = self._reimport_without_onelogin()
+        try:
+            assert saml._SAML_AVAILABLE is False
+            # Using SAML raises a clear, actionable error (not NameError).
+            cfg = saml.SAMLConfig.model_construct()
+            with pytest.raises(saml.SAMLConfigurationError, match="python3-saml"):
+                saml.SAMLManager(cfg)
+            with pytest.raises(saml.SAMLConfigurationError, match="python3-saml"):
+                saml.parse_idp_metadata("<xml/>")
+        finally:
+            self._restore(saved)
