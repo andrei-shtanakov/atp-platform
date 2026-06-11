@@ -63,6 +63,29 @@ class TestDatabase:
         await db.close()
 
     @pytest.mark.anyio
+    async def test_create_tables_includes_rbac_tables(
+        self, temp_db_path: str
+    ) -> None:
+        """create_all must build the RBAC tables even from a CLI-style process.
+
+        Regression: the RBAC models were only imported inside _seed_default_roles
+        (after create_tables), so a process that did not separately import them —
+        e.g. the CLI's `atp test` DB writer — created a DB without a `roles`
+        table and then crashed seeding it ("no such table: roles"). database.py
+        now imports them at module scope so create_all always sees them.
+        """
+        from sqlalchemy import inspect as sa_inspect
+
+        db = Database(url=temp_db_path)
+        await db.create_tables()
+        async with db.engine.connect() as conn:
+            tables = await conn.run_sync(
+                lambda sync_conn: set(sa_inspect(sync_conn).get_table_names())
+            )
+        await db.close()
+        assert {"roles", "role_permissions", "user_roles"} <= tables
+
+    @pytest.mark.anyio
     async def test_drop_tables(self, temp_db_path: str) -> None:
         """Test dropping database tables."""
         db = Database(url=temp_db_path)
