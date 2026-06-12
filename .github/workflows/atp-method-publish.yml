@@ -1,0 +1,36 @@
+name: Publish atp-method to PyPI
+
+on:
+  push:
+    tags:
+      - "atp-method-v*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Build atp-method
+        run: cd packages/atp-method && uv build --out-dir dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: packages/atp-method/dist/
+          # Idempotent: re-pushing an existing tag (e.g. retroactive tagging
+          # of an already-published version) must not fail the workflow.
+          skip-existing: true

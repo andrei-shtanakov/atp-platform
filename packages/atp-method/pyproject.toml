@@ -17,9 +17,11 @@ classifiers = [
 dependencies = [
     "pydantic>=2.0",
     "pyyaml>=6.0",
-    # atp-platform provides both the loader models (atp.loader) and the
-    # evaluator base + LLM judge (atp.evaluators) the plugin builds on.
-    "atp-platform>=1.0.0",
+    # atp-platform provides the loader models (atp.loader), the suite-source /
+    # format-dispatch registries (added in 2.1.0), the evaluator base + LLM judge
+    # (atp.evaluators), and the critical-assertion hard gate (2.1.0) the plugin
+    # builds on — so 2.1.0 is the real floor.
+    "atp-platform>=2.1.0",
 ]
 
 [project.entry-points."atp.plugins"]
