@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-06-12
+
+No breaking changes — additive features and fixes only.
+
+### Added
+
+- **`atp-method` plugin** — runs the agent-eval-case methodology through the
+  platform without touching core. Ships the agent-eval-case schema, a loader
+  (case → `TestDefinition`), and `AgentEvalCaseEvaluator` (binary
+  `critical_check` + weighted rubric), wired via `register()` and the suite
+  source registry. (#142, #144, #145, #146)
+- **Hard-gate for critical assertions** — a failed `critical` check forces the
+  test score to 0 regardless of the rubric, giving the methodology its
+  trap/sweep "point of collapse". (#142)
+- **Suite format-dispatch registry** — replaces the hardcoded game branch in
+  the loader so new suite formats (e.g. agent-eval-case) plug in. (#143)
+- **LLM-judge providers and steering** — OpenAI-compatible `base_url` for a
+  fully air-gapped local grader (#149), a Bedrock-hosted Claude provider
+  (#136), and `ATP_JUDGE_PROVIDER` / `ATP_JUDGE_REGION` / `ATP_JUDGE_MODEL`
+  env steering for an all-in-AWS judge (#152).
+- **Dashboard run-history UI** — `/ui/executions` list + detail pages for CLI
+  `atp test` history, with a per-cause failure breakdown (#157), an `adapter`
+  and `model` column, and a new `--model` run label (#159).
+- **very-severe calibration case** — a fourth req-extraction difficulty tier
+  (`very_severe` axis level) that brackets the collapse point of
+  mid-capability models. (#158)
+- **Demos** — on-prem docker-compose demo (platform + HTTP agent) (#135), the
+  on-prem methodology sweep (#148), a turnkey air-gapped judge that reuses the
+  agent's local model (#150), and an all-in-AWS cloud variant scaffold
+  (EC2 + Bedrock via IAM) (#153).
+
+### Changed
+
+- **Run-history success semantics** — a test reads `success=True` only if it
+  both executed successfully and passed evaluation (hard-gate aware), instead
+  of merely completing execution. Fixes misleading green "Pass" badges next to
+  score 0. (#162)
+- **Docker image** — installs all workspace plugins (incl. `atp-method`) plus
+  the LLM-judge clients, so `atp test` can dispatch plugin formats at runtime.
+  (#151)
+
+### Fixed
+
+- **Dashboard boots without the `enterprise` extra** — the SAML/onelogin
+  import is now lazy; SAML use raises a clear error instead of crashing the
+  whole dashboard at import. (#161)
+- **CLI/container runs persist to the dashboard DB** — the RBAC `roles` table
+  is now created regardless of entry point, so `atp test` history is no longer
+  lost to a "no such table: roles" rollback. (#160)
+- **`SuiteExecutionSummary` accepts a null `agent_id`** for CLI-produced
+  executions. (#132)
+- **AWS demo** — installs boto3 for the Bedrock paths and stops echoing the
+  generated secret into cloud-init logs. (#154)
+- **Compose demo** — dropped the `working_dir` override that broke
+  `uv run atp`. (#138)
+
 ## [2.0.0] - 2026-05-08
 
 ### Breaking Changes
