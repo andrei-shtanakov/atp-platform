@@ -192,6 +192,11 @@ TEST_SUITE_SCHEMA: dict[str, Any] = {
                             "properties": {
                                 "type": {"type": "string", "minLength": 1},
                                 "config": {"type": "object"},
+                                # Hard gate: a failed critical assertion forces
+                                # the test score to 0 (honored by the Assertion
+                                # model and ScoreAggregator). Was missing here,
+                                # so the schema rejected it in native suites.
+                                "critical": {"type": "boolean"},
                             },
                             "additionalProperties": False,
                         },
