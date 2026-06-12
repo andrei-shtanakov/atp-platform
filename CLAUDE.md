@@ -226,7 +226,7 @@ Key environment variables for the dashboard and SDK:
 
 Production is deployed via `.github/workflows/deploy.yml` using SSH to a VPS (Namecheap). Trigger options:
 
-- **Automatic**: push to `main` with commit message containing `[deploy]`
+- **Automatic**: every push to `main` deploys (so each merged PR ships to prod). No `[deploy]` marker is required — that older convention was dropped because PR merge commits don't carry it.
 - **Manual**: `workflow_dispatch` from GitHub Actions UI
 
 The workflow SSHes into the VPS, pulls latest code, rebuilds the Docker image, and restarts the container via `docker compose up -d platform`. Requires `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY` secrets in GitHub.
