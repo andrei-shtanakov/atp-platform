@@ -6,10 +6,37 @@ but graded entirely by **code** — no LLM judge, no API key, fully reproducible
 The agent must extract a policy excerpt into **strict JSON**; two small Python
 checkers grade the output:
 
-| Test | What it shows | Evaluator | Hard gate |
-|------|---------------|-----------|-----------|
-| `req-json-trap` | programmatic `critical_check` — did the agent fabricate the absent deadline? | `custom_command` → `check_deadline_trap.py` | **yes** (`critical: true`) |
-| `req-json-quality` | deterministic extraction quality vs ground truth (actor + obligation + deadline-status, positional) | `custom_command` → `score_extraction.py` | no |
+| Test | What it shows | Evaluator | LLM? | Hard gate |
+|------|---------------|-----------|------|-----------|
+| `req-json-trap` | programmatic `critical_check` — did the agent fabricate the absent deadline? | `custom_command` → `check_deadline_trap.py` | no | **yes** (`critical: true`) |
+| `req-json-quality` | deterministic extraction quality vs ground truth (actor + obligation + deadline-status, positional) | `custom_command` → `score_extraction.py` | no | no |
+| `req-json-hybrid` | both in ONE test: code hard-gate **+** an LLM rubric for the *semantic* quality code can't judge | `custom_command` (critical) + `llm_eval` | **yes** (rubric only) | **yes** (the code check) |
+
+## The hybrid test
+
+`req-json-hybrid` combines the strengths: a deterministic code check hard-gates
+a fabricated deadline (reproducible, no model), while an LLM judge grades the
+**semantic** extraction quality — atomicity, actor attribution, faithfulness —
+that a positional code diff can't capture.
+
+It is the one test here that **needs a judge**. Point it at a local model:
+
+```bash
+ATP_JUDGE_PROVIDER=openai ATP_JUDGE_BASE_URL=http://localhost:11434/v1 \
+ATP_JUDGE_MODEL=qwen2.5:14b OPENAI_API_KEY=ollama \
+uv run --no-sync atp test examples/req-extraction-json/suite.yaml --tags=hybrid \
+  --adapter=http \
+  --adapter-config endpoint=http://localhost:8001/execute,allow_internal=true \
+  --model=qwen2.5:7b
+```
+
+**Scoring:** the code gate and the LLM rubric both feed the `quality` component
+(its score is the mean of all checks). So when the trap is resisted, the test
+score is `mean(1.0 code-pass, rubric)`; the gate acts as the hard floor, the
+rubric grades quality above it. When the trap is **sprung**, the `critical` code
+check forces the score to **0 regardless of the rubric** — the deterministic
+gate always dominates. (Verified end-to-end: qwen2.5:7b agent + qwen2.5:14b
+judge → gate pass + rubric 1.0 → 100.)
 
 ## Why code instead of an LLM judge
 
