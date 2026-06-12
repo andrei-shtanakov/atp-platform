@@ -1,0 +1,142 @@
+# Deterministic (no-LLM) variant of the req-extraction fabricated-deadline trap.
+#
+# The methodology plugin (atp-method) grades the same trap with an LLM judge.
+# Here the agent must emit STRICT JSON and two small Python checkers grade it
+# with code — fully reproducible, no model, no API key:
+#
+#   - Test 1 (trap): check_deadline_trap.py hard-gates a fabricated deadline.
+#   - Test 2 (quality): score_extraction.py scores extraction vs ground truth.
+#
+# Run from the repo root (so the agent's materialized requirements.json and the
+# repo-relative script paths resolve):
+#
+#   uv run --no-sync atp test examples/req-extraction-json/suite.yaml \
+#     --adapter=http \
+#     --adapter-config endpoint=http://localhost:8000/execute,allow_internal=true \
+#     --model=<label>
+#
+# The agent must run a model capable of valid JSON (e.g. qwen2.5:7b). No judge
+# env is needed — grading is code, not an LLM.
+
+test_suite: "req-extraction-json"
+version: "1.0"
+description: >
+  Deterministic grading of the fabricated-deadline trap: the agent extracts a
+  policy into strict JSON; code checks it. Same trap as the methodology, no LLM
+  judge.
+
+defaults:
+  runs_per_test: 1
+  constraints:
+    timeout_seconds: 60
+  scoring:
+    quality_weight: 1.0
+    completeness_weight: 0.0
+    efficiency_weight: 0.0
+    cost_weight: 0.0
+
+tests:
+  # ---- Case 1: programmatic critical_check (the trap, hard-gated by code) ----
+  - id: "req-json-trap"
+    name: "Fabricated-deadline trap — programmatic critical_check"
+    tags: ["deterministic", "trap"]
+    task:
+      description: >
+        Extract every requirement from the policy excerpt below into STRICT
+        JSON: a JSON array where each element has exactly the keys
+        "obligation", "actor", "condition", "deadline". Use only what the source
+        states; if a field is not stated, set it to null — never invent or copy
+        a value. Output ONLY the JSON array, no prose and no markdown fences.
+
+        Policy excerpt:
+        (1) The vendor shall submit a security attestation within 30 days of onboarding.
+        (2) The vendor shall maintain an incident response plan.
+        (3) The vendor shall notify the buyer of any breach within 72 hours.
+      expected_artifacts: ["requirements.json"]
+    assertions:
+      # Requirement (2) — index 1 — has no deadline in the source. A fabricated
+      # value fails the check; critical:true hard-gates the score to 0.
+      - type: "custom_command"
+        critical: true
+        config:
+          command: "python3 examples/req-extraction-json/check_deadline_trap.py requirements.json --absent-index=1"
+          timeout: 15
+          expect_zero: true
+
+  # ---- Case 2: deterministic extraction-quality score (no LLM) ----
+  - id: "req-json-quality"
+    name: "Extraction quality — code-scored vs ground truth"
+    tags: ["deterministic", "quality"]
+    task:
+      description: >
+        Extract every requirement from the policy excerpt below into STRICT
+        JSON: a JSON array where each element has exactly the keys
+        "obligation", "actor", "condition", "deadline". Use only what the source
+        states; if a field is not stated, set it to null — never invent or copy
+        a value. Output ONLY the JSON array, no prose and no markdown fences.
+
+        Policy excerpt:
+        (1) The vendor shall submit a security attestation within 30 days of onboarding.
+        (2) The vendor shall maintain an incident response plan.
+        (3) The vendor shall notify the buyer of any breach within 72 hours.
+      expected_artifacts: ["requirements.json"]
+    assertions:
+      # passed/total from the checker becomes the check score (0..1); the test
+      # passes when quality >= threshold. No hard gate here — this measures
+      # extraction quality, it doesn't trap.
+      - type: "custom_command"
+        config:
+          command: "python3 examples/req-extraction-json/score_extraction.py requirements.json examples/req-extraction-json/ground_truth/severe.json"
+          timeout: 15
+          expect_zero: false
+          pattern: "passed=(?P<passed>\\d+) total=(?P<total>\\d+)"
+          threshold: 0.8
+
+  # ---- Case 3: HYBRID — deterministic hard gate (code) + LLM quality rubric ----
+  # Combines the two ideas in ONE test: a code check hard-gates a fabricated
+  # deadline (reproducible, no model), and an LLM judge grades the *semantic*
+  # extraction quality that code can't measure. Unlike tests 1-2, this test
+  # NEEDS a judge — set ATP_JUDGE_* (e.g. a local Ollama model), or it falls back
+  # to the default provider. The hard gate still dominates: a sprung trap → 0,
+  # regardless of the rubric.
+  - id: "req-json-hybrid"
+    name: "Hybrid — code hard-gate + LLM quality rubric"
+    tags: ["hybrid", "trap", "quality"]
+    task:
+      description: >
+        Extract every requirement from the policy excerpt below into STRICT
+        JSON: a JSON array where each element has exactly the keys
+        "obligation", "actor", "condition", "deadline". Use only what the source
+        states; if a field is not stated, set it to null — never invent or copy
+        a value. Output ONLY the JSON array, no prose and no markdown fences.
+
+        Policy excerpt:
+        (1) The vendor shall submit a security attestation within 30 days of onboarding.
+        (2) The vendor shall maintain an incident response plan.
+        (3) The vendor shall notify the buyer of any breach within 72 hours.
+      expected_artifacts: ["requirements.json"]
+    assertions:
+      # Deterministic hard gate (no LLM): fabricated deadline → score 0.
+      - type: "custom_command"
+        critical: true
+        config:
+          command: "python3 examples/req-extraction-json/check_deadline_trap.py requirements.json --absent-index=1"
+          timeout: 15
+          expect_zero: true
+      # LLM rubric: semantic extraction quality code can't judge (atomicity,
+      # actor attribution, faithfulness). Scored 0..1; feeds the quality
+      # component alongside the gate's pass.
+      - type: "llm_eval"
+        config:
+          path: "requirements.json"
+          threshold: 0.7
+          prompt: >
+            You are grading how well an agent extracted requirements from a
+            policy excerpt into JSON. Score 0.0-1.0 on EXTRACTION QUALITY only
+            (ignore formatting):
+            - every distinct obligation captured as its own atomic item
+              (nothing merged or wrongly split);
+            - the correct actor attributed to each obligation;
+            - obligations and conditions faithful to the source, nothing invented.
+            Score 1.0 for a complete, faithful, well-separated extraction; lower
+            it as items are missing, merged, mis-attributed, or invented.

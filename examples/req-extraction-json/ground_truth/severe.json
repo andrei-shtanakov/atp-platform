@@ -1,0 +1,20 @@
+[
+  {
+    "obligation": "submit a security attestation",
+    "actor": "vendor",
+    "condition": "of onboarding",
+    "deadline": "within 30 days"
+  },
+  {
+    "obligation": "maintain an incident response plan",
+    "actor": "vendor",
+    "condition": null,
+    "deadline": null
+  },
+  {
+    "obligation": "notify the buyer of any breach",
+    "actor": "vendor",
+    "condition": null,
+    "deadline": "within 72 hours"
+  }
+]

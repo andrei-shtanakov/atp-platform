@@ -203,6 +203,33 @@ class TestTestLoader:
         with pytest.raises(ValidationError, match="weights sum"):
             loader.load_string(yaml_content)
 
+    def test_assertion_critical_field_accepted(self):
+        """A native suite may mark an assertion ``critical`` (hard gate).
+
+        Regression: the suite JSON schema only allowed ``type`` + ``config`` on
+        an assertion (additionalProperties: false), so ``critical: true`` was
+        rejected at load time even though the Assertion model and ScoreAggregator
+        honor it. The schema now permits it.
+        """
+        loader = TestLoader()
+        yaml_content = """
+        test_suite: "with_critical"
+        tests:
+          - id: "test-001"
+            name: "Test"
+            task:
+              description: "Task"
+            assertions:
+              - type: "custom_command"
+                critical: true
+                config:
+                  command: "true"
+        """
+
+        suite = loader.load_string(yaml_content)
+
+        assert suite.tests[0].assertions[0].critical is True
+
 
 class TestMultiAgentLoader:
     """Test multi-agent test loading and validation."""
