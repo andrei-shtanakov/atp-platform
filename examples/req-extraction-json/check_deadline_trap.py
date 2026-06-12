@@ -74,6 +74,9 @@ def _requirements(data: object) -> list[dict]:
         items = data.get("requirements") if "requirements" in data else [data]
     else:
         raise ValueError(f"expected a list or object, got {type(data).__name__}")
+    if not isinstance(items, list):
+        # e.g. {"requirements": 5} — a non-list value isn't iterable.
+        raise ValueError("'requirements' is not a list")
     reqs = [i for i in items if isinstance(i, dict)]
     if not reqs:
         raise ValueError("no requirement objects found")

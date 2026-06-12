@@ -47,7 +47,17 @@ def _extract_json(text: str) -> object:
 
 
 def _reqs(data: object) -> list[dict]:
-    items = data if isinstance(data, list) else data.get("requirements", [data])
+    if isinstance(data, list):
+        items = data
+    elif isinstance(data, dict):
+        items = data.get("requirements", [data])
+    else:
+        # A JSON scalar (string/number/bool) carries no requirements; score it
+        # as zero rather than crashing on .get().
+        return []
+    if not isinstance(items, list):
+        # e.g. {"requirements": 5} — a non-list value isn't iterable.
+        return []
     return [i for i in items if isinstance(i, dict)]
 
 
