@@ -24,6 +24,12 @@ ENGINE="${CONTAINER_ENGINE:-$(command -v docker || command -v podman || true)}"
   echo "No container engine found — need docker or podman in PATH (or set CONTAINER_ENGINE)." >&2
   exit 1
 }
+# Validate it's a real executable — catches a bad CONTAINER_ENGINE override (or a
+# stale path) here with a clear message instead of a generic failure mid-build.
+command -v "$ENGINE" >/dev/null 2>&1 || {
+  echo "Container engine '$ENGINE' not found in PATH (check CONTAINER_ENGINE)." >&2
+  exit 1
+}
 ENGINE="$(basename "$ENGINE")"
 
 echo ">> Engine:      $ENGINE"
