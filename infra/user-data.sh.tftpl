@@ -15,6 +15,8 @@ REGISTRY="$${ECR_REPO_URL%%/*}"   # <account>.dkr.ecr.<region>.amazonaws.com
 
 dnf install -y docker
 systemctl enable --now docker
+# Let ec2-user run docker without sudo over SSH (takes effect on next login).
+usermod -aG docker ec2-user
 
 # AL2023 ships AWS CLI v2. Auth to ECR using the instance role (no static keys).
 login_ok=0

@@ -32,9 +32,11 @@ AGENT_ID="$(tf agent_id)"
 ALIAS_ID="$(tf agent_alias_id)"
 JUDGE_MODEL="$(tf judge_model)"
 
-# The exact command to run on the box. No embedded double quotes, so it also
-# survives JSON embedding for SSM send-command below.
-DOCKER_CMD="docker run --rm \
+# The exact command to run on the box. `sudo` because ec2-user isn't in the
+# docker group over SSH (the dashboard runs as root from user-data); under SSM
+# send-command the shell is already root, so sudo is a harmless no-op. No embedded
+# double quotes, so it also survives JSON embedding for SSM send-command below.
+DOCKER_CMD="sudo docker run --rm \
 -e ATP_JUDGE_PROVIDER=bedrock -e ATP_JUDGE_REGION=$REGION -e ATP_JUDGE_MODEL=$JUDGE_MODEL \
 -v atp-data:/root/.atp atp-platform:latest \
 uv run --no-sync atp test method/cases/req-extraction \
