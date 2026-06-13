@@ -6,7 +6,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-SHIM = Path(__file__).resolve().parents[1] / "claude_code_shim.py"
+SHIM = (
+    Path(__file__).resolve().parents[3] / "method" / "spawners" / "claude_code_shim.py"
+)
 FAKE = Path(__file__).resolve().parent / "fixtures" / "fake_claude.py"
 
 
