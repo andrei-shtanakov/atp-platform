@@ -1,7 +1,7 @@
 # Copy to terraform.tfvars and fill in. Defaults already target eu-central-1 +
 # Claude Sonnet 4.5 via the EU inference profile.
 
-budget_email = "prosto.andrey.g@gmail.com"
+budget_email = "you@example.com" # where budget alerts are sent
 
 # --- Access mode ---
 # Default = SSH: set the two below; reach the dashboard via SSH tunnel.

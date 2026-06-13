@@ -1,7 +1,6 @@
 # main.tf — shared data sources and locals (ARN construction).
 
 data "aws_caller_identity" "current" {}
-data "aws_region" "current" {}
 
 # Latest Amazon Linux 2023 x86_64 AMI via SSM public parameter.
 data "aws_ssm_parameter" "al2023" {

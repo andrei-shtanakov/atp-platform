@@ -44,10 +44,13 @@ fi
 echo "[3/3] Optional paid InvokeModel (judge path end-to-end)"
 if [ "${1:-}" = "--invoke" ]; then
   BODY='{"anthropic_version":"bedrock-2023-05-31","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}'
+  # AWS CLI v2: pass raw JSON and let the CLI base64-encode it. Avoids manual
+  # `base64`, whose 76-col line wrapping (BSD/macOS) corrupts the payload.
   if aws bedrock-runtime invoke-model --region "$REGION" \
        --model-id "$PROFILE_ID" \
        --content-type application/json --accept application/json \
-       --body "$(printf '%s' "$BODY" | base64)" /dev/stdout >/dev/null 2>&1; then
+       --cli-binary-format raw-in-base64-out \
+       --body "$BODY" /dev/stdout >/dev/null 2>&1; then
     ok "InvokeModel succeeded (judge will work)"
   else
     fail "InvokeModel denied — check IAM destination-region ARNs and model access"

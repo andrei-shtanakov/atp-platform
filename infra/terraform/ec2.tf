@@ -11,9 +11,11 @@ resource "aws_security_group" "instance" {
   description = "ATP demo: optional SSH in, all out. NEVER 8080."
   vpc_id      = data.aws_vpc.default.id
 
-  # SSH only when enable_ssh=true. SSM-only mode opens ZERO inbound ports.
+  # SSH only when enable_ssh=true AND a CIDR is set. SSM-only mode opens ZERO
+  # inbound ports. Guarding on the non-null CIDR avoids a cidr_blocks=[null]
+  # error masking the clearer aws_instance precondition below.
   dynamic "ingress" {
-    for_each = var.enable_ssh ? [1] : []
+    for_each = var.enable_ssh && var.ssh_ingress_cidr != null ? [1] : []
     content {
       description = "SSH from operator IP only"
       from_port   = 22

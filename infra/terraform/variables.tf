@@ -10,7 +10,7 @@ variable "region" {
 variable "owner_tag" {
   description = "Free-form owner tag applied to all resources."
   type        = string
-  default     = "andrei"
+  default     = "change-me"
 }
 
 # --- Model / judge -----------------------------------------------------------

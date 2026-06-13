@@ -17,21 +17,26 @@ dnf install -y docker
 systemctl enable --now docker
 
 # AL2023 ships AWS CLI v2. Auth to ECR using the instance role (no static keys).
+login_ok=0
 for i in 1 2 3 4 5; do
   if aws ecr get-login-password --region "$${AWS_REGION}" \
        | docker login --username AWS --password-stdin "$${REGISTRY}"; then
+    login_ok=1
     break
   fi
   echo "ECR login attempt $${i} failed; retrying..." >&2
   sleep 10
 done
+[ "$${login_ok}" = 1 ] || { echo "FATAL: ECR login failed after 5 attempts" >&2; exit 1; }
 
 # Pull the prebuilt image (must already be pushed — see scripts/build-and-push.sh).
+pull_ok=0
 for i in 1 2 3 4 5; do
-  if docker pull "$${IMAGE}"; then break; fi
+  if docker pull "$${IMAGE}"; then pull_ok=1; break; fi
   echo "Image pull attempt $${i} failed (is it pushed yet?); retrying..." >&2
   sleep 15
 done
+[ "$${pull_ok}" = 1 ] || { echo "FATAL: image pull failed after 5 attempts (was it pushed?)" >&2; exit 1; }
 
 # Tag locally so run-sweep.sh can reference a stable name.
 docker tag "$${IMAGE}" atp-platform:latest
