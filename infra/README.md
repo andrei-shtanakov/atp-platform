@@ -96,26 +96,23 @@ ssh -i ~/.ssh/my-key.pem -L 8080:localhost:8080 ec2-user@<instance_public_dns>
 
 **SSM-only (`enable_ssh = false`):** **zero inbound ports, no key pair.** Shell and
 port-forward go through Session Manager (instance role already has
-`AmazonSSMManagedInstanceCore`; install the AWS CLI Session Manager plugin):
+`AmazonSSMManagedInstanceCore`; install the AWS CLI Session Manager plugin). The
+scripts speak SSM directly:
 
 ```bash
+./scripts/run-sweep.sh --ssm 3        # send-command + poll; no key, no open port
+
 # dashboard port-forward (replaces the SSH tunnel):
 aws ssm start-session --target <instance_id> \
   --document-name AWS-StartPortForwardingSession \
   --parameters '{"portNumber":["8080"],"localPortNumber":["8080"]}'
 #   -> http://localhost:8080/ui/
-
-# run the sweep (run-sweep.sh is SSH-based, so run the docker line in an SSM shell):
-aws ssm start-session --target <instance_id>
-#   then on the box (values from `terraform output`):
-#   docker run --rm -e ATP_JUDGE_PROVIDER=bedrock -e ATP_JUDGE_REGION=<region> \
-#     -e ATP_JUDGE_MODEL=<judge_model> -v atp-data:/root/.atp atp-platform:latest \
-#     uv run --no-sync atp test method/cases/req-extraction --adapter=bedrock \
-#     --adapter-config agent_id=<agent_id>,agent_alias_id=<agent_alias_id>,region=<region> --runs=3
 ```
 
-`<instance_id>` is a Terraform output. `run-sweep.sh` assumes SSH; an SSM-native
-variant is a TODO.
+`run-sweep.sh --ssm` runs the sweep via `aws ssm send-command` and polls to
+completion. SSM truncates inline stdout, so the full per-test results live in the
+dashboard (the run is stored in the `atp-data` volume either way).
+`<instance_id>` is a Terraform output.
 
 ## Why these choices (vs the earlier manual runbook)
 

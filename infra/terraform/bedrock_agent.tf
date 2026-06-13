@@ -29,7 +29,11 @@ data "aws_iam_policy_document" "agent_trust" {
 }
 
 resource "aws_iam_role" "agent_exec" {
-  name               = "AmazonBedrockExecutionRoleForAgents_atp_demo"
+  # name_prefix (not a fixed name) so parallel environments in one account don't
+  # collide. Terraform appends a unique suffix; the result still starts with the
+  # Bedrock-required "AmazonBedrockExecutionRoleForAgents_" prefix (36 chars, well
+  # under the 64-char role-name limit). Nothing references the name literally.
+  name_prefix        = "AmazonBedrockExecutionRoleForAgents_"
   assume_role_policy = data.aws_iam_policy_document.agent_trust.json
 }
 
