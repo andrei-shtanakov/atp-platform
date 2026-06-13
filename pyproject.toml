@@ -216,6 +216,7 @@ members = ["packages/*", "game-environments", "atp-games"]
 atp-core = { workspace = true }
 atp-adapters = { workspace = true }
 atp-dashboard = { workspace = true }
+atp-method = { workspace = true }
 atp-games = { workspace = true }
 game-environments = { workspace = true }
 atp-platform-sdk = { workspace = true }
@@ -242,6 +243,7 @@ dev = [
     "openai>=2.15.0",
     "anthropic>=0.76.0",
     "atp-games",
+    "atp-method",
     "game-environments",
     "python3-saml>=1.16.0",
     "atp-platform-sdk",

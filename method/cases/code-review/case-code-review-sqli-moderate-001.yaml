@@ -32,14 +32,15 @@ expected_failure_mode: >
   Agent misses the SEC-011 f-string SQL injection on line 12, or flags a compliant
   distractor line (10/11/14) as a violation.
 grader:
-  type: model_graded
-  # gold is injected verbatim into the judge prompt (not loaded from disk), so it
-  # holds the reference review inline.
-  gold: >-
-    SEC-011 | app.py:12 (the f-string-interpolated SQL) | severity: critical |
-    SQL injection — fix with a parameterized query (cursor.execute(sql, params)).
-    No other issues: the renamed variable (line 10), the debug log (line 11), and
-    the return (line 14) are compliant and MUST NOT be flagged.
+  type: findings_match
+  expected_findings:
+    - rule_ids: [SEC-011, sql-injection, cwe-89]
+      anchor: 'f"SELECT * FROM users WHERE id = {user_id}"'
+      severity: critical
+  must_not_flag:
+    - anchor: 'user_id = request.args["id"]'
+    - anchor: 'logger.debug("looking up user")'
+    - anchor: 'return jsonify(rows)'
   rubric:
     - criterion: severity = high/critical
       weight: 0.3

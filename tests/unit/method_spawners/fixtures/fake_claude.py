@@ -12,13 +12,18 @@ import sys
 _ = sys.argv
 _ = sys.stdin.read() if not sys.stdin.isatty() else ""
 
+_FINDINGS = (
+    '[{"rule_id": "sql-injection", "file": "app.py",'
+    ' "anchor": "query = f\\"SELECT",'
+    ' "severity": "critical", "fix": "use a parameterized query"}]'
+)
+
 print(
     json.dumps(
         {
             "type": "result",
             "subtype": "success",
-            "result": "SEC-011 violation at app.py:12 (severity: critical) — raw SQL "
-            "built via f-string. Fix: use a parameterized query.",
+            "result": _FINDINGS,
             "total_cost_usd": 0.0123,
             "usage": {"input_tokens": 800, "output_tokens": 120},
             "num_turns": 1,

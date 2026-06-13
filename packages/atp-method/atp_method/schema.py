@@ -40,7 +40,13 @@ ToolName = Literal["web_search", "file_read", "file_write", "api_call", "none"]
 SideEffects = Literal["none", "reversible", "irreversible"]
 ArtifactType = Literal["text", "file", "transcript", "table", "image", "url"]
 GraderType = Literal[
-    "exact", "regex", "programmatic", "rubric", "model_graded", "human"
+    "exact",
+    "regex",
+    "programmatic",
+    "findings_match",
+    "rubric",
+    "model_graded",
+    "human",
 ]
 TurnRole = Literal["user", "inject", "assistant"]
 
@@ -64,6 +70,24 @@ class RubricItem(BaseModel):
 
     criterion: str = Field(..., min_length=1)
     weight: float = Field(..., ge=0.0, le=1.0)
+
+
+class ExpectedFinding(BaseModel):
+    """A planted defect the agent MUST surface (anchor + rule synonyms)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    rule_ids: list[str] = Field(..., min_length=1)
+    anchor: str = Field(..., min_length=1)
+    severity: Literal["critical", "major", "minor"] = "critical"
+
+
+class ForbiddenAnchor(BaseModel):
+    """A compliant line the agent MUST NOT flag (false-positive trap)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    anchor: str = Field(..., min_length=1)
 
 
 class Turn(BaseModel):
@@ -103,14 +127,25 @@ class Grader(BaseModel):
     rubric: list[RubricItem] | None = Field(default=None, min_length=1)
     critical_check: str = Field(..., min_length=1)
     scoring: str = Field(..., min_length=1)
+    expected_findings: list[ExpectedFinding] | None = None
+    must_not_flag: list[ForbiddenAnchor] | None = None
 
     @model_validator(mode="after")
     def validate_grader_requirements(self) -> Grader:
-        """Mirror schema allOf: rubric/model_graded need a rubric; exact needs gold."""
+        """Mirror schema allOf: rubric/model_graded need a rubric; exact needs gold.
+
+        findings_match graders require expected_findings to be present (use [] for
+        compliant cases with no planted defect).
+        """
         if self.type in ("rubric", "model_graded") and not self.rubric:
             raise ValueError(f"grader type '{self.type}' requires a rubric")
         if self.type == "exact" and not self.gold:
             raise ValueError("grader type 'exact' requires a gold reference")
+        if self.type == "findings_match" and self.expected_findings is None:
+            raise ValueError(
+                "grader type 'findings_match' requires expected_findings "
+                "(use [] for a compliant case with no planted defect)"
+            )
         return self
 
 

@@ -69,6 +69,12 @@ def _assertions(case: AgentEvalCase) -> list[Assertion]:
                 "expected_failure_mode": case.expected_failure_mode,
                 "grader_type": case.grader.type,
                 "gold": case.grader.gold,
+                "expected_findings": [
+                    f.model_dump() for f in (case.grader.expected_findings or [])
+                ],
+                "must_not_flag": [
+                    m.model_dump() for m in (case.grader.must_not_flag or [])
+                ],
             },
         )
     ]
