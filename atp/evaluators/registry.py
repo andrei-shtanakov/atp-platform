@@ -9,6 +9,7 @@ from .code_exec import CodeExecEvaluator
 from .composite import CompositeEvaluator
 from .factuality import FactualityEvaluator
 from .filesystem import FilesystemEvaluator
+from .findings.evaluator import FindingsMatchEvaluator
 from .llm_judge import LLMJudgeEvaluator
 from .performance import PerformanceEvaluator
 from .security import SecurityEvaluator
@@ -45,6 +46,7 @@ class EvaluatorRegistry:
         self.register("style", StyleEvaluator)
         self.register("filesystem", FilesystemEvaluator)
         self.register("composite", CompositeEvaluator)
+        self.register("findings_match", FindingsMatchEvaluator)
 
         self._register_assertion_mapping("artifact_exists", "artifact")
         self._register_assertion_mapping("contains", "artifact")
@@ -92,6 +94,9 @@ class EvaluatorRegistry:
 
         # Composite assertions
         self._register_assertion_mapping("composite", "composite")
+
+        # Findings match assertions
+        self._register_assertion_mapping("findings_match", "findings_match")
 
     def register(
         self,
