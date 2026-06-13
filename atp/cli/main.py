@@ -1050,9 +1050,7 @@ async def _save_results_to_db(
                 # test wasn't scored. `status` stays execution-based: the test
                 # still "completed" even when it failed the evaluation.
                 scored = (
-                    scored_results.get(test_result.test.id)
-                    if scored_results
-                    else None
+                    scored_results.get(test_result.test.id) if scored_results else None
                 )
                 test_score = scored.score if scored is not None else None
                 # A test passes only if it BOTH executed successfully AND passed

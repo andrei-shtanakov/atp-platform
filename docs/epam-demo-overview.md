@@ -26,7 +26,7 @@ results are directly comparable.
 | Grader (judge) | local model (Ollama/vLLM) — air-gapped | **Bedrock-Claude** via IAM role |
 | Keys / secrets | none (fully offline) | none (IAM role) |
 | Test content | `method/cases/req-extraction` (the same sweep) | the same sweep |
-| Run it | [`examples/compose-demo/`](../examples/compose-demo/) — **validated live** | [`examples/aws-cloud/`](../examples/aws-cloud/) — runbook + IAM/EC2 scaffold |
+| Run it | [`examples/compose-demo/`](../examples/compose-demo/) — **validated live** | [`infra/`](../infra/) — Terraform (ECR + IAM/EC2 + Bedrock Agent) |
 
 The only differences between the two columns are the adapter and a couple of env
 vars. That is the whole point.
@@ -87,7 +87,7 @@ export to any OTLP backend; Prometheus metrics are exposed.
 | You want to… | Go to |
 |--------------|-------|
 | Run the on-prem demo locally | [`examples/compose-demo/`](../examples/compose-demo/) + [`DEMO.md`](../examples/compose-demo/DEMO.md) |
-| Stand up the AWS cloud variant | [`examples/aws-cloud/`](../examples/aws-cloud/) |
+| Stand up the AWS cloud variant | [`infra/`](../infra/) — `terraform apply` + `../scripts/` |
 | Understand the methodology | [`method/METHODOLOGY.md`](../method/METHODOLOGY.md) |
 | See the architecture | [`docs/03-architecture.md`](03-architecture.md) |
 

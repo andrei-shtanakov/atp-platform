@@ -1,0 +1,54 @@
+#!/bin/bash
+# EC2 user-data (Amazon Linux 2023) — PULL the prebuilt ATP image from ECR and
+# start the dashboard bound to localhost. No on-box `docker build`, no git clone:
+# that removes the slow/OOM-prone build and the GitHub-vs-GitLab sync risk.
+#
+# Rendered by Terraform (templatefile) with: aws_region, ecr_repo_url, image_tag.
+# No `set -x` — would echo the generated ATP_SECRET_KEY into cloud-init logs.
+set -euo pipefail
+
+AWS_REGION="${aws_region}"
+ECR_REPO_URL="${ecr_repo_url}"
+IMAGE_TAG="${image_tag}"
+IMAGE="$${ECR_REPO_URL}:$${IMAGE_TAG}"
+REGISTRY="$${ECR_REPO_URL%%/*}"   # <account>.dkr.ecr.<region>.amazonaws.com
+
+dnf install -y docker
+systemctl enable --now docker
+
+# AL2023 ships AWS CLI v2. Auth to ECR using the instance role (no static keys).
+login_ok=0
+for i in 1 2 3 4 5; do
+  if aws ecr get-login-password --region "$${AWS_REGION}" \
+       | docker login --username AWS --password-stdin "$${REGISTRY}"; then
+    login_ok=1
+    break
+  fi
+  echo "ECR login attempt $${i} failed; retrying..." >&2
+  sleep 10
+done
+[ "$${login_ok}" = 1 ] || { echo "FATAL: ECR login failed after 5 attempts" >&2; exit 1; }
+
+# Pull the prebuilt image (must already be pushed — see scripts/build-and-push.sh).
+pull_ok=0
+for i in 1 2 3 4 5; do
+  if docker pull "$${IMAGE}"; then pull_ok=1; break; fi
+  echo "Image pull attempt $${i} failed (is it pushed yet?); retrying..." >&2
+  sleep 15
+done
+[ "$${pull_ok}" = 1 ] || { echo "FATAL: image pull failed after 5 attempts (was it pushed?)" >&2; exit 1; }
+
+# Tag locally so run-sweep.sh can reference a stable name.
+docker tag "$${IMAGE}" atp-platform:latest
+
+# Dashboard, bound to localhost ONLY. Reach via SSH tunnel / SSM port-forward —
+# do NOT expose 8080 in the security group, do NOT disable auth. First user to
+# register becomes admin.
+docker run -d --restart unless-stopped --name atp-dashboard \
+  -p 127.0.0.1:8080:8080 \
+  -e ATP_SECRET_KEY="$(openssl rand -hex 32)" \
+  -v atp-data:/root/.atp \
+  atp-platform:latest \
+  uv run --no-sync atp dashboard --host 0.0.0.0 --port 8080
+
+echo "user-data complete: dashboard on 127.0.0.1:8080, image $${IMAGE}" >&2
