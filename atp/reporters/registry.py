@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from .base import Reporter
+from .benchmark_reporter import BenchmarkReporter
 from .console import ConsoleReporter
 from .html_reporter import HTMLReporter
 from .json_reporter import JSONReporter
@@ -32,6 +33,7 @@ class ReporterRegistry:
         self.register("html", HTMLReporter)
         self.register("json", JSONReporter)
         self.register("junit", JUnitReporter)
+        self.register("report_benchmark", BenchmarkReporter)
 
     def register(
         self,
