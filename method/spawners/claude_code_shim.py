@@ -22,9 +22,11 @@ MODEL = os.environ.get("CLAUDE_MODEL", "claude-opus-4-8")
 CLAUDE_BIN = os.environ.get("CLAUDE_BIN", "claude")
 
 REVIEW_ENVELOPE = (
-    "You are a senior code reviewer. Review the material below. Report each issue "
-    "with rule_id, file:line, severity, and a concrete fix. Do not invent issues. "
-    "Output only the review.\n\n{task}"
+    "You are a senior code reviewer. Review the material below. Output ONLY a JSON "
+    "array of findings (no prose, no markdown fence). Each finding is an object with "
+    'keys: "rule_id" (the rule/CWE id), "file", "anchor" (the exact offending code '
+    'substring), "severity" (critical|major|minor), "fix". If the code is compliant, '
+    "output an empty array [].\n\n{task}"
 )
 
 

@@ -37,6 +37,10 @@ def test_shim_emits_valid_atp_response_with_review_artifact() -> None:
     assert resp["status"] == "completed"
     arts = resp["artifacts"]
     assert len(arts) == 1
-    assert "SEC-011" in arts[0]["content"]
+    import json as _json
+
+    findings = _json.loads(arts[0]["content"])
+    assert findings[0]["rule_id"] == "sql-injection"
+    assert "SELECT" in findings[0]["anchor"]
     assert resp["metrics"]["total_tokens"] == 920
     assert resp["metrics"]["cost_usd"] == 0.0123
