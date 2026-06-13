@@ -1,7 +1,7 @@
 """Storage layer for persisting ATP test results to the database."""
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 from atp.core.results import (
@@ -32,17 +32,29 @@ from atp.dashboard.models import (
 )
 
 
+def _json_default(obj: Any) -> str:
+    """JSON fallback for values the default encoder rejects.
+
+    Datetimes/dates use ``isoformat()`` (the ISO-8601 form the dashboard's JS
+    consumers expect — ``new Date(...)``), consistent with the rest of the
+    dashboard; anything else falls back to ``str()``.
+    """
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    return str(obj)
+
+
 def _json_safe(value: Any) -> Any:
     """Coerce a value into something a JSON column can serialize.
 
     Bedrock (boto3) trace artifacts embed ``datetime`` objects, which the default
     JSON serializer rejects ("Object of type datetime is not JSON serializable"),
-    aborting the whole result save. Round-trip through ``json`` with
-    ``default=str`` so any datetime (or other non-JSON value) becomes a string.
+    aborting the whole result save. Round-trip through ``json`` so any datetime
+    (or other non-JSON value) is coerced via :func:`_json_default`.
     """
     if value is None:
         return None
-    return json.loads(json.dumps(value, default=str))
+    return json.loads(json.dumps(value, default=_json_default))
 
 
 class ResultStorage:
