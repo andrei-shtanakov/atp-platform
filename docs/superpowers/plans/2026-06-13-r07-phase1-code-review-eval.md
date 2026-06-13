@@ -21,7 +21,12 @@
 - `method/spawners/tests/test_claude_code_shim.py` — shim unit tests using a fake `claude` stub.
 - `method/spawners/tests/fixtures/fake_claude.py` — deterministic stub emitting a canned `--output-format json` payload.
 - `method/kb/sec-rules.md` — KB rule excerpt (SEC-011) used as a case artifact.
-- `method/gold/code-review-sqli-001.md` — gold reference review for the rubric grader.
+- ~~`method/gold/code-review-sqli-001.md`~~ — **CORRECTION (post-review):** the
+  AgentEvalCaseEvaluator injects `grader.gold` *verbatim* into the judge prompt
+  (it does NOT load a file path), so a path would feed the judge the literal
+  string. The gold reference is therefore inlined per-case in the YAML, and each
+  case gets its OWN gold (the clean case's gold says "compliant — zero violations",
+  not the SEC-011 violation writeup). No gold file is created.
 - `method/cases/code-review/case-code-review-sqli-clean-001.yaml` — seed case, axis_level=clean.
 - `method/cases/code-review/case-code-review-sqli-moderate-001.yaml` — seed case, axis_level=moderate.
 - `atp/reporters/benchmark_reporter.py` — new reporter emitting `report_benchmark-v1`.
@@ -455,8 +460,9 @@ def test_payload_conforms_to_contract_and_aggregates() -> None:
     # score = critical_pass_rate (1 of 2 passed) -> 0.5
     assert payload["score"] == 0.5
     assert payload["score_components"]["critical_pass_rate"] == 0.5
-    # breakpoint = lowest axis_level whose critical_check failed
-    assert payload["score_components"]["breakpoint_axis_level"] == "moderate"
+    # breakpoint is TOP-LEVEL: score_components is numbers-only per the schema
+    # (additionalProperties: {type: number}), so the string can't live there.
+    assert payload["breakpoint_axis_level"] == "moderate"
     assert payload["per_task_total_count"] == 2
     assert payload["total_tokens"] == 1840
 ```

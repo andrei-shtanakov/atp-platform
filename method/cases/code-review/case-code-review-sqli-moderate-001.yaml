@@ -33,7 +33,13 @@ expected_failure_mode: >
   distractor line (10/11/14) as a violation.
 grader:
   type: model_graded
-  gold: method/gold/code-review-sqli-001.md
+  # gold is injected verbatim into the judge prompt (not loaded from disk), so it
+  # holds the reference review inline.
+  gold: >-
+    SEC-011 | app.py:12 (the f-string-interpolated SQL) | severity: critical |
+    SQL injection — fix with a parameterized query (cursor.execute(sql, params)).
+    No other issues: the renamed variable (line 10), the debug log (line 11), and
+    the return (line 14) are compliant and MUST NOT be flagged.
   rubric:
     - criterion: severity = high/critical
       weight: 0.3

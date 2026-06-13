@@ -57,7 +57,7 @@ def main() -> int:
                 {
                     "version": "1.0",
                     "task_id": request.get("task_id", ""),
-                    "status": "error",
+                    "status": "failed",
                     "artifacts": [],
                     "metrics": {},
                     "error": proc.stderr.decode()[:2000],

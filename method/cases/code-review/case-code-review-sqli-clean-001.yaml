@@ -29,7 +29,12 @@ expected_failure_mode: >
   Agent invents a SEC-011 violation on the parameterized (compliant) query.
 grader:
   type: model_graded
-  gold: method/gold/code-review-sqli-001.md
+  # gold is injected verbatim into the judge prompt (not loaded from disk), so it
+  # holds the reference text inline. This case is COMPLIANT — the gold reflects that.
+  gold: >-
+    No issues. The diff uses a parameterized query
+    (cursor.execute(query, (user_id,))) — SEC-011 compliant. A correct review
+    reports zero violations and fabricates no rule citations.
   rubric:
     - criterion: reports zero security violations (the diff is compliant)
       weight: 0.6

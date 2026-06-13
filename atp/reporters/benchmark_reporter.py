@@ -92,8 +92,16 @@ class BenchmarkReporter(Reporter):
         return "report_benchmark"
 
     def report(self, report: SuiteReport) -> None:
-        """No-op: use ``build_report_benchmark_payload`` for payload generation.
+        """Fail fast — this is not a SuiteReport formatter.
 
-        This stub satisfies the ``Reporter`` ABC; the actual payload builder
-        is the module-level function ``build_report_benchmark_payload``.
+        The arbiter payload is built from per-case (critical_pass / rubric /
+        axis_level) results via the module-level
+        ``build_report_benchmark_payload``; a generic ``SuiteReport`` does not
+        carry that shape. Raising here prevents a silent "successful" run that
+        produces no output when selected as an output format. (Wiring a real
+        SuiteReport→payload mapping is Phase-1b.)
         """
+        raise NotImplementedError(
+            "BenchmarkReporter does not format a SuiteReport. Call "
+            "build_report_benchmark_payload(...) from the run wiring instead."
+        )
