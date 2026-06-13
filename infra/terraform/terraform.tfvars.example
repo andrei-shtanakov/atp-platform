@@ -1,0 +1,19 @@
+# Copy to terraform.tfvars and fill in. Defaults already target eu-central-1 +
+# Claude Sonnet 4.5 via the EU inference profile.
+
+budget_email = "prosto.andrey.g@gmail.com"
+
+# --- Access mode ---
+# Default = SSH: set the two below; reach the dashboard via SSH tunnel.
+key_pair_name    = "my-ec2-keypair"  # existing EC2 key pair name
+ssh_ingress_cidr = "203.0.113.10/32" # YOUR public IP /32 — never 0.0.0.0/0
+
+# SSM-only (zero inbound ports, no key pair) — uncomment and drop the two above:
+# enable_ssh = false
+
+# Optional overrides:
+# region               = "eu-central-1"
+# instance_type        = "t3.small"
+# image_tag            = "latest"
+# source_version       = "v1"
+# monthly_budget_usd   = 5

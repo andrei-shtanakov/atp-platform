@@ -1,0 +1,19 @@
+# Terraform — never commit state (may contain secrets/ARNs) or local vars.
+# NOTE: .terraform.lock.hcl IS committed (pins provider versions) — not ignored.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+
+# Local variable files with real values (commit only terraform.tfvars.example).
+terraform.tfvars
+*.auto.tfvars
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Operator artifacts
+*.pem
