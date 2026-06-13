@@ -10,6 +10,15 @@
 
 **Spec:** `docs/superpowers/specs/2026-06-13-r07-phase1b-structured-findings-grading-design.md`
 
+> **CORRECTION (during execution):** use a dedicated grader type **`findings_match`**,
+> NOT `programmatic`. The req-extraction cases are already `grader.type: programmatic`
+> and LLM-judged — overloading `programmatic` to dispatch to the matcher would silently
+> kill their fabricated-deadline trap. So: add `findings_match` to the GraderType Literal;
+> the validator requires `expected_findings` present (`[]` allowed) for `findings_match`;
+> Task 4 dispatches on `grader_type == "findings_match"`; Task 6 cases use
+> `grader.type: findings_match`. `programmatic` is left untouched (req-extraction unaffected).
+> Wherever this plan says `programmatic` below for the *new* code-review path, read `findings_match`.
+
 ---
 
 ## File Structure
