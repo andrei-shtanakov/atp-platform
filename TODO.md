@@ -39,6 +39,28 @@
   - A/B тестирование arbiter DT routing vs random vs always-best-agent
   - Совместно с `../arbiter/` — набор test suites на нашей стороне
 
+  - **Phase 1 (2026-06-13): code-review вертикаль — тонкий срез.** Планы:
+    [`docs/superpowers/plans/2026-06-13-r07-phase1-code-review-eval.md`](docs/superpowers/plans/2026-06-13-r07-phase1-code-review-eval.md)
+    (atp, PR #171) + `../arbiter/2026-06-13-r07-phase1-arbiter-rerank-plan.md`.
+    - [x] atp-срез: vendored контракт + claude_code shim (CLI-adapter) + 2 кейса
+      (clean/moderate, SEC-011) + `report_benchmark` reporter + smoke. Ветка `r07/code-review-eval`.
+    - [ ] **Задача 6 — pipe-check (НЕ бенчмарк):** прогон против живого `claude` + судьи,
+      убедиться что труба пропускает реальный сигнал. Платно, `--runs=1`.
+    - [ ] **arbiter-план** (reader + re-rank + A/B) — написан, не исполнен; после go.
+
+  - **Phase-1b/2 (через БРЕЙНШТОРМ, после pipe-check):** 4 вопроса 2026-06-13 показали,
+    что MVP — узкий зонд. Внедряем оси (приоритет в порядке):
+    - [ ] **#1 структурированный вывод (JSON findings) + `programmatic` critical_check** —
+      детерминизм вместо `model_graded` (как `examples/req-extraction-json`). Высший приоритет.
+    - [ ] **#4 языковая ось** — в схеме `agent-eval-case` нет поля `language`, а arbiter
+      роутит по языку (`features.rs` f[1]/f[16]) → скоры надо разбивать по языку + протянуть
+      в `benchmark_runs`. Влияет на валидность роутинга.
+    - [ ] **#2 correctness-семейство** — `code-review-correctness` (capability `correctness`):
+      посеянные ЛОГИЧЕСКИЕ баги / расхождение с требованием, не только нарушение правил.
+    - ❌ **#3 проверка использования линтеров — НЕ делаем.** Линтеры детерминированы; LLM
+      бенчмаркаем на семантике. Запуск линтера агентом = file_write/exec = возврат проблемы
+      fidelity спавнера, от которой ушли через text-out.
+
 ### Ждём от других проектов
 
 - **Maestro → R-03**: без MCP-клиента в Maestro невозможен feedback loop в arbiter → отложить R-06b/R-07

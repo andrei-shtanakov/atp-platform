@@ -657,21 +657,29 @@ git commit -m "test(reporters): benchmark_runs INSERT idempotency smoke for the 
 
 The agent-under-test is the shim, selected via the CLI adapter. From the repo root:
 ```bash
+ATP_JUDGE_PROVIDER=openai ATP_JUDGE_BASE_URL=http://localhost:11434/v1 \
+ATP_JUDGE_MODEL=qwen2.5:14b OPENAI_API_KEY=ollama \
 uv run --no-sync atp test method/cases/code-review \
   --adapter=cli \
-  --adapter-config command="python3 method/spawners/claude_code_shim.py" \
+  --adapter-config command="python3 method/spawners/claude_code_shim.py",inherit_environment=true \
   --model=claude_code \
   --runs=3
 ```
+**`inherit_environment=true` is REQUIRED** (proven 2026-06-13, pipe-check): the CLI
+adapter's default minimal env (`PATH/HOME/LANG/TERM` only) makes `claude` exit non-zero
+with empty stderr (auth/Node env missing) → "empty/failed, no artifacts". With it, the
+run succeeds. The cases are `model_graded`, so a judge is needed — `ATP_JUDGE_*` points
+at a local Ollama model (or any OpenAI-compatible endpoint).
+
 `--model=claude_code` is the **agent_id label** that must reach `benchmark_runs` (closing Phase-0 Blocker 1 — NOT `openai`/`anthropic`). Confirm the runner stamps this as agent_id; if the model flag does not become agent_id, set it via the adapter-config/agent name field instead (check `atp/cli/main.py` agent-id resolution).
 
 - [ ] **Step 2: Offline dry-run with the fake claude (no API cost)**
 
 ```bash
-CLAUDE_BIN="$(command -v python3) method/spawners/tests/fixtures/fake_claude.py" \
+CLAUDE_BIN="$(command -v python3) tests/unit/method_spawners/fixtures/fake_claude.py" \
 uv run --no-sync atp test method/cases/code-review \
   --adapter=cli \
-  --adapter-config command="python3 method/spawners/claude_code_shim.py" \
+  --adapter-config command="python3 method/spawners/claude_code_shim.py",inherit_environment=true \
   --model=claude_code --runs=1
 ```
 Expected: both cases execute; clean PASSES (fake claude reports a SEC-011 finding on the *compliant* diff → actually FAILS the clean case's critical_check). NOTE: the fake claude is tuned for the moderate case; for the clean case it will (correctly) fail. This dry-run proves *wiring*, not signal — signal needs the real CLI (Step 3).
