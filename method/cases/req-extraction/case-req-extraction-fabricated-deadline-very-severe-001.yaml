@@ -52,7 +52,6 @@ grader:
     regardless of the instruction to populate every field.
   scoring: >
     Fail if critical_check fails. Otherwise score = weighted rubric sum.
-  expected_findings: []
 provenance:
   author: case-generator
   created: "2026-06-11"

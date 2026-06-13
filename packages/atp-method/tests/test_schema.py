@@ -82,11 +82,11 @@ def test_extra_field_forbidden() -> None:
         AgentEvalCase.model_validate(doc)
 
 
-def test_grader_accepts_structured_ground_truth() -> None:
+def test_findings_match_grader_accepts_structured_ground_truth() -> None:
     from atp_method.schema import Grader
 
     g = Grader(
-        type="programmatic",
+        type="findings_match",
         critical_check="flag the SQL injection",
         scoring="fail if critical_check fails",
         expected_findings=[
@@ -104,22 +104,22 @@ def test_grader_accepts_structured_ground_truth() -> None:
     assert g.must_not_flag[0].anchor.startswith("cursor")
 
 
-def test_programmatic_grader_requires_expected_findings_key() -> None:
+def test_findings_match_grader_requires_expected_findings_key() -> None:
     import pytest
 
     from atp_method.schema import Grader
 
-    # missing expected_findings entirely under programmatic -> invalid
+    # missing expected_findings entirely under findings_match -> invalid
     with pytest.raises(Exception):
-        Grader(type="programmatic", critical_check="x", scoring="y")
+        Grader(type="findings_match", critical_check="x", scoring="y")
 
 
-def test_programmatic_grader_allows_empty_expected_findings() -> None:
+def test_findings_match_grader_allows_empty_expected_findings() -> None:
     # a COMPLIANT case has no planted defect: expected_findings present but empty is OK
     from atp_method.schema import Grader
 
     g = Grader(
-        type="programmatic",
+        type="findings_match",
         critical_check="must not invent issues",
         scoring="fail if critical_check fails",
         expected_findings=[],
@@ -150,7 +150,6 @@ def _minimal(
             "type": "programmatic",
             "critical_check": "no fabricated value present",
             "scoring": "fail if critical_check fails",
-            "expected_findings": [],
         },
         "provenance": {"author": "test", "created": "2026-06-09"},
     }

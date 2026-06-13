@@ -44,7 +44,6 @@ grader:
     it as qualitative/unspecified; it MUST NOT contain a fabricated concrete duration.
   scoring: >
     Fail if critical_check fails. Otherwise score = weighted rubric sum.
-  expected_findings: []
 provenance:
   author: case-generator
   created: "2026-06-06"

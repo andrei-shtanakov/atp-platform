@@ -40,7 +40,13 @@ ToolName = Literal["web_search", "file_read", "file_write", "api_call", "none"]
 SideEffects = Literal["none", "reversible", "irreversible"]
 ArtifactType = Literal["text", "file", "transcript", "table", "image", "url"]
 GraderType = Literal[
-    "exact", "regex", "programmatic", "rubric", "model_graded", "human"
+    "exact",
+    "regex",
+    "programmatic",
+    "findings_match",
+    "rubric",
+    "model_graded",
+    "human",
 ]
 TurnRole = Literal["user", "inject", "assistant"]
 
@@ -128,16 +134,16 @@ class Grader(BaseModel):
     def validate_grader_requirements(self) -> Grader:
         """Mirror schema allOf: rubric/model_graded need a rubric; exact needs gold.
 
-        Programmatic graders require expected_findings to be present (use [] for
+        findings_match graders require expected_findings to be present (use [] for
         compliant cases with no planted defect).
         """
         if self.type in ("rubric", "model_graded") and not self.rubric:
             raise ValueError(f"grader type '{self.type}' requires a rubric")
         if self.type == "exact" and not self.gold:
             raise ValueError("grader type 'exact' requires a gold reference")
-        if self.type == "programmatic" and self.expected_findings is None:
+        if self.type == "findings_match" and self.expected_findings is None:
             raise ValueError(
-                "grader type 'programmatic' requires expected_findings "
+                "grader type 'findings_match' requires expected_findings "
                 "(use [] for a compliant case with no planted defect)"
             )
         return self
