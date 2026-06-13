@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ATP AWS Bedrock demo — architecture</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+    <script>
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'default',
+            securityLevel: 'loose',
+            flowchart: { htmlLabels: true, curve: 'basis' },
+            sequence: { showSequenceNumbers: false },
+            er: { useMaxWidth: true }
+        });
+    </script>
+    <style>
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #333333;
+            --card-bg: #ffffff;
+            --border-color: #e0e0e0;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-weight: 600;
+        }
+        .diagram-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .diagram-title {
+            font-size: 1.2em;
+            font-weight: 600;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .mermaid {
+            display: flex;
+            justify-content: center;
+            overflow-x: auto;
+            padding: 20px 0;
+        }
+        .mermaid svg {
+            max-width: 100%;
+            height: auto;
+        }
+        .controls {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .controls button {
+            background: #4a6fa5;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 0 5px;
+            font-size: 14px;
+        }
+        .controls button:hover {
+            background: #3d5d8c;
+        }
+        .zoom-controls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        .zoom-controls button {
+            width: 36px;
+            height: 36px;
+            border: none;
+            background: var(--bg-color);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 18px;
+            margin: 2px;
+        }
+        .zoom-controls button:hover {
+            background: var(--border-color);
+        }
+        @media print {
+            .controls, .zoom-controls { display: none; }
+            .diagram-card { break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ATP AWS Bedrock demo — architecture</h1>
+        <p>Two views of the <code>infra/</code> Terraform demo: a resource/IAM map
+        (where processes run) and the request flow of a single methodology sweep.</p>
+
+        <div class="diagram-card">
+            <div class="diagram-title">Resource &amp; IAM map</div>
+            <pre class="mermaid">
+flowchart TB
+    subgraph OP[&quot;🖥️ Operator machine (your Mac)&quot;]
+        TF[terraform apply/destroy]
+        POD[podman build + push]
+        PRE[preflight.sh]
+        RS[run-sweep.sh]
+        TUN[ssh -L / ssm port-forward]
+    end
+
+    subgraph AWS[&quot;☁️ AWS account · eu-central-1&quot;]
+        ECR[(&quot;ECR repo&lt;br/&gt;atp-platform:latest&lt;br/&gt;lifecycle: keep last 3&quot;)]
+        BUD[&quot;Budgets $5 alert&quot;]
+
+        subgraph EC2[&quot;EC2 t3.small · AL2023 · IMDSv2 hop=2&quot;]
+            SG[&quot;Security group&lt;br/&gt;SSH:22 optional · NEVER 8080&quot;]
+            DKR[&quot;Docker daemon&quot;]
+            DASH[&quot;atp-dashboard&lt;br/&gt;127.0.0.1:8080&quot;]
+            RUN[&quot;atp test container (--rm)&quot;]
+            VOL[(&quot;atp-data volume&lt;br/&gt;SQLite /root/.atp&quot;)]
+            SSM[&quot;SSM agent&quot;]
+        end
+
+        subgraph IAMG[&quot;IAM — no static keys&quot;]
+            ROLE[&quot;EC2 instance role&lt;br/&gt;InvokeAgent + InvokeModel*&lt;br/&gt;+ GetInferenceProfile&lt;br/&gt;+ ECR pull + SSM core&quot;]
+            AROLE[&quot;Bedrock agent exec-role&lt;br/&gt;InvokeModel* + GetInferenceProfile&quot;]
+        end
+
+        subgraph BR[&quot;Bedrock — managed (no server you run)&quot;]
+            AGENT[&quot;Agent under test&lt;br/&gt;agent_id · alias &#x27;live&#x27;&quot;]
+            MODEL[&quot;Claude Sonnet 4.5&lt;br/&gt;EU cross-region&lt;br/&gt;inference profile&quot;]
+        end
+    end
+
+    TF --&gt;|provisions| AWS
+    POD --&gt;|push image| ECR
+    PRE -.-&gt;|&quot;your SSO/profile creds:&lt;br/&gt;describe + 1-token invoke&quot;| BR
+    RS --&gt;|&quot;ssh:22 / ssm send-command&quot;| EC2
+    TUN --&gt;|8080 over tunnel| DASH
+
+    ECR --&gt;|pull| DKR
+    DKR --&gt; DASH
+    DKR --&gt; RUN
+    RUN --&gt;|reads creds via IMDSv2| ROLE
+    ROLE --&gt;|&quot;bedrock:InvokeAgent&quot;| AGENT
+    ROLE --&gt;|&quot;bedrock:InvokeModel&lt;br/&gt;the judge&quot;| MODEL
+    AGENT -. assumes .-&gt; AROLE
+    AROLE --&gt;|orchestration model| MODEL
+    RUN --&gt;|write results| VOL
+    DASH --&gt;|read results| VOL
+
+    classDef managed fill:#fff3cd,stroke:#d39e00;
+    classDef box fill:#d4edda,stroke:#28a745;
+    classDef op fill:#cce5ff,stroke:#0066cc;
+    class AGENT,MODEL,ECR,BUD managed;
+    class DKR,DASH,RUN,VOL,SSM,SG box;
+    class TF,POD,PRE,RS,TUN op;
+            </pre>
+        </div>
+
+        <div class="diagram-card">
+            <div class="diagram-title">Single-run sequence</div>
+            <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    actor Op as Operator (your Mac)
+    participant EC2 as EC2 box&lt;br/&gt;(Docker daemon)
+    participant IMDS as IMDSv2&lt;br/&gt;(instance role, hop=2)
+    participant ATP as atp test container&lt;br/&gt;(--rm, --adapter=bedrock)
+    participant Agent as Bedrock Agent&lt;br/&gt;(under test, alias)
+    participant Judge as Bedrock model&lt;br/&gt;(Sonnet 4.5 judge,&lt;br/&gt;EU inference profile)
+    participant Vol as atp-data volume&lt;br/&gt;(SQLite /root/.atp)
+    participant Dash as atp-dashboard&lt;br/&gt;(127.0.0.1:8080)
+
+    Op-&gt;&gt;EC2: run-sweep.sh → ssh/ssm:&lt;br/&gt;sudo docker run … atp test … --runs=3
+    EC2-&gt;&gt;ATP: start container (mounts atp-data)
+    ATP-&gt;&gt;IMDS: read instance role creds (boto3 default chain)
+    IMDS--&gt;&gt;ATP: temporary IAM credentials
+
+    loop 4 cases × 3 runs
+        ATP-&gt;&gt;Agent: bedrock:InvokeAgent (policy excerpt)
+        Note over Agent: orchestrates via its&lt;br/&gt;foundationModel (EU profile)
+        Agent--&gt;&gt;ATP: response + traces (datetime fields)
+        ATP-&gt;&gt;Judge: bedrock:InvokeModel (critical_check + rubric)
+        Judge--&gt;&gt;ATP: verdict + score (0..1)
+        Note over ATP: hard-gate: fabricated deadline → 0,&lt;br/&gt;else weighted rubric
+        ATP-&gt;&gt;Vol: persist result + artifact&lt;br/&gt;(_json_safe coerces datetime → ISO)
+    end
+
+    ATP--&gt;&gt;EC2: exit (container removed, --rm)
+    EC2--&gt;&gt;Op: sweep summary (stdout / SSM)
+
+    Note over Vol,Dash: dashboard mounts the SAME named volume → same SQLite DB
+    Op-&gt;&gt;Dash: ssh -L 8080 tunnel → GET /ui/runs
+    Dash-&gt;&gt;Vol: query results
+    Vol--&gt;&gt;Dash: Execution #1 (clean/moderate/very_severe=80, severe=0)
+    Dash--&gt;&gt;Op: rendered run detail
+            </pre>
+        </div>
+    </div>
+    <div class="zoom-controls">
+        <button onclick="zoom(1.2)" title="Zoom In">+</button>
+        <button onclick="zoom(0.8)" title="Zoom Out">−</button>
+        <button onclick="zoom(1, true)" title="Reset">⟲</button>
+    </div>
+    <script>
+        let currentZoom = 1;
+        function zoom(factor, reset = false) {
+            currentZoom = reset ? 1 : currentZoom * factor;
+            document.querySelectorAll('.mermaid svg').forEach(svg => {
+                svg.style.transform = `scale(${currentZoom})`;
+                svg.style.transformOrigin = 'center top';
+            });
+        }
+    </script>
+</body>
+</html>
