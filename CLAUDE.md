@@ -134,7 +134,8 @@ packages/                    # Extracted packages (uv workspace members)
 ├── atp-core/                # Protocol, core, loader, chaos, cost, scoring, statistics, streaming
 ├── atp-adapters/            # All agent adapters (HTTP, CLI, Container, cloud, MCP, SDK)
 ├── atp-dashboard/           # Web dashboard + analytics + benchmark/tournament API
-└── atp-sdk/                 # Python SDK for benchmark platform participants (pull-model)
+├── atp-sdk/                 # Python SDK for benchmark platform participants (pull-model)
+└── atp-method/              # agent-eval-case methodology plugin (atp test method/cases/...)
 
 atp/                         # Namespace package (symlinks to packages/ + local modules)
 ├── cli/           # CLI entry point (atp test, validate, baseline, dashboard, etc.)
