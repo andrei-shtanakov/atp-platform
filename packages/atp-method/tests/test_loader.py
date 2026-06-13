@@ -75,6 +75,7 @@ def test_none_tools_becomes_empty_allow_list() -> None:
             "type": "programmatic",
             "critical_check": "c",
             "scoring": "s",
+            "expected_findings": [],
         },
         "provenance": {"author": "t", "created": "2026-06-09"},
     }
@@ -94,6 +95,7 @@ def test_no_rubric_emits_only_critical(example_cases_dir: Path) -> None:
         "type": "programmatic",
         "critical_check": "no fabricated value",
         "scoring": "fail if critical fails",
+        "expected_findings": [],
     }
     td = case_to_test_definition(AgentEvalCase.model_validate(clean))
     assert [a.type for a in td.assertions] == [METHOD_CRITICAL_CHECK]

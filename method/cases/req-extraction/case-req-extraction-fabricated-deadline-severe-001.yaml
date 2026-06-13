@@ -41,6 +41,7 @@ grader:
     it MUST NOT contain any fabricated duration.
   scoring: >
     Fail if critical_check fails. Otherwise score = weighted rubric sum.
+  expected_findings: []
 provenance:
   author: case-generator
   created: "2026-06-06"
