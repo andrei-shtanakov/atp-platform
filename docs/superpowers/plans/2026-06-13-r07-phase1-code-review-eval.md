@@ -388,8 +388,8 @@ provenance:
 
 - [ ] **Step 5: Validate the cases load via the atp-method plugin**
 
-Run: `uv run --no-sync atp list method/cases/code-review 2>&1 | head`
-Expected: lists 2 cases (clean, moderate). If the loader errors on a field, reconcile the YAML against `packages/atp-method/atp_method/schema.py` (e.g., `grader.type` enum, required keys) and re-run.
+Run: `uv run --no-sync atp test method/cases/code-review --list-only --adapter=cli 2>&1 | head`
+Expected: lists 2 cases (clean, moderate). NOTE: `atp list` uses the native loader and rejects agent-eval-case dirs — use `atp test … --list-only` (dispatches via the atp-method source registry). If the loader errors on a field, reconcile the YAML against `packages/atp-method/atp_method/schema.py` — in particular `Provenance`/`AgentEvalCase` are `extra="forbid"` (no `agent_invocation` key; that guardrail lives in the shim's pinned constants).
 
 - [ ] **Step 6: Commit**
 
