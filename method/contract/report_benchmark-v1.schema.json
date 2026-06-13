@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/andrei-shtanakov/maestro/benchmark-contract/report_benchmark-v1.schema.json",
+  "title": "report_benchmark v1",
+  "description": "Wire payload + response for the report_benchmark MCP tool. Maestro -> Arbiter. R-06b M4.",
+  "type": "object",
+  "definitions": {
+    "WireTaskResult": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["task_index", "duration_seconds"],
+      "properties": {
+        "task_index": {"type": "integer", "minimum": 0},
+        "task_type": {"type": ["string", "null"]},
+        "score": {"type": ["number", "null"]},
+        "tokens_used": {"type": ["integer", "null"], "minimum": 0},
+        "duration_seconds": {"type": "number", "minimum": 0},
+        "error_class": {
+          "type": ["string", "null"],
+          "enum": ["timeout", "crash", "test_failure", "other", null]
+        }
+      }
+    },
+    "Request": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "payload_version", "run_id", "benchmark_id", "agent_id", "ts",
+        "score", "score_components", "duration_seconds",
+        "per_task", "per_task_total_count", "per_task_truncated"
+      ],
+      "properties": {
+        "payload_version": {"type": "string", "const": "1.0.0"},
+        "run_id": {"type": "string", "minLength": 1},
+        "benchmark_id": {"type": "string", "minLength": 1},
+        "agent_id": {"type": "string", "minLength": 1},
+        "ts": {"type": "string", "format": "date-time"},
+        "score": {"type": "number"},
+        "score_components": {
+          "type": "object",
+          "additionalProperties": {"type": "number"}
+        },
+        "total_tokens": {"type": ["integer", "null"], "minimum": 0},
+        "total_cost_usd": {"type": ["number", "null"], "minimum": 0},
+        "duration_seconds": {"type": "number", "minimum": 0},
+        "per_task": {
+          "type": "array",
+          "items": {"$ref": "#/definitions/WireTaskResult"}
+        },
+        "per_task_total_count": {"type": "integer", "minimum": 0},
+        "per_task_truncated": {"type": "boolean"}
+      }
+    },
+    "Response": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["status", "run_id"],
+      "properties": {
+        "status": {"type": "string", "enum": ["created", "duplicate"]},
+        "run_id": {"type": "string", "minLength": 1}
+      }
+    }
+  },
+  "oneOf": [
+    {"$ref": "#/definitions/Request"},
+    {"$ref": "#/definitions/Response"}
+  ]
+}
