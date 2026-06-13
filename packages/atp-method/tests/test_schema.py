@@ -105,12 +105,12 @@ def test_findings_match_grader_accepts_structured_ground_truth() -> None:
 
 
 def test_findings_match_grader_requires_expected_findings_key() -> None:
-    import pytest
+    from pydantic import ValidationError
 
     from atp_method.schema import Grader
 
     # missing expected_findings entirely under findings_match -> invalid
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         Grader(type="findings_match", critical_check="x", scoring="y")
 
 

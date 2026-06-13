@@ -20,5 +20,8 @@ def test_code_review_cases_list_via_plugin() -> None:
         timeout=120,
     )
     combined = out.stdout + out.stderr
+    # Assert success first so a real failure surfaces the error, not just a
+    # missing substring.
+    assert out.returncode == 0, combined
     assert "case-code-review-sqli-clean-001" in combined
     assert "case-code-review-sqli-moderate-001" in combined

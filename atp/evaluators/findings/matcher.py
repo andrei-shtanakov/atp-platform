@@ -74,7 +74,9 @@ def match_findings(
     missed_keys: list[str] = []
     critical_ok = True
     for exp in expected:
-        key = f"{exp.get('rule_ids', ['?'])[0]}@{exp.get('anchor', '')}"
+        # `or ["?"]` guards an empty rule_ids list (the matcher is a pure function
+        # callable with raw dicts where the schema's min_length=1 does not apply).
+        key = f"{(exp.get('rule_ids') or ['?'])[0]}@{exp.get('anchor', '')}"
         if any(_finding_matches_expected(f, exp) for f in findings):
             matched_keys.append(key)
         else:
@@ -82,13 +84,21 @@ def match_findings(
             if exp.get("severity") == "critical":
                 critical_ok = False
 
+    # Count false positives PER FINDING: each finding that hits any must_not_flag
+    # anchor is one false positive (multiple findings on the same compliant line
+    # each count, so precision is not inflated).
     false_positives: list[str] = []
-    for mnf in must_not_flag:
-        for f in findings:
-            if _anchor_overlap(f.get("anchor", ""), mnf.get("anchor", "")):
-                fp_key = f"{f.get('rule_id', '?')}@{mnf.get('anchor', '')}"
-                false_positives.append(fp_key)
-                break
+    for f in findings:
+        hit = next(
+            (
+                m
+                for m in must_not_flag
+                if _anchor_overlap(f.get("anchor", ""), m.get("anchor", ""))
+            ),
+            None,
+        )
+        if hit is not None:
+            false_positives.append(f"{f.get('rule_id', '?')}@{hit.get('anchor', '')}")
 
     unknown_extras = [
         f.get("anchor", "")

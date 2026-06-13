@@ -68,3 +68,22 @@ def test_parse_findings_strips_code_fence() -> None:
 
 def test_parse_findings_unparseable_returns_none() -> None:
     assert parse_findings("I think there is a SQL injection somewhere.") is None
+
+
+def test_empty_rule_ids_does_not_crash() -> None:
+    # rule_ids present but empty (malformed config) must produce a deterministic
+    # result, not raise IndexError.
+    expected = [{"rule_ids": [], "anchor": 'f"SELECT', "severity": "critical"}]
+    r = match_findings([{"rule_id": "x", "anchor": 'f"SELECT 1'}], expected, [])
+    # empty synonym set => rule check is skipped, so the anchor match alone counts
+    assert r.critical_pass is True
+
+
+def test_multiple_findings_on_same_compliant_line_count_as_multiple_fps() -> None:
+    findings = [
+        {"rule_id": "a", "anchor": "logger.debug('x')"},
+        {"rule_id": "b", "anchor": "logger.debug('y')"},
+    ]
+    r = match_findings(findings, [], MUST_NOT)
+    assert len(r.false_positives) == 2
+    assert r.critical_pass is False
