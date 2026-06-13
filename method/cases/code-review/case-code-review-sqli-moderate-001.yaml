@@ -35,7 +35,7 @@ grader:
   type: findings_match
   expected_findings:
     - rule_ids: [SEC-011, sql-injection, cwe-89]
-      anchor: 'f"SELECT * FROM users WHERE id = {user_id}'
+      anchor: 'f"SELECT * FROM users WHERE id = {user_id}"'
       severity: critical
   must_not_flag:
     - anchor: 'user_id = request.args["id"]'
