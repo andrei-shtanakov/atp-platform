@@ -114,15 +114,11 @@
 <body>
     <div class="container">
         <h1>ATP AWS Bedrock demo — architecture</h1>
-
+        <p>Two views of the <code>infra/</code> Terraform demo: a resource/IAM map
+        (where processes run) and the request flow of a single methodology sweep.</p>
 
         <div class="diagram-card">
-            <div class="diagram-title">ATP all-in-AWS Bedrock demo — architecture
-
-Two views of the `infra/` Terraform demo: a resource/IAM map (where processes
-run) and the request flow of a single methodology sweep.
-
-## Resource &amp; IAM map</div>
+            <div class="diagram-title">Resource &amp; IAM map</div>
             <pre class="mermaid">
 flowchart TB
     subgraph OP[&quot;🖥️ Operator machine (your Mac)&quot;]
@@ -236,18 +232,6 @@ sequenceDiagram
                 svg.style.transform = `scale(${currentZoom})`;
                 svg.style.transformOrigin = 'center top';
             });
-        }
-        function downloadSVG(index) {
-            const svg = document.querySelectorAll('.mermaid svg')[index || 0];
-            if (!svg) return;
-            const svgData = new XMLSerializer().serializeToString(svg);
-            const blob = new Blob([svgData], {type: 'image/svg+xml'});
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'diagram.svg';
-            a.click();
-            URL.revokeObjectURL(url);
         }
     </script>
 </body>
