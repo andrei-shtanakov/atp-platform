@@ -7,6 +7,7 @@ import pytest
 from atp.evaluators.base import EvalCheck, EvalResult, Evaluator
 from atp.loader.models import Assertion, TaskDefinition, TestDefinition
 from atp.protocol import ATPResponse, ResponseStatus
+from atp.protocol.models import ArtifactFile
 
 from atp_method.evaluators import AgentEvalCaseEvaluator
 from atp_method.loader import METHOD_CRITICAL_CHECK, METHOD_RUBRIC
@@ -198,3 +199,54 @@ async def test_critical_prompt_includes_gold() -> None:
     )
     await ev.evaluate(_task(), _response(), [], assertion)
     assert any("the reference answer" in p for p in judge.prompts)
+
+
+class BombJudge(Evaluator):
+    """Judge that raises if called — used to assert the matcher path never calls it."""
+
+    @property
+    def name(self) -> str:
+        return "bomb"
+
+    async def evaluate(
+        self,
+        task: TestDefinition,
+        response: ATPResponse,
+        trace: list,
+        assertion: Assertion,
+    ) -> EvalResult:
+        raise AssertionError("Judge must NOT be called for findings_match grader_type")
+
+
+@pytest.mark.anyio
+async def test_findings_match_critical_uses_matcher_not_judge() -> None:
+    """findings_match grader_type resolved deterministically; judge is never called."""
+    ev = AgentEvalCaseEvaluator(judge=BombJudge())
+    artifact = ArtifactFile(
+        path="findings.json",
+        content='[{"rule_id":"cwe-89","anchor":"f\\"SELECT"}]',
+    )
+    response = ATPResponse(
+        task_id="case-x-001",
+        status=ResponseStatus.COMPLETED,
+        artifacts=[artifact],
+    )
+    assertion = Assertion(
+        type=METHOD_CRITICAL_CHECK,
+        critical=True,
+        config={
+            "check": "flag the injection",
+            "grader_type": "findings_match",
+            "expected_findings": [
+                {
+                    "rule_ids": ["SEC-011", "cwe-89"],
+                    "anchor": 'f"SELECT',
+                    "severity": "critical",
+                }
+            ],
+            "must_not_flag": [],
+        },
+    )
+    result = await ev.evaluate(_task(), response, [], assertion)
+    assert result.checks[0].name == "critical_check"
+    assert result.checks[0].passed is True

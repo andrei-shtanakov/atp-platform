@@ -102,6 +102,44 @@ class AgentEvalCaseEvaluator(Evaluator):
         trace: list[ATPEvent],
         assertion: Assertion,
     ) -> EvalResult:
+        if assertion.config.get("grader_type") == "findings_match":
+            from atp.evaluators.findings.matcher import match_findings, parse_findings
+
+            text = next(
+                (a.content for a in response.artifacts if getattr(a, "content", None)),
+                None,
+            )
+            findings = parse_findings(text) if text is not None else None
+            if findings is None:
+                return EvalResult(
+                    evaluator=self.name,
+                    checks=[
+                        EvalCheck(
+                            name="critical_check",
+                            passed=False,
+                            score=0.0,
+                            message="unparseable findings — cannot verify",
+                        )
+                    ],
+                )
+            r = match_findings(
+                findings,
+                assertion.config.get("expected_findings", []),
+                assertion.config.get("must_not_flag", []),
+            )
+            return EvalResult(
+                evaluator=self.name,
+                checks=[
+                    EvalCheck(
+                        name="critical_check",
+                        passed=r.critical_pass,
+                        score=1.0 if r.critical_pass else 0.0,
+                        message=f"recall={r.recall} fp={r.false_positives}",
+                        details=r.model_dump(),
+                    )
+                ],
+            )
+
         check_text = assertion.config.get("check", "")
         failure_mode = assertion.config.get("expected_failure_mode", "")
         gold = assertion.config.get("gold")
