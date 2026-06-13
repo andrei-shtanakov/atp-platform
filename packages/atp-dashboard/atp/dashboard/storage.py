@@ -1,5 +1,6 @@
 """Storage layer for persisting ATP test results to the database."""
 
+import json
 from datetime import UTC, datetime
 from typing import Any
 
@@ -29,6 +30,19 @@ from atp.dashboard.models import (
     SuiteExecution,
     TestExecution,
 )
+
+
+def _json_safe(value: Any) -> Any:
+    """Coerce a value into something a JSON column can serialize.
+
+    Bedrock (boto3) trace artifacts embed ``datetime`` objects, which the default
+    JSON serializer rejects ("Object of type datetime is not JSON serializable"),
+    aborting the whole result save. Round-trip through ``json`` with
+    ``default=str`` so any datetime (or other non-JSON value) becomes a string.
+    """
+    if value is None:
+        return None
+    return json.loads(json.dumps(value, default=str))
 
 
 class ResultStorage:
@@ -452,7 +466,7 @@ class ResultStorage:
             size_bytes=getattr(artifact, "size_bytes", None),
             content_hash=getattr(artifact, "content_hash", None),
             content=getattr(artifact, "content", None),
-            data_json=getattr(artifact, "data", None),
+            data_json=_json_safe(getattr(artifact, "data", None)),
         )
         self._session.add(artifact_record)
         await self._session.flush()
