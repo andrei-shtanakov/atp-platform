@@ -153,6 +153,7 @@
         },
         "checker": {
           "type": "string",
+          "minLength": 1,
           "description": "Named deterministic checker, used with type 'programmatic' (e.g. findings_match)."
         },
         "expected_findings": {
@@ -233,7 +234,8 @@
     "expected_finding": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["rule_ids", "anchor", "severity"],
+      "$comment": "severity is optional: pydantic ExpectedFinding defaults it to 'critical', so the contract must not require it.",
+      "required": ["rule_ids", "anchor"],
       "properties": {
         "rule_ids": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
         "anchor": { "type": "string", "minLength": 1 },

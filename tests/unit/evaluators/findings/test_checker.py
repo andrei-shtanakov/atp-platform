@@ -16,6 +16,7 @@ def test_findings_match_registered() -> None:
 
 def test_valid_match_verdict() -> None:
     check = get_checker("findings_match")
+    assert check is not None
     text = json.dumps(
         [{"rule_id": "cwe-89", "anchor": 'x = f"SELECT 1', "severity": "critical"}]
     )
@@ -30,6 +31,7 @@ def test_valid_match_verdict() -> None:
 
 def test_malformed_verdict() -> None:
     check = get_checker("findings_match")
+    assert check is not None
     # missing required severity -> malformed (not a silent miss)
     text = json.dumps([{"rule_id": "cwe-89", "anchor": 'f"SELECT'}])
     v = check({"expected_findings": EXPECTED, "must_not_flag": MUST_NOT}, text)

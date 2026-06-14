@@ -53,10 +53,12 @@ class CaseVerdict(BaseModel):
     # Distinct from a missed defect: the agent output was not gradeable
     # (unparseable / failed strict validation). See grade_findings (PR #173).
     malformed: bool = False
-    recall: float = 0.0
-    precision: float = 0.0
-    fp_count: int = 0
-    rubric_score: float = 0.0
+    # Bounded like EvalCheck.score so invalid values can't silently reach
+    # reporters/storage.
+    recall: float = Field(default=0.0, ge=0.0, le=1.0)
+    precision: float = Field(default=0.0, ge=0.0, le=1.0)
+    fp_count: int = Field(default=0, ge=0)
+    rubric_score: float = Field(default=0.0, ge=0.0, le=1.0)
     details: dict[str, Any] = Field(default_factory=dict)
     grader_version: str = ""
 

@@ -142,6 +142,10 @@ class Grader(BaseModel):
             raise ValueError(f"grader type '{self.type}' requires a rubric")
         if self.type == "exact" and not self.gold:
             raise ValueError("grader type 'exact' requires a gold reference")
+        if self.checker is not None and not self.checker.strip():
+            # Empty/whitespace checker is falsey at dispatch time and would
+            # silently fall back to judge grading — reject it as malformed.
+            raise ValueError("grader.checker must be a non-empty string")
         if self.checker is not None and self.type != "programmatic":
             raise ValueError("grader.checker requires type 'programmatic'")
         if self.checker == "findings_match" and self.expected_findings is None:

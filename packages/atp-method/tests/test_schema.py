@@ -196,3 +196,16 @@ def _minimal(
         },
         "provenance": {"author": "test", "created": "2026-06-09"},
     }
+
+
+def test_empty_checker_rejected() -> None:
+    # An empty checker is falsey at dispatch and would silently fall back to the
+    # judge path — must be rejected at validation time.
+    with pytest.raises(ValidationError, match="non-empty"):
+        Grader(
+            type="programmatic",
+            checker="",
+            critical_check="x",
+            scoring="y",
+            expected_findings=[],
+        )

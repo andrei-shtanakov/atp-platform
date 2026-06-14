@@ -7,10 +7,11 @@ adding a ``grader.type`` enum value — the core dispatch stays closed.
 """
 
 from collections.abc import Callable
+from typing import Any
 
 from atp.core.results import CaseVerdict
 
-Checker = Callable[[dict, "str | None"], CaseVerdict]
+Checker = Callable[[dict[str, Any], str | None], CaseVerdict]
 
 _CHECKERS: dict[str, Checker] = {}
 

@@ -60,3 +60,32 @@ def test_contract_rejects_findings_checker_without_expected_findings() -> None:
     )
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(case, SCHEMA)
+
+
+def test_contract_allows_expected_finding_without_severity() -> None:
+    # pydantic ExpectedFinding defaults severity to "critical"; the JSON contract
+    # must therefore NOT require it (else valid-in-Python YAML fails the contract).
+    case = _case(
+        {
+            "type": "programmatic",
+            "checker": "findings_match",
+            "expected_findings": [{"rule_ids": ["SEC-011"], "anchor": 'f"SELECT'}],
+            "critical_check": "flag it",
+            "scoring": "fail if critical fails",
+        }
+    )
+    jsonschema.validate(case, SCHEMA)  # must not raise
+
+
+def test_contract_rejects_empty_checker() -> None:
+    case = _case(
+        {
+            "type": "programmatic",
+            "checker": "",
+            "expected_findings": [],
+            "critical_check": "flag it",
+            "scoring": "fail if critical fails",
+        }
+    )
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(case, SCHEMA)
