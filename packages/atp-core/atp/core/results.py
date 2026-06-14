@@ -40,6 +40,27 @@ class EvalCheck(BaseModel):
     details: dict[str, Any] | None = Field(None, description="Additional check details")
 
 
+class CaseVerdict(BaseModel):
+    """Uniform per-case verdict returned by every deterministic checker.
+
+    Shared across evaluators, the runner, reporters, and dashboard persistence
+    (companion spec SP-1 maps these fields straight into result columns). A
+    checker selected under ``grader: {type: programmatic, checker: <name>}``
+    returns this instead of a checker-specific shape.
+    """
+
+    critical_pass: bool
+    # Distinct from a missed defect: the agent output was not gradeable
+    # (unparseable / failed strict validation). See grade_findings (PR #173).
+    malformed: bool = False
+    recall: float = 0.0
+    precision: float = 0.0
+    fp_count: int = 0
+    rubric_score: float = 0.0
+    details: dict[str, Any] = Field(default_factory=dict)
+    grader_version: str = ""
+
+
 class EvalResult(BaseModel):
     """Result of an evaluator run containing multiple checks."""
 
