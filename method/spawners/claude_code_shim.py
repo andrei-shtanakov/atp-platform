@@ -18,32 +18,16 @@ import shlex
 import subprocess
 import sys
 
-MODEL = os.environ.get("CLAUDE_MODEL", "claude-opus-4-8")
+from atp_method.envelopes import DEFAULT_MODEL, build_prompt, get_envelope
+
+MODEL = os.environ.get("CLAUDE_MODEL", DEFAULT_MODEL)
 CLAUDE_BIN = os.environ.get("CLAUDE_BIN", "claude")
-
-REVIEW_ENVELOPE = (
-    "You are a senior code reviewer. Review the material below. Output ONLY a JSON "
-    "array of findings (no prose, no markdown fence). Each finding is an object with "
-    'keys: "rule_id" (the rule/CWE id), "file", "anchor" (the exact offending code '
-    'substring), "severity" (critical|major|minor), "fix". If the code is compliant, '
-    "output an empty array [].\n\n{task}"
-)
-
-
-def _build_prompt(request: dict) -> str:
-    """Build the full review prompt from an ATPRequest dict."""
-    task = request.get("task") or {}
-    body = task.get("description", "")
-    for art in (request.get("context") or {}).get("artifacts", []) or []:
-        if art.get("content"):
-            body += f"\n\n--- {art.get('id', 'artifact')} ---\n{art['content']}"
-    return REVIEW_ENVELOPE.format(task=body)
 
 
 def main() -> int:
     """Read ATPRequest from stdin, invoke claude, emit ATPResponse to stdout."""
     request = json.loads(sys.stdin.read())
-    prompt = _build_prompt(request)
+    prompt = build_prompt(request, get_envelope("review"))
     cmd = shlex.split(CLAUDE_BIN) + [
         "-p",
         prompt,
