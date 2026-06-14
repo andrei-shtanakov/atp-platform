@@ -95,3 +95,57 @@ def test_success_with_fake_sdk(tmp_path: Path) -> None:
     assert resp["metrics"]["total_tokens"] == 920
     # raw API response carries no cost field; the baseline leaves it null
     assert resp["metrics"]["cost_usd"] is None
+
+
+def test_invalid_stdin_emits_failed_not_crash() -> None:
+    # Empty/garbage stdin must still produce a contract-shaped failed response.
+    proc = subprocess.run(
+        [sys.executable, str(SHIM)],
+        input=b"not json at all",
+        capture_output=True,
+        env=os.environ.copy(),
+        timeout=30,
+    )
+    assert proc.returncode == 0, proc.stderr.decode()
+    resp = json.loads(proc.stdout.decode())
+    assert resp["status"] == "failed"
+    assert "invalid" in resp["error"].lower()
+
+
+# Fake SDK whose message has NO usage attribute — exercises the token fallback.
+_FAKE_ANTHROPIC_NO_USAGE = """
+class _Block:
+    def __init__(self, text):
+        self.type = "text"
+        self.text = text
+
+
+class _Msg:
+    content = [_Block("[]")]
+    usage = None
+
+
+class _Messages:
+    def create(self, *a, **k):
+        return _Msg()
+
+
+class Anthropic:
+    def __init__(self, *a, **k):
+        self.messages = _Messages()
+"""
+
+
+def test_missing_usage_defaults_tokens_zero(tmp_path: Path) -> None:
+    (tmp_path / "anthropic.py").write_text(_FAKE_ANTHROPIC_NO_USAGE)
+    env = {
+        **os.environ,
+        "ANTHROPIC_API_KEY": "test-key",
+        "PYTHONPATH": str(tmp_path) + os.pathsep + os.environ.get("PYTHONPATH", ""),
+    }
+    resp = _run_shim(
+        {"version": "1.0", "task_id": "t3", "task": {"description": "x"}}, env
+    )
+    assert resp["status"] == "completed"
+    assert resp["metrics"]["total_tokens"] == 0
+    assert resp["metrics"]["input_tokens"] == 0

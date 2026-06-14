@@ -54,7 +54,13 @@ def _fail(task_id: str, error: str) -> int:
 
 def main() -> int:
     """Read ATPRequest from stdin, call the Messages API, emit ATPResponse."""
-    request = json.loads(sys.stdin.read())
+    raw = sys.stdin.read()
+    try:
+        request = json.loads(raw)
+    except (ValueError, TypeError) as exc:
+        # Invalid/empty stdin must still produce a contract-shaped failed
+        # response, not crash the shim.
+        return _fail("", f"invalid ATPRequest JSON on stdin: {exc}")
     task_id = request.get("task_id", "")
 
     if not os.environ.get("ANTHROPIC_API_KEY"):
@@ -79,8 +85,11 @@ def main() -> int:
     text = "".join(
         block.text for block in msg.content if getattr(block, "type", None) == "text"
     )
-    in_tok = msg.usage.input_tokens
-    out_tok = msg.usage.output_tokens
+    # usage / its fields may be absent depending on SDK/response shape; default
+    # to 0 rather than crashing on an attribute error.
+    usage = getattr(msg, "usage", None)
+    in_tok = getattr(usage, "input_tokens", None) or 0
+    out_tok = getattr(usage, "output_tokens", None) or 0
     response = {
         "version": "1.0",
         "task_id": task_id,
