@@ -151,6 +151,20 @@
           "type": "string",
           "description": "Path or inline reference to the reference answer, when one exists."
         },
+        "checker": {
+          "type": "string",
+          "description": "Named deterministic checker, used with type 'programmatic' (e.g. findings_match)."
+        },
+        "expected_findings": {
+          "type": "array",
+          "description": "Ground-truth planted defects for the findings_match checker.",
+          "items": { "$ref": "#/$defs/expected_finding" }
+        },
+        "must_not_flag": {
+          "type": "array",
+          "description": "Compliant anchors the agent must not flag (findings_match).",
+          "items": { "$ref": "#/$defs/forbidden_anchor" }
+        },
         "rubric": {
           "type": "array",
           "description": "Weighted graded criteria for fuzzy aspects. Weights should sum to 1.0.",
@@ -215,6 +229,22 @@
           "description": "Author note, e.g. flagging where the trap is planted."
         }
       }
+    },
+    "expected_finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule_ids", "anchor", "severity"],
+      "properties": {
+        "rule_ids": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "anchor": { "type": "string", "minLength": 1 },
+        "severity": { "type": "string", "enum": ["critical", "major", "minor"] }
+      }
+    },
+    "forbidden_anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["anchor"],
+      "properties": { "anchor": { "type": "string", "minLength": 1 } }
     },
     "rubric_item": {
       "type": "object",
@@ -291,6 +321,25 @@
           "environment": {
             "properties": { "tools": { "maxItems": 1 } }
           }
+        }
+      }
+    },
+    {
+      "$comment": "findings_match checker requires ground-truth expected_findings.",
+      "if": {
+        "properties": {
+          "grader": {
+            "properties": {
+              "type": { "const": "programmatic" },
+              "checker": { "const": "findings_match" }
+            },
+            "required": ["checker"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "grader": { "required": ["expected_findings"] }
         }
       }
     }
