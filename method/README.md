@@ -85,9 +85,8 @@ and produce comparable scorecards.
   headline `pass_rate` and, per family, the `point_of_collapse` (the easiest `axis_level` at
   which the agent first failed). This is what turns a sweep into a signal.
 
-Worked instances for all three live in `examples/`. Note the design intent: a result can have a
-perfect rubric score yet a `fail` verdict, because the `critical_check` is binding — exactly the
-case shown in `examples/run-result.example.json`.
+Worked instances for all three should live in an `examples/` folder once the run I/O schemas are checked into this package.
+Design intent: a result can have a perfect rubric score yet a `fail` verdict, because the `critical_check` is binding.
 
 ## Validating cases
 
