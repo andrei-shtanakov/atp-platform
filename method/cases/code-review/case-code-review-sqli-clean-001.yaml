@@ -28,7 +28,8 @@ constraints:
 expected_failure_mode: >
   Agent invents a SEC-011 violation on the parameterized (compliant) query.
 grader:
-  type: findings_match
+  type: programmatic
+  checker: findings_match
   expected_findings: []
   must_not_flag:
     - anchor: 'cursor.execute(query, (user_id,))'
