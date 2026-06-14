@@ -18,7 +18,10 @@ an arbitrary difficulty). The full rationale is in the methodology.
 
 | File | Purpose |
 |------|---------|
-| `agent-eval-case.schema.json` | The contract. Every case is validated against this (JSON Schema, draft 2020-12). |
+| `agent-eval-case.schema.json` | The contract for a case. Every case is validated against this (JSON Schema, draft 2020-12). |
+| `run-request.schema.json` | Input frame: the standardized request that launches one case execution. |
+| `run-result.schema.json` | Output form: the standardized result of one case execution (verdict, critical_check, scores, metrics). |
+| `suite-result.schema.json` | Aggregate scorecard over a suite/sweep, surfacing pass rate and point of collapse. |
 | `METHODOLOGY.md` / `METHODOLOGY.ru.md` | The framework explained in prose — axes, traps, sweeps, governance. |
 | `GLOSSARY.md` / `GLOSSARY.ru.md` | Shared vocabulary, each term mapped to its schema field. |
 | `CASE_GENERATOR.md` | System instruction for an LLM agent that authors new cases. |
@@ -31,6 +34,7 @@ an arbitrary difficulty). The full rationale is in the methodology.
 ```
 /
   agent-eval-case.schema.json
+  run-request.schema.json   run-result.schema.json   suite-result.schema.json
   README.md
   METHODOLOGY.md            METHODOLOGY.ru.md
   GLOSSARY.md               GLOSSARY.ru.md
@@ -40,6 +44,8 @@ an arbitrary difficulty). The full rationale is in the methodology.
       case-req-extraction-fabricated-deadline-clean-001.yaml
       case-req-extraction-fabricated-deadline-moderate-001.yaml
       case-req-extraction-fabricated-deadline-severe-001.yaml
+  examples/
+    run-request.example.json   run-result.example.json   suite-result.example.json
   gold/
   0. archive/
 ```
@@ -64,6 +70,27 @@ family scores `calibration` along `information_conditions`; the shared trap is f
 value absent from the source. Pressure grows across the three levels: an explicit deadline
 (`clean`), a vague qualifier that tempts quantification (`moderate`), and a missing deadline
 surrounded by present ones (`severe`).
+
+## Run I/O contract
+
+A test execution has a standardized input and output, so the platform can run cases uniformly
+and produce comparable scorecards.
+
+- **Input — `run-request`**: pins *which* case (id + version) runs against *which* agent
+  (name + version + config), with runtime grants (tools, timeout, max steps, seed). Pinning the
+  case version ties every result to an exact case revision.
+- **Output — `run-result`**: the authoritative `verdict` (`pass` / `fail` / `error` /
+  `skipped`), the binary `critical_check` outcome bound to the case's failure mode,
+  per-criterion `rubric_scores`, efficiency `metrics` (steps, tokens, cost, latency), the raw
+  `agent_response`, and an `evidence` audit trail. The schema enforces that a `pass` cannot
+  coexist with a failed `critical_check`, and that an `error` verdict carries an `error` object.
+- **Aggregate — `suite-result`**: rolls many results into one scorecard for an agent version —
+  headline `pass_rate` and, per family, the `point_of_collapse` (the easiest `axis_level` at
+  which the agent first failed). This is what turns a sweep into a signal.
+
+Worked instances for all three live in `examples/`. Note the design intent: a result can have a
+perfect rubric score yet a `fail` verdict, because the `critical_check` is binding — exactly the
+case shown in `examples/run-result.example.json`.
 
 ## Validating cases
 
