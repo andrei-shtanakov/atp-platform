@@ -25,10 +25,12 @@ The premise is only half-right. A strong unifying spine already exists and
   Axes are orthogonal (what you score × what you vary × how hard).
 - **One evaluator** — `AgentEvalCaseEvaluator` (critical_check gate + non-gating
   rubric).
-- **One `benchmark_id` dimension** keys every result by test-type. (Correction —
-  see "Result store vs export sink": the dashboard reads the **internal canonical
-  store**, scoped by this dimension; `report_benchmark-v1` is an **export sink to
-  arbiter only**, NOT the dashboard's source. An earlier draft wrongly routed the
+- **One `task_type` dimension** keys every result by test-type on the internal
+  store. (Correction — see "Result store vs export sink": the dashboard reads the
+  **internal canonical store**, scoped by `task_type`; `report_benchmark-v1` is an
+  **export sink to arbiter only**, NOT the dashboard's source, and `benchmark_id`
+  lives only on that export — mapped from `task_type` at the sink. An earlier
+  draft wrongly used `benchmark_id` as the internal dimension and routed the
   dashboard through the export.)
 - **`method/run_pipe_check.py` is a generic harness**, not a per-test script —
   it drives a family through the ATP CLI adapter + spawner shims + benchmark
@@ -54,7 +56,7 @@ seams are already starting to leak:
    harness". If architecture/repo-analysis each get a copy, the standalone-script
    zoo is born.
 
-Plus the dashboard: `benchmark_id` is the unifying key, but if leaderboard/runs
+Plus the dashboard: `task_type` is the unifying key, but if leaderboard/runs
 views are not strictly scoped by it, results from different test-types pool and
 get read inconsistently.
 
@@ -84,11 +86,12 @@ implementation is a follow-up plan, not part of this ADR):
    removes the *N×M* drift and makes the API-vs-CLI ablation equivalent by
    construction.
 3. **One generic run path, parameterized.** Promote the harness to a single
-   entry parameterized by `--family` / `--benchmark-id` (folding toward the
-   `atp` CLI), with `benchmark_id ↔ TaskType` as the one taxonomy registry. No
-   per-capability script.
-4. **One parameterized, benchmark_id-scoped dashboard view, reading the internal
-   store.** Leaderboard and runs render per `benchmark_id` from the **canonical
+   entry parameterized by `--family` / `--task-type` (folding toward the
+   `atp` CLI), with `task_type ↔ benchmark_id ↔ TaskType` as the one taxonomy
+   registry (the store/CLI speak `task_type`; `benchmark_id` is derived for the
+   arbiter export). No per-capability script.
+4. **One parameterized, task_type-scoped dashboard view, reading the internal
+   store.** Leaderboard and runs render per `task_type` from the **canonical
    internal store** (`EvalRun`/`EvalCaseResult` = evolved
    `suite_executions`/`test_executions`; companion spec §5), NOT from the
    `report_benchmark` export. The export stays a one-way sink to arbiter. (The
@@ -145,14 +148,15 @@ implementation is a follow-up plan, not part of this ADR):
 
 ## Result store vs export sink (resolution, 2026-06-14)
 
-The unifying element is the `benchmark_id` **dimension** plus **one internal
+The unifying element is the `task_type` **dimension** plus **one internal
 canonical store** — NOT the `report_benchmark` contract. There are two distinct
 sinks off the same run:
 
 ```
 run → grader (CaseVerdict) → CANONICAL STORE (EvalRun/EvalCaseResult, dimensioned)
-                                  ├──▶ DASHBOARD  (reads store, scoped by benchmark_id)
-                                  └──▶ EXPORT     (report_benchmark-v1 → arbiter, routing)
+                                  ├──▶ DASHBOARD  (reads store, scoped by task_type)
+                                  └──▶ EXPORT     (report_benchmark-v1 → arbiter;
+                                                   task_type → benchmark_id at the sink)
 ```
 
 Why the dashboard must read the store, not the export (each disproves the rejected
@@ -170,10 +174,12 @@ Why the dashboard must read the store, not the export (each disproves the reject
   table; the arbiter `benchmark_runs`). The dashboard source is the **first**; the
   export target is the **third**.
 
-**Naming guard (open):** to avoid re-overloading "benchmark", consider naming the
-store-side dimension `task_type` (or `vertical_id`) and keeping `benchmark_id` only
-on the arbiter export, mapping one to the other in the sink. Decision deferred to
-companion spec SP-1/SP-4.
+**Naming guard (resolved 2026-06-14):** the store-side dimension is **`task_type`**
+(the arbiter `TaskType` canon), NOT `benchmark_id` — chosen over `vertical_id` to
+avoid inventing a 4th taxonomy name. `benchmark_id` lives only on the arbiter
+export; the taxonomy registry maps `task_type ↔ benchmark_id` at the sink. This
+keeps "benchmark" off the internal store entirely (it already names three other
+things). Applied throughout this ADR and the companion spec (§3, §5.1).
 
 ## Resolved decisions (answers to the prior open questions)
 
@@ -193,7 +199,7 @@ companion spec SP-1/SP-4.
 
 | Phase | Scope | Maps to |
 |---|---|---|
-| **A — harden the spine** (~1–2 d) | checker registry under `programmatic` + close the `findings_match` divergence + migrate the 2 cases; **unify the grader verdict** (`CaseVerdict` with explicit `malformed`, see dependency note); lift envelope to capability level; parameterize the harness; stand up the `benchmark_id`↔`TaskType` taxonomy registry | ADR seams #1–#3 + spec §6 grader part |
+| **A — harden the spine** (~1–2 d) | checker registry under `programmatic` + close the `findings_match` divergence + migrate the 2 cases; **unify the grader verdict** (`CaseVerdict` with explicit `malformed`, see dependency note); lift envelope to capability level; parameterize the harness; stand up the `task_type`↔`benchmark_id`↔`TaskType` taxonomy registry | ADR seams #1–#3 + spec §6 grader part |
 | **B — canonical store + write** | evolve `suite_executions`/`test_executions` (dimension + version columns), persist for ALL runs | spec **SP-1** |
 | **C — dashboard + export sink** | leaderboard + history/trend over columns; campaign run-path + `report_benchmark` reads from the store | spec **SP-3** ∥ **SP-2** |
 | later | matrix + drill-down; `workspace` mode + `code_exec` grader | spec **SP-5**, **SP-6** |

@@ -901,7 +901,7 @@ git commit -m "feat(method): migrate code-review cases to programmatic+checker f
 
 Run:
 ```bash
-cd /Users/Andrei_Shtanakov/labs/all_ai_orchestrators/atp-platform
+cd "$(git rev-parse --show-toplevel)"   # repo root
 uv run pytest tests/unit/core tests/unit/evaluators -q
 cd packages/atp-method && uv run pytest -q
 ```
@@ -911,7 +911,7 @@ Expected: all PASS. If the harness `method/run_pipe_check.py` is exercised by an
 
 Run:
 ```bash
-cd /Users/Andrei_Shtanakov/labs/all_ai_orchestrators/atp-platform
+cd "$(git rev-parse --show-toplevel)"   # repo root
 uv run ruff format atp/evaluators/checkers atp/evaluators/findings/checker.py packages/atp-core/atp/core/results.py
 uv run ruff check atp/ packages/atp-method
 uv run pyrefly check

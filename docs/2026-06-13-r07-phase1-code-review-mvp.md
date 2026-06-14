@@ -141,7 +141,7 @@ pub fn get_benchmark_score(&self, agent_id: &str, benchmark_id: &str) -> Result<
 ## Рекомендуемые действия
 
 1. **atp-platform/method:** создать `cases/code-review/` — family `code-review-planted-defect`, 5 axis_level, KB-rule `gold/`. (~1–2 вечера)
-2. **atp-platform:** raннер-прогон семейства против 3 спавнеров (`agent_id` = спавнеры, не адаптеры) + новый `report_benchmark`-reporter. (~2 вечера)
+2. **atp-platform:** раннер-прогон семейства против 3 спавнеров (`agent_id` = спавнеры, не адаптеры) + новый `report_benchmark`-reporter. (~2 вечера)
 3. **arbiter:** `get_benchmark_score(agent_id, benchmark_id)` + task_type→benchmark_id map в re-rank + golden-тест. (~1 вечер)
 4. **A/B** `ARBITER_BENCH_WEIGHT` 0 vs 0.15, зафиксировать valid/no-go по §5.
 5. **Обновить `COWORK_CONTEXT.md`**: внести R-07 Phase-1 и benchmark_id-таксономию (заодно закрыть P1-дрейф реестра).
