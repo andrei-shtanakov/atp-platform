@@ -33,6 +33,7 @@ from atp.dashboard.models import (
     User,
 )
 from atp.dashboard.rbac.models import Role, UserRole
+from atp.dashboard.storage import ResultStorage
 from atp.dashboard.tokens import APIToken, Invite
 from atp.dashboard.tournament.models import Participant, TournamentStatus
 from atp.dashboard.tournament.models import Tournament as TournamentModel
@@ -1900,6 +1901,33 @@ async def ui_leaderboard(
             "tournament_entries": tournament_entries,
             "selected_game_type": game_type,
             "user": user,
+        },
+    )
+
+
+@router.get("/eval-leaderboard", response_class=HTMLResponse)
+@limiter.limit("120/minute")
+async def ui_eval_leaderboard(
+    request: Request,
+    session: DBSession,
+    suite_name: str | None = None,
+) -> HTMLResponse:
+    """Rank agents by critical_pass_rate for a chosen eval suite (SP-1 store)."""
+    user = await _get_ui_user(request, session)
+    storage = ResultStorage(session)
+    suites = await storage.suites_with_metrics()
+    if suite_name is None and suites:
+        suite_name = suites[0]
+    entries = await storage.suite_leaderboard(suite_name) if suite_name else []
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/eval_leaderboard.html",
+        context={
+            "active_page": "eval_leaderboard",
+            "user": user,
+            "suites": suites,
+            "suite_name": suite_name,
+            "entries": entries,
         },
     )
 

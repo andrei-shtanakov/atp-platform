@@ -1,0 +1,33 @@
+{% extends "ui/base_ui.html" %}
+
+{% block title %}Eval Leaderboard - ATP Platform{% endblock %}
+
+{% block content %}
+<h2>Eval Leaderboard</h2>
+<form method="get" action="/ui/eval-leaderboard">
+  <label>Suite
+    <select name="suite_name" onchange="this.form.submit()">
+      {% for s in suites %}
+      <option value="{{ s }}" {% if s == suite_name %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+  </label>
+</form>
+{% if entries %}
+<table>
+  <thead><tr><th>#</th><th>Agent</th><th>critical_pass_rate</th><th>malformed_rate</th>
+      <th>mean_rubric</th><th>breakpoint</th><th>task_type</th></tr></thead>
+  <tbody>
+    {% for e in entries %}
+    <tr><td>{{ loop.index }}</td><td>{{ e.agent_name }}</td>
+      <td>{{ "%.3f"|format(e.critical_pass_rate) if e.critical_pass_rate is not none else "—" }}</td>
+      <td>{{ "%.3f"|format(e.malformed_rate) if e.malformed_rate is not none else "—" }}</td>
+      <td>{{ "%.3f"|format(e.mean_rubric) if e.mean_rubric is not none else "—" }}</td>
+      <td>{{ e.breakpoint_axis_level or "—" }}</td><td>{{ e.task_type or "—" }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No scored eval runs yet. Run <code>atp test method/cases/&lt;suite&gt;</code> to populate the store.</p>
+{% endif %}
+{% endblock %}
