@@ -74,17 +74,27 @@ and produce comparable scorecards.
 - **Input — `run-request`**: pins *which* case (id + version) runs against *which* agent
   (name + version + config), with runtime grants (tools, timeout, max steps, seed). Pinning the
   case version ties every result to an exact case revision.
-- **Output — `run-result`**: the authoritative `verdict` (`pass` / `fail` / `error` /
-  `skipped`), the binary `critical_check` outcome bound to the case's failure mode,
-  per-criterion `rubric_scores`, efficiency `metrics` (steps, tokens, cost, latency), the raw
-  `agent_response`, and an `evidence` audit trail. Once `run-result.schema.json` is added, it should enforce that a `pass` cannot
-  coexist with a failed `critical_check`, and that an `error` verdict carries an `error` object.
+- **Output — `run-result`**: the authoritative `verdict` (`pass` / `fail` / `malformed` /
+  `error` / `skipped` — `malformed` means the agent's output wasn't gradeable, a distinct
+  outcome from a missed defect), the binary `critical_check` outcome bound to the case's
+  failure mode, per-criterion `rubric_score`, efficiency `metrics` (steps, tokens, cost,
+  latency), the raw `agent_response`, and an `evidence` audit trail. Once
+  `run-result.schema.json` is added, it should enforce that a `pass` cannot coexist with a
+  failed `critical_check`, and that an `error` verdict carries an `error` object.
 - **Aggregate — `suite-result`**: rolls many results into one scorecard for an agent version —
-  headline `pass_rate` and, per family, the `point_of_collapse` (the easiest `axis_level` at
-  which the agent first failed). This is what turns a sweep into a signal.
+  headline `pass_rate` and, per family, the `breakpoint_axis_level` (the easiest `axis_level`
+  at which the agent first failed). This is what turns a sweep into a signal.
 
 Worked instances for all three should live in an `examples/` folder once the run I/O schemas are checked into this package.
 Design intent: a result can have a perfect rubric score yet a `fail` verdict, because the `critical_check` is binding.
+
+These names line up with ATP's internal result vocabulary, so the methodology contract and the
+platform don't drift: `run-result` ↔ `EvalCaseResult` / `CaseVerdict` (`critical_pass`,
+`malformed`, `rubric_score`); `suite-result.breakpoint_axis_level` is the same concept the ATP
+reporter emits; the one-way export to arbiter is `report_benchmark-v1`. `run-request` /
+`run-result` / `suite-result` are the methodology's **external** I/O contract; the platform's
+**internal** store is `EvalRun` / `EvalCaseResult` (`atp/core`). See
+`docs/adr/006-unified-capability-test-types.md`.
 
 ## Validating cases
 
