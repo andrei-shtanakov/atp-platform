@@ -47,6 +47,7 @@ def _tags(case: AgentEvalCase) -> list[str]:
         f"axis_{case.construction_axis}",
         f"level_{case.axis_level}",
         f"suite_{case.suite_type}",
+        f"version_{case.version}",
     ]
     # Preserve order, drop duplicates.
     seen: set[str] = set()
