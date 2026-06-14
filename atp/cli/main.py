@@ -936,6 +936,7 @@ async def _run_suite(
             scored_results=all_scored_results,
             adapter=adapter_type,
             model=model,
+            eval_results=all_eval_results,
         )
 
     return result.success
@@ -980,6 +981,7 @@ async def _save_results_to_db(
     scored_results: dict[str, Any] | None = None,
     adapter: str | None = None,
     model: str | None = None,
+    eval_results: dict[str, list[Any]] | None = None,
 ) -> None:
     """Save test results to the dashboard database.
 
@@ -991,8 +993,12 @@ async def _save_results_to_db(
         scored_results: Per-test scored results (test_id → ScoredTestResult)
         adapter: Adapter type the suite ran under (e.g. "http").
         model: Operator-supplied model label (--model), or None.
+        eval_results: Per-test evaluation results (test_id → list[EvalResult]);
+            source of the SP-1 dimension/aggregate columns.
     """
     from datetime import datetime
+
+    from atp.dashboard.dimensions import aggregate_run, case_dimensions
 
     try:
         from atp.dashboard import ResultStorage, init_database
@@ -1024,13 +1030,20 @@ async def _save_results_to_db(
 
             # Save each test result
             test_passes: list[bool] = []
+            case_dims_all: list[dict[str, Any]] = []
             for test_result in result.tests:
+                dims = case_dimensions(
+                    test_result.test,
+                    (eval_results or {}).get(test_result.test.id, []),
+                )
+                case_dims_all.append(dims)
                 test_exec = await storage.create_test_execution(
                     suite_execution=suite_exec,
                     test_id=test_result.test.id,
                     test_name=test_result.test.name,
                     tags=test_result.test.tags if test_result.test.tags else None,
                     total_runs=len(test_result.runs),
+                    dimensions=dims,
                 )
 
                 # Save run results
@@ -1083,6 +1096,7 @@ async def _save_results_to_db(
                 failed_tests=total - passed,
                 success_rate=(passed / total) if total else 0.0,
                 status="completed" if result.success else "failed",
+                aggregates=aggregate_run(case_dims_all),
             )
 
     except Exception as e:
