@@ -68,6 +68,7 @@ def _assertions(case: AgentEvalCase) -> list[Assertion]:
                 "check": case.grader.critical_check,
                 "expected_failure_mode": case.expected_failure_mode,
                 "grader_type": case.grader.type,
+                "checker": case.grader.checker,
                 "gold": case.grader.gold,
                 "expected_findings": [
                     f.model_dump() for f in (case.grader.expected_findings or [])
@@ -85,6 +86,7 @@ def _assertions(case: AgentEvalCase) -> list[Assertion]:
                 config={
                     "rubric": [item.model_dump() for item in case.grader.rubric],
                     "grader_type": case.grader.type,
+                    "checker": case.grader.checker,
                     "scoring": case.grader.scoring,
                     "gold": case.grader.gold,
                 },
