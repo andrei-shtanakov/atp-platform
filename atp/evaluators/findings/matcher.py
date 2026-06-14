@@ -78,17 +78,21 @@ def parse_findings(text: str) -> list[dict[str, Any]] | None:
 def validate_findings(parsed: list[Any]) -> list[dict[str, Any]] | None:
     """Strictly validate every parsed finding against :class:`Finding`.
 
-    Returns the findings unchanged if *all* validate, else ``None`` (the output
-    is malformed). Strict-global: one bad finding malforms the whole output —
-    there is no lenient drop-and-continue mode, because a high malformed rate is
-    a signal about the agent, not noise to be filtered out.
+    Returns normalized dicts (``rule_id``/``anchor``/``severity`` only — extras
+    truly dropped) if *all* validate, else ``None`` (the output is malformed).
+    Normalizing guarantees the declared ``list[dict]`` return regardless of input
+    shape, so downstream ``.get`` access in :func:`match_findings` is safe.
+    Strict-global: one bad finding malforms the whole output — there is no
+    lenient drop-and-continue mode, because a high malformed rate is a signal
+    about the agent, not noise to be filtered out.
     """
+    validated: list[dict[str, Any]] = []
     for item in parsed:
         try:
-            Finding.model_validate(item)
+            validated.append(Finding.model_validate(item).model_dump())
         except ValidationError:
             return None
-    return parsed
+    return validated
 
 
 def grade_findings(
