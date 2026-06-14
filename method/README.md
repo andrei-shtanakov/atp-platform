@@ -41,8 +41,6 @@ an arbitrary difficulty). The full rationale is in the methodology.
       case-req-extraction-fabricated-deadline-clean-001.yaml
       case-req-extraction-fabricated-deadline-moderate-001.yaml
       case-req-extraction-fabricated-deadline-severe-001.yaml
-  examples/
-    run-request.example.json   run-result.example.json   suite-result.example.json
   gold/
   0. archive/
 ```
