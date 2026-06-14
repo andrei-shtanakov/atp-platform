@@ -7,6 +7,7 @@ All UI routes are under /ui/ prefix.
 from __future__ import annotations
 
 import functools
+import json
 import logging
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -37,6 +38,7 @@ from atp.dashboard.storage import ResultStorage
 from atp.dashboard.tokens import APIToken, Invite
 from atp.dashboard.tournament.models import Participant, TournamentStatus
 from atp.dashboard.tournament.models import Tournament as TournamentModel
+from atp.dashboard.trend_stats import classify_trend, ols_slope
 from atp.dashboard.v2.dependencies import DBSession
 from atp.dashboard.v2.rate_limit import limiter
 
@@ -1928,6 +1930,49 @@ async def ui_eval_leaderboard(
             "suites": suites,
             "suite_name": suite_name,
             "entries": entries,
+        },
+    )
+
+
+@router.get("/eval-trends", response_class=HTMLResponse)
+@limiter.limit("120/minute")
+async def ui_eval_trends(
+    request: Request,
+    session: DBSession,
+    suite_name: str | None = None,
+    agent_name: str | None = None,
+) -> HTMLResponse:
+    """Trend of critical_pass_rate over time for one (suite, agent) (SP-1 store)."""
+    user = await _get_ui_user(request, session)
+    storage = ResultStorage(session)
+    suites = await storage.suites_with_metrics()
+    if suite_name is None and suites:
+        suite_name = suites[0]
+    agents = await storage.agents_for_suite(suite_name) if suite_name else []
+    if agent_name is None and agents:
+        agent_name = agents[0]
+    points = (
+        await storage.suite_trend(suite_name, agent_name)
+        if suite_name and agent_name
+        else []
+    )
+    rates = [p["critical_pass_rate"] for p in points]
+    slope = ols_slope(rates)
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/eval_trends.html",
+        context={
+            "active_page": "eval_trends",
+            "user": user,
+            "suites": suites,
+            "agents": agents,
+            "suite_name": suite_name,
+            "agent_name": agent_name,
+            "points": points,
+            "slope": slope,
+            "direction": classify_trend(slope),
+            "labels_json": json.dumps([p["ts"].isoformat() for p in points]),
+            "values_json": json.dumps(rates),
         },
     )
 

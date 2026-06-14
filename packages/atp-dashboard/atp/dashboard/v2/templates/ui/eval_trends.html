@@ -1,0 +1,47 @@
+{% extends "ui/base_ui.html" %}
+{% block content %}
+<h2>Eval Trend</h2>
+<form method="get" action="/ui/eval-trends">
+  <label>Suite
+    <select name="suite_name" onchange="this.form.submit()">
+      {% for s in suites %}<option value="{{ s }}" {% if s == suite_name %}selected{% endif %}>{{ s }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Agent
+    <select name="agent_name" onchange="this.form.submit()">
+      {% for a in agents %}<option value="{{ a }}" {% if a == agent_name %}selected{% endif %}>{{ a }}</option>{% endfor %}
+    </select>
+  </label>
+</form>
+{% if points %}
+<p><strong>Trend:</strong> {{ direction }}{% if slope is not none %} (slope {{ "%.4f"|format(slope) }}/run){% endif %}</p>
+<canvas id="trendChart" height="120"></canvas>
+<script
+  src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"
+  integrity="sha384-NrKB+u6Ts6AtkIhwPixiKTzgSKNblyhlk0Sohlgar9UHUBzai/sgnNNWWd291xqt"
+  crossorigin="anonymous"></script>
+<script>
+  new Chart(document.getElementById('trendChart'), {
+    type: 'line',
+    data: {
+      labels: {{ labels_json | safe }},
+      datasets: [{ label: 'critical_pass_rate', data: {{ values_json | safe }}, tension: 0.2 }]
+    },
+    options: { scales: { y: { min: 0, max: 1 } } }
+  });
+</script>
+<table>
+  <thead><tr><th>When</th><th>critical_pass_rate</th><th>malformed_rate</th><th>mean_rubric</th></tr></thead>
+  <tbody>
+    {% for p in points %}
+    <tr><td>{{ p.ts }}</td>
+        <td>{{ "%.3f"|format(p.critical_pass_rate) }}</td>
+        <td>{{ "%.3f"|format(p.malformed_rate) if p.malformed_rate is not none else "—" }}</td>
+        <td>{{ "%.3f"|format(p.mean_rubric) if p.mean_rubric is not none else "—" }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No scored runs for this selection yet.</p>
+{% endif %}
+{% endblock %}
