@@ -38,24 +38,47 @@ _SUITE_COLS = [
 ]
 
 
+def _columns(insp: sa.Inspector, table: str) -> set[str]:
+    return {c["name"] for c in insp.get_columns(table)}
+
+
+def _indexes(insp: sa.Inspector, table: str) -> set[str]:
+    return {i["name"] for i in insp.get_indexes(table)}
+
+
 def upgrade() -> None:
+    # Idempotent: `_add_missing_columns()` runs at app startup and may already
+    # have added these columns on a live SQLite (boot-before-migrate). Skip any
+    # that already exist so the revision still applies + stamps cleanly.
+    insp = sa.inspect(op.get_bind())
+    have = _columns(insp, "test_executions")
     for name, type_ in _TEST_COLS:
-        op.add_column("test_executions", sa.Column(name, type_, nullable=True))
+        if name not in have:
+            op.add_column("test_executions", sa.Column(name, type_, nullable=True))
+    have = _columns(insp, "suite_executions")
     for name, type_ in _SUITE_COLS:
-        op.add_column("suite_executions", sa.Column(name, type_, nullable=True))
+        if name not in have:
+            op.add_column("suite_executions", sa.Column(name, type_, nullable=True))
     # Name matches SQLAlchemy's auto-index from `index=True` on the model column,
     # so the migration path and the create_all path leave the same index name.
-    op.create_index(
-        "ix_suite_executions_run_uuid",
-        "suite_executions",
-        ["run_uuid"],
-        unique=False,
-    )
+    if "ix_suite_executions_run_uuid" not in _indexes(insp, "suite_executions"):
+        op.create_index(
+            "ix_suite_executions_run_uuid",
+            "suite_executions",
+            ["run_uuid"],
+            unique=False,
+        )
 
 
 def downgrade() -> None:
-    op.drop_index("ix_suite_executions_run_uuid", table_name="suite_executions")
+    insp = sa.inspect(op.get_bind())
+    if "ix_suite_executions_run_uuid" in _indexes(insp, "suite_executions"):
+        op.drop_index("ix_suite_executions_run_uuid", table_name="suite_executions")
+    have = _columns(insp, "suite_executions")
     for name, _ in _SUITE_COLS:
-        op.drop_column("suite_executions", name)
+        if name in have:
+            op.drop_column("suite_executions", name)
+    have = _columns(insp, "test_executions")
     for name, _ in _TEST_COLS:
-        op.drop_column("test_executions", name)
+        if name in have:
+            op.drop_column("test_executions", name)

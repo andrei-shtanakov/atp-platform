@@ -81,7 +81,32 @@ def test_case_dimensions_judge_path_sets_critical_pass_without_details() -> None
     assert dims["malformed"] is None  # findings-only field, null for judge path
     assert dims["recall"] is None
     assert dims["rubric_score"] == 0.7
-    assert aggregate_run([dims])["critical_pass_rate"] == 1.0
+    agg = aggregate_run([dims])
+    assert agg["critical_pass_rate"] == 1.0
+    # malformed is N/A for the judge path -> unknown, not a misleading 0.0
+    assert agg["malformed_rate"] is None
+
+
+def test_aggregate_run_malformed_rate_excludes_null_malformed() -> None:
+    # A judge case (malformed=None) must not dilute the denominator; the rate is
+    # computed only over the findings-graded (malformed non-null) subset.
+    cases = [
+        {
+            "axis_level": "clean",
+            "critical_pass": True,
+            "malformed": None,
+            "rubric_score": 0.9,
+        },  # judge case
+        {
+            "axis_level": "moderate",
+            "critical_pass": False,
+            "malformed": True,
+            "rubric_score": 0.0,
+        },  # findings case, malformed
+    ]
+    agg = aggregate_run(cases)
+    assert agg["critical_pass_rate"] == 0.5  # over both graded cases
+    assert agg["malformed_rate"] == 1.0  # 1 of 1 malformed-applicable cases
 
 
 def test_case_dimensions_native_run_is_all_none() -> None:

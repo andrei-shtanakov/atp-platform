@@ -82,7 +82,9 @@ def aggregate_run(case_dims: list[dict[str, Any]]) -> dict[str, Any]:
             "breakpoint_axis_level": None,
         }
     passed = sum(1 for c in graded if c["critical_pass"])
-    malformed = sum(1 for c in graded if c.get("malformed"))
+    # malformed is findings-only: judge-graded cases report None, which must NOT
+    # dilute the rate to a misleading 0.0 — compute over the non-null subset.
+    malformable = [c for c in graded if c.get("malformed") is not None]
     rubrics = [c["rubric_score"] for c in graded if c.get("rubric_score") is not None]
     failed_levels = [
         c["axis_level"]
@@ -97,9 +99,14 @@ def aggregate_run(case_dims: list[dict[str, Any]]) -> dict[str, Any]:
         if failed_levels
         else None
     )
+    malformed_rate = (
+        round(sum(1 for c in malformable if c["malformed"]) / len(malformable), 6)
+        if malformable
+        else None
+    )
     return {
         "critical_pass_rate": round(passed / n, 6),
-        "malformed_rate": round(malformed / n, 6),
+        "malformed_rate": malformed_rate,
         "mean_rubric": round(sum(rubrics) / len(rubrics), 6) if rubrics else None,
         "breakpoint_axis_level": breakpoint,
     }
