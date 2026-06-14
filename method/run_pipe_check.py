@@ -44,13 +44,13 @@ from typing import Any
 import yaml
 from atp_method.evaluators import AgentEvalCaseEvaluator
 from atp_method.loader import METHOD_CRITICAL_CHECK, METHOD_RUBRIC, load_suite
+from atp_method.taxonomy import benchmark_id_for
 
 from atp.adapters import create_adapter
 from atp.reporters.benchmark_reporter import build_report_benchmark_payload
 from atp.runner import TestOrchestrator
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-BENCHMARK_ID = "code-review"
 
 # agent_id -> shim path (relative to repo root). Both run via the current
 # interpreter so the raw-API shim sees the installed `anthropic` SDK.
@@ -166,6 +166,7 @@ async def _run_agent(
     runs: int,
     with_rubric: bool,
     timeout_s: float,
+    benchmark_id: str,
 ) -> dict[str, Any]:
     """Run the family against one agent and build its report_benchmark payload."""
     suite = load_suite(str(case_dir))
@@ -194,7 +195,7 @@ async def _run_agent(
     ]
     payload = build_report_benchmark_payload(
         run_id=str(uuid.uuid4()),
-        benchmark_id=BENCHMARK_ID,
+        benchmark_id=benchmark_id,
         agent_id=agent_id,
         ts=datetime.now(tz=UTC).isoformat(),
         case_results=case_results,
@@ -260,9 +261,17 @@ async def _main_async(args: argparse.Namespace) -> int:
         print(f"Unknown agent(s): {unknown}. Known: {list(SHIMS)}", file=sys.stderr)
         return 2
 
+    try:
+        benchmark_id = benchmark_id_for(args.task_type)
+    except ValueError as exc:
+        # Surface a single-line CLI error, not a traceback (matches the
+        # unknown-agent path above).
+        print(str(exc), file=sys.stderr)
+        return 2
+
     n_cases = len(axis_by_id)
     rubric = "on" if args.with_rubric else "off"
-    print(f"Pipe-check: {n_cases} case(s) in {case_dir}")
+    print(f"Pipe-check: {n_cases} case(s) in {case_dir} | task_type={args.task_type}")
     print(f"Agents: {agents} | runs={args.runs} | rubric={rubric}")
 
     runnable: list[str] = []
@@ -292,7 +301,13 @@ async def _main_async(args: argparse.Namespace) -> int:
     for agent_id in runnable:
         print(f"Running {agent_id} ...")
         payload = await _run_agent(
-            agent_id, case_dir, axis_by_id, args.runs, args.with_rubric, args.timeout
+            agent_id,
+            case_dir,
+            axis_by_id,
+            args.runs,
+            args.with_rubric,
+            args.timeout,
+            benchmark_id,
         )
         out_file = out_dir / f"report_benchmark_{agent_id}.json"
         out_file.write_text(json.dumps(payload, indent=2))
@@ -323,6 +338,11 @@ def main() -> int:
     """Parse args and run the pipe-check."""
     p = argparse.ArgumentParser(description="R-07 Task 6 code-review pipe-check")
     p.add_argument("--case-dir", default="method/cases/code-review")
+    p.add_argument(
+        "--task-type",
+        default="review",
+        help="internal task_type; benchmark_id is derived for the arbiter export",
+    )
     p.add_argument("--agents", default=",".join(SHIMS))
     p.add_argument("--runs", type=int, default=1)
     p.add_argument(

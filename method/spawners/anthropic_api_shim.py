@@ -6,14 +6,15 @@ directly (no Claude Code product harness), normalize the result into an
 ATPResponse JSON on stdout. agent_id is set by the run wiring, not here.
 
 Why this exists (R-07 Phase-1b Ticket B, "product harness vs raw API"):
-  - `claude_code_shim.py` reaches the model THROUGH `claude -p`, which carries
-    Claude Code's system prompt / tool scaffolding — a *product harness*.
-  - this shim hits the bare Messages API with ONLY the shared REVIEW_ENVELOPE as
+  - the CLI shim reaches the model THROUGH `claude -p`, which carries Claude
+    Code's system prompt / tool scaffolding — a *product harness*.
+  - this shim hits the bare Messages API with ONLY the shared review envelope as
     the user turn — the *raw model*.
 The two are deliberately NOT equalizable: that gap is the thing being measured.
 
 Guardrails (so this stays a fair baseline, not "a different agent"):
-  - SAME model + SAME prompt envelope as the CLI shim (imported, not re-typed).
+  - SAME model + SAME prompt envelope as the CLI shim. Both draw from the single
+    shared source (`atp_method.envelopes`), so they cannot drift apart.
   - NO assistant prefill and NO system prompt — prefilling the agent-under-test
     would make the ablation meaningless.
   - `anthropic_api` is a LABELED BASELINE row only; it must never substitute the
@@ -27,11 +28,11 @@ import json
 import os
 import sys
 
-# Reuse the CLI shim's pinned model + prompt envelope verbatim so the only
-# difference between the two agents is harness-vs-raw-API (sys.path[0] is this
-# script's dir when run as `python method/spawners/anthropic_api_shim.py`).
-from claude_code_shim import MODEL, _build_prompt
+# Pull the pinned model + prompt envelope from the single shared source so the
+# only difference between this shim and the CLI shim is harness-vs-raw-API.
+from atp_method.envelopes import DEFAULT_MODEL, build_prompt, get_envelope
 
+MODEL = os.environ.get("CLAUDE_MODEL", DEFAULT_MODEL)
 MAX_TOKENS = int(os.environ.get("API_MAX_TOKENS", "4096"))
 
 
@@ -71,7 +72,7 @@ def main() -> int:
     except ImportError as exc:  # pragma: no cover - env guard
         return _fail(task_id, f"anthropic SDK not installed: {exc}")
 
-    prompt = _build_prompt(request)
+    prompt = build_prompt(request, get_envelope("review"))
     try:
         client = anthropic.Anthropic()
         msg = client.messages.create(
