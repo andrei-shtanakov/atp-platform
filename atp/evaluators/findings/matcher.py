@@ -7,15 +7,38 @@ the offending code, whitespace-normalized) + a synonym set of acceptable rule id
 
 import json
 import re
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, ValidationError
+
+
+class Finding(BaseModel):
+    """A single structured code-review finding emitted by the agent under test.
+
+    Strict by design (R-07 P3): ``rule_id``/``anchor``/``severity`` are required
+    and ``severity`` must be one of the contract's three levels (the prompt
+    envelope pins ``critical|major|minor``). Extra keys (``file``, ``line``,
+    ``fix``, ...) are ignored. A finding that fails this validation makes the
+    *whole* output malformed rather than silently counting as a missed defect —
+    a high malformed rate is a real routing fact about the agent, not noise.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    rule_id: str
+    anchor: str
+    severity: Literal["critical", "major", "minor"]
 
 
 class MatchResult(BaseModel):
     """Outcome of matching agent findings against ground truth."""
 
     critical_pass: bool
+    # Distinct from critical_pass: the output was not a valid findings array
+    # (unparseable JSON OR a finding failed strict validation). Unifies the two
+    # failure paths so the reporter can aggregate malformed_rate separately from
+    # a legitimately missed defect.
+    malformed: bool = False
     recall: float
     precision: float
     matched: list[str]
@@ -50,6 +73,61 @@ def parse_findings(text: str) -> list[dict[str, Any]] | None:
     except (ValueError, TypeError):
         return None
     return data if isinstance(data, list) else None
+
+
+def validate_findings(parsed: list[Any]) -> list[dict[str, Any]] | None:
+    """Strictly validate every parsed finding against :class:`Finding`.
+
+    Returns the findings unchanged if *all* validate, else ``None`` (the output
+    is malformed). Strict-global: one bad finding malforms the whole output —
+    there is no lenient drop-and-continue mode, because a high malformed rate is
+    a signal about the agent, not noise to be filtered out.
+    """
+    for item in parsed:
+        try:
+            Finding.model_validate(item)
+        except ValidationError:
+            return None
+    return parsed
+
+
+def grade_findings(
+    text: str | None,
+    expected: list[dict[str, Any]],
+    must_not_flag: list[dict[str, Any]],
+) -> MatchResult:
+    """Parse, strictly validate, and match agent output in a single pass.
+
+    Collapses the two failure modes into one :class:`MatchResult`:
+
+    - ``malformed=True`` (with ``critical_pass=False``) when the output is not a
+      JSON array of valid :class:`Finding` objects — whether it failed to parse
+      *or* a finding failed strict validation. This is distinct from a
+      legitimately missed defect (``malformed=False, critical_pass=False``).
+    - otherwise the usual recall/precision/critical_pass from
+      :func:`match_findings`.
+    """
+    parsed = parse_findings(text) if text is not None else None
+    if parsed is None:
+        return _malformed_result()
+    findings = validate_findings(parsed)
+    if findings is None:
+        return _malformed_result()
+    return match_findings(findings, expected, must_not_flag)
+
+
+def _malformed_result() -> MatchResult:
+    """A :class:`MatchResult` for output that is not a valid findings array."""
+    return MatchResult(
+        critical_pass=False,
+        malformed=True,
+        recall=0.0,
+        precision=0.0,
+        matched=[],
+        missed=[],
+        false_positives=[],
+        unknown_extras=[],
+    )
 
 
 def _finding_matches_expected(

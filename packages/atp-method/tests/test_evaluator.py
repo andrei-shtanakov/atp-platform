@@ -224,7 +224,7 @@ async def test_findings_match_critical_uses_matcher_not_judge() -> None:
     ev = AgentEvalCaseEvaluator(judge=BombJudge())
     artifact = ArtifactFile(
         path="findings.json",
-        content='[{"rule_id":"cwe-89","anchor":"f\\"SELECT"}]',
+        content='[{"rule_id":"cwe-89","anchor":"f\\"SELECT","severity":"critical"}]',
     )
     response = ATPResponse(
         task_id="case-x-001",
@@ -250,3 +250,38 @@ async def test_findings_match_critical_uses_matcher_not_judge() -> None:
     result = await ev.evaluate(_task(), response, [], assertion)
     assert result.checks[0].name == "critical_check"
     assert result.checks[0].passed is True
+
+
+@pytest.mark.anyio
+async def test_findings_match_malformed_is_distinct_from_missed() -> None:
+    """A finding missing the required severity is malformed (not a silent miss):
+    critical_check fails AND details.malformed is True for the routing signal."""
+    ev = AgentEvalCaseEvaluator(judge=BombJudge())
+    response = ATPResponse(
+        task_id="case-x-001",
+        status=ResponseStatus.COMPLETED,
+        artifacts=[
+            ArtifactFile(
+                path="findings.json",
+                content='[{"rule_id":"cwe-89","anchor":"f\\"SELECT"}]',
+            )
+        ],
+    )
+    assertion = Assertion(
+        type=METHOD_CRITICAL_CHECK,
+        critical=True,
+        config={
+            "check": "flag the injection",
+            "grader_type": "findings_match",
+            "expected_findings": [
+                {"rule_ids": ["cwe-89"], "anchor": 'f"SELECT', "severity": "critical"}
+            ],
+            "must_not_flag": [],
+        },
+    )
+    result = await ev.evaluate(_task(), response, [], assertion)
+    check = result.checks[0]
+    assert check.passed is False
+    assert check.details is not None
+    assert check.details["malformed"] is True
+    assert "malformed" in (check.message or "")

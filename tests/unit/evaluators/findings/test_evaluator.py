@@ -64,6 +64,7 @@ async def test_matching_finding_passes(evaluator: FindingsMatchEvaluator) -> Non
                 "rule_id": "cwe-89",
                 "file": "app.py",
                 "anchor": 'query = f"SELECT * FROM users WHERE id = {user_id}"',
+                "severity": "critical",
             }
         ]
     )
@@ -82,7 +83,7 @@ async def test_matching_finding_passes(evaluator: FindingsMatchEvaluator) -> Non
 
 
 async def test_unparseable_content_fails(evaluator: FindingsMatchEvaluator) -> None:
-    """Non-JSON prose content should produce a failed result with 'unparseable'."""
+    """Non-JSON prose content should produce a failed, malformed result."""
     task = _make_task()
     response = _make_response("I found a SQL injection issue on line 42.")
     assertion = _make_assertion()
@@ -94,4 +95,21 @@ async def test_unparseable_content_fails(evaluator: FindingsMatchEvaluator) -> N
     check = result.checks[0]
     assert check.passed is False
     assert check.message is not None
-    assert "unparseable" in check.message.lower()
+    assert "malformed" in check.message.lower()
+    assert check.details is not None
+    assert check.details["malformed"] is True
+
+
+async def test_finding_missing_severity_is_malformed(
+    evaluator: FindingsMatchEvaluator,
+) -> None:
+    """A finding that omits the required severity field is malformed — distinct
+    from a missed defect, so the routing signal isn't conflated."""
+    findings_json = json.dumps([{"rule_id": "cwe-89", "anchor": 'f"SELECT'}])
+    result = await evaluator.evaluate(
+        _make_task(), _make_response(findings_json), [], _make_assertion()
+    )
+    check = result.checks[0]
+    assert check.passed is False
+    assert check.details is not None
+    assert check.details["malformed"] is True

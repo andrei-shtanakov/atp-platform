@@ -4,7 +4,7 @@ from typing import Any
 
 from atp.core.results import EvalResult
 from atp.evaluators.base import Evaluator
-from atp.evaluators.findings.matcher import match_findings, parse_findings
+from atp.evaluators.findings.matcher import grade_findings
 from atp.loader.models import Assertion, TestDefinition
 from atp.protocol.models import ATPEvent, ATPResponse
 
@@ -26,10 +26,10 @@ class FindingsMatchEvaluator(Evaluator):
     ) -> EvalResult:
         """Match agent findings against expected defects and must-not-flag anchors.
 
-        Reads the first artifact with non-empty content, parses it as a JSON
-        findings array, then delegates to :func:`match_findings`. Returns a
-        single :class:`EvalCheck` summarising recall / precision / missed /
-        false-positives.
+        Reads the first artifact with non-empty content, then delegates to
+        :func:`grade_findings`, which parses, strictly validates, and matches in
+        one pass. Returns a single :class:`EvalCheck` summarising recall /
+        precision / missed / false-positives (or a malformed verdict).
         """
         cfg: dict[str, Any] = assertion.config
 
@@ -38,38 +38,25 @@ class FindingsMatchEvaluator(Evaluator):
             None,
         )
 
-        if content is None:
-            check = self._create_check(
-                name="findings_match",
-                passed=False,
-                message="unparseable findings — cannot verify (expected a JSON array)",
-                details={"recall": 0.0, "precision": 0.0},
-            )
-            return EvalResult(
-                evaluator=self.name,
-                checks=[check],
-                critical=assertion.critical,
-            )
-
-        findings = parse_findings(content)
-        if findings is None:
-            check = self._create_check(
-                name="findings_match",
-                passed=False,
-                message="unparseable findings — cannot verify (expected a JSON array)",
-                details={"recall": 0.0, "precision": 0.0},
-            )
-            return EvalResult(
-                evaluator=self.name,
-                checks=[check],
-                critical=assertion.critical,
-            )
-
-        r = match_findings(
-            findings,
+        r = grade_findings(
+            content,
             cfg.get("expected_findings", []),
             cfg.get("must_not_flag", []),
         )
+
+        if r.malformed:
+            check = self._create_check(
+                name="findings_match",
+                passed=False,
+                message="malformed findings — cannot verify (expected a JSON "
+                "array of {rule_id, anchor, severity} objects)",
+                details=r.model_dump(),
+            )
+            return EvalResult(
+                evaluator=self.name,
+                checks=[check],
+                critical=assertion.critical,
+            )
 
         missed_str = ", ".join(r.missed) if r.missed else "none"
         fp_str = ", ".join(r.false_positives) if r.false_positives else "none"

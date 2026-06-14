@@ -103,29 +103,25 @@ class AgentEvalCaseEvaluator(Evaluator):
         assertion: Assertion,
     ) -> EvalResult:
         if assertion.config.get("grader_type") == "findings_match":
-            from atp.evaluators.findings.matcher import match_findings, parse_findings
+            from atp.evaluators.findings.matcher import grade_findings
 
             text = next(
                 (a.content for a in response.artifacts if getattr(a, "content", None)),
                 None,
             )
-            findings = parse_findings(text) if text is not None else None
-            if findings is None:
-                return EvalResult(
-                    evaluator=self.name,
-                    checks=[
-                        EvalCheck(
-                            name="critical_check",
-                            passed=False,
-                            score=0.0,
-                            message="unparseable findings — cannot verify",
-                        )
-                    ],
-                )
-            r = match_findings(
-                findings,
+            # One unified path: parse + strict validation + match. A malformed
+            # output (unparseable OR a finding failing Finding validation) is a
+            # distinct outcome from a missed defect — r.malformed carries it
+            # through details so the reporter can aggregate malformed_rate.
+            r = grade_findings(
+                text,
                 assertion.config.get("expected_findings", []),
                 assertion.config.get("must_not_flag", []),
+            )
+            message = (
+                "malformed findings — cannot verify"
+                if r.malformed
+                else f"recall={r.recall} fp={r.false_positives}"
             )
             return EvalResult(
                 evaluator=self.name,
@@ -134,7 +130,7 @@ class AgentEvalCaseEvaluator(Evaluator):
                         name="critical_check",
                         passed=r.critical_pass,
                         score=1.0 if r.critical_pass else 0.0,
-                        message=f"recall={r.recall} fp={r.false_positives}",
+                        message=message,
                         details=r.model_dump(),
                     )
                 ],
