@@ -2,13 +2,16 @@
 dimension/outcome columns. No DB — unit-testable in isolation.
 
 Method runs carry `level_*`/`capability_*`/`family_*`/`version_*` tags and a
-`critical_check` EvalCheck whose `details` is the CaseVerdict dump. Native runs
-have neither, so every field degrades to None (the columns are nullable).
+`critical_check` EvalCheck. Both grading paths populate `critical_pass` (from the
+check's `passed`); the checker (findings_match) path additionally carries a
+CaseVerdict dump in `details` (`malformed`/`recall`/`precision`/`fp_count`/
+`grader_version`), while the LLM-judge path leaves those null. Native runs have
+no `critical_check`, so every field degrades to None (the columns are nullable).
 """
 
 from typing import Any
 
-from atp.core.results import EvalResult
+from atp.core.results import EvalCheck, EvalResult
 from atp.loader.models import TestDefinition
 
 _AXIS_ORDER = ["clean", "mild", "moderate", "severe", "very_severe"]
@@ -21,12 +24,13 @@ def _tag_value(tags: list[str], prefix: str) -> str | None:
     return None
 
 
-def _critical_details(results: list[EvalResult]) -> dict[str, Any]:
+def _critical_check(results: list[EvalResult]) -> EvalCheck | None:
+    """The critical_check EvalCheck, present on both judge and checker paths."""
     for r in results:
         for c in r.checks:
-            if c.name == "critical_check" and c.details:
-                return c.details
-    return {}
+            if c.name == "critical_check":
+                return c
+    return None
 
 
 def _rubric_score(results: list[EvalResult]) -> float | None:
@@ -42,14 +46,17 @@ def case_dimensions(
 ) -> dict[str, Any]:
     """Map one case's tags + eval results into the test_executions columns."""
     tags = test.tags or []
-    v = _critical_details(eval_results)
+    check = _critical_check(eval_results)
+    # critical_pass works for BOTH grading paths via the check's `passed`; the
+    # richer findings fields live only in the checker path's CaseVerdict `details`.
+    v = (check.details or {}) if check else {}
     version = _tag_value(tags, "version_")
     return {
         "axis_level": _tag_value(tags, "level_"),
         "capability": _tag_value(tags, "capability_"),
         "family": _tag_value(tags, "family_"),
         "case_version": int(version) if version and version.isdigit() else None,
-        "critical_pass": v.get("critical_pass"),
+        "critical_pass": check.passed if check else None,
         "malformed": v.get("malformed"),
         "recall": v.get("recall"),
         "precision": v.get("precision"),

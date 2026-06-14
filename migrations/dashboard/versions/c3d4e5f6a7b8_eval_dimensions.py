@@ -43,13 +43,18 @@ def upgrade() -> None:
         op.add_column("test_executions", sa.Column(name, type_, nullable=True))
     for name, type_ in _SUITE_COLS:
         op.add_column("suite_executions", sa.Column(name, type_, nullable=True))
+    # Name matches SQLAlchemy's auto-index from `index=True` on the model column,
+    # so the migration path and the create_all path leave the same index name.
     op.create_index(
-        "idx_suite_run_uuid", "suite_executions", ["run_uuid"], unique=False
+        "ix_suite_executions_run_uuid",
+        "suite_executions",
+        ["run_uuid"],
+        unique=False,
     )
 
 
 def downgrade() -> None:
-    op.drop_index("idx_suite_run_uuid", table_name="suite_executions")
+    op.drop_index("ix_suite_executions_run_uuid", table_name="suite_executions")
     for name, _ in _SUITE_COLS:
         op.drop_column("suite_executions", name)
     for name, _ in _TEST_COLS:

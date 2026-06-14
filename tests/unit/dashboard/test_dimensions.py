@@ -67,6 +67,23 @@ def test_case_dimensions_from_tags_and_verdict() -> None:
     assert dims["grader_version"] == "findings_match@1"
 
 
+def test_case_dimensions_judge_path_sets_critical_pass_without_details() -> None:
+    # The LLM-judge critical_check has NO details (no CaseVerdict dump), but
+    # critical_pass must still come from the check's `passed` — else whole
+    # judge-graded families persist null and drop out of the run aggregates.
+    td = _td(["level_clean", "capability_calibration", "family_req_extraction"])
+    judge_critical = EvalResult(
+        evaluator="agent_eval_case",
+        checks=[EvalCheck(name="critical_check", passed=True, score=1.0, message="")],
+    )
+    dims = case_dimensions(td, [judge_critical, _rubric(0.7)])
+    assert dims["critical_pass"] is True
+    assert dims["malformed"] is None  # findings-only field, null for judge path
+    assert dims["recall"] is None
+    assert dims["rubric_score"] == 0.7
+    assert aggregate_run([dims])["critical_pass_rate"] == 1.0
+
+
 def test_case_dimensions_native_run_is_all_none() -> None:
     dims = case_dimensions(_td([]), [])
     assert dims["axis_level"] is None
