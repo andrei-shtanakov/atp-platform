@@ -79,7 +79,7 @@ and produce comparable scorecards.
 - **Output — `run-result`**: the authoritative `verdict` (`pass` / `fail` / `error` /
   `skipped`), the binary `critical_check` outcome bound to the case's failure mode,
   per-criterion `rubric_scores`, efficiency `metrics` (steps, tokens, cost, latency), the raw
-  `agent_response`, and an `evidence` audit trail. The schema enforces that a `pass` cannot
+  `agent_response`, and an `evidence` audit trail. Once `run-result.schema.json` is added, it should enforce that a `pass` cannot
   coexist with a failed `critical_check`, and that an `error` verdict carries an `error` object.
 - **Aggregate — `suite-result`**: rolls many results into one scorecard for an agent version —
   headline `pass_rate` and, per family, the `point_of_collapse` (the easiest `axis_level` at
