@@ -43,7 +43,6 @@ GraderType = Literal[
     "exact",
     "regex",
     "programmatic",
-    "findings_match",
     "rubric",
     "model_graded",
     "human",
@@ -123,6 +122,7 @@ class Grader(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     type: GraderType
+    checker: str | None = None
     gold: str | None = None
     rubric: list[RubricItem] | None = Field(default=None, min_length=1)
     critical_check: str = Field(..., min_length=1)
@@ -134,16 +134,19 @@ class Grader(BaseModel):
     def validate_grader_requirements(self) -> Grader:
         """Mirror schema allOf: rubric/model_graded need a rubric; exact needs gold.
 
-        findings_match graders require expected_findings to be present (use [] for
-        compliant cases with no planted defect).
+        A ``checker`` is only valid under ``type='programmatic'``. The
+        ``findings_match`` checker requires expected_findings to be present (use []
+        for compliant cases with no planted defect).
         """
         if self.type in ("rubric", "model_graded") and not self.rubric:
             raise ValueError(f"grader type '{self.type}' requires a rubric")
         if self.type == "exact" and not self.gold:
             raise ValueError("grader type 'exact' requires a gold reference")
-        if self.type == "findings_match" and self.expected_findings is None:
+        if self.checker is not None and self.type != "programmatic":
+            raise ValueError("grader.checker requires type 'programmatic'")
+        if self.checker == "findings_match" and self.expected_findings is None:
             raise ValueError(
-                "grader type 'findings_match' requires expected_findings "
+                "checker 'findings_match' requires expected_findings "
                 "(use [] for a compliant case with no planted defect)"
             )
         return self

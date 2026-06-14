@@ -4,8 +4,9 @@ from pathlib import Path
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
-from atp_method.schema import AgentEvalCase
+from atp_method.schema import AgentEvalCase, Grader
 
 
 def test_all_example_cases_validate(example_cases_dir: Path) -> None:
@@ -83,10 +84,9 @@ def test_extra_field_forbidden() -> None:
 
 
 def test_findings_match_grader_accepts_structured_ground_truth() -> None:
-    from atp_method.schema import Grader
-
     g = Grader(
-        type="findings_match",
+        type="programmatic",
+        checker="findings_match",
         critical_check="flag the SQL injection",
         scoring="fail if critical_check fails",
         expected_findings=[
@@ -105,27 +105,70 @@ def test_findings_match_grader_accepts_structured_ground_truth() -> None:
 
 
 def test_findings_match_grader_requires_expected_findings_key() -> None:
-    from pydantic import ValidationError
-
-    from atp_method.schema import Grader
-
-    # missing expected_findings entirely under findings_match -> invalid
+    # missing expected_findings entirely under findings_match checker -> invalid
     with pytest.raises(ValidationError):
-        Grader(type="findings_match", critical_check="x", scoring="y")
+        Grader(
+            type="programmatic",
+            checker="findings_match",
+            critical_check="x",
+            scoring="y",
+        )
 
 
 def test_findings_match_grader_allows_empty_expected_findings() -> None:
     # a COMPLIANT case has no planted defect: expected_findings present but empty is OK
-    from atp_method.schema import Grader
-
     g = Grader(
-        type="findings_match",
+        type="programmatic",
+        checker="findings_match",
         critical_check="must not invent issues",
         scoring="fail if critical_check fails",
         expected_findings=[],
         must_not_flag=[{"anchor": "cursor.execute(q, (uid,))"}],
     )
     assert g.expected_findings == []
+
+
+def test_grader_type_findings_match_now_rejected() -> None:
+    # findings_match is no longer a grader.type; it is a checker under programmatic
+    with pytest.raises(ValidationError):
+        Grader(
+            type="findings_match",
+            critical_check="x",
+            scoring="y",
+            expected_findings=[],
+        )
+
+
+def test_programmatic_checker_findings_requires_expected_findings() -> None:
+    with pytest.raises(ValidationError, match="expected_findings"):
+        Grader(
+            type="programmatic",
+            checker="findings_match",
+            critical_check="x",
+            scoring="y",
+        )
+
+
+def test_programmatic_checker_findings_accepts_empty_expected() -> None:
+    g = Grader(
+        type="programmatic",
+        checker="findings_match",
+        critical_check="x",
+        scoring="y",
+        expected_findings=[],
+    )
+    assert g.checker == "findings_match"
+
+
+def test_checker_requires_programmatic_type() -> None:
+    with pytest.raises(ValidationError, match="programmatic"):
+        Grader(
+            type="rubric",
+            checker="findings_match",
+            critical_check="x",
+            scoring="y",
+            rubric=[{"criterion": "c", "weight": 1.0}],
+        )
 
 
 def _minimal(
