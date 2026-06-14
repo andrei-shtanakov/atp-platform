@@ -261,7 +261,13 @@ async def _main_async(args: argparse.Namespace) -> int:
         print(f"Unknown agent(s): {unknown}. Known: {list(SHIMS)}", file=sys.stderr)
         return 2
 
-    benchmark_id = benchmark_id_for(args.task_type)
+    try:
+        benchmark_id = benchmark_id_for(args.task_type)
+    except ValueError as exc:
+        # Surface a single-line CLI error, not a traceback (matches the
+        # unknown-agent path above).
+        print(str(exc), file=sys.stderr)
+        return 2
 
     n_cases = len(axis_by_id)
     rubric = "on" if args.with_rubric else "off"

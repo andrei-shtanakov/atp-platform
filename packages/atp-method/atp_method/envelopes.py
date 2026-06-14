@@ -8,6 +8,8 @@ importing another — which removes the N×M drift and keeps the API-vs-CLI abla
 equivalent by construction.
 """
 
+from typing import Any
+
 # Pinned model for the code-review vertical (override per shim via CLAUDE_MODEL).
 # Shared so both spawners pin the SAME model (the ablation's equivalence guard).
 DEFAULT_MODEL = "claude-opus-4-8"
@@ -29,7 +31,7 @@ def get_envelope(capability: str = "review") -> str:
     return _ENVELOPES[capability]
 
 
-def build_prompt(request: dict, envelope: str) -> str:
+def build_prompt(request: dict[str, Any], envelope: str) -> str:
     """Wrap an ATPRequest's task + inline artifacts in the given envelope."""
     task = request.get("task") or {}
     body = task.get("description", "")
