@@ -1,6 +1,7 @@
 """Storage layer for persisting ATP test results to the database."""
 
 import json
+import uuid
 from datetime import UTC, date, datetime
 from typing import Any
 
@@ -191,6 +192,7 @@ class ResultStorage:
             status="running",
             adapter=adapter,
             model=model,
+            run_uuid=str(uuid.uuid4()),
         )
         self._session.add(execution)
         await self._session.flush()
@@ -207,6 +209,7 @@ class ResultStorage:
         success_rate: float | None = None,
         status: str | None = None,
         error: str | None = None,
+        aggregates: dict[str, Any] | None = None,
     ) -> SuiteExecution:
         """Update suite execution record.
 
@@ -219,6 +222,8 @@ class ResultStorage:
             success_rate: Success rate (0.0-1.0).
             status: Execution status.
             error: Error message if failed.
+            aggregates: Run-level eval aggregates (critical_pass_rate,
+                malformed_rate, mean_rubric, breakpoint_axis_level).
 
         Returns:
             Updated SuiteExecution instance.
@@ -241,6 +246,11 @@ class ResultStorage:
             execution.status = status
         if error is not None:
             execution.error = error
+        if aggregates is not None:
+            execution.critical_pass_rate = aggregates.get("critical_pass_rate")
+            execution.malformed_rate = aggregates.get("malformed_rate")
+            execution.mean_rubric = aggregates.get("mean_rubric")
+            execution.breakpoint_axis_level = aggregates.get("breakpoint_axis_level")
 
         await self._session.flush()
         return execution
@@ -300,6 +310,7 @@ class ResultStorage:
         tags: list[str] | None = None,
         started_at: datetime | None = None,
         total_runs: int = 1,
+        dimensions: dict[str, Any] | None = None,
     ) -> TestExecution:
         """Create a new test execution record.
 
@@ -310,10 +321,14 @@ class ResultStorage:
             tags: Test tags.
             started_at: Execution start time.
             total_runs: Expected number of runs.
+            dimensions: Per-case eval dimensions (axis_level, capability,
+                family, case_version, critical_pass, malformed, recall,
+                precision, fp_count, rubric_score, grader_version).
 
         Returns:
             TestExecution instance.
         """
+        dims = dimensions or {}
         execution = TestExecution(
             suite_execution_id=suite_execution.id,
             test_id=test_id,
@@ -322,6 +337,17 @@ class ResultStorage:
             started_at=started_at or datetime.now(tz=UTC),
             total_runs=total_runs,
             status="running",
+            axis_level=dims.get("axis_level"),
+            capability=dims.get("capability"),
+            family=dims.get("family"),
+            case_version=dims.get("case_version"),
+            critical_pass=dims.get("critical_pass"),
+            malformed=dims.get("malformed"),
+            recall=dims.get("recall"),
+            precision=dims.get("precision"),
+            fp_count=dims.get("fp_count"),
+            rubric_score=dims.get("rubric_score"),
+            grader_version=dims.get("grader_version"),
         )
         self._session.add(execution)
         await self._session.flush()
