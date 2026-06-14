@@ -59,6 +59,13 @@
       (native `FindingsMatchEvaluator` + method `case_evaluator`) зовут единый путь.
       `malformed_rate` → `score_components` (контракт numbers-only, без изменений схемы).
     - [ ] **Задача 6 — платный pipe-check** на закалённом гейте (go/no-go). После P3.
+      Обвязка готова: `method/run_pipe_check.py` (CLI-адаптер → шим → оркестратор →
+      findings_match → `report_benchmark` payload + sqlite INSERT; `--dry-run`/`--db`/
+      `--with-rubric`). Два агента: `claude_code` (`claude -p`, через сессию CC) и
+      `anthropic_api` (raw API, шим `method/spawners/anthropic_api_shim.py` — labeled
+      baseline, НЕ замена CLI agent_id в роутинге). **Блок:** `ANTHROPIC_API_KEY` в
+      окружении НЕ задан → `anthropic_api` пропускается; `claude_code` готов к прогону.
+      Запуск платный — по решению Андрея (`uv run python method/run_pipe_check.py`).
     - [ ] **P4 + prefill судьи (~0.5д).** strengths/weaknesses → только локальные логи (numeric-only
       payload). Prefill (anthropic API) — робастность СУДЬИ, отдельный PR от P1.
     - [ ] **P1 (~1д) — batched rubric** через отдельный structured-judge путь в method evaluator
@@ -189,6 +196,28 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
 
 ## Dashboard UI
 
+- [ ] **EPIC — унификация просмотра/сравнения/истории результатов (исходная цель платформы).**
+  Сейчас результаты раздроблены по 3 хранилищам с неравномерным UI, и это «зообарк»:
+  1. **`SuiteExecution`** (дашборд-БД) — пишется из `atp test` по умолчанию (`--no-save`
+     отключает), включая прогоны **atp-method**. Доступно только через JSON API
+     (`/api/executions`, timeline/comparison/analytics-роуты) — **HTML-страницы нет**.
+  2. **benchmark `Run`** (таблица `benchmark_runs`, дашборд-БД) — pull-model benchmark
+     API/SDK для внешних участников. **Есть UI** (`/ui/runs`, leaderboard).
+  3. **arbiter `benchmark_runs`** (кросс-проект) — наш `report_benchmark-v1` payload;
+     в ATP не отображается вообще (потребитель — роутинг arbiter).
+  Задача: определить канонический «eval run» вид — единая поверхность результат/история/
+  сравнение для CLI/method-прогонов (а не только benchmark-платформа); провести аудит
+  пересечения `SuiteExecution` ↔ benchmark `Run`, выбрать один дом, мосты/депрекейт для
+  второго. Родитель для `/ui/executions` и для R-07-визуализации ниже.
+- [ ] **R-07: визуализация результатов code-review на дашборде.** Сейчас
+  `method/run_pipe_check.py` эмитит `report_benchmark-v1` в JSON/локальный sqlite для
+  роутинга arbiter — в дашборде ATP **ничего не рендерится**. Нужен вид для code-review-
+  вертикали: по агентам `critical_pass_rate` / `malformed_rate` / `breakpoint_axis_level`,
+  свип по `axis_level`, по-кейсный `critical_pass` + recall/FP, история прогонов и
+  сравнение агентов (`claude_code` vs `anthropic_api`). **Решение по источнику данных:**
+  (a) гнать pipe-check через `atp test`, чтобы он сохранялся как `SuiteExecution` (тогда
+  нужен `/ui/executions` ниже), либо (b) отдельная таблица/эндпоинт результатов code-review.
+  Зависит от EPIC выше. Контекст: R-07 Phase 1, `method/run_pipe_check.py`.
 - [ ] **CLI run-history page `/ui/executions`**: SuiteExecution history (from `atp test`) is
   only reachable via the JSON API — no HTML page renders it (`/ui/*` is wired to the
   separate benchmark `Run` model). New page: list + detail + per-run statistics +
