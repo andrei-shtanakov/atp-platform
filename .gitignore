@@ -41,7 +41,22 @@ spec/.task-history.log
 
 # OS
 .DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+.TemporaryItems
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.apdisk
 Thumbs.db
+Desktop.ini
+
+# Local agent implementations (personal bots, not part of the platform)
+/agents/
+/logs/
 
 # Type checkers
 .mypy_cache/
