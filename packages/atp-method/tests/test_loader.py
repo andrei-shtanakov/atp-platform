@@ -126,3 +126,31 @@ def test_loader_threads_checker_into_critical_config() -> None:
     td = case_to_test_definition(AgentEvalCase.model_validate(doc))
     crit = next(a for a in td.assertions if a.type == METHOD_CRITICAL_CHECK)
     assert crit.config["checker"] == "findings_match"
+
+
+def test_tags_include_case_version() -> None:
+    """The case version is emitted as a version_<n> tag for SP-1 persistence."""
+    doc = {
+        "id": "case-1",
+        "version": 3,
+        "family": "f",
+        "status": "active",
+        "suite_type": "probe",
+        "capability": "safety_compliance",
+        "construction_axis": "adversarial_environment",
+        "axis_level": "moderate",
+        "instruction": "x",
+        "artifacts": [{"id": "d", "type": "text", "content": "x"}],
+        "environment": {"tools": ["file_read"], "side_effects": "none"},
+        "expected_failure_mode": "m",
+        "grader": {
+            "type": "programmatic",
+            "checker": "findings_match",
+            "expected_findings": [],
+            "critical_check": "c",
+            "scoring": "s",
+        },
+        "provenance": {"author": "a", "created": "2026-06-14"},
+    }
+    td = case_to_test_definition(AgentEvalCase.model_validate(doc))
+    assert "version_3" in td.tags

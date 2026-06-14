@@ -207,6 +207,50 @@ class TestResultStorageSuiteExecution:
         assert updated.status == "completed"
 
     @pytest.mark.anyio
+    async def test_create_suite_execution_by_name_assigns_run_uuid(self) -> None:
+        """create_suite_execution_by_name assigns a non-empty run_uuid."""
+        mock_session = AsyncMock()
+        storage = ResultStorage(mock_session)
+
+        execution = await storage.create_suite_execution_by_name(
+            suite_name="test-suite",
+            agent_name="cli-agent",
+        )
+
+        assert execution.run_uuid
+        assert isinstance(execution.run_uuid, str)
+
+    @pytest.mark.anyio
+    async def test_update_suite_execution_with_aggregates(self) -> None:
+        """update_suite_execution persists the aggregate dimension columns."""
+        now = datetime.now()
+        execution = SuiteExecution(
+            id=1,
+            suite_name="test-suite",
+            agent_id=1,
+            started_at=now,
+            status="running",
+        )
+
+        mock_session = AsyncMock()
+        storage = ResultStorage(mock_session)
+
+        updated = await storage.update_suite_execution(
+            execution,
+            aggregates={
+                "critical_pass_rate": 0.5,
+                "malformed_rate": 0.0,
+                "mean_rubric": 0.7,
+                "breakpoint_axis_level": "moderate",
+            },
+        )
+
+        assert updated.critical_pass_rate == 0.5
+        assert updated.malformed_rate == 0.0
+        assert updated.mean_rubric == 0.7
+        assert updated.breakpoint_axis_level == "moderate"
+
+    @pytest.mark.anyio
     async def test_list_suite_executions(self) -> None:
         """Test listing suite executions."""
         executions = [
@@ -268,6 +312,44 @@ class TestResultStorageTestExecution:
         assert execution.tags == ["smoke", "fast"]
         assert execution.total_runs == 5
         mock_session.add.assert_called_once()
+
+    @pytest.mark.anyio
+    async def test_create_test_execution_with_dimensions(self) -> None:
+        """create_test_execution persists the 11 eval dimension columns."""
+        suite_exec = SuiteExecution(
+            id=1,
+            suite_name="test-suite",
+            agent_id=1,
+            started_at=datetime.now(),
+        )
+
+        mock_session = AsyncMock()
+        storage = ResultStorage(mock_session)
+
+        execution = await storage.create_test_execution(
+            suite_execution=suite_exec,
+            test_id="test-001",
+            test_name="Test One",
+            dimensions={
+                "axis_level": "moderate",
+                "capability": "safety_compliance",
+                "family": "fam",
+                "case_version": 2,
+                "critical_pass": True,
+                "malformed": False,
+                "recall": 1.0,
+                "precision": 1.0,
+                "fp_count": 0,
+                "rubric_score": 0.8,
+                "grader_version": "findings_match@1",
+            },
+        )
+
+        assert execution.axis_level == "moderate"
+        assert execution.critical_pass is True
+        assert execution.case_version == 2
+        assert execution.grader_version == "findings_match@1"
+        assert execution.rubric_score == 0.8
 
     @pytest.mark.anyio
     async def test_update_test_execution(self) -> None:
