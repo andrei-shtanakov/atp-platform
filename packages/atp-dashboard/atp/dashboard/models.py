@@ -184,6 +184,14 @@ class SuiteExecution(Base):
     )  # running, completed, failed
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # --- SP-1 run-level dimensions + aggregates (nullable) ---
+    task_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    run_uuid: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    critical_pass_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    malformed_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    mean_rubric: Mapped[float | None] = mapped_column(Float, nullable=True)
+    breakpoint_axis_level: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
     # Relationships
     agent: Mapped["Agent | None"] = relationship(back_populates="suite_executions")
     test_executions: Mapped[list["TestExecution"]] = relationship(
@@ -240,6 +248,19 @@ class TestExecution(Base):
 
     # Statistics (stored as JSON for flexibility)
     statistics: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
+    # --- SP-1 eval dimensions (nullable; populated for method runs) ---
+    axis_level: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    capability: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    family: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    case_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    critical_pass: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    malformed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    recall: Mapped[float | None] = mapped_column(Float, nullable=True)
+    precision: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fp_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rubric_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    grader_version: Mapped[str | None] = mapped_column(String(80), nullable=True)
 
     # Relationships
     suite_execution: Mapped["SuiteExecution"] = relationship(
