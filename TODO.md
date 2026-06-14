@@ -48,6 +48,26 @@
       убедиться что труба пропускает реальный сигнал. Платно, `--runs=1`.
     - [ ] **arbiter-план** (reader + re-rank + A/B) — написан, не исполнен; после go.
 
+  - **Eval-improvements (план от 2026-06-14, NEXT SESSION):** ревью двух рецензентов сошлось,
+    зафиксировано в [`../_cowork_output/10-code-review-eval-improvements-proposals.md`](../_cowork_output/10-code-review-eval-improvements-proposals.md) (v2).
+    Порядок исполнения (routing-сигнал идёт ТОЛЬКО из `critical_pass_rate`; рубрика не гейтит):
+    - [x] **P3 (ПЕРВЫМ, ~0.5д) — strict `Finding`-валидация + `malformed_rate`.** ✅ Сделано.
+      `Finding` pydantic (req `rule_id`/`anchor`/`severity` Literal[critical|major|minor], `extra=ignore`);
+      `strict` глобально (одна невалидная находка малформит весь вывод, без lenient-режима).
+      2 пути провала сведены в ОДИН исход через `grade_findings()` (parse+validate+match):
+      `MatchResult.malformed: bool` отдельно от `critical_pass`; оба консьюмера
+      (native `FindingsMatchEvaluator` + method `case_evaluator`) зовут единый путь.
+      `malformed_rate` → `score_components` (контракт numbers-only, без изменений схемы).
+    - [ ] **Задача 6 — платный pipe-check** на закалённом гейте (go/no-go). После P3.
+    - [ ] **P4 + prefill судьи (~0.5д).** strengths/weaknesses → только локальные логи (numeric-only
+      payload). Prefill (anthropic API) — робастность СУДЬИ, отдельный PR от P1.
+    - [ ] **P1 (~1д) — batched rubric** через отдельный structured-judge путь в method evaluator
+      (НЕ перегружать `LLMJudgeEvaluator`). Батчинг меняет оценки → `rubric_mode` заморожен на серию;
+      default `batched`, 1 retry → честный fail.
+    - [ ] **Phase-1b:** Тикет B (ablation API-vs-CLI, «харнесс vs API») + codex_cli/aider шимы +
+      полный 5-уровневый свип.
+    - 3 остаточных вопроса к автору зафиксированы в файле (P1 location, prefill sequencing, ablation framing).
+
   - **Phase-1b/2 (через БРЕЙНШТОРМ, после pipe-check):** 4 вопроса 2026-06-13 показали,
     что MVP — узкий зонд. Внедряем оси (приоритет в порядке):
     - [ ] **#1 структурированный вывод (JSON findings) + `programmatic` critical_check** —

@@ -29,6 +29,9 @@ def build_report_benchmark_payload(
     """Aggregate per-case results into the report_benchmark-v1 contract.
 
     score = critical_pass_rate (weighted equally; axis weighting is Phase-1b).
+    score_components also carries ``malformed_rate`` — the share of cases whose
+    output failed strict Finding validation (a routing fact distinct from a
+    missed defect; a case may set ``malformed`` to flag it, defaulting False).
 
     The payload satisfies the Request branch of report_benchmark-v1.schema.json.
     Note: ``score_components`` values must all be numbers (schema constraint).
@@ -37,6 +40,12 @@ def build_report_benchmark_payload(
     n = len(case_results)
     crit_pass = sum(1 for c in case_results if c["critical_pass"])
     pass_rate = round(crit_pass / n, 6) if n else 0.0
+    # malformed_rate: share of cases whose output was not a valid findings array
+    # (unparseable OR failed strict Finding validation). Distinct from a missed
+    # defect — a high rate means the agent isn't following the output contract,
+    # a real routing fact. Defaults False for legacy case dicts without the key.
+    malformed = sum(1 for c in case_results if c.get("malformed", False))
+    malformed_rate = round(malformed / n, 6) if n else 0.0
     mean_rubric = (
         round(sum(c["rubric_score"] for c in case_results) / n, 6) if n else 0.0
     )
@@ -63,6 +72,7 @@ def build_report_benchmark_payload(
         "score_components": {
             "critical_pass_rate": pass_rate,
             "mean_rubric": mean_rubric,
+            "malformed_rate": malformed_rate,
         },
         # breakpoint surfaced at top level (string; Request allows additionalProperties)
         "total_tokens": sum(c["tokens"] for c in case_results),

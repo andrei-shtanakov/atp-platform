@@ -1,6 +1,15 @@
 """Tests for the deterministic findings matcher (R-07 Phase-1b #1)."""
 
-from atp.evaluators.findings.matcher import match_findings, parse_findings
+import pytest
+from pydantic import ValidationError
+
+from atp.evaluators.findings.matcher import (
+    Finding,
+    grade_findings,
+    match_findings,
+    parse_findings,
+    validate_findings,
+)
 
 EXPECTED = [
     {
@@ -86,4 +95,99 @@ def test_multiple_findings_on_same_compliant_line_count_as_multiple_fps() -> Non
     ]
     r = match_findings(findings, [], MUST_NOT)
     assert len(r.false_positives) == 2
+    assert r.critical_pass is False
+
+
+def test_match_findings_is_never_malformed() -> None:
+    # The pure matcher operates on already-trusted dicts; malformation is decided
+    # upstream by grade_findings, so MatchResult.malformed defaults False.
+    r = match_findings([], [], MUST_NOT)
+    assert r.malformed is False
+
+
+# --- strict Finding validation (R-07 P3) -----------------------------------
+
+
+def test_finding_accepts_valid_and_ignores_extra_keys() -> None:
+    f = Finding.model_validate(
+        {
+            "rule_id": "SEC-011",
+            "anchor": 'f"SELECT',
+            "severity": "critical",
+            "file": "app.py",
+            "line": 42,
+            "fix": "use params",
+        }
+    )
+    assert f.rule_id == "SEC-011"
+    assert not hasattr(f, "file")  # extra="ignore" drops unknown keys
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"rule_id": "x", "anchor": "y"},  # missing severity
+        {"rule_id": "x", "anchor": "y", "severity": "high"},  # bad literal
+        {"anchor": "y", "severity": "minor"},  # missing rule_id
+        {"rule_id": "x", "severity": "minor"},  # missing anchor
+    ],
+)
+def test_finding_rejects_invalid(bad: dict) -> None:
+    with pytest.raises(ValidationError):
+        Finding.model_validate(bad)
+
+
+def test_validate_findings_passes_all_valid() -> None:
+    items = [{"rule_id": "x", "anchor": "y", "severity": "major"}]
+    assert validate_findings(items) == items
+
+
+def test_validate_findings_one_bad_malforms_whole_output() -> None:
+    # strict-global: a single invalid finding malforms the entire output (no
+    # lenient drop-and-continue).
+    items = [
+        {"rule_id": "x", "anchor": "y", "severity": "major"},
+        {"rule_id": "z", "anchor": "w"},  # missing severity
+    ]
+    assert validate_findings(items) is None
+
+
+def test_validate_findings_non_dict_element_is_malformed() -> None:
+    assert validate_findings(["not a dict"]) is None
+
+
+def test_grade_findings_unparseable_is_malformed() -> None:
+    r = grade_findings("I think there is a bug somewhere", EXPECTED, MUST_NOT)
+    assert r.malformed is True
+    assert r.critical_pass is False
+
+
+def test_grade_findings_none_text_is_malformed() -> None:
+    r = grade_findings(None, EXPECTED, MUST_NOT)
+    assert r.malformed is True
+    assert r.critical_pass is False
+
+
+def test_grade_findings_invalid_finding_is_malformed_not_missed() -> None:
+    # A defect-shaped finding without severity is malformed — NOT a missed defect.
+    text = '[{"rule_id": "cwe-89", "anchor": "f\\"SELECT"}]'
+    r = grade_findings(text, EXPECTED, MUST_NOT)
+    assert r.malformed is True
+    assert r.critical_pass is False
+
+
+def test_grade_findings_valid_match_is_not_malformed() -> None:
+    text = (
+        '[{"rule_id": "cwe-89", "anchor": "x = f\\"SELECT 1", "severity": "critical"}]'
+    )
+    r = grade_findings(text, EXPECTED, MUST_NOT)
+    assert r.malformed is False
+    assert r.critical_pass is True
+
+
+def test_grade_findings_valid_miss_is_not_malformed() -> None:
+    # Well-formed output that simply misses the defect: a real miss, not malformed.
+    text = '[{"rule_id": "style-1", "anchor": "return rows", "severity": "minor"}]'
+    r = grade_findings(text, EXPECTED, MUST_NOT)
+    assert r.malformed is False
     assert r.critical_pass is False
