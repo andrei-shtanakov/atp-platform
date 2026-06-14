@@ -656,3 +656,202 @@ class TestResultStorageAgentlessQueries:
         assert len(result["agent-b"]) == 1
         assert result["agent-a"][0].agent_id is None
         assert result["agent-b"][0].agent_id is None
+
+
+class TestResultStorageSP3Views:
+    """Read helpers backing the SP-3 dashboard views.
+
+    These run against a real in-memory SQLite DB so ordering / filtering /
+    DISTINCT clauses are exercised against actual rows.
+    """
+
+    @pytest.fixture
+    async def session(self) -> AsyncGenerator[AsyncSession, None]:
+        db = Database(url="sqlite+aiosqlite:///:memory:", echo=False)
+        async with db.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        async with db.session() as s:
+            yield s
+        await db.close()
+
+    async def _seed_run(
+        self,
+        storage: ResultStorage,
+        *,
+        suite_name: str,
+        agent_name: str,
+        started_at: datetime,
+        status: str = "completed",
+        critical_pass_rate: float | None = None,
+        malformed_rate: float | None = None,
+        mean_rubric: float | None = None,
+        breakpoint_axis_level: str | None = None,
+        task_type: str | None = None,
+    ) -> SuiteExecution:
+        """Create one SuiteExecution row with the SP-1 aggregate columns."""
+        execution = await storage.create_suite_execution_by_name(
+            suite_name=suite_name,
+            agent_name=agent_name,
+            started_at=started_at,
+        )
+        execution.task_type = task_type
+        await storage.update_suite_execution(
+            execution,
+            status=status,
+            aggregates={
+                "critical_pass_rate": critical_pass_rate,
+                "malformed_rate": malformed_rate,
+                "mean_rubric": mean_rubric,
+                "breakpoint_axis_level": breakpoint_axis_level,
+            },
+        )
+        return execution
+
+    @pytest.mark.anyio
+    async def test_suite_leaderboard_latest_per_agent_ranked(
+        self, session: AsyncSession
+    ) -> None:
+        """One row per agent (latest completed run), ranked by crit pass desc."""
+        storage = ResultStorage(session)
+
+        # claude_code: older run (0.5) then newer run (0.8) -> 0.8 wins
+        await self._seed_run(
+            storage,
+            suite_name="code-review",
+            agent_name="claude_code",
+            started_at=datetime(2026, 1, 1, 10, 0, 0),
+            critical_pass_rate=0.5,
+        )
+        await self._seed_run(
+            storage,
+            suite_name="code-review",
+            agent_name="claude_code",
+            started_at=datetime(2026, 1, 2, 10, 0, 0),
+            critical_pass_rate=0.8,
+        )
+        # anthropic_api: single run 0.6
+        await self._seed_run(
+            storage,
+            suite_name="code-review",
+            agent_name="anthropic_api",
+            started_at=datetime(2026, 1, 1, 12, 0, 0),
+            critical_pass_rate=0.6,
+        )
+        # running row -> must be excluded
+        await self._seed_run(
+            storage,
+            suite_name="code-review",
+            agent_name="ghost_agent",
+            started_at=datetime(2026, 1, 3, 12, 0, 0),
+            status="running",
+            critical_pass_rate=0.99,
+        )
+        await session.commit()
+
+        rows = await storage.suite_leaderboard("code-review")
+
+        assert [r["agent_name"] for r in rows] == ["claude_code", "anthropic_api"]
+        assert rows[0]["critical_pass_rate"] == 0.8
+        assert all(r["agent_name"] != "ghost_agent" for r in rows)
+
+    @pytest.mark.anyio
+    async def test_suites_with_metrics_excludes_null_only(
+        self, session: AsyncSession
+    ) -> None:
+        """Distinct suite names that have a non-null critical_pass_rate."""
+        storage = ResultStorage(session)
+
+        await self._seed_run(
+            storage,
+            suite_name="code-review",
+            agent_name="claude_code",
+            started_at=datetime(2026, 1, 1, 10, 0, 0),
+            critical_pass_rate=0.5,
+        )
+        # suite whose only run has a NULL critical_pass_rate -> excluded
+        await self._seed_run(
+            storage,
+            suite_name="no-metrics",
+            agent_name="claude_code",
+            started_at=datetime(2026, 1, 1, 11, 0, 0),
+            critical_pass_rate=None,
+        )
+        # suite whose only scored run is NOT completed (failed) -> excluded, so
+        # the selector stays consistent with agents_for_suite/suite_trend.
+        await self._seed_run(
+            storage,
+            suite_name="failed-only",
+            agent_name="claude_code",
+            started_at=datetime(2026, 1, 1, 12, 0, 0),
+            status="failed",
+            critical_pass_rate=0.7,
+        )
+        await session.commit()
+
+        suites = await storage.suites_with_metrics()
+
+        assert suites == ["code-review"]
+
+    @pytest.mark.anyio
+    async def test_suite_trend_oldest_to_newest(self, session: AsyncSession) -> None:
+        """Completed scored runs returned oldest -> newest."""
+        storage = ResultStorage(session)
+
+        await self._seed_run(
+            storage,
+            suite_name="code-review",
+            agent_name="claude_code",
+            started_at=datetime(2026, 1, 2, 10, 0, 0),
+            critical_pass_rate=0.8,
+        )
+        await self._seed_run(
+            storage,
+            suite_name="code-review",
+            agent_name="claude_code",
+            started_at=datetime(2026, 1, 1, 10, 0, 0),
+            critical_pass_rate=0.5,
+        )
+        await session.commit()
+
+        pts = await storage.suite_trend("code-review", "claude_code")
+
+        assert len(pts) == 2
+        assert pts[0]["ts"] <= pts[-1]["ts"]
+        assert pts[0]["critical_pass_rate"] == 0.5
+        assert pts[-1]["critical_pass_rate"] == 0.8
+
+    @pytest.mark.anyio
+    async def test_agents_for_suite_distinct_sorted(
+        self, session: AsyncSession
+    ) -> None:
+        """Distinct agent names with scored completed runs for the suite."""
+        storage = ResultStorage(session)
+
+        await self._seed_run(
+            storage,
+            suite_name="code-review",
+            agent_name="claude_code",
+            started_at=datetime(2026, 1, 1, 10, 0, 0),
+            critical_pass_rate=0.5,
+        )
+        await self._seed_run(
+            storage,
+            suite_name="code-review",
+            agent_name="anthropic_api",
+            started_at=datetime(2026, 1, 1, 11, 0, 0),
+            critical_pass_rate=0.6,
+        )
+        # running row for the same suite -> excluded
+        await self._seed_run(
+            storage,
+            suite_name="code-review",
+            agent_name="ghost_agent",
+            started_at=datetime(2026, 1, 1, 12, 0, 0),
+            status="running",
+            critical_pass_rate=0.9,
+        )
+        await session.commit()
+
+        agents = await storage.agents_for_suite("code-review")
+
+        assert agents == ["anthropic_api", "claude_code"]

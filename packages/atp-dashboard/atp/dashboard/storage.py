@@ -894,3 +894,127 @@ class ResultStorage:
             result_map[agent_name] = list(result.scalars().all())
 
         return result_map
+
+    # ==================== SP-3 Dashboard View Helpers ====================
+
+    async def suites_with_metrics(self) -> list[str]:
+        """List distinct suite names having at least one scored COMPLETED run.
+
+        Must match the completed+scored filter used by ``agents_for_suite`` /
+        ``suite_leaderboard`` / ``suite_trend`` — otherwise the selector could
+        offer a suite whose only scored run is non-completed (e.g. failed),
+        leaving the trend page with an empty agent list.
+
+        Returns:
+            Sorted suite names with a completed, non-null critical_pass_rate run.
+        """
+        stmt = (
+            select(SuiteExecution.suite_name)
+            .where(
+                SuiteExecution.status == "completed",
+                SuiteExecution.critical_pass_rate.is_not(None),
+            )
+            .distinct()
+            .order_by(SuiteExecution.suite_name)
+        )
+        return list((await self._session.execute(stmt)).scalars().all())
+
+    async def agents_for_suite(self, suite_name: str) -> list[str]:
+        """List distinct agents with scored completed runs for a suite.
+
+        Args:
+            suite_name: Name of the test suite.
+
+        Returns:
+            Sorted agent names with completed, scored runs for the suite.
+        """
+        stmt = (
+            select(SuiteExecution.agent_name)
+            .where(
+                SuiteExecution.suite_name == suite_name,
+                SuiteExecution.status == "completed",
+                SuiteExecution.critical_pass_rate.is_not(None),
+            )
+            .distinct()
+            .order_by(SuiteExecution.agent_name)
+        )
+        return list((await self._session.execute(stmt)).scalars().all())
+
+    async def suite_leaderboard(self, suite_name: str) -> list[dict[str, Any]]:
+        """Leaderboard for a suite: latest completed run per agent.
+
+        Args:
+            suite_name: Name of the test suite.
+
+        Returns:
+            One dict per agent (their latest completed run), ranked by
+            critical_pass_rate descending (None last).
+        """
+        stmt = (
+            select(SuiteExecution)
+            .where(
+                SuiteExecution.suite_name == suite_name,
+                SuiteExecution.status == "completed",
+            )
+            .order_by(SuiteExecution.started_at.desc())
+        )
+        rows = (await self._session.execute(stmt)).scalars().all()
+        latest: dict[str, SuiteExecution] = {}
+        for r in rows:  # newest first -> first seen per agent is latest
+            latest.setdefault(r.agent_name, r)
+        entries = [
+            {
+                "agent_name": e.agent_name,
+                "task_type": e.task_type,
+                "critical_pass_rate": e.critical_pass_rate,
+                "malformed_rate": e.malformed_rate,
+                "mean_rubric": e.mean_rubric,
+                "breakpoint_axis_level": e.breakpoint_axis_level,
+                "started_at": e.started_at,
+                "status": e.status,
+                "run_uuid": e.run_uuid,
+            }
+            for e in latest.values()
+        ]
+        entries.sort(
+            key=lambda d: (
+                d["critical_pass_rate"] is None,
+                -(d["critical_pass_rate"] or 0.0),
+            )
+        )
+        return entries
+
+    async def suite_trend(
+        self, suite_name: str, agent_name: str, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        """Trend of scored runs for one agent on one suite, oldest first.
+
+        Args:
+            suite_name: Name of the test suite.
+            agent_name: Agent name.
+            limit: Maximum number of points to return.
+
+        Returns:
+            Completed, scored runs ordered oldest -> newest.
+        """
+        stmt = (
+            select(SuiteExecution)
+            .where(
+                SuiteExecution.suite_name == suite_name,
+                SuiteExecution.agent_name == agent_name,
+                SuiteExecution.status == "completed",
+                SuiteExecution.critical_pass_rate.is_not(None),
+            )
+            .order_by(SuiteExecution.started_at.asc())
+            .limit(limit)
+        )
+        rows = (await self._session.execute(stmt)).scalars().all()
+        return [
+            {
+                "ts": r.started_at,
+                "critical_pass_rate": r.critical_pass_rate,
+                "malformed_rate": r.malformed_rate,
+                "mean_rubric": r.mean_rubric,
+            }
+            for r in rows
+        ]
