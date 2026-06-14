@@ -59,6 +59,13 @@
       (native `FindingsMatchEvaluator` + method `case_evaluator`) зовут единый путь.
       `malformed_rate` → `score_components` (контракт numbers-only, без изменений схемы).
     - [ ] **Задача 6 — платный pipe-check** на закалённом гейте (go/no-go). После P3.
+      Обвязка готова: `method/run_pipe_check.py` (CLI-адаптер → шим → оркестратор →
+      findings_match → `report_benchmark` payload + sqlite INSERT; `--dry-run`/`--db`/
+      `--with-rubric`). Два агента: `claude_code` (`claude -p`, через сессию CC) и
+      `anthropic_api` (raw API, шим `method/spawners/anthropic_api_shim.py` — labeled
+      baseline, НЕ замена CLI agent_id в роутинге). **Блок:** `ANTHROPIC_API_KEY` в
+      окружении НЕ задан → `anthropic_api` пропускается; `claude_code` готов к прогону.
+      Запуск платный — по решению Андрея (`uv run python method/run_pipe_check.py`).
     - [ ] **P4 + prefill судьи (~0.5д).** strengths/weaknesses → только локальные логи (numeric-only
       payload). Prefill (anthropic API) — робастность СУДЬИ, отдельный PR от P1.
     - [ ] **P1 (~1д) — batched rubric** через отдельный structured-judge путь в method evaluator
