@@ -898,14 +898,22 @@ class ResultStorage:
     # ==================== SP-3 Dashboard View Helpers ====================
 
     async def suites_with_metrics(self) -> list[str]:
-        """List distinct suite names having at least one scored run.
+        """List distinct suite names having at least one scored COMPLETED run.
+
+        Must match the completed+scored filter used by ``agents_for_suite`` /
+        ``suite_leaderboard`` / ``suite_trend`` — otherwise the selector could
+        offer a suite whose only scored run is non-completed (e.g. failed),
+        leaving the trend page with an empty agent list.
 
         Returns:
-            Sorted suite names with a non-null critical_pass_rate.
+            Sorted suite names with a completed, non-null critical_pass_rate run.
         """
         stmt = (
             select(SuiteExecution.suite_name)
-            .where(SuiteExecution.critical_pass_rate.is_not(None))
+            .where(
+                SuiteExecution.status == "completed",
+                SuiteExecution.critical_pass_rate.is_not(None),
+            )
             .distinct()
             .order_by(SuiteExecution.suite_name)
         )

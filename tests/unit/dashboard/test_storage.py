@@ -776,6 +776,16 @@ class TestResultStorageSP3Views:
             started_at=datetime(2026, 1, 1, 11, 0, 0),
             critical_pass_rate=None,
         )
+        # suite whose only scored run is NOT completed (failed) -> excluded, so
+        # the selector stays consistent with agents_for_suite/suite_trend.
+        await self._seed_run(
+            storage,
+            suite_name="failed-only",
+            agent_name="claude_code",
+            started_at=datetime(2026, 1, 1, 12, 0, 0),
+            status="failed",
+            critical_pass_rate=0.7,
+        )
         await session.commit()
 
         suites = await storage.suites_with_metrics()
