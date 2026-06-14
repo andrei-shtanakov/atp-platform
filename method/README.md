@@ -19,9 +19,7 @@ an arbitrary difficulty). The full rationale is in the methodology.
 | File | Purpose |
 |------|---------|
 | `agent-eval-case.schema.json` | The contract for a case. Every case is validated against this (JSON Schema, draft 2020-12). |
-| `run-request.schema.json` | Input frame: the standardized request that launches one case execution. |
-| `run-result.schema.json` | Output form: the standardized result of one case execution (verdict, critical_check, scores, metrics). |
-| `suite-result.schema.json` | Aggregate scorecard over a suite/sweep, surfacing pass rate and point of collapse. |
+| *(planned)* `run-request.schema.json`, `run-result.schema.json`, `suite-result.schema.json` | Standardized run I/O schemas (not yet checked into this package). |
 | `METHODOLOGY.md` / `METHODOLOGY.ru.md` | The framework explained in prose — axes, traps, sweeps, governance. |
 | `GLOSSARY.md` / `GLOSSARY.ru.md` | Shared vocabulary, each term mapped to its schema field. |
 | `CASE_GENERATOR.md` | System instruction for an LLM agent that authors new cases. |
