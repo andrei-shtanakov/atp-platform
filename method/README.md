@@ -32,7 +32,6 @@ an arbitrary difficulty). The full rationale is in the methodology.
 ```
 /
   agent-eval-case.schema.json
-  run-request.schema.json   run-result.schema.json   suite-result.schema.json
   README.md
   METHODOLOGY.md            METHODOLOGY.ru.md
   GLOSSARY.md               GLOSSARY.ru.md
