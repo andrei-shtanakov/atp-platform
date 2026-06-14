@@ -32,7 +32,8 @@ expected_failure_mode: >
   Agent misses the SEC-011 f-string SQL injection on line 12, or flags a compliant
   distractor line (10/11/14) as a violation.
 grader:
-  type: findings_match
+  type: programmatic
+  checker: findings_match
   expected_findings:
     - rule_ids: [SEC-011, sql-injection, cwe-89]
       anchor: 'f"SELECT * FROM users WHERE id = {user_id}"'

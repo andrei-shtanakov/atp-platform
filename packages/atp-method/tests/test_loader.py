@@ -97,3 +97,32 @@ def test_no_rubric_emits_only_critical(example_cases_dir: Path) -> None:
     }
     td = case_to_test_definition(AgentEvalCase.model_validate(clean))
     assert [a.type for a in td.assertions] == [METHOD_CRITICAL_CHECK]
+
+
+def test_loader_threads_checker_into_critical_config() -> None:
+    """grader.checker is threaded into the critical-check assertion config."""
+    doc = {
+        "id": "case-1",
+        "version": 1,
+        "family": "f",
+        "status": "active",
+        "suite_type": "probe",
+        "capability": "safety_compliance",
+        "construction_axis": "adversarial_environment",
+        "axis_level": "moderate",
+        "instruction": "review",
+        "artifacts": [{"id": "d", "type": "text", "content": "x"}],
+        "environment": {"tools": ["file_read"], "side_effects": "none"},
+        "expected_failure_mode": "misses it",
+        "grader": {
+            "type": "programmatic",
+            "checker": "findings_match",
+            "expected_findings": [],
+            "critical_check": "flag it",
+            "scoring": "fail if critical fails",
+        },
+        "provenance": {"author": "a", "created": "2026-06-14"},
+    }
+    td = case_to_test_definition(AgentEvalCase.model_validate(doc))
+    crit = next(a for a in td.assertions if a.type == METHOD_CRITICAL_CHECK)
+    assert crit.config["checker"] == "findings_match"

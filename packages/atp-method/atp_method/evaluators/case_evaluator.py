@@ -102,36 +102,42 @@ class AgentEvalCaseEvaluator(Evaluator):
         trace: list[ATPEvent],
         assertion: Assertion,
     ) -> EvalResult:
-        if assertion.config.get("grader_type") == "findings_match":
-            from atp.evaluators.findings.matcher import grade_findings
+        checker_name = assertion.config.get("checker")
+        if checker_name:
+            from atp.evaluators.checkers import get_checker
 
+            checker = get_checker(checker_name)
+            if checker is None:
+                return EvalResult(
+                    evaluator=self.name,
+                    checks=[
+                        EvalCheck(
+                            name="critical_check",
+                            passed=False,
+                            score=0.0,
+                            message=f"unknown checker: {checker_name}",
+                        )
+                    ],
+                )
             text = next(
                 (a.content for a in response.artifacts if getattr(a, "content", None)),
                 None,
             )
-            # One unified path: parse + strict validation + match. A malformed
-            # output (unparseable OR a finding failing Finding validation) is a
-            # distinct outcome from a missed defect — r.malformed carries it
-            # through details so the reporter can aggregate malformed_rate.
-            r = grade_findings(
-                text,
-                assertion.config.get("expected_findings", []),
-                assertion.config.get("must_not_flag", []),
-            )
+            verdict = checker(assertion.config, text)
             message = (
                 "malformed findings — cannot verify"
-                if r.malformed
-                else f"recall={r.recall} fp={r.false_positives}"
+                if verdict.malformed
+                else f"recall={verdict.recall} fp={verdict.fp_count}"
             )
             return EvalResult(
                 evaluator=self.name,
                 checks=[
                     EvalCheck(
                         name="critical_check",
-                        passed=r.critical_pass,
-                        score=1.0 if r.critical_pass else 0.0,
+                        passed=verdict.critical_pass,
+                        score=1.0 if verdict.critical_pass else 0.0,
                         message=message,
-                        details=r.model_dump(),
+                        details=verdict.model_dump(),
                     )
                 ],
             )

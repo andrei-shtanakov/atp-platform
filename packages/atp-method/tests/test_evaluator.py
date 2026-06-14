@@ -236,7 +236,7 @@ async def test_findings_match_critical_uses_matcher_not_judge() -> None:
         critical=True,
         config={
             "check": "flag the injection",
-            "grader_type": "findings_match",
+            "checker": "findings_match",
             "expected_findings": [
                 {
                     "rule_ids": ["SEC-011", "cwe-89"],
@@ -272,7 +272,7 @@ async def test_findings_match_malformed_is_distinct_from_missed() -> None:
         critical=True,
         config={
             "check": "flag the injection",
-            "grader_type": "findings_match",
+            "checker": "findings_match",
             "expected_findings": [
                 {"rule_ids": ["cwe-89"], "anchor": 'f"SELECT', "severity": "critical"}
             ],
@@ -285,3 +285,54 @@ async def test_findings_match_malformed_is_distinct_from_missed() -> None:
     assert check.details is not None
     assert check.details["malformed"] is True
     assert "malformed" in (check.message or "")
+
+
+@pytest.mark.anyio
+async def test_checker_dispatch_uses_registry_not_judge() -> None:
+    """grader.checker resolves via the checker registry; judge is never called."""
+    ev = AgentEvalCaseEvaluator(judge=BombJudge())
+    response = ATPResponse(
+        task_id="case-x-001",
+        status=ResponseStatus.COMPLETED,
+        artifacts=[
+            ArtifactFile(
+                path="findings.json",
+                content='[{"rule_id":"cwe-89","anchor":"f\\"SELECT","severity":"critical"}]',
+            )
+        ],
+    )
+    assertion = Assertion(
+        type=METHOD_CRITICAL_CHECK,
+        critical=True,
+        config={
+            "check": "flag the injection",
+            "checker": "findings_match",
+            "expected_findings": [
+                {"rule_ids": ["cwe-89"], "anchor": 'f"SELECT', "severity": "critical"}
+            ],
+            "must_not_flag": [],
+        },
+    )
+    result = await ev.evaluate(_task(), response, [], assertion)
+    check = result.checks[0]
+    assert check.name == "critical_check"
+    assert check.passed is True
+    assert check.details is not None and check.details["malformed"] is False
+
+
+@pytest.mark.anyio
+async def test_unknown_checker_fails_closed() -> None:
+    ev = AgentEvalCaseEvaluator(judge=BombJudge())
+    response = ATPResponse(
+        task_id="case-x-001",
+        status=ResponseStatus.COMPLETED,
+        artifacts=[ArtifactFile(path="f.json", content="[]")],
+    )
+    assertion = Assertion(
+        type=METHOD_CRITICAL_CHECK,
+        critical=True,
+        config={"check": "x", "checker": "nope", "expected_findings": []},
+    )
+    result = await ev.evaluate(_task(), response, [], assertion)
+    assert result.checks[0].passed is False
+    assert "unknown checker" in (result.checks[0].message or "")
