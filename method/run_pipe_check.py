@@ -336,6 +336,11 @@ async def _main_async(args: argparse.Namespace) -> int:
 
 def main() -> int:
     """Parse args and run the pipe-check."""
+    # Load a repo-root .env (e.g. ANTHROPIC_API_KEY for the anthropic_api shim),
+    # matching the `atp` CLI. Real env vars win (override=False).
+    from dotenv import load_dotenv
+
+    load_dotenv(override=False)
     p = argparse.ArgumentParser(description="R-07 Task 6 code-review pipe-check")
     p.add_argument("--case-dir", default="method/cases/code-review")
     p.add_argument(

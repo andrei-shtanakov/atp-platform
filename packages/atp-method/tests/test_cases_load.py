@@ -15,7 +15,10 @@ SCHEMA = json.loads((ROOT / "method" / "agent-eval-case.schema.json").read_text(
 
 
 def test_cases_present() -> None:
-    assert len(CASES) == 2
+    # Full 5-level breakpoint sweep: clean / mild / moderate / severe / very_severe.
+    assert len(CASES) == 5
+    axis_levels = {yaml.safe_load(p.read_text())["axis_level"] for p in CASES}
+    assert axis_levels == {"clean", "mild", "moderate", "severe", "very_severe"}
 
 
 def test_cases_validate_pydantic_and_contract() -> None:
