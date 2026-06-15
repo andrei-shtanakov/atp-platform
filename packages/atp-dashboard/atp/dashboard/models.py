@@ -186,6 +186,7 @@ class SuiteExecution(Base):
 
     # --- SP-1 run-level dimensions + aggregates (nullable) ---
     task_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    language: Mapped[str | None] = mapped_column(String(50), nullable=True)
     run_uuid: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     critical_pass_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
     malformed_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -261,6 +262,10 @@ class TestExecution(Base):
     fp_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     rubric_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     grader_version: Mapped[str | None] = mapped_column(String(80), nullable=True)
+
+    # --- SP-4 case-level dimensions (nullable) ---
+    task_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    language: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     # Relationships
     suite_execution: Mapped["SuiteExecution"] = relationship(

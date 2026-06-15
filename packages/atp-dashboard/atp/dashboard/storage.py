@@ -223,7 +223,9 @@ class ResultStorage:
             status: Execution status.
             error: Error message if failed.
             aggregates: Run-level eval aggregates (critical_pass_rate,
-                malformed_rate, mean_rubric, breakpoint_axis_level).
+                malformed_rate, mean_rubric, breakpoint_axis_level, task_type,
+                language). Only keys present in the dict are written; omitted
+                keys leave the existing column value untouched.
 
         Returns:
             Updated SuiteExecution instance.
@@ -247,10 +249,19 @@ class ResultStorage:
         if error is not None:
             execution.error = error
         if aggregates is not None:
-            execution.critical_pass_rate = aggregates.get("critical_pass_rate")
-            execution.malformed_rate = aggregates.get("malformed_rate")
-            execution.mean_rubric = aggregates.get("mean_rubric")
-            execution.breakpoint_axis_level = aggregates.get("breakpoint_axis_level")
+            # Only overwrite columns the caller actually supplied — a partial
+            # aggregates dict must not clobber pre-set values (e.g. task_type
+            # set at creation) back to None.
+            for col in (
+                "critical_pass_rate",
+                "malformed_rate",
+                "mean_rubric",
+                "breakpoint_axis_level",
+                "task_type",
+                "language",
+            ):
+                if col in aggregates:
+                    setattr(execution, col, aggregates[col])
 
         await self._session.flush()
         return execution
@@ -348,6 +359,8 @@ class ResultStorage:
             fp_count=dims.get("fp_count"),
             rubric_score=dims.get("rubric_score"),
             grader_version=dims.get("grader_version"),
+            task_type=dims.get("task_type"),
+            language=dims.get("language"),
         )
         self._session.add(execution)
         await self._session.flush()

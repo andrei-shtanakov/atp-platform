@@ -17,6 +17,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 # Tag controlled-vocabulary pattern from the JSON schema.
 _TAG_RE = re.compile(r"^[a-z0-9]+(?:_[a-z0-9]+)*$")
 
+# Lowercase token pattern for routing fields (task_type, language).
+_TOKEN_RE = r"^[a-z0-9]+(?:[-_][a-z0-9]+)*$"
+
 Status = Literal["draft", "active", "retired"]
 SuiteType = Literal["regression", "probe", "held_out"]
 Capability = Literal[
@@ -191,6 +194,8 @@ class AgentEvalCase(BaseModel):
     capability: Capability
     construction_axis: ConstructionAxis
     axis_level: AxisLevel
+    task_type: str | None = Field(default=None, pattern=_TOKEN_RE)
+    language: str | None = Field(default=None, pattern=_TOKEN_RE)
     tags: list[str] = Field(default_factory=list)
     instruction: str = Field(..., min_length=1)
     artifacts: list[Artifact] = Field(default_factory=list)

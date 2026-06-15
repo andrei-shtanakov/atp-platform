@@ -242,6 +242,8 @@ class TestResultStorageSuiteExecution:
                 "malformed_rate": 0.0,
                 "mean_rubric": 0.7,
                 "breakpoint_axis_level": "moderate",
+                "task_type": "review",
+                "language": "python",
             },
         )
 
@@ -249,6 +251,37 @@ class TestResultStorageSuiteExecution:
         assert updated.malformed_rate == 0.0
         assert updated.mean_rubric == 0.7
         assert updated.breakpoint_axis_level == "moderate"
+        assert updated.task_type == "review"
+        assert updated.language == "python"
+
+    @pytest.mark.anyio
+    async def test_update_suite_execution_partial_aggregates_no_clobber(
+        self,
+    ) -> None:
+        """A partial aggregates dict must not reset omitted columns to None."""
+        now = datetime.now()
+        execution = SuiteExecution(
+            id=1,
+            suite_name="test-suite",
+            agent_id=1,
+            started_at=now,
+            status="running",
+            task_type="review",
+            language="python",
+        )
+
+        mock_session = AsyncMock()
+        storage = ResultStorage(mock_session)
+
+        updated = await storage.update_suite_execution(
+            execution,
+            aggregates={"critical_pass_rate": 0.5},
+        )
+
+        assert updated.critical_pass_rate == 0.5
+        # Pre-set values survive — keys absent from the dict are left untouched.
+        assert updated.task_type == "review"
+        assert updated.language == "python"
 
     @pytest.mark.anyio
     async def test_list_suite_executions(self) -> None:
@@ -342,6 +375,8 @@ class TestResultStorageTestExecution:
                 "fp_count": 0,
                 "rubric_score": 0.8,
                 "grader_version": "findings_match@1",
+                "task_type": "review",
+                "language": "python",
             },
         )
 
@@ -350,6 +385,8 @@ class TestResultStorageTestExecution:
         assert execution.case_version == 2
         assert execution.grader_version == "findings_match@1"
         assert execution.rubric_score == 0.8
+        assert execution.task_type == "review"
+        assert execution.language == "python"
 
     @pytest.mark.anyio
     async def test_update_test_execution(self) -> None:

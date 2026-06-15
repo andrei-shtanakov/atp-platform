@@ -43,6 +43,8 @@ def _method_test(test_id: str) -> TestResult:
             "capability_safety_compliance",
             "family_fam",
             "version_2",
+            "task_type_review",
+            "language_python",
         ],
     )
     return TestResult(
@@ -110,6 +112,8 @@ async def test_persist_records_dimensions(tmp_path, monkeypatch) -> None:
         assert te.capability == "safety_compliance"
         assert te.family == "fam"
         assert te.case_version == 2
+        assert te.task_type == "review"
+        assert te.language == "python"
         assert te.critical_pass is True
         assert te.malformed is False
         assert te.rubric_score == 0.8
@@ -119,6 +123,8 @@ async def test_persist_records_dimensions(tmp_path, monkeypatch) -> None:
         assert suite_row.run_uuid
         assert suite_row.critical_pass_rate is not None
         assert suite_row.critical_pass_rate == pytest.approx(1.0)
+        assert suite_row.task_type == "review"
+        assert suite_row.language == "python"
         # One passing case → no breakpoint axis level.
         assert suite_row.breakpoint_axis_level is None
     await db.close()

@@ -63,6 +63,8 @@ def case_dimensions(
         "fp_count": v.get("fp_count"),
         "rubric_score": _rubric_score(eval_results),
         "grader_version": v.get("grader_version"),
+        "task_type": _tag_value(tags, "task_type_"),
+        "language": _tag_value(tags, "language_"),
     }
 
 
@@ -72,6 +74,19 @@ def aggregate_run(case_dims: list[dict[str, Any]]) -> dict[str, Any]:
     Only cases with a non-null critical_pass count toward the rates (native
     runs contribute nothing). Returns None metrics when there is no signal.
     """
+
+    def _common(key: str) -> str | None:
+        # Missing values count as a distinct member, so a run where some cases
+        # lack the dimension (e.g. {None, "python"}) collapses to None rather
+        # than misattributing the whole run to the one present value.
+        vals = {c.get(key) for c in case_dims}
+        return next(iter(vals)) if len(vals) == 1 else None
+
+    # Computed over ALL cases (not just graded) so an ungraded/native run still
+    # records task_type/language when present.
+    task_type = _common("task_type")
+    language = _common("language")
+
     graded = [c for c in case_dims if c.get("critical_pass") is not None]
     n = len(graded)
     if not n:
@@ -80,6 +95,8 @@ def aggregate_run(case_dims: list[dict[str, Any]]) -> dict[str, Any]:
             "malformed_rate": None,
             "mean_rubric": None,
             "breakpoint_axis_level": None,
+            "task_type": task_type,
+            "language": language,
         }
     passed = sum(1 for c in graded if c["critical_pass"])
     # malformed is findings-only: judge-graded cases report None, which must NOT
@@ -109,4 +126,6 @@ def aggregate_run(case_dims: list[dict[str, Any]]) -> dict[str, Any]:
         "malformed_rate": malformed_rate,
         "mean_rubric": round(sum(rubrics) / len(rubrics), 6) if rubrics else None,
         "breakpoint_axis_level": breakpoint,
+        "task_type": task_type,
+        "language": language,
     }

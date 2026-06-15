@@ -89,3 +89,18 @@ def test_contract_rejects_empty_checker() -> None:
     )
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(case, SCHEMA)
+
+
+def test_contract_accepts_task_type_language() -> None:
+    case = _case(
+        {
+            "type": "programmatic",
+            "checker": "findings_match",
+            "expected_findings": [],
+            "critical_check": "c",
+            "scoring": "s",
+        }
+    )
+    case["task_type"] = "review"
+    case["language"] = "python"
+    jsonschema.validate(case, SCHEMA)  # must not raise

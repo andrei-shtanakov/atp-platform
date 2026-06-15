@@ -43,6 +43,8 @@ def test_case_dimensions_from_tags_and_verdict() -> None:
             "capability_safety_compliance",
             "family_code_review_planted_defect",
             "version_2",
+            "task_type_review",
+            "language_python",
         ]
     )
     verdict = {
@@ -65,6 +67,47 @@ def test_case_dimensions_from_tags_and_verdict() -> None:
     assert dims["fp_count"] == 0
     assert dims["rubric_score"] == 0.8
     assert dims["grader_version"] == "findings_match@1"
+    assert dims["task_type"] == "review"
+    assert dims["language"] == "python"
+
+
+def test_aggregate_run_task_type_and_language_single_distinct() -> None:
+    cases = [
+        {"critical_pass": True, "task_type": "review", "language": "python"},
+        {"critical_pass": False, "task_type": "review", "language": "python"},
+    ]
+    agg = aggregate_run(cases)
+    assert agg["task_type"] == "review"
+    assert agg["language"] == "python"
+
+
+def test_aggregate_run_task_type_mixed_is_none() -> None:
+    cases = [
+        {"critical_pass": True, "task_type": "review", "language": "python"},
+        {"critical_pass": False, "task_type": "refactor", "language": "python"},
+    ]
+    agg = aggregate_run(cases)
+    assert agg["task_type"] is None
+    assert agg["language"] == "python"
+
+
+def test_aggregate_run_task_type_partly_missing_is_none() -> None:
+    # A run where some cases lack the dimension must collapse to None, not
+    # misattribute the run to the single present value ({None, "python"}).
+    cases = [
+        {"critical_pass": True, "task_type": "review", "language": "python"},
+        {"critical_pass": False},
+    ]
+    agg = aggregate_run(cases)
+    assert agg["task_type"] is None
+    assert agg["language"] is None
+
+
+def test_aggregate_run_task_type_all_missing_is_none() -> None:
+    cases = [{"critical_pass": True}, {"critical_pass": False}]
+    agg = aggregate_run(cases)
+    assert agg["task_type"] is None
+    assert agg["language"] is None
 
 
 def test_case_dimensions_judge_path_sets_critical_pass_without_details() -> None:

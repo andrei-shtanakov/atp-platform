@@ -30,6 +30,9 @@ def test_cases_validate_pydantic_and_contract() -> None:
         assert case.grader.checker == "findings_match"
         # JSON contract (the canonical cross-project schema)
         jsonschema.validate(doc, SCHEMA)
+        # routing dimensions
+        assert case.task_type == "review"
+        assert case.language == "python"
         # loader path
         td = load_case(path)
         assert td.assertions
