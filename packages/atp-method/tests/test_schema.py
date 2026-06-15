@@ -198,6 +198,54 @@ def _minimal(
     }
 
 
+_VALID_CASE_DICT = {
+    "id": "case-demo-001",
+    "version": 1,
+    "family": "demo",
+    "status": "active",
+    "suite_type": "probe",
+    "capability": "calibration",
+    "construction_axis": "information_conditions",
+    "axis_level": "clean",
+    "instruction": "do the thing",
+    "environment": {"tools": ["file_read"], "side_effects": "none"},
+    "expected_failure_mode": "fabricates a value",
+    "grader": {
+        "type": "programmatic",
+        "checker": "findings_match",
+        "expected_findings": [],
+        "critical_check": "no fabricated value present",
+        "scoring": "fail if critical_check fails",
+    },
+    "provenance": {"author": "test", "created": "2026-06-09"},
+}
+
+
+def test_task_type_and_language_optional_default_none() -> None:
+    from atp_method.schema import AgentEvalCase
+
+    case = AgentEvalCase.model_validate(_VALID_CASE_DICT)
+    assert case.task_type is None
+    assert case.language is None
+
+
+def test_task_type_and_language_accepted() -> None:
+    from atp_method.schema import AgentEvalCase
+
+    case = AgentEvalCase.model_validate(
+        {**_VALID_CASE_DICT, "task_type": "review", "language": "python"}
+    )
+    assert case.task_type == "review"
+    assert case.language == "python"
+
+
+def test_task_type_rejects_non_token() -> None:
+    from atp_method.schema import AgentEvalCase
+
+    with pytest.raises(ValidationError):
+        AgentEvalCase.model_validate({**_VALID_CASE_DICT, "task_type": "Code Review!"})
+
+
 def test_empty_checker_rejected() -> None:
     # An empty checker is falsey at dispatch and would silently fall back to the
     # judge path — must be rejected at validation time.

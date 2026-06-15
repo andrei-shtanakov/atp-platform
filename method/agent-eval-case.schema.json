@@ -78,6 +78,16 @@
       "description": "Ordinal position on the sweep, from easiest to hardest. The point where critical_check starts failing is the signal.",
       "enum": ["clean", "mild", "moderate", "severe", "very_severe"]
     },
+    "task_type": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:[-_][a-z0-9]+)*$",
+      "description": "Routing task type (arbiter TaskType canon, e.g. 'review'). Optional; maps to a benchmark_id at the arbiter export boundary."
+    },
+    "language": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:[-_][a-z0-9]+)*$",
+      "description": "Primary language of the case material (e.g. 'python'). Optional; arbiter routes by language."
+    },
     "tags": {
       "type": "array",
       "description": "Controlled-vocabulary labels. Tag names and values are English.",
