@@ -68,6 +68,7 @@ Desktop.ini
 log*.txt
 .env
 .env.local
+/env
 
 # Cross-project ecosystem analysis (kept in parent dir, not this repo)
 COWORK_CONTEXT.md
