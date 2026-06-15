@@ -76,7 +76,10 @@ def aggregate_run(case_dims: list[dict[str, Any]]) -> dict[str, Any]:
     """
 
     def _common(key: str) -> str | None:
-        vals = {c.get(key) for c in case_dims if c.get(key)}
+        # Missing values count as a distinct member, so a run where some cases
+        # lack the dimension (e.g. {None, "python"}) collapses to None rather
+        # than misattributing the whole run to the one present value.
+        vals = {c.get(key) for c in case_dims}
         return next(iter(vals)) if len(vals) == 1 else None
 
     # Computed over ALL cases (not just graded) so an ungraded/native run still

@@ -91,6 +91,25 @@ def test_aggregate_run_task_type_mixed_is_none() -> None:
     assert agg["language"] == "python"
 
 
+def test_aggregate_run_task_type_partly_missing_is_none() -> None:
+    # A run where some cases lack the dimension must collapse to None, not
+    # misattribute the run to the single present value ({None, "python"}).
+    cases = [
+        {"critical_pass": True, "task_type": "review", "language": "python"},
+        {"critical_pass": False},
+    ]
+    agg = aggregate_run(cases)
+    assert agg["task_type"] is None
+    assert agg["language"] is None
+
+
+def test_aggregate_run_task_type_all_missing_is_none() -> None:
+    cases = [{"critical_pass": True}, {"critical_pass": False}]
+    agg = aggregate_run(cases)
+    assert agg["task_type"] is None
+    assert agg["language"] is None
+
+
 def test_case_dimensions_judge_path_sets_critical_pass_without_details() -> None:
     # The LLM-judge critical_check has NO details (no CaseVerdict dump), but
     # critical_pass must still come from the check's `passed` — else whole

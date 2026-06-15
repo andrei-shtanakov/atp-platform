@@ -255,6 +255,35 @@ class TestResultStorageSuiteExecution:
         assert updated.language == "python"
 
     @pytest.mark.anyio
+    async def test_update_suite_execution_partial_aggregates_no_clobber(
+        self,
+    ) -> None:
+        """A partial aggregates dict must not reset omitted columns to None."""
+        now = datetime.now()
+        execution = SuiteExecution(
+            id=1,
+            suite_name="test-suite",
+            agent_id=1,
+            started_at=now,
+            status="running",
+            task_type="review",
+            language="python",
+        )
+
+        mock_session = AsyncMock()
+        storage = ResultStorage(mock_session)
+
+        updated = await storage.update_suite_execution(
+            execution,
+            aggregates={"critical_pass_rate": 0.5},
+        )
+
+        assert updated.critical_pass_rate == 0.5
+        # Pre-set values survive — keys absent from the dict are left untouched.
+        assert updated.task_type == "review"
+        assert updated.language == "python"
+
+    @pytest.mark.anyio
     async def test_list_suite_executions(self) -> None:
         """Test listing suite executions."""
         executions = [
