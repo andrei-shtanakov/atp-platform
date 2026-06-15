@@ -242,6 +242,8 @@ class TestResultStorageSuiteExecution:
                 "malformed_rate": 0.0,
                 "mean_rubric": 0.7,
                 "breakpoint_axis_level": "moderate",
+                "task_type": "review",
+                "language": "python",
             },
         )
 
@@ -249,6 +251,8 @@ class TestResultStorageSuiteExecution:
         assert updated.malformed_rate == 0.0
         assert updated.mean_rubric == 0.7
         assert updated.breakpoint_axis_level == "moderate"
+        assert updated.task_type == "review"
+        assert updated.language == "python"
 
     @pytest.mark.anyio
     async def test_list_suite_executions(self) -> None:
@@ -342,6 +346,8 @@ class TestResultStorageTestExecution:
                 "fp_count": 0,
                 "rubric_score": 0.8,
                 "grader_version": "findings_match@1",
+                "task_type": "review",
+                "language": "python",
             },
         )
 
@@ -350,6 +356,8 @@ class TestResultStorageTestExecution:
         assert execution.case_version == 2
         assert execution.grader_version == "findings_match@1"
         assert execution.rubric_score == 0.8
+        assert execution.task_type == "review"
+        assert execution.language == "python"
 
     @pytest.mark.anyio
     async def test_update_test_execution(self) -> None:

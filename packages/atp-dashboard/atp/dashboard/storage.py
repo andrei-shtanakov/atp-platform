@@ -251,6 +251,8 @@ class ResultStorage:
             execution.malformed_rate = aggregates.get("malformed_rate")
             execution.mean_rubric = aggregates.get("mean_rubric")
             execution.breakpoint_axis_level = aggregates.get("breakpoint_axis_level")
+            execution.task_type = aggregates.get("task_type")
+            execution.language = aggregates.get("language")
 
         await self._session.flush()
         return execution
@@ -348,6 +350,8 @@ class ResultStorage:
             fp_count=dims.get("fp_count"),
             rubric_score=dims.get("rubric_score"),
             grader_version=dims.get("grader_version"),
+            task_type=dims.get("task_type"),
+            language=dims.get("language"),
         )
         self._session.add(execution)
         await self._session.flush()
