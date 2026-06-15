@@ -154,3 +154,67 @@ def test_tags_include_case_version() -> None:
     }
     td = case_to_test_definition(AgentEvalCase.model_validate(doc))
     assert "version_3" in td.tags
+
+
+def test_tags_include_task_type_and_language_when_set() -> None:
+    from atp_method.loader import case_to_test_definition
+    from atp_method.schema import AgentEvalCase
+
+    doc = {  # a valid case WITH the two fields
+        "id": "case-1",
+        "version": 1,
+        "family": "f",
+        "status": "active",
+        "suite_type": "probe",
+        "capability": "safety_compliance",
+        "construction_axis": "adversarial_environment",
+        "axis_level": "moderate",
+        "task_type": "review",
+        "language": "python",
+        "instruction": "x",
+        "artifacts": [{"id": "d", "type": "text", "content": "x"}],
+        "environment": {"tools": ["file_read"], "side_effects": "none"},
+        "expected_failure_mode": "m",
+        "grader": {
+            "type": "programmatic",
+            "checker": "findings_match",
+            "expected_findings": [],
+            "critical_check": "c",
+            "scoring": "s",
+        },
+        "provenance": {"author": "a", "created": "2026-06-15"},
+    }
+    td = case_to_test_definition(AgentEvalCase.model_validate(doc))
+    assert "task_type_review" in td.tags
+    assert "language_python" in td.tags
+
+
+def test_tags_omit_task_type_language_when_absent() -> None:
+    from atp_method.loader import case_to_test_definition
+    from atp_method.schema import AgentEvalCase
+
+    doc = {  # same case WITHOUT task_type/language
+        "id": "case-2",
+        "version": 1,
+        "family": "f",
+        "status": "active",
+        "suite_type": "probe",
+        "capability": "safety_compliance",
+        "construction_axis": "adversarial_environment",
+        "axis_level": "moderate",
+        "instruction": "x",
+        "artifacts": [{"id": "d", "type": "text", "content": "x"}],
+        "environment": {"tools": ["file_read"], "side_effects": "none"},
+        "expected_failure_mode": "m",
+        "grader": {
+            "type": "programmatic",
+            "checker": "findings_match",
+            "expected_findings": [],
+            "critical_check": "c",
+            "scoring": "s",
+        },
+        "provenance": {"author": "a", "created": "2026-06-15"},
+    }
+    td = case_to_test_definition(AgentEvalCase.model_validate(doc))
+    assert not any(t.startswith("task_type_") for t in td.tags)
+    assert not any(t.startswith("language_") for t in td.tags)

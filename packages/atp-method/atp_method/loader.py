@@ -49,6 +49,10 @@ def _tags(case: AgentEvalCase) -> list[str]:
         f"suite_{case.suite_type}",
         f"version_{case.version}",
     ]
+    if case.task_type:
+        derived.append(f"task_type_{case.task_type}")
+    if case.language:
+        derived.append(f"language_{case.language}")
     # Preserve order, drop duplicates.
     seen: set[str] = set()
     out: list[str] = []
