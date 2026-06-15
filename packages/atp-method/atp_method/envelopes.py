@@ -32,10 +32,18 @@ def get_envelope(capability: str = "review") -> str:
 
 
 def build_prompt(request: dict[str, Any], envelope: str) -> str:
-    """Wrap an ATPRequest's task + inline artifacts in the given envelope."""
+    """Wrap an ATPRequest's task + inline artifacts in the given envelope.
+
+    Artifacts (the diff, the rules) live under ``task.input_data["artifacts"]``
+    — that is where the loader emits them and how the CLI adapter serializes the
+    request. The ATP ``Context`` model has no artifacts field, so the earlier
+    ``context.artifacts`` read always came up empty, silently handing the model
+    an empty review.
+    """
     task = request.get("task") or {}
     body = task.get("description", "")
-    for art in (request.get("context") or {}).get("artifacts", []) or []:
+    artifacts = (task.get("input_data") or {}).get("artifacts", []) or []
+    for art in artifacts:
         if art.get("content"):
             body += f"\n\n--- {art.get('id', 'artifact')} ---\n{art['content']}"
     return envelope.format(task=body)
