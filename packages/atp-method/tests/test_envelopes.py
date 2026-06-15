@@ -52,13 +52,16 @@ def test_build_prompt_delivers_loader_artifacts_end_to_end() -> None:
     artifact-path drift that made the paid pipe-check review an empty diff.
     """
     import json
+    from pathlib import Path
 
     from atp.protocol.models import ATPRequest, Task
 
     from atp_method.loader import load_suite
 
-    suite = load_suite("method/cases/code-review")
-    td = next(t for t in suite.tests if "clean" in t.id)
+    # Resolve from this file, not cwd: tests/test_envelopes.py -> parents[3].
+    repo_root = Path(__file__).resolve().parents[3]
+    suite = load_suite(str(repo_root / "method" / "cases" / "code-review"))
+    td = next(t for t in suite.tests if t.id == "case-code-review-sqli-clean-001")
     req = ATPRequest(
         task_id=td.id,
         task=Task(description=td.task.description, input_data=td.task.input_data),
