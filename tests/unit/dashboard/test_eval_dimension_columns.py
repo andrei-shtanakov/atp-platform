@@ -14,6 +14,8 @@ CASE_COLS = {
     "fp_count",
     "rubric_score",
     "grader_version",
+    "task_type",
+    "language",
 }
 RUN_COLS = {
     "task_type",
@@ -22,6 +24,7 @@ RUN_COLS = {
     "malformed_rate",
     "mean_rubric",
     "breakpoint_axis_level",
+    "language",
 }
 
 
