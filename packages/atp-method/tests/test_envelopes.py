@@ -25,9 +25,14 @@ def test_get_envelope_unknown_raises() -> None:
 
 
 def test_build_prompt_inlines_task_and_artifacts() -> None:
+    # Artifacts are delivered the way the loader emits them: under
+    # task.input_data["artifacts"]. The ATP `Context` model has no artifacts
+    # field, so reading context.artifacts (the old path) always came up empty.
     request = {
-        "task": {"description": "Review the diff"},
-        "context": {"artifacts": [{"id": "diff", "content": "x = 1"}]},
+        "task": {
+            "description": "Review the diff",
+            "input_data": {"artifacts": [{"id": "diff", "content": "x = 1"}]},
+        },
     }
     prompt = build_prompt(request, get_envelope("review"))
     assert "Review the diff" in prompt
@@ -37,3 +42,30 @@ def test_build_prompt_inlines_task_and_artifacts() -> None:
 
 def test_build_prompt_tolerates_missing_fields() -> None:
     assert isinstance(build_prompt({}, "{task}"), str)
+
+
+def test_build_prompt_delivers_loader_artifacts_end_to_end() -> None:
+    """Regression: the diff + rules a real case carries must reach the model.
+
+    Mirrors the live wiring (loader -> TestDefinition.task.input_data ->
+    ATPRequest.model_dump_json -> shim build_prompt). Guards against the
+    artifact-path drift that made the paid pipe-check review an empty diff.
+    """
+    import json
+
+    from atp.protocol.models import ATPRequest, Task
+
+    from atp_method.loader import load_suite
+
+    suite = load_suite("method/cases/code-review")
+    td = next(t for t in suite.tests if "clean" in t.id)
+    req = ATPRequest(
+        task_id=td.id,
+        task=Task(description=td.task.description, input_data=td.task.input_data),
+    )
+    req_json = json.loads(req.model_dump_json())
+
+    prompt = build_prompt(req_json, get_envelope("review"))
+    # The compliant query (diff) and the SEC-011 rule (kb-rules) both arrive.
+    assert "SELECT" in prompt
+    assert "SEC-011" in prompt
