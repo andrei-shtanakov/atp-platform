@@ -22,6 +22,11 @@ REVIEW_ENVELOPE = (
     "output an empty array [].\n\n{task}"
 )
 
+GENERIC_ENVELOPE = (
+    "Output ONLY the answer in the exact format requested below, with no prose "
+    "and no markdown fence.\n\n{task}"
+)
+
 # capability -> envelope. One entry today; a new capability adds one here.
 _ENVELOPES: dict[str, str] = {"review": REVIEW_ENVELOPE}
 
@@ -32,18 +37,28 @@ def get_envelope(capability: str = "review") -> str:
 
 
 def build_prompt(request: dict[str, Any], envelope: str) -> str:
-    """Wrap an ATPRequest's task + inline artifacts in the given envelope.
+    """Wrap an ATPRequest's task + inline artifacts in an envelope.
 
     Artifacts (the diff, the rules) live under ``task.input_data["artifacts"]``
     — that is where the loader emits them and how the CLI adapter serializes the
     request. The ATP ``Context`` model has no artifacts field, so the earlier
     ``context.artifacts`` read always came up empty, silently handing the model
     an empty review.
+
+    When the case carries an ``output_contract.format_instruction`` (in
+    ``task.input_data``), use the generic envelope + that instruction so a
+    non-review capability is not forced through the review findings envelope.
+    Otherwise fall back to the passed-in envelope (review).
     """
     task = request.get("task") or {}
     body = task.get("description", "")
-    artifacts = (task.get("input_data") or {}).get("artifacts", []) or []
+    input_data = task.get("input_data") or {}
+    artifacts = input_data.get("artifacts", []) or []
     for art in artifacts:
         if art.get("content"):
             body += f"\n\n--- {art.get('id', 'artifact')} ---\n{art['content']}"
+    contract = input_data.get("output_contract") or {}
+    instruction = contract.get("format_instruction")
+    if instruction:
+        return GENERIC_ENVELOPE.format(task=f"{body}\n\n{instruction}")
     return envelope.format(task=body)

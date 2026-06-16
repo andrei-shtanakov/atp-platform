@@ -72,3 +72,42 @@ def test_build_prompt_delivers_loader_artifacts_end_to_end() -> None:
     # The compliant query (diff) and the SEC-011 rule (kb-rules) both arrive.
     assert "SELECT" in prompt
     assert "SEC-011" in prompt
+
+
+def test_build_prompt_uses_format_instruction_when_present() -> None:
+    request = {
+        "task": {
+            "description": "Extract requirements",
+            "input_data": {
+                "artifacts": [{"id": "doc", "content": "Vendor must submit."}],
+                "output_contract": {
+                    "artifact_name": "answer",
+                    "format_instruction": "Return ONLY JSON {requirements:[...]}",
+                },
+            },
+        }
+    }
+    prompt = build_prompt(request, get_envelope("review"))
+    assert "Return ONLY JSON" in prompt
+    assert "Vendor must submit." in prompt
+    assert "senior code reviewer" not in prompt
+
+
+def test_build_prompt_falls_back_to_review_without_contract() -> None:
+    request = {"task": {"description": "Review", "input_data": {"artifacts": []}}}
+    prompt = build_prompt(request, get_envelope("review"))
+    assert "senior code reviewer" in prompt
+
+
+def test_build_prompt_contract_without_instruction_uses_review() -> None:
+    request = {
+        "task": {
+            "description": "Review",
+            "input_data": {
+                "artifacts": [],
+                "output_contract": {"artifact_name": "a"},
+            },
+        }
+    }
+    prompt = build_prompt(request, get_envelope("review"))
+    assert "senior code reviewer" in prompt
