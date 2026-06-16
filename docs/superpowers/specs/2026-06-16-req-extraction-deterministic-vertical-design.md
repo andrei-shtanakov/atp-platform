@@ -1,4 +1,4 @@
-# Spec: req-extraction as the first deterministic vertical
+# Spec: req-extraction as the second deterministic vertical
 
 **Status:** approved (brainstormed 2026-06-16)
 **Companion ADR:** `docs/adr/007-test-taxonomy-axes.md` (the taxonomy map +
@@ -148,7 +148,7 @@ the expected values), encoding the clean→very_severe sweep deterministically.
 
 Each slice is one commit/PR, TDD, subagent-driven. Dependency order:
 
-- **Slice 0 — ADR-007** (docs only). *(this PR)*
+- **Slice 0 — ADR-007 + this design spec** (docs only). *(this PR, #188)*
 - **Slice 1 — Schema:** `output_contract`, `run_mode`, `grader.config` in
   `schema.py` + `agent-eval-case.schema.json` (parity). The `schema` field uses
   Python name `json_schema` + serialization alias `schema` (pydantic shadow).

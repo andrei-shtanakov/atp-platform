@@ -39,10 +39,15 @@ combination of axis values.
 | **Run mode** (how the agent interacts) | `run_mode` | `text_out` → `read_only_corpus` → `workspace` | **formalized here** (field added; only `text_out` wired) |
 | **Grading** (how we decide pass/fail) | `grader.type` (+ `grader.checker`) | `programmatic`(+checker) · `rubric` (non-gating) · `human` | exists (ADR-006) |
 | **Difficulty** (how hidden the defect) | `axis_level` | clean → mild → moderate → severe → very_severe | exists |
-| **Lifecycle** (why the test exists) | `suite_type` | probe → regression → benchmark (routing) | exists (partial) |
+| **Lifecycle** (why the test exists) | `suite_type` | probe → regression → held_out | exists |
 
 Four of five already exist as schema fields and store columns (SP-1/SP-4). Only
 `run_mode` was implicit ("text_out everywhere"); this ADR makes it explicit.
+`suite_type` values are the canonical contract enum (`regression | probe |
+held_out`, `agent-eval-case.schema.json`): `probe` hunts new failures, `regression`
+is frozen and re-run per agent version, `held_out` is hidden to prevent
+overfitting. "Routing benchmark" is how those results are *consumed*, not a
+`suite_type` value.
 
 **Naming guard — do not call axis 1 "capability".** `capability` is an *already
 taken* closed enum of **quality** dimensions (`correctness | calibration |
