@@ -1,71 +1,69 @@
-# Spec: artifact corpus grounding for method cases
+# Spec: `read_only_corpus` grounding for method cases
 
-**Status:** draft
+**Status:** deferred draft
 **Created:** 2026-06-14
-**Scope:** `method/`, `packages/atp-method/`, corpus asset layout, loader
-materialization, and deterministic citation grounding.
+**Updated:** 2026-06-16
+**Scope:** `method/`, `packages/atp-method/`, `read_only_corpus` run mode,
+mock-tools-backed file serving, corpus asset layout, and citation grounding.
 
 ## Overview
 
-Method cases can currently embed all relevant information directly in YAML
-`artifacts[].content`. That is useful for focused single-call model checks, but
-it does not exercise agentic behavior: the agent does not need to discover
-documents, read files, compare sources, ignore distractors, or cite evidence.
-For document-heavy cases such as requirement extraction, the methodology should
-support a corpus-folder presentation mode.
+Inline method cases are useful for focused single-call checks, but they do not
+test agentic behavior. A requirement-extraction agent should sometimes have to
+discover files, read relevant documents, ignore distractors, compare sources,
+and cite where each extracted field came from.
 
-In this mode, a case points to a folder of source assets instead of listing every
-file inline. The folder is materialized into the agent workspace, the prompt
-references the corpus root, and the agent must inspect files through allowed
-tools such as `file_read`. Reproducibility is guaranteed by a SHA-256 manifest:
-the case lists the corpus root and selection rules, while the manifest records
-the exact bytes of the selected files.
+This feature defines the next run-mode tier: `read_only_corpus`. A case points
+to a corpus folder, the corpus is verified by SHA-256 manifest, selected files
+are copied into a per-run workspace, and the agent reads them through the
+existing tools path. The natural serving seam is the existing
+`Context.tools_endpoint` plus mock tool server, not a new file-delivery
+mechanism.
 
-Grounding is verified through structured citations. The agent output must cite
-source `path`, `page`, and `line_start`/`line_end` for each extracted field. Quote
-text may be included for debugging, but deterministic checks should rely on
-stable file identity plus page/line ranges and expected source locations, not
-free-form quote comparison.
-
-This feature complements `spec/structured-method-output.md`: structured outputs
-define the answer shape, while corpus grounding defines how source files are
-provided and how citations are verified.
+This feature depends on structured output. Citations are fields in the
+structured answer, and deterministic citation checks should run after the answer
+artifact is schema-valid. The first slice should support text and markdown only;
+PDF/DOCX page-line normalization is a separate sub-project.
 
 ## Specification
 
 | Component | Signature | Description |
 |-----------|-----------|-------------|
-| `AgentEvalCase.artifact_corpus` | `ArtifactCorpus | None` | Declares a source folder to expose as workspace files for the case. |
-| `ArtifactCorpus` | `id: str`, `root: str`, `include: list[str]`, `exclude: list[str]`, `digest: CorpusDigest`, `metadata_path: str | None`, `presentation: "workspace_files"` | Describes corpus selection, integrity, and presentation mode. |
-| `CorpusDigest` | `algorithm: "sha256"`, `manifest_path: str` | Points to the file containing path-to-hash entries for selected corpus files. |
+| `run_mode` | `"read_only_corpus"` | Taxonomy coordinate for cases where the agent reads a materialized corpus through tools. |
+| `AgentEvalCase.artifact_corpus` | `ArtifactCorpus | None` | Declares a source folder to expose as read-only corpus files. |
+| `ArtifactCorpus` | `id: str`, `root: str`, `include: list[str]`, `exclude: list[str]`, `digest: CorpusDigest`, `metadata_path: str | None` | Describes corpus selection and integrity. |
+| `CorpusDigest` | `algorithm: "sha256"`, `manifest_path: str`, `normalization: "lf"` | Points to the manifest used to verify normalized file content. |
 | `CorpusMetadata` | `files: dict[str, CorpusFileMetadata]` | Optional semantic metadata for selected files; never used as content identity. |
-| `CorpusFileMetadata` | `role: "source" | "distractor" | "supporting"`, `status: "current" | "obsolete" | "unknown"`, `document_id: str | None` | Labels file semantics for deterministic checks and analysis. |
-| `Citation` | `path: str`, `page: int | None`, `line_start: int`, `line_end: int`, `field: str | None`, `quote: str | None` | Structured reference emitted by the agent for an extracted field. |
-| `CorpusResolver` | `def resolve(case_path: Path, corpus: ArtifactCorpus) -> ResolvedCorpus` | Expands include/exclude patterns under the corpus root using repo-relative, safe paths. |
-| `CorpusIntegrityVerifier` | `def verify(resolved: ResolvedCorpus) -> CorpusVerificationResult` | Computes SHA-256 for selected files and compares them to the manifest. |
-| `CorpusMaterializer` | `def materialize(resolved: ResolvedCorpus, workspace: Path) -> MaterializedCorpus` | Copies or mounts selected files into the per-run workspace and returns the exposed root path. |
-| `CitationGroundingEvaluator` | `async def evaluate(task, response, trace, assertion) -> EvalResult` | Verifies citations against corpus path, status, page, and line constraints. |
+| `CorpusResolver` | `def resolve(case_path: Path, corpus: ArtifactCorpus) -> ResolvedCorpus` | Expands include/exclude patterns under the corpus root with canonical sorted paths. |
+| `CorpusIntegrityVerifier` | `def verify(resolved: ResolvedCorpus) -> CorpusVerificationResult` | Computes SHA-256 over the normalized content and compares it to the manifest. |
+| `CorpusMaterializer` | `def materialize(resolved: ResolvedCorpus, workspace: Path) -> MaterializedCorpus` | Copies selected files into a per-run workspace. |
+| mock file tools | `Context.tools_endpoint` | Serves deterministic `file_read` access to the materialized corpus. |
+| `CitationGroundingEvaluator` | `async def evaluate(task, response, trace, assertion) -> EvalResult` | Verifies citation path, line range, file status, and expected source location. |
 
 ## Data Models
 
 ### Case YAML
 
 ```yaml
+run_mode: read_only_corpus
 artifact_corpus:
   id: fabricated-deadline-clean-corpus
   root: method/cases/req-extraction/assets/fabricated-deadline-clean-001
-  include: ["**/*.md", "**/*.txt", "**/*.pdf"]
+  include: ["**/*.md", "**/*.txt"]
   exclude: ["README.md"]
-  presentation: workspace_files
   digest:
     algorithm: sha256
+    normalization: lf
     manifest_path: manifest.sha256
   metadata_path: corpus.meta.yaml
+environment:
+  tools: [file_read]
+  side_effects: none
 ```
 
-`root`, `manifest_path`, and `metadata_path` are repository-relative or
-case-file-relative paths. They must not be absolute and must not escape the
-repository or case asset root.
+`root`, `manifest_path`, `metadata_path`, and all citation paths use the same
+safe relative-path rules already enforced by ATP protocol path validators:
+absolute paths, `..`, `~`, and null bytes are invalid.
 
 ### Hash manifest
 
@@ -78,6 +76,11 @@ f91c5a8d...  archive/policy-2023.md
 The manifest contains one SHA-256 digest and one relative file path per line.
 Paths are relative to `artifact_corpus.root`. The selected file set after
 `include`/`exclude` expansion must match the manifest exactly.
+
+Hashes must be computed over the same normalized representation used for line
+indexing. For the first slice this means text/markdown content with LF newline
+normalization. This avoids a split where raw bytes hash one way but citations
+refer to a different normalized line view.
 
 ### Optional metadata
 
@@ -97,9 +100,9 @@ files:
     document_id: policy-archive-2023
 ```
 
-Metadata is semantic. It can identify distractors, obsolete documents, and
-current source documents, but it does not prove content identity. Content
-identity comes only from the digest manifest.
+Metadata is semantic. If a deterministic check references metadata fields such
+as `status`, the metadata file and the referenced entry are required. If no
+check references metadata, missing metadata is a no-op.
 
 ### Structured output with citations
 
@@ -125,131 +128,119 @@ identity comes only from the digest manifest.
 }
 ```
 
-`quote` is optional and diagnostic. The deterministic evaluator should not rely
-on it as the primary grounding key.
+Line ranges are one-based and inclusive. `quote` is optional diagnostic text and
+is not the primary grounding key.
 
-### Expected source locations
+### Citation-grounding checker config
 
-Cases that need strict grounding should define expected source locations in
-their deterministic checks:
+The citation-grounding check should remain a named programmatic checker, not an
+entry in a generic `checks[]` array:
 
 ```yaml
 grader:
-  checks:
-    - type: citation_grounding
-      critical: true
-      config:
-        artifact_name: answer
-        corpus_id: fabricated-deadline-clean-corpus
-        expected:
-          - output_path: $.requirements[0].citations.deadline
-            source_path: policy-current.md
-            page: null
-            line_start: 14
-            line_end: 14
-            status: current
-        forbidden:
-          - source_path: archive/policy-2023.md
-            status: obsolete
+  type: programmatic
+  checker: citation_grounding
+  checker_config:
+    artifact_name: answer
+    corpus_id: fabricated-deadline-clean-corpus
+    expected:
+      - output_path: $.requirements[0].citations.deadline
+        source_path: policy-current.md
+        page: null
+        line_start: 14
+        line_end: 14
+        status: current
+    forbidden:
+      - source_path: archive/policy-2023.md
+        status: obsolete
+  critical_check: >
+    Each extracted deadline is grounded in the current policy corpus and does
+    not cite obsolete distractor documents.
 ```
+
+`output_path` follows the structured-output spec's deterministic JSON-path
+semantics: the path must resolve to exactly one node.
 
 ## Business Rules
 
-- Corpus content reproducibility is based on SHA-256 hashes, not on listing
-  source content in case YAML.
-- `artifact_corpus.root` must resolve to a directory inside the repository or an
-  approved case asset root.
-- `include`/`exclude` expansion must be deterministic and path-normalized.
-- The selected file set must match `manifest.sha256` exactly. Missing files,
-  extra selected files, duplicate manifest paths, and hash mismatches are
-  pre-run failures.
-- Manifest paths must be relative paths. Absolute paths and `..` traversal are
-  invalid.
-- Corpus metadata is optional and cannot replace hash verification.
+- `read_only_corpus` cases depend on structured-output support.
+- Corpus content reproducibility is based on SHA-256 hashes over normalized
+  content, not on listing source content in case YAML.
+- `include`/`exclude` expansion must be path-normalized and canonically sorted.
+- The selected file set must match the manifest exactly. Missing files, extra
+  selected files, duplicate manifest paths, and hash mismatches are pre-run
+  failures.
+- Manifest paths must be relative and must pass existing ATP-safe path rules.
+- Corpus files are copied into a per-run workspace for isolation and
+  determinism. Mounting is deferred.
+- File access should be served through the existing mock-tools / tools endpoint
+  seam.
+- Metadata is optional unless a checker references metadata fields.
 - A citation path must reference a selected corpus file.
-- A citation must not cite a file whose metadata marks it `status: obsolete`
-  unless the check explicitly allows obsolete sources.
-- `line_start` and `line_end` are required for citations. `page` is required for
-  paginated normalized artifacts and may be `null` for plain text files.
-- For plain text and markdown, line numbers refer to the checked-in file bytes
-  after normal newline normalization.
-- For PDF, DOCX, and other rendered formats, the corpus must include or generate
-  a stable normalized text view with page and line indexes before citations can
-  be verified.
-- Citation checks verify location and allowed source status. Field-value support
-  should be checked by deterministic expected-output checks where feasible.
+- A citation must not cite an obsolete file unless the checker explicitly
+  allows it.
+- The first implementation supports text and markdown only.
+- PDF/DOCX page-line citation support requires stable normalized text/page
+  artifacts and is out of scope for the first slice.
 
 ## Functional Requirements
 
-- [ ] Extend `method/agent-eval-case.schema.json` with `artifact_corpus`.
-- [ ] Extend `packages/atp-method/atp_method/schema.py` with `ArtifactCorpus`,
-      `CorpusDigest`, and validators for safe relative paths.
-- [ ] Add corpus resolution that expands `include` and `exclude` patterns
-      deterministically under `artifact_corpus.root`.
-- [ ] Add SHA-256 manifest parsing and integrity verification.
-- [ ] Fail case loading or pre-run preparation when corpus integrity does not
-      match the manifest.
-- [ ] Add optional corpus metadata parsing for file role/status/document ID.
-- [ ] Materialize selected corpus files into the agent workspace for
-      `presentation: workspace_files`.
-- [ ] Ensure the task prompt references the exposed corpus root, not the full
-      file contents.
-- [ ] Add a citation schema fragment reusable by structured output contracts.
-- [ ] Add deterministic citation-grounding checks for path, page, line range,
-      file existence, and allowed metadata status.
-- [ ] Support text/markdown line checks first.
-- [ ] Define normalized text-page artifacts before enabling strict PDF/DOCX page
-      and line grounding.
-- [ ] Update `CASE_GENERATOR.md` so generated agentic cases create corpus
-      folders, hash manifests, and citation requirements.
-- [ ] Update at least one `req-extraction` case family to use corpus-folder
-      presentation as a reference example.
+- [ ] Extend the method case schema with `run_mode: read_only_corpus` and
+      `artifact_corpus`.
+- [ ] Extend the Pydantic method schema with corpus models and path validators
+      that reuse ATP protocol path-safety behavior.
+- [ ] Add deterministic include/exclude expansion with canonical sorted paths.
+- [ ] Add SHA-256 manifest parsing and normalized-content verification.
+- [ ] Fail pre-run preparation when selected files and manifest entries differ.
+- [ ] Copy selected corpus files into a per-run workspace.
+- [ ] Serve `file_read` through the existing mock tool server and
+      `Context.tools_endpoint`.
+- [ ] Ensure the task prompt references the corpus root and does not inline file
+      content.
+- [ ] Add a named `citation_grounding` programmatic checker with a
+      load-validated config model.
+- [ ] Implement line-range validation for text and markdown files.
+- [ ] Reuse existing malformed/critical-pass result fields when structured
+      citations are missing or malformed.
+- [ ] Update case-generation guidance to create corpus folders and
+      `manifest.sha256` files for agentic document cases.
 
 ## Implementation Tasks
 
 - [ ] Add schema contract tests for valid and invalid `artifact_corpus` blocks.
-- [ ] Add tests for unsafe corpus paths, absolute paths, traversal, duplicate
-      manifest entries, missing files, extra files, and hash mismatches.
-- [ ] Add Pydantic tests for corpus model validation in `packages/atp-method`.
-- [ ] Add loader tests showing corpus metadata appears in `TestDefinition`
-      input data without inlining file contents.
-- [ ] Add workspace materialization tests for selected files.
-- [ ] Add citation-grounding evaluator tests for valid citations, missing files,
-      invalid line ranges, obsolete-source citations, and malformed citations.
-- [ ] Add a helper command or documented script for generating `manifest.sha256`
-      from a corpus folder.
-- [ ] Migrate a small `req-extraction` fixture corpus with current, supporting,
-      and obsolete/distractor documents.
-- [ ] Run targeted tests for `packages/atp-method` and citation evaluator
-      behavior.
+- [ ] Add tests for absolute paths, traversal, duplicate manifest entries,
+      missing files, extra files, and hash mismatches.
+- [ ] Add tests proving hash input and citation line indexing use the same LF
+      normalized content.
+- [ ] Add tests for absent metadata when no metadata-sensitive check exists.
+- [ ] Add tests requiring metadata when a checker references `status` or `role`.
+- [ ] Add workspace materialization tests proving files are copied into an
+      isolated run directory.
+- [ ] Add mock-tools file-read tests for the materialized corpus.
+- [ ] Add citation-grounding checker tests for valid citations, missing files,
+      invalid line ranges, obsolete-source citations, malformed citations, and
+      multi-match JSON paths.
+- [ ] Add a documented helper or CLI command to generate `manifest.sha256`.
+- [ ] Add one small text/markdown req-extraction corpus fixture with source,
+      supporting, and obsolete distractor documents.
 
 ## Migration Strategy
 
-Phase 1 adds `artifact_corpus` as optional. Existing inline-artifact cases keep
-working unchanged.
+Phase 1 waits for the structured-output path to land.
 
-Phase 2 adds one corpus-backed `req-extraction` sweep while preserving the
-existing inline sweep. This gives separate signal for single-call extraction and
-agentic file-grounded extraction.
+Phase 2 adds `read_only_corpus` as an optional run mode and wires corpus
+materialization through mock tools for text/markdown corpora.
 
-Phase 3 updates generated method-case guidance. New document-heavy cases should
-prefer corpus-folder presentation and structured citations. Inline artifacts
-remain valid for small, focused, non-agentic checks.
+Phase 3 adds one corpus-backed req-extraction sweep while preserving the inline
+suite. The inline suite remains the single-call signal; the corpus suite becomes
+the agentic file-grounded signal.
 
-Phase 4 makes corpus integrity verification part of normal method case loading
-for any case that declares `artifact_corpus`.
+Phase 4 evaluates whether PDF/DOCX normalized page-line artifacts are worth a
+separate design.
 
-## Open Decisions
+## Deferred
 
-- Decide whether hash manifests are generated manually by a helper script or by
-  a formal `atp method corpus hash` CLI command.
-- Decide whether corpus paths are repo-relative only, case-file-relative only,
-  or support both with explicit `root_base`.
-- Decide where normalized text/page views for PDFs and DOCX should live:
-  alongside source assets, in a generated cache, or as checked-in derived
-  artifacts.
-- Decide whether citation line ranges should be one-based and inclusive. The
-  recommendation is one-based inclusive ranges for human readability.
-- Decide whether the runner should copy corpus files into the workspace or
-  mount/read them in place. Copying is simpler and isolates the run; mounting
-  avoids duplication for large corpora.
+- Mounting large corpora instead of copying per run.
+- PDF/DOCX rendering, page segmentation, line indexing, and cache invalidation.
+- Heterogeneous `grader.checks[]`; citation grounding remains a named checker
+  until a separate ADR says otherwise.
