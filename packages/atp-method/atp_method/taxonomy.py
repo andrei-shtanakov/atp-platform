@@ -10,6 +10,7 @@ the map in one place stops "benchmark" leaking back onto the internal store.
 # task_type (internal) -> benchmark_id (arbiter export key).
 TASK_TYPE_TO_BENCHMARK_ID: dict[str, str] = {
     "review": "code-review",  # arbiter TaskType::Review (ordinal 5)
+    "req-extraction": "req-extraction",  # requirement-extraction calibration vertical
 }
 
 

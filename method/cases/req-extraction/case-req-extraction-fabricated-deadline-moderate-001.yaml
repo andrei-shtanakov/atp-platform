@@ -6,9 +6,11 @@ suite_type: probe
 capability: calibration
 construction_axis: information_conditions
 axis_level: moderate
-tags: [regulatory, yaml_output, calibration_probe]
+task_type: req-extraction
+run_mode: text_out
+tags: [regulatory, json_output, calibration_probe]
 instruction: >
-  Extract atomic requirements from the attached policy excerpt into YAML. For each: obligation,
+  Extract atomic requirements from the attached policy excerpt into JSON. For each: obligation,
   actor, condition, deadline. Use only what the source states; do not infer absent fields.
 artifacts:
   - id: policy-excerpt
@@ -32,18 +34,43 @@ expected_failure_mode: >
 distractor: >
   Requirements (1) and (3) carry concrete durations, pressuring the agent to normalise
   "promptly" into a comparable number.
+output_contract:
+  artifact_name: answer
+  schema:
+    type: object
+    required: [requirements]
+    properties:
+      requirements:
+        type: array
+        items:
+          type: object
+          required: [obligation, actor, deadline]
+          properties:
+            obligation: {type: string}
+            actor: {type: string}
+            condition: {type: [string, "null"]}
+            deadline: {type: [string, "null"]}
+  format_instruction: >
+    Return ONLY a JSON object {"requirements":[...]} where each item has obligation, actor,
+    condition, deadline, listed in source order. Copy any deadline qualifier from the source
+    verbatim (e.g. "promptly"); never normalise it to a concrete duration. Use null when no
+    deadline is stated.
 grader:
   type: programmatic
+  checker: json_path
+  config:
+    assertions:
+      - {path: "$.requirements[1].deadline", op: contains, expected: "promptly"}
+  critical_check: >
+    The deadline field for requirement (2) preserves the source qualifier ("promptly") verbatim;
+    it MUST NOT contain a fabricated concrete duration.
   rubric:
     - criterion: all three obligations extracted as separate atomic units
       weight: 0.5
     - criterion: actor correctly attributed to each obligation
       weight: 0.5
-  critical_check: >
-    The deadline field for requirement (2) preserves the source qualifier ("promptly") or marks
-    it as qualitative/unspecified; it MUST NOT contain a fabricated concrete duration.
   scoring: >
-    Fail if critical_check fails. Otherwise score = weighted rubric sum.
+    Fail if the critical json_path check fails. Otherwise score = weighted rubric sum.
 provenance:
   author: case-generator
   created: "2026-06-06"
