@@ -35,7 +35,7 @@ combination of axis values.
 
 | Axis | Field(s) | Values | Status |
 |------|----------|--------|--------|
-| **Capability** (what task) | `task_type` / `capability` / `family` (+ `language`) | review, req-extraction, architecture-design, repo-analysis, coding, … | exists (ADR-006, SP-4) |
+| **Task** (what task) | `task_type` (+ `language`) | review, req-extraction, architecture-design, repo-analysis, coding, … | exists (ADR-006, SP-4) |
 | **Run mode** (how the agent interacts) | `run_mode` | `text_out` → `read_only_corpus` → `workspace` | **formalized here** (field added; only `text_out` wired) |
 | **Grading** (how we decide pass/fail) | `grader.type` (+ `grader.checker`) | `programmatic`(+checker) · `rubric` (non-gating) · `human` | exists (ADR-006) |
 | **Difficulty** (how hidden the defect) | `axis_level` | clean → mild → moderate → severe → very_severe | exists |
@@ -43,6 +43,15 @@ combination of axis values.
 
 Four of five already exist as schema fields and store columns (SP-1/SP-4). Only
 `run_mode` was implicit ("text_out everywhere"); this ADR makes it explicit.
+
+**Naming guard — do not call axis 1 "capability".** `capability` is an *already
+taken* closed enum of **quality** dimensions (`correctness | calibration |
+efficiency | safety_compliance | recoverability | adaptation`,
+`atp_method/schema.py`), not task identity. Axis 1 is `task_type`. `capability`
+(quality stressed), `construction_axis` (what is varied), and `family` (case
+grouping) are finer facets *within* a `task_type` — distinct dimensions, not
+synonyms for it. Reusing "capability" for the task axis would recreate exactly the
+`benchmark_id`-vs-`task_type` confusion ADR-006 already corrected.
 
 ### 2. Deterministic checks are named checkers under `type: programmatic`
 
@@ -63,10 +72,13 @@ This is the existing `findings_match` precedent (ADR-006 §A-1, PR #176)
 generalized. Adding a deterministic check = registering a checker, **not** a new
 `GraderType` value and **not** a `checks[]` array.
 
-A single generic `grader.config` bag (checker-namespaced) carries per-checker
-config, so new checkers do **not** each add typed fields to the `Grader` model —
-that bloat is itself a form of the zoo we are avoiding. (`findings_match` keeps
-its existing typed fields for back-compat.)
+Per-checker config is carried in `grader.config`, but it is **not** a loosely
+typed `dict`: each checker **declares its own pydantic config model in the
+registry**, and the loader validates `grader.config` against that model at load
+time. This keeps the `Grader` model thin (new checkers do not each bolt typed
+fields onto it — that bloat is itself a form of the zoo) *and* keeps the config
+strictly typed and validated before any run, not at runtime. (`findings_match`
+keeps its existing typed fields for back-compat.)
 
 **Deferred:** a heterogeneous `grader.checks[]` array (multiple *different*
 checkers on one case, e.g. `schema` + `findings_match` + `json_path` together).
@@ -77,8 +89,12 @@ ADR.
 
 ### 3. Run mode: declare now, wire lazily, pick the lightest tier
 
-`run_mode` is a case field now, defaulting to `text_out`. The richer tiers are
-**declared but unimplemented**; their adapters gate them:
+`run_mode` is a case field now, defaulting to `text_out`. The `Literal` type
+admits all three values, but the loader **rejects any tier that is not yet wired**
+(currently the wired set is `{text_out}`) with an explicit load-time error. A case
+must not be able to *declare* a fidelity tier the harness cannot actually deliver
+— that silent gap is the very validity problem this section exists to prevent. The
+richer tiers are **declared but unimplemented**; their adapters gate them:
 
 - **`text_out`** — agent gets a text blob, returns text/JSON. CLI-adapter + shim
   (stdin/stdout). The only wired tier.
@@ -120,7 +136,8 @@ PR #186 stays a draft; this ADR + the companion spec are the reconciled version.
 - New tests are placed by choosing one value per axis — no new "type" to invent.
 - The store/dashboard already key on these axes, so results from any vertical are
   comparable in one table (the exit from the zoo).
-- One small schema addition now (`run_mode`, `output_contract`, `grader.config`).
+- One small schema addition now (`run_mode` with wired-set validation,
+  `output_contract`, `grader.config` validated per-checker).
 - A future heterogeneous-check need will require the deferred `checks[]` ADR.
 - Two richer run-mode tiers remain to be implemented when a capability needs them.
 
@@ -130,5 +147,14 @@ PR #186 stays a draft; this ADR + the companion spec are the reconciled version.
   vocab and blurs "strategy vs checker"; rejected for decision 2.
 - **Adopt Spec 1's `checks[]` array up front** — most general, but introduces a
   third grading taxonomy before any case needs heterogeneous checks; deferred.
+- **Loosely typed `grader.config: dict`** — keeps `Grader` thin but loses
+  validation exactly where it matters (assertion shape), deferring errors to
+  runtime. Rejected in favour of per-checker registry-declared config models
+  validated at load (decision 2).
 - **Leave `run_mode` implicit** — keeps the latent "text_out everywhere"
   assumption that made the corpus spec look like a contradiction; rejected.
+- **Full JSONPath (wildcards / recursive descent / filters) for `json_path`** —
+  multi-node matches make `op: equals` ambiguous, a determinism hole in a
+  deterministic grader. Rejected: a `json_path` assertion must resolve to exactly
+  one node or it fails (decision recorded in the companion spec); this makes a
+  constrained/no-dep resolver at least as strong as a general library here.

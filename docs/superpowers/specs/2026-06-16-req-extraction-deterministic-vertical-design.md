@@ -50,8 +50,10 @@ case YAML (output_contract + grader.checker=json_path)
 | `OutputContract` | `artifact_name: str`, `content_type: str = "application/json"`, `schema: dict`, `format_instruction: str | None` | Declares the structured artifact the agent must return + the prompt instruction. |
 | `AgentEvalCase.output_contract` | `OutputContract | None` | Optional; present → structured path, absent → legacy review path. |
 | `AgentEvalCase.run_mode` | `Literal["text_out","read_only_corpus","workspace"] = "text_out"` | Axis-2 field (ADR-007). Only `text_out` wired. |
-| `Grader.config` | `dict[str, Any] | None` | Generic checker-namespaced config bag. |
-| `json_path` checker | `config: {artifact_name: str, assertions: [{path, op, expected?}]}`; `op ∈ {equals, absent, contains}` | Deterministic field checks over `ArtifactStructured.data`. |
+| `Grader.config` | `dict[str, Any] | None` on disk; **validated at load against the active checker's registry-declared pydantic config model** | Per-checker config, strictly typed (not a loose dict). |
+| checker registry config hook | `register(name, checker, config_model)` | Each checker declares its `config_model`; loader validates `grader.config` against it. |
+| `JsonPathConfig` (json_path's config model) | `artifact_name: str`, `assertions: list[JsonPathAssertion]` (non-empty); `JsonPathAssertion = {path: str, op: Literal["equals","absent","contains"], expected: Any | unset}` | Typed config for the json_path checker. |
+| `json_path` checker | runs `JsonPathConfig.assertions` over `ArtifactStructured.data` | Deterministic field checks; **a `path` must resolve to exactly one node or the assertion fails**. |
 | `build_prompt` | `(request, default_envelope=REVIEW_ENVELOPE) -> str` | If `input_data` carries `output_contract.format_instruction` → generic envelope + instruction; else → review envelope. |
 | shim normalizer | `model output -> ArtifactStructured | ArtifactFile` | Structured when contract present; bad JSON → malformed-flagged. |
 
@@ -99,16 +101,25 @@ grader:
 The per-rung `assertions` differ (which requirement index carries the trap, and
 the expected values), encoding the clean→very_severe sweep deterministically.
 
-### json_path checker config
+### json_path checker config + semantics
 
-- `op: equals` — value at `path` equals `expected` (incl. `null`).
-- `op: absent` — `path` resolves to nothing (key/index missing).
-- `op: contains` — value at `path` (string or array) contains `expected`.
-- A `path` that fails to resolve when an op needs a value → assertion fails (not
-  an exception).
-- Engine: **`jsonpath-ng`** (one new dep; standard syntax). Decision recorded in
-  ADR-007 §2 alternatives — a no-dep micro-resolver was considered and rejected
-  for honest path syntax.
+- **Single-node rule (determinism guard):** every `path` must resolve to
+  **exactly one** node. Zero nodes or multiple nodes → the assertion **fails**
+  (never an exception, never "first match"). This removes the ambiguity that
+  wildcards / recursive descent / filters would introduce into a deterministic
+  grader.
+- `op: equals` — the (single) value at `path` equals `expected` (incl. `null`).
+- `op: absent` — `path` resolves to **zero** nodes (key/index missing). This is
+  the one op where non-resolution is the success condition.
+- `op: contains` — the single value at `path` (string or array) contains
+  `expected`.
+- **Engine decision (Slice 2):** because only single-node `$.a[i].b`-style paths
+  are valid, a **small no-dep resolver is the recommendation** — it *enforces* the
+  single-node rule by construction and adds no dependency or unsafe surface
+  (wildcards/filters simply don't exist). `jsonpath-ng` remains an option only if
+  it is hard-restricted to single-node results; full JSONPath is rejected
+  (ADR-007 alternatives). Pick in Slice 2; the config/semantics above are fixed
+  regardless of engine.
 
 ## Business rules
 
@@ -120,9 +131,16 @@ the expected values), encoding the clean→very_severe sweep deterministically.
 - `schema` validation failure or a missing structured artifact ⇒ `malformed`.
 - A `json_path` assertion failure ⇒ `critical_pass = False` (a real defect-miss,
   distinct from malformed).
-- `grader.checker == "json_path"` requires `grader.config.assertions` (non-empty);
-  validated at load (mirrors the `findings_match`-requires-`expected_findings`
-  rule).
+- `grader.config` is validated at load against the active checker's
+  registry-declared config model (typed, not a loose dict). For `json_path` that
+  means `JsonPathConfig` with a non-empty `assertions` list (mirrors the
+  `findings_match`-requires-`expected_findings` rule).
+- A `json_path` assertion `path` resolving to ≠1 node fails the assertion (except
+  `op: absent`, which requires 0 nodes). No multi-match, no first-match.
+- `run_mode` is validated at load against the **wired set** (`{text_out}`): a case
+  declaring `read_only_corpus`/`workspace` is **rejected** with an explicit error,
+  even though the `Literal` type admits them — a case must not claim fidelity the
+  harness cannot deliver.
 - Back-compat: cases without `output_contract` are unchanged — review keeps using
   `REVIEW_ENVELOPE` + `findings_match` + `ArtifactFile`.
 
@@ -132,11 +150,15 @@ Each slice is one commit/PR, TDD, subagent-driven. Dependency order:
 
 - **Slice 0 — ADR-007** (docs only). *(this PR)*
 - **Slice 1 — Schema:** `output_contract`, `run_mode`, `grader.config` in
-  `schema.py` + `agent-eval-case.schema.json` (parity). Load-time validation:
-  `json_path` requires `config.assertions`. Tests: valid + invalid, pydantic↔JSON.
-- **Slice 2 — json_path checker** (+ `jsonpath-ng` dep): register `json_path`;
-  `atp/evaluators/json_path/checker.py`. Tests: equals/absent/contains, missing
-  path, type mismatch, empty assertions, malformed data.
+  `schema.py` + `agent-eval-case.schema.json` (parity). The `schema` field uses
+  Python name `json_schema` + serialization alias `schema` (pydantic shadow).
+  Load-time validation: **`run_mode` ∈ wired set `{text_out}` else reject**;
+  per-checker `grader.config` validated against the registry-declared config model.
+  Tests: valid + invalid (incl. unwired `run_mode` rejected), pydantic↔JSON.
+- **Slice 2 — json_path checker** (no new dep, single-node resolver): register
+  `json_path` with its `JsonPathConfig` model; `atp/evaluators/json_path/checker.py`.
+  Tests: equals/absent/contains, **zero-node fails (except absent)**, **multi-node
+  fails**, type mismatch, empty assertions, malformed data.
 - **Slice 3 — Loader + prompt:** serialize `output_contract` into
   `task.input_data`; emit a `schema` assertion (from `output_contract.schema`) +
   a `json_path` checker assertion; `build_prompt` generic-envelope-when-
@@ -175,15 +197,25 @@ Each slice is one commit/PR, TDD, subagent-driven. Dependency order:
   grounding (PR #186 `artifact-corpus-grounding`).
 - Migrating the review vertical to `output_contract` (works via fallback).
 
+## Resolved decisions (architect review, 2026-06-16)
+
+- **Config typing** — `grader.config` is **not** a loose dict: each checker
+  declares a pydantic config model in the registry, validated at load (decision
+  2). Resolved: typed now, not "types later".
+- **json_path multi-match** — **single-node-required** semantics (≠1 node fails;
+  `absent` requires 0). Resolved: this strengthens the no-dep resolver, which is
+  now the Slice-2 recommendation; full JSONPath rejected.
+- **Axis-1 naming** — the task axis is `task_type`, **not** `capability`
+  (`capability` is the existing quality enum). Resolved in ADR-007.
+- **`run_mode` validation** — load-time wired-set check (`{text_out}`) in
+  **Slice 1**. Resolved.
+- **`schema` field name** — Python field `json_schema` + serialization alias
+  `schema` (on-disk key stays `schema`); avoids the pydantic `BaseModel` shadow.
+  Resolved in Slice 1.
+
 ## Open decisions
 
-- **`jsonpath-ng` vs no-dep micro-resolver** — spec assumes `jsonpath-ng`. If we
-  want zero new deps, a `$.a[i].b`-only resolver is ~30 lines; loses general
-  syntax. (Recommendation: take the lib.)
 - **Per-rung trap encoding** — confirm each rung's `assertions` during Slice 5
   against the actual case content (the trap index/value differs by rung).
-- **`schema` field name** — a pydantic field literally named `schema` shadows a
-  `BaseModel` internal and warns. Slice 1 should name the Python field
-  `json_schema` with a serialization alias `schema` (YAML/JSON stays `schema`),
-  or set `model_config` to silence the shadow. Decide in Slice 1; keep the
-  on-disk key `schema`.
+- **Resolver exact path grammar** — Slice 2 fixes the supported subset
+  (`$.key`, `$.key[i]`, nested) and rejects anything outside it explicitly.
