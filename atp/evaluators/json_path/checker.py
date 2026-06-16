@@ -54,10 +54,14 @@ def json_path_check(config: dict[str, Any], text: str | None) -> CaseVerdict:
             jsonschema.validate(data, schema)
         except jsonschema.ValidationError as e:
             return _malformed(f"schema violation: {e.message}")
+        except jsonschema.SchemaError as e:
+            return _malformed(f"invalid schema: {e.message}")
 
-    assertions = config.get("assertions", [])
-    # all([]) is True: a schema-only case with no assertions is a deliberate
-    # vacuous pass (the schema check above is the gate in that case).
+    assertions = config.get("assertions")
+    if not isinstance(assertions, list) or not assertions:
+        # A json_path gate with no assertions is a misconfiguration, not a pass —
+        # never let a critical gate vacuously succeed.
+        return _malformed("no assertions configured")
     results = [{"assertion": a, "ok": _assertion_holds(data, a)} for a in assertions]
     passed = all(r["ok"] for r in results)
     return CaseVerdict(

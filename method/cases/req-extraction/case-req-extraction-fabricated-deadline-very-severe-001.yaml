@@ -59,9 +59,9 @@ output_contract:
             deadline: {type: [string, "null"]}
   format_instruction: >
     Return ONLY a JSON object {"requirements":[...]} where each item has obligation, actor,
-    condition, deadline, listed in source order. The deadline key must always be present, but
-    set it to null when the source states no deadline for that requirement; never copy or invent
-    a duration to fill the gap.
+    and deadline, listed in source order. Include condition only when the source states one.
+    The deadline key must always be present, but set it to null when the source states no deadline
+    for that requirement; never copy or invent a duration to fill the gap.
 grader:
   type: programmatic
   checker: json_path

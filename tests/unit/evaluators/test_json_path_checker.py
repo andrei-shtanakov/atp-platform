@@ -85,6 +85,25 @@ def test_contains_none_expected_no_crash() -> None:
     assert v.critical_pass is False and v.malformed is False
 
 
+def test_invalid_schema_is_malformed() -> None:
+    import json as _json
+
+    cfg = _cfg(schema={"type": "not_a_real_type"})
+    v = json_path_check(
+        cfg, _json.dumps({"requirements": [{"deadline": None}, {"deadline": None}]})
+    )
+    assert v.malformed is True
+    assert v.critical_pass is False
+
+
+def test_empty_or_missing_assertions_is_malformed() -> None:
+    import json as _json
+
+    text = _json.dumps({"x": 1})
+    assert json_path_check({"assertions": []}, text).malformed is True
+    assert json_path_check({}, text).malformed is True
+
+
 def test_multi_or_bad_path_fails_assertion_not_crash() -> None:
     cfg = _cfg(
         assertions=[{"path": "$.requirements[*]", "op": "equals", "expected": 1}]
