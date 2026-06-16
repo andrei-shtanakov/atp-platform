@@ -36,6 +36,8 @@ import shlex
 import shutil
 import sqlite3
 import sys
+import urllib.error
+import urllib.request
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -54,14 +56,37 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # agent_id -> shim path (relative to repo root). Both run via the current
 # interpreter so the raw-API shim sees the installed `anthropic` SDK.
+_OLLAMA_SHIM = "method/spawners/ollama_shim.py"
 SHIMS: dict[str, str] = {
     "claude_code": "method/spawners/claude_code_shim.py",
     "anthropic_api": "method/spawners/anthropic_api_shim.py",
+    "ollama_llama32_1b": _OLLAMA_SHIM,
+    "ollama_llama32_3b": _OLLAMA_SHIM,
+    "ollama_qwen25_3b": _OLLAMA_SHIM,
+    "ollama_qwen25_7b": _OLLAMA_SHIM,
+    "ollama_qwen25_14b": _OLLAMA_SHIM,
+}
+
+# Local-model matrix rows: agent_id -> concrete Ollama model tag. The shim reads
+# the model from OLLAMA_MODEL, which _run_agent sets per agent_id before spawning.
+OLLAMA_MODELS: dict[str, str] = {
+    "ollama_llama32_1b": "llama3.2:1b",
+    "ollama_llama32_3b": "llama3.2:3b",
+    "ollama_qwen25_3b": "qwen2.5:3b",
+    "ollama_qwen25_7b": "qwen2.5:7b",
+    "ollama_qwen25_14b": "qwen2.5:14b",
 }
 
 # Env vars the shims need, passed through the adapter's filtered inheritance.
 # API-key-shaped names are blocked by default, so they MUST be allowlisted.
-ALLOWED_ENV = ["ANTHROPIC_API_KEY", "CLAUDE_MODEL", "CLAUDE_BIN", "API_MAX_TOKENS"]
+ALLOWED_ENV = [
+    "ANTHROPIC_API_KEY",
+    "CLAUDE_MODEL",
+    "CLAUDE_BIN",
+    "API_MAX_TOKENS",
+    "OLLAMA_MODEL",
+    "OLLAMA_HOST",
+]
 
 _BENCH_DDL = """
 CREATE TABLE IF NOT EXISTS benchmark_runs (
@@ -102,6 +127,29 @@ def _preflight(agent_id: str) -> str | None:
             return f"claude binary not found (CLAUDE_BIN={claude_bin!r})"
     if agent_id == "anthropic_api" and not os.environ.get("ANTHROPIC_API_KEY"):
         return "ANTHROPIC_API_KEY not set"
+    if agent_id in OLLAMA_MODELS:
+        return _preflight_ollama(OLLAMA_MODELS[agent_id])
+    return None
+
+
+def _preflight_ollama(model: str) -> str | None:
+    """Skip-reason if Ollama is unreachable or the model isn't pulled.
+
+    Best-effort: any unexpected failure becomes a skip-reason rather than
+    crashing the whole run.
+    """
+    host = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+    try:
+        req = urllib.request.Request(f"{host}/api/tags", method="GET")
+        with urllib.request.urlopen(req, timeout=4.0) as resp:
+            data = json.loads(resp.read().decode())
+    except (urllib.error.URLError, OSError):
+        return f"ollama not reachable at {host}"
+    except (ValueError, TypeError):
+        return f"ollama not reachable at {host}"
+    names = {m.get("name", "") for m in data.get("models", [])}
+    if model not in names:
+        return f"ollama model not pulled: {model}"
     return None
 
 
@@ -170,6 +218,10 @@ async def _run_agent(
 ) -> dict[str, Any]:
     """Run the family against one agent and build its report_benchmark payload."""
     suite = load_suite(str(case_dir))
+    # Ollama rows share one shim; the model is selected per agent_id via env.
+    # OLLAMA_MODEL is allowlisted, so the spawned shim inherits this value.
+    if agent_id in OLLAMA_MODELS:
+        os.environ["OLLAMA_MODEL"] = OLLAMA_MODELS[agent_id]
     adapter = create_adapter(
         "cli",
         {
