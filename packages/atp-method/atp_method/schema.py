@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from datetime import date
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -51,6 +51,10 @@ GraderType = Literal[
     "human",
 ]
 TurnRole = Literal["user", "inject", "assistant"]
+RunMode = Literal["text_out", "read_only_corpus", "workspace"]
+# Only text_out is wired today; the loader/validator rejects the rest so a case
+# cannot declare fidelity the harness cannot deliver (ADR-007 §3).
+WIRED_RUN_MODES = frozenset({"text_out"})
 
 
 class Artifact(BaseModel):
@@ -132,6 +136,7 @@ class Grader(BaseModel):
     scoring: str = Field(..., min_length=1)
     expected_findings: list[ExpectedFinding] | None = None
     must_not_flag: list[ForbiddenAnchor] | None = None
+    config: dict[str, Any] | None = None
 
     @model_validator(mode="after")
     def validate_grader_requirements(self) -> Grader:
@@ -156,7 +161,26 @@ class Grader(BaseModel):
                 "checker 'findings_match' requires expected_findings "
                 "(use [] for a compliant case with no planted defect)"
             )
+        if self.checker == "json_path":
+            assertions = (self.config or {}).get("assertions")
+            if not isinstance(assertions, list) or not assertions:
+                raise ValueError(
+                    "checker 'json_path' requires grader.config.assertions "
+                    "(a non-empty list)"
+                )
         return self
+
+
+class OutputContract(BaseModel):
+    """The structured artifact the agent must return for this case."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    artifact_name: str = Field(..., min_length=1)
+    content_type: str = "application/json"
+    # On-disk key is "schema"; Python name avoids the BaseModel.schema shadow.
+    json_schema: dict[str, Any] = Field(..., alias="schema")
+    format_instruction: str | None = None
 
 
 class Provenance(BaseModel):
@@ -204,6 +228,8 @@ class AgentEvalCase(BaseModel):
     expected_failure_mode: str = Field(..., min_length=1)
     distractor: str | None = None
     grader: Grader
+    output_contract: OutputContract | None = None
+    run_mode: RunMode = "text_out"
     turns: list[Turn] = Field(default_factory=list)
     provenance: Provenance
 
@@ -227,4 +253,14 @@ class AgentEvalCase(BaseModel):
                     "requirements_volatility cases require >=2 turns including an "
                     "'inject' turn"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def validate_run_mode_wired(self) -> AgentEvalCase:
+        """Reject run_mode tiers the harness cannot deliver yet (ADR-007 §3)."""
+        if self.run_mode not in WIRED_RUN_MODES:
+            raise ValueError(
+                f"run_mode '{self.run_mode}' is declared but not wired; "
+                f"supported: {sorted(WIRED_RUN_MODES)}"
+            )
         return self
