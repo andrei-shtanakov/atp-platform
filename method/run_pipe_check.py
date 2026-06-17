@@ -59,7 +59,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 _OLLAMA_SHIM = "method/spawners/ollama_shim.py"
 SHIMS: dict[str, str] = {
     "claude_code": "method/spawners/claude_code_shim.py",
+    "codex_cli": "method/spawners/codex_cli_shim.py",
     "anthropic_api": "method/spawners/anthropic_api_shim.py",
+    "deepseek": "method/spawners/deepseek_shim.py",
     "ollama_llama32_1b": _OLLAMA_SHIM,
     "ollama_llama32_3b": _OLLAMA_SHIM,
     "ollama_qwen25_3b": _OLLAMA_SHIM,
@@ -86,6 +88,12 @@ ALLOWED_ENV = [
     "API_MAX_TOKENS",
     "OLLAMA_MODEL",
     "OLLAMA_HOST",
+    "OPENAI_API_KEY",
+    "CODEX_MODEL",
+    "CODEX_BIN",
+    "DEEPSEEK_API_KEY",
+    "DEEPSEEK_MODEL",
+    "DEEPSEEK_HOST",
 ]
 
 _BENCH_DDL = """
@@ -125,8 +133,18 @@ def _preflight(agent_id: str) -> str | None:
         binary = parts[0] if parts else "claude"
         if shutil.which(binary) is None and not Path(binary).exists():
             return f"claude binary not found (CLAUDE_BIN={claude_bin!r})"
+    if agent_id == "codex_cli":
+        # Same first-token resolution check as claude_code: CODEX_BIN may be an
+        # absolute path or a "python .../fake_codex.py" command (used in tests).
+        codex_bin = os.environ.get("CODEX_BIN", "codex")
+        parts = shlex.split(codex_bin) if codex_bin else ["codex"]
+        binary = parts[0] if parts else "codex"
+        if shutil.which(binary) is None and not Path(binary).exists():
+            return f"codex binary not found (CODEX_BIN={codex_bin!r})"
     if agent_id == "anthropic_api" and not os.environ.get("ANTHROPIC_API_KEY"):
         return "ANTHROPIC_API_KEY not set"
+    if agent_id == "deepseek" and not os.environ.get("DEEPSEEK_API_KEY"):
+        return "DEEPSEEK_API_KEY not set"
     if agent_id in OLLAMA_MODELS:
         return _preflight_ollama(OLLAMA_MODELS[agent_id])
     return None
