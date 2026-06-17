@@ -385,9 +385,11 @@ git commit -m "feat(R-07 P2): L2 control + F1-F3 FP-discipline cases + proofs"
 
 - [ ] **Step 1: S1 — cents invariant.** kb-rule `SPEC-001`. Diff introduces `total = subtotal * 1.0825` (float tax on integer cents). anchor = `total = subtotal * 1.0825`, `rule_ids: [SPEC-001, invariant-violation]`. Proof.
 - [ ] **Step 2: S2 — pagination policy.** kb-rule `SPEC-002`. Diff adds `return session.query(User).all()` (unbounded list endpoint). anchor = `return session.query(User).all()`, `rule_ids: [SPEC-002, missing-pagination]`. Proof.
-- [ ] **Step 3: D1 — distractor with buried L-defect.** ~30–40 line diff: believable refactors (renames, extracted helper, reordered imports) + ONE buried off-by-one/predicate defect. `expected_findings` = the buried defect anchor; `must_not_flag` = **every** plausible-but-fine refactored line. `tags: [review, distractor]`, `capability: correctness`.
-- [ ] **Step 4: D2 — distractor with buried S-defect.** Same shape; buried defect = a `SPEC-001`/`SPEC-002` violation. `must_not_flag` all distractor lines.
-- [ ] **Step 5: D3 — distractor, higher noise / different class.** Larger/denser diff, buried defect of a third class. `must_not_flag` all distractors.
+**Targeting (triage finding):** ≥2 of the 3 D cases bury a **cross-file / multi-hop** defect (the axis the triage located — claude_code misses it, codex catches it). **Context-fairness is mandatory:** both the taint **source and sink must be in the provided diff** (like `case-code-review-sqli-very-severe-001`: source in `views/users.py`, sink in `helpers/sql.py`) — else the case tests context availability, not detection.
+
+- [ ] **Step 3: D1 — cross-file buried defect (primary axis).** ~30–40 line diff across 2 files of believable refactors + ONE buried cross-file taint defect (a value flowing through a helper across a file boundary into an unsafe sink), BOTH ends shown. `expected_findings` = the sink anchor; `must_not_flag` = **every** plausible-but-fine refactored line. `tags: [review, distractor]`, `capability: correctness`.
+- [ ] **Step 4: D2 — second cross-file buried defect (different shape).** Same cross-file/context-fair discipline; a different taint path (e.g. value through two helpers, or a different sink class). `must_not_flag` all distractor lines.
+- [ ] **Step 5: D3 — single-file buried defect (contrast).** ~30–40 line diff, ONE buried single-file L- or S-class defect (no cross-file hop) — the contrast case showing whether the separation is specific to cross-file reasoning. `must_not_flag` all distractors.
 - [ ] **Step 6: Proofs** — for each D case the proof additionally checks: recall>0 only when the buried anchor is flagged; precision drops when a `must_not_flag` line is flagged (build a `bad` output that flags two distractor lines and assert `fp_count==2`, `precision<1`). This is the continuous-metric proof.
 
 Run: `uv run pytest packages/atp-method/tests/test_p2_correctness_determinism.py packages/atp-method/tests/test_cases_load.py packages/atp-method/tests/ -q`
@@ -417,7 +419,7 @@ for i in 1 2 3; do
     --out-dir _cowork_output/r07-pipecheck/p2-run-$i 2>&1 | grep -E "critical_pass_rate|SKIP|Traceback" || true
 done
 ```
-The per-case continuous metrics are in `_cowork_output/r07-pipecheck/p2-run-*/case_details_*.jsonl` (recall/precision/fp_count per case per agent per run).
+The per-case continuous metrics are in `_cowork_output/r07-pipecheck/p2-run-*/case_details_*.jsonl` (recall/precision/fp_count per case per agent per run). The filter runs over `method/cases/code-review/` which includes the **seeded anchor** `case-code-review-sqli-very-severe-001` (cross-file) — it participates in the `distractor-recall`/cross-file concordance group but, per the spec, is a selection-side signal that still must reproduce on held-out to count.
 
 - [ ] **Step 2: Compute the per-type composite per case × routable agent**
 
