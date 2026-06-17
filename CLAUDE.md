@@ -91,7 +91,7 @@ uv run atp sync                    # Sync local YAML suites with remote server
 1. **Protocol** (`atp/protocol/`) - ATP Request/Response/Event models defining the contract
 2. **Adapters** (`atp/adapters/`) - Translate between ATP Protocol and agent types (HTTP, Container, CLI, LangGraph, CrewAI, AutoGen, MCP, Bedrock, Vertex, Azure OpenAI, SDK)
 3. **Runner** (`atp/runner/`) - Orchestrates test execution, manages sandboxes
-4. **Evaluators** (`atp/evaluators/`) - Assess agent results (artifact, behavior, LLM-judge, code-exec, security, factuality, filesystem, style, performance, composite, git-commit, guardrails, container)
+4. **Evaluators** (`atp/evaluators/`) - Assess agent results. Registered pipeline evaluators (`atp/evaluators/registry.py`): artifact, behavior, llm_judge, code_exec, security, factuality, performance, style, filesystem, composite, findings_match. Deterministic **checkers** are a separate registry (`atp/evaluators/checkers/`) selected via `grader: {type: programmatic, checker: <name>}` — currently `findings_match` and `json_path`. (`git_commit.py`, `guardrails.py`, `container.py` exist as modules but are not registered pipeline evaluators; container is the isolation runtime — see component 20.)
 5. **Reporters** (`atp/reporters/`) - Format output (console, JSON, JUnit, HTML, game)
 6. **Benchmark API** (`atp/dashboard/benchmark/`) - REST API for pull-model benchmarks with leaderboard (`/api/v1/benchmarks`, `/api/v1/runs`)
 7. **Tournament API** (`atp/dashboard/tournament/`) - REST API for game-theoretic tournaments (`/api/v1/tournaments`)
@@ -112,6 +112,7 @@ uv run atp sync                    # Sync local YAML suites with remote server
 22. **Post-Auth Pipeline** (`atp/dashboard/auth/post_auth.py`) - Shared `complete_auth()` pipeline for user provisioning, role assignment, and token issuance
 23. **Shared Result Models** (`atp/core/results.py`) - EvalCheck, EvalResult, TestResult etc. shared across evaluators, runner, reporters, and dashboard storage
 24. **MCP Tournament Server** (`atp/dashboard/mcp/`) - FastMCP server mounted at `/mcp` exposing tournament tools (`join_tournament`, `make_move`, `get_current_state`, `list_tournaments`, `get_tournament`, `get_history`, `leave_tournament`) via SSE. Auth via `MCPAuthMiddleware` (rejects 401 without `user_id` in request state)
+25. **Agent-Eval-Case Methodology** (`packages/atp-method/`, `method/`) - Plugin for structured agent-eval-case tests. `AgentEvalCase` schema (`output_contract`, `run_mode`, `grader.checker`) → `AgentEvalCaseEvaluator` (deterministic critical-check gate + non-gating rubric). Shared output envelopes (`atp_method/envelopes.py`) + deterministic checkers (`findings_match`, `json_path`). Cases in `method/cases/` (code-review, req-extraction), CLI-adapter spawner shims in `method/spawners/` (`claude_code`, `anthropic_api`, `ollama`, `codex_cli`, `deepseek`), batch harness `method/run_pipe_check.py` emitting `report_benchmark-v1` for arbiter. See `docs/adr/006-unified-capability-test-types.md` + `docs/adr/007-test-taxonomy-axes.md`.
 
 ### Data Flow
 
