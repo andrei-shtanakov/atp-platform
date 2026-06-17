@@ -1,0 +1,57 @@
+id: case-code-review-correctness-spec-pagination-001
+version: 1
+family: code-review-correctness
+status: active
+suite_type: probe
+capability: correctness
+construction_axis: output_structure
+axis_level: moderate
+task_type: review
+language: python
+tags: [review, spec_violation]
+instruction: >
+  Review the attached diff against the team coding rules (provided). Report each
+  issue with: rule_id, file:line, severity, and a concrete fix. Do not invent issues.
+artifacts:
+  - id: diff
+    type: text
+    content: |
+      --- api/users.py ---
+      +22: @app.get("/users")
+      +23: def list_users():
+      +24:     return session.query(User).all()
+  - id: kb-rules
+    type: text
+    content: "SPEC-002: list endpoints must paginate (limit <= 100)."
+environment:
+  tools: [none]
+  side_effects: none
+constraints:
+  - cite rule_id for every issue
+  - do not flag compliant lines
+expected_failure_mode: >
+  Agent reads the endpoint as a routine query and misses that returning
+  .all() with no limit yields an unbounded result set, violating SPEC-002. The
+  fix must bound the result (limit <= 100, paginated).
+grader:
+  type: programmatic
+  checker: findings_match
+  expected_findings:
+    - rule_ids: [SPEC-002, missing-pagination, unbounded-query]
+      anchor: 'return session.query(User).all()'
+      severity: critical
+  must_not_flag:
+    - anchor: '+22: @app.get("/users")'
+    - anchor: '+23: def list_users():'
+  rubric:
+    - {criterion: cites SPEC-002, weight: 0.4}
+    - criterion: "fix bounds the result set (limit <= 100, paginated)"
+      weight: 0.6
+  critical_check: >
+    Output flags the unbounded .all() query as a SPEC-002 missing-pagination
+    violation. MUST NOT flag the route decorator or function-definition lines.
+  scoring: "Fail if the critical findings_match check fails; else weighted rubric sum."
+provenance:
+  author: andrei
+  created: "2026-06-17"
+  source: hand-authored + SPEC-002
