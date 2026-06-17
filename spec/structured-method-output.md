@@ -18,9 +18,11 @@ This draft originally proposed a generic `grader.checks[]` array. The review
 correctly identified that as a competing grading taxonomy next to ADR-006's
 closed `GraderType` plus `grader.checker` registry model. The reconciled design
 keeps the existing model: one case selects a named programmatic checker, and
-that checker owns a registry-declared, load-validated config model. A future
-case that truly needs heterogeneous checkers should get its own ADR before
-adding a `checks[]` collection.
+that checker receives configuration through the shipped `grader.config` field.
+The deferred follow-up is to move per-checker validation into
+registry-declared config models while keeping that field name. A future case
+that truly needs heterogeneous checkers should get its own ADR before adding a
+`checks[]` collection.
 
 JSON Schema validation is also not a checker. It is already an ATP artifact
 assertion handled by `ArtifactEvaluator` assertion type `schema`. The output
@@ -39,7 +41,7 @@ non-gating for method cases and must not duplicate into a second
 | `AgentEvalCase.output_contract` | `OutputContract | None` | Declares the structured artifact the agent must return. Required for new deterministic verticals after migration. |
 | `OutputContract` | `artifact_name: str`, `content_type: str`, `schema: dict`, `format_instruction: str | None` | Names the expected `ArtifactStructured` and JSON Schema for its `data`. |
 | `Grader.checker` | `str | None` | Existing selector for deterministic programmatic grading. Examples: `findings_match`, `json_path`. |
-| checker config model | `BaseModel` owned by checker registry | Each checker declares and validates its own config shape at case load. |
+| `grader.config` | `dict | None` | Shipped per-checker configuration field. Generalization should keep this field name and move validation to registry-declared config models. |
 | `ArtifactEvaluator` | assertion type `schema` | Validates `ArtifactStructured.data` against `output_contract.schema`. |
 | `grader.rubric` | `list[RubricItem] | None` | Existing optional LLM-judge rubric. Non-gating and secondary to deterministic critical pass/fail. |
 | `critical_check` | `str` | Human-readable methodology explanation of the critical guard. It must describe the deterministic gate but not be judge-graded when structured checks exist. |
@@ -87,7 +89,7 @@ checker with a load-validated config model:
 grader:
   type: programmatic
   checker: json_path
-  checker_config:
+  config:
     artifact_name: answer
     assertions:
       - path: $.requirements[1].deadline
@@ -155,9 +157,10 @@ During migration, `findings_match` may keep parsing legacy JSON text from
 
 - [ ] Extend `method/agent-eval-case.schema.json` with `output_contract`.
 - [ ] Extend `packages/atp-method/atp_method/schema.py` with `OutputContract`.
-- [ ] Add checker-side config validation for named programmatic checkers.
-- [ ] Add `checker_config` or equivalent config plumbing under `grader` without
-      introducing `grader.checks[]`.
+- [ ] Generalize checker config validation to registry-declared models while
+      preserving `grader.config` as the field name.
+- [ ] Use the shipped `grader.config` field for checker configuration; do not
+      introduce `grader.checks[]`.
 - [ ] Emit an ATP `schema` assertion from `output_contract.schema`.
 - [ ] Ensure the method evaluator sources `critical_pass` from the programmatic
       checker when `grader.checker` is present.
@@ -166,12 +169,13 @@ During migration, `findings_match` may keep parsing legacy JSON text from
       `output_contract.format_instruction` and schema metadata.
 - [ ] Update `findings_match` to prefer structured artifact data and keep legacy
       text parsing as fallback.
-- [ ] Add a `json_path` checker with single-node-required semantics.
+- [ ] Keep the shipped `json_path` checker semantics: one node for value
+      operations, zero nodes for `absent`, and failure on ambiguous multi-match.
 
 ## Implementation Tasks
 
-- [ ] Add schema contract tests for `output_contract` and checker config shape.
-- [ ] Add Pydantic tests proving invalid checker configs fail at load time.
+- [ ] Add schema contract tests for `output_contract` and `grader.config` shape.
+- [ ] Add Pydantic tests proving invalid `grader.config` values fail at load time.
 - [ ] Add loader tests showing `output_contract` emits a `schema` assertion.
 - [ ] Add evaluator tests proving programmatic checker failure hard-gates the
       case and rubric cannot rescue it.
@@ -186,11 +190,11 @@ Phase 1 adds `output_contract` and checker config validation while preserving
 legacy cases.
 
 Phase 2 migrates req-extraction to structured artifacts plus the named
-programmatic checker model carried by the #188 req-extraction deterministic
-vertical.
+programmatic checker model and `grader.config` field shipped by the #192
+req-extraction deterministic vertical.
 
 Phase 3 migrates code-review findings to structured artifacts while keeping
-`findings_match` as the named checker.
+`findings_match` as the named checker, then migrates both `findings_match` and `json_path` to registry-declared config models behind `grader.config`.
 
 Phase 4 deprecates judge-graded `critical_check` for method cases that declare
 structured output and programmatic checkers. `critical_check` remains as

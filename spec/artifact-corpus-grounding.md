@@ -140,7 +140,7 @@ entry in a generic `checks[]` array:
 grader:
   type: programmatic
   checker: citation_grounding
-  checker_config:
+  config:
     artifact_name: answer
     corpus_id: fabricated-deadline-clean-corpus
     expected:
