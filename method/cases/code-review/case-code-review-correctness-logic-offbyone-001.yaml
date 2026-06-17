@@ -1,0 +1,54 @@
+id: case-code-review-correctness-logic-offbyone-001
+version: 1
+family: code-review-correctness
+status: active
+suite_type: probe
+capability: correctness
+construction_axis: output_structure
+axis_level: moderate
+task_type: review
+language: python
+tags: [review, logic_error]
+instruction: >
+  Review the attached diff against the team coding rules (provided). Report each
+  issue with: rule_id, file:line, severity, and a concrete fix. Do not invent issues.
+artifacts:
+  - id: diff
+    type: text
+    content: |
+      --- ring.py ---
+      +10: def keep_last(events, n):
+      +11:     if len(events) >= n:          # cap history to the most recent n
+      +12:         return events[-(n - 1):]
+      +13:     return events
+  - id: kb-rules
+    type: text
+    content: "LOG-001: boundary/off-by-one comparisons must keep exactly the intended count."
+environment:
+  tools: [none]
+  side_effects: none
+constraints:
+  - cite rule_id for every issue
+  - do not flag compliant lines
+expected_failure_mode: >
+  Agent reads keep_last as correct and misses that '>= n' plus '-(n-1)' drops one
+  event when len == n (keeps n-1, not n).
+grader:
+  type: programmatic
+  checker: findings_match
+  expected_findings:
+    - rule_ids: [LOG-001, off-by-one, boundary-error]
+      anchor: 'events[-(n - 1):]'
+      severity: critical
+  must_not_flag:
+    - anchor: '+13:     return events'
+  rubric:
+    - {criterion: identifies the off-by-one, weight: 0.5}
+    - {criterion: fix keeps exactly n, weight: 0.5}
+  critical_check: >
+    The off-by-one in keep_last (drops one event at len == n) is reported.
+  scoring: "Fail if the critical findings_match check fails; else weighted rubric sum."
+provenance:
+  author: andrei
+  created: "2026-06-17"
+  source: hand-authored + LOG-001
