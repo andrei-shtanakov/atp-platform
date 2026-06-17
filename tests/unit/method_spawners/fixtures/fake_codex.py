@@ -41,7 +41,7 @@ def main() -> int:
                     "type": "turn.completed",
                     "usage": {
                         "input_tokens": 1100,
-                        "cached_input_tokens": 4992,
+                        "cached_input_tokens": 500,
                         "output_tokens": 400,
                         "reasoning_output_tokens": 0,
                     },

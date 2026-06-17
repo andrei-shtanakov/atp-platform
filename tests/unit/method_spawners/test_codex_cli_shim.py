@@ -60,7 +60,7 @@ def test_shim_surfaces_token_breakdown_without_inflating_total() -> None:
     resp = _run_shim({"task_id": "t1", "task": {"description": "review"}})
     m = resp["metrics"]
     # Breakdowns are surfaced for transparency...
-    assert m["cached_input_tokens"] == 4992
+    assert m["cached_input_tokens"] == 500
     assert m["reasoning_output_tokens"] == 0
     # ...but total stays input+output (cached is a subset of input;
     # output already includes reasoning per OpenAI convention).

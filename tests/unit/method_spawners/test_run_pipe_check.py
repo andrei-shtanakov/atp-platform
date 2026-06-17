@@ -53,7 +53,7 @@ def _completed_test_result() -> object:
     response = ATPResponse(
         task_id=test_def.id,
         status=ResponseStatus.COMPLETED,
-        artifacts=[ArtifactFile(path="findings.json", content='{"findings": []}')],
+        artifacts=[ArtifactFile(path="review.md", content="[]")],
     )
     run = RunResult(
         test_id=test_def.id,

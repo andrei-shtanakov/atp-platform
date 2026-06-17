@@ -162,12 +162,10 @@ def main() -> int:
         # `cached_input_tokens` is a subset of `input_tokens` (ignored in total);
         # `output_tokens` already includes reasoning per OpenAI usage convention,
         # so `reasoning_output_tokens` is surfaced for transparency but NOT
-        # re-added. total = input + output only.
-        total = (
-            (in_tok or 0) + (out_tok or 0)
-            if (in_tok is not None or out_tok is not None)
-            else None
-        )
+        # re-added. total = input + output, and ONLY when both are known
+        # (else None) — a partial sum would be misleading ("both known else
+        # unknown"). codex's turn.completed.usage carries both together.
+        total = in_tok + out_tok if in_tok is not None and out_tok is not None else None
         response = {
             "version": "1.0",
             "task_id": task_id,
