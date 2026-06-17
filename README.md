@@ -104,9 +104,10 @@ tests:
 - **FilesystemEvaluator** - Workspace file existence, content, directory checks
 - **PerformanceEvaluator** - Latency, throughput, regression detection
 - **CompositeEvaluator** - Boolean logic (AND/OR/NOT) over nested assertions
-- **GitCommitEvaluator** - Git commit message and diff analysis
-- **GuardrailsEvaluator** - Custom guardrails enforcement
-- **ContainerEvaluator** - Isolated code execution via Docker/Podman with resource limits
+- **FindingsMatchEvaluator** - Deterministic code-review findings matching (anchor + rule_id)
+- **Deterministic checkers** (`atp/evaluators/checkers/`) - Named checks selected via `grader: {type: programmatic, checker: <name>}`: `findings_match`, `json_path`
+
+> Container-isolated code execution (Docker/Podman, resource limits) is provided by the container runtime (`atp/evaluators/container.py`), used by code-exec/security evaluators rather than as a standalone registered evaluator.
 
 ✅ **Reporters** - Multiple output formats
 - **Console** - Colored terminal output with progress
@@ -134,7 +135,7 @@ tests:
 - GitLab CI template
 - Azure Pipelines, CircleCI, Jenkins examples
 - Exit codes: 0=success, 1=failures, 2=error
-- **Deploy pipeline** (`.github/workflows/deploy.yml`) — SSH deploy via `[deploy]` tag in commit message or `workflow_dispatch`
+- **Deploy pipeline** (`.github/workflows/deploy.yml`) — SSH deploy on every push to `main` (each merged PR ships) or via `workflow_dispatch`; no `[deploy]` commit tag is required
 
 ✅ **Web Dashboard**
 - FastAPI backend with HTMX + Pico CSS frontend at `/ui/`
@@ -186,7 +187,8 @@ atp-platform/
 │   ├── atp-core/             # Protocol, core, loader, scoring, statistics
 │   ├── atp-adapters/         # All agent adapters
 │   ├── atp-dashboard/        # Web dashboard + benchmark/tournament API
-│   └── atp-sdk/              # Python SDK for benchmark platform participants
+│   ├── atp-sdk/              # Python SDK for benchmark platform participants
+│   └── atp-method/           # Agent-eval-case methodology plugin (cases, spawner shims, run_pipe_check)
 ├── game-environments/        # Standalone game theory library (Phase 5)
 │   └── game_envs/            # Games, strategies, analysis (Nash, exploitability)
 ├── atp-games/                # ATP plugin for game-theoretic evaluation (Phase 5)

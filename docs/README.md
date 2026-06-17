@@ -233,11 +233,13 @@ Learn how to use ATP effectively:
 
 Design decisions and rationale:
 
-1. **[ADR-001: Framework-Agnostic Design](adr/001-framework-agnostic.md)**
-   - Decision: Why framework-agnostic?
-   - Alternatives considered
-   - Consequences
-   - Implementation approach
+1. **[ADR-001: Framework-Agnostic Design](adr/001-framework-agnostic.md)** — agent = black box with a contract
+2. **[ADR-002: Game-Theoretic Evaluation](adr/002-game-theoretic-evaluation.md)** — tournament/game-based eval
+3. **[ADR-003: Monorepo Decomposition](adr/003-monorepo-decomposition.md)** — `packages/` workspace layout
+4. **[ADR-004: Tournament Reasoning](adr/004-tournament-reasoning.md)**
+5. **[ADR-005: El Farol Dashboard Stack](adr/005-el-farol-dashboard-stack.md)**
+6. **[ADR-006: Unified Capability Test-Types](adr/006-unified-capability-test-types.md)** — case/grader/checker spine
+7. **[ADR-007: Test Taxonomy Axes + Deterministic-Checker Model](adr/007-test-taxonomy-axes.md)** — 5 axes; checkers under `programmatic`
 
 ---
 
