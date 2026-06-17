@@ -34,7 +34,7 @@ def main() -> int:
         return 3
     out_path = _output_path(argv)
     if out_path is not None:
-        with open(out_path, "w") as fh:
+        with open(out_path, "w", encoding="utf-8") as fh:
             fh.write(_FINDINGS)
     return 0
 

@@ -101,7 +101,14 @@ def main() -> int:
         except (OSError, subprocess.SubprocessError) as exc:
             return _fail(task_id, f"codex invocation error: {exc}")
 
-        message = Path(tmp_path).read_text() if Path(tmp_path).exists() else ""
+        # The last-message file is produced by an external CLI; read it as UTF-8
+        # with replacement so non-UTF-8 bytes can't raise before we emit a
+        # contract-shaped response.
+        message = (
+            Path(tmp_path).read_text(encoding="utf-8", errors="replace")
+            if Path(tmp_path).exists()
+            else ""
+        )
         if proc.returncode != 0 or not message.strip():
             err = proc.stderr.decode(errors="replace")[:2000]
             return _fail(
