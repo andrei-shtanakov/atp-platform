@@ -107,7 +107,7 @@ tests:
 - **FindingsMatchEvaluator** - Deterministic code-review findings matching (anchor + rule_id)
 - **Deterministic checkers** (`atp/evaluators/checkers/`) - Named checks selected via `grader: {type: programmatic, checker: <name>}`: `findings_match`, `json_path`
 
-> Container-isolated code execution (Docker/Podman, resource limits) is provided by the container runtime (`atp/evaluators/container.py`), used by code-exec/security evaluators rather than as a standalone registered evaluator.
+> Container-isolated code execution (Docker/Podman, resource limits) is provided by the container runtime (`atp/evaluators/container.py`), wired in by the `code_exec` evaluator (optional `ContainerRuntime`) rather than being a standalone registered evaluator.
 
 ✅ **Reporters** - Multiple output formats
 - **Console** - Colored terminal output with progress
