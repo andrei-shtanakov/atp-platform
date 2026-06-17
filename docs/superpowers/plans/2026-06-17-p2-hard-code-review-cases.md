@@ -361,6 +361,10 @@ git commit -m "feat(R-07 P2): rule KB + L1 case + determinism-proof template"
 
 For each case: author the YAML per the spec sketch (§Candidate pool), then add the 4-check proof block (good/bad/near-miss/malformed) following the Task-2 template.
 
+**Two binding authoring rules (from Task-2 review):**
+1. **No answer-leak** — no diff comment may name/hint the defect (no "off-by-one"/"unsafe"/rule-id); comments describe intent only. A giveaway comment lets an agent parrot it and inflates the signal.
+2. **Distinct non-substring anchors** — `expected_findings` anchor and every `must_not_flag` anchor must be mutually non-substring (the matcher uses bidirectional substring, `matcher.py:55-59`); use diff line-prefixes (`+13:     ...`) or unique sub-slices to disambiguate, and the near-miss proof check must confirm it.
+
 - [ ] **Step 1: L2 — inverted predicate.** Diff: `def can_view(u): return u.is_member or u.is_banned` (should be `and not u.is_banned`); kb-rule `LOG-002`. `expected_findings` anchor = `return u.is_member or u.is_banned`, `rule_ids: [LOG-002, logic-error, incorrect-conditional, cwe-697]`; `must_not_flag` a benign adjacent line. Proof block.
 - [ ] **Step 2: F1 — looks-like-SQLi, safe.** Diff: `q = f"SELECT * FROM orders WHERE status = '{Status.ACTIVE.value}'"` with a comment that `Status` is a server-side enum. `expected_findings: []`; `must_not_flag` **every** plausible-safe line (the f-string line + any other "scary" line in the diff). Proof: good = `[]` (no findings) → pass; bad = flagging the f-string → fail (FP); plus malformed check.
 - [ ] **Step 3: F2 — looks-unsafe, guarded.** Diff: `data = pickle.loads(cache.get(key))` where a comment/adjacent code shows `cache` holds only server-serialized trusted blobs; or `subprocess.run(shlex.split(cmd))` with `cmd` a constant. `expected_findings: []`; `must_not_flag` every scary line. Proof.
