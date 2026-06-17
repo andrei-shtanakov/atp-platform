@@ -41,11 +41,31 @@ def test_shim_emits_valid_atp_response_with_review_artifact() -> None:
     findings = json.loads(arts[0]["content"])
     assert findings[0]["rule_id"] == "sql-injection"
     assert "SELECT" in findings[0]["anchor"]
-    # codex exec exposes no machine-readable usage block => all unknown (null).
-    assert resp["metrics"]["total_tokens"] is None
-    assert resp["metrics"]["input_tokens"] is None
-    assert resp["metrics"]["output_tokens"] is None
+    # Token usage is parsed from codex --json events; cost stays unknown (null).
+    assert resp["metrics"]["total_tokens"] == 1500
+    assert resp["metrics"]["input_tokens"] == 1100
+    assert resp["metrics"]["output_tokens"] == 400
     assert resp["metrics"]["cost_usd"] is None
+
+
+def test_shim_captures_tokens_from_json_events() -> None:
+    resp = _run_shim({"task_id": "t1", "task": {"description": "review"}})
+    assert resp["status"] == "completed"
+    assert resp["metrics"]["input_tokens"] == 1100
+    assert resp["metrics"]["output_tokens"] == 400
+    assert resp["metrics"]["total_tokens"] == 1500
+
+
+def test_shim_surfaces_token_breakdown_without_inflating_total() -> None:
+    resp = _run_shim({"task_id": "t1", "task": {"description": "review"}})
+    m = resp["metrics"]
+    # Breakdowns are surfaced for transparency...
+    assert m["cached_input_tokens"] == 4992
+    assert m["reasoning_output_tokens"] == 0
+    # ...but total stays input+output (cached is a subset of input;
+    # output already includes reasoning per OpenAI convention).
+    assert m["total_tokens"] == m["input_tokens"] + m["output_tokens"]
+    assert m["total_tokens"] == 1500
 
 
 def test_shim_failure_path_emits_failed() -> None:

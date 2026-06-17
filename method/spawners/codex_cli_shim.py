@@ -27,9 +27,10 @@ Binary from `CODEX_BIN` (default "codex"), shlex.split so a fake binary like
 "python .../fake_codex.py" works in tests. Model from `CODEX_MODEL` (unset =>
 codex's configured default; -m is simply not passed).
 
-Tokens/cost are reported NULL: `codex exec --output-last-message` writes only the
-final message, not a machine-readable usage block, so we don't fabricate counts
-(null = unknown, per the contract).
+Token usage is captured from `--json`: codex emits JSONL events on stdout,
+including a `turn.completed` event carrying a `usage` block with input/output
+token counts. We parse those for budget-aware routing. Cost ($) is reported NULL:
+codex exposes no dollar figure, so we don't fabricate it (null = unknown).
 """
 
 import json
@@ -45,6 +46,44 @@ from atp_method.envelopes import build_prompt, get_envelope
 CODEX_BIN = os.environ.get("CODEX_BIN", "codex")
 CODEX_MODEL = os.environ.get("CODEX_MODEL")
 REQUEST_TIMEOUT_S = 600.0
+
+
+def _parse_usage(
+    stdout: str,
+) -> tuple[int | None, int | None, int | None, int | None]:
+    """Token counts from codex --json JSONL; each None if absent.
+
+    Returns (input_tokens, output_tokens, cached_input_tokens,
+    reasoning_output_tokens). Codex emits a `turn.completed` event whose `usage`
+    block carries these (e.g. {"type": "turn.completed", "usage":
+    {"input_tokens": N, "output_tokens": M, "cached_input_tokens": C,
+    "reasoning_output_tokens": R}}). We scan all events and take the last counts.
+
+    `cached_input_tokens` is a subset of `input_tokens` and
+    `reasoning_output_tokens` a subset of `output_tokens` (per OpenAI usage
+    convention) — both are breakdowns, surfaced for transparency but NOT added to
+    any total by callers.
+    """
+    in_tok = out_tok = cached_in = reasoning_out = None
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(ev, dict):
+            continue
+        info = ev.get("usage") or ev.get("info") or ev
+        if isinstance(info, dict) and (
+            "input_tokens" in info or "output_tokens" in info
+        ):
+            in_tok = info.get("input_tokens", in_tok)
+            out_tok = info.get("output_tokens", out_tok)
+            cached_in = info.get("cached_input_tokens", cached_in)
+            reasoning_out = info.get("reasoning_output_tokens", reasoning_out)
+    return in_tok, out_tok, cached_in, reasoning_out
 
 
 def _fail(task_id: str, error: str) -> int:
@@ -84,6 +123,7 @@ def main() -> int:
         argv = [
             *shlex.split(CODEX_BIN),
             "exec",
+            "--json",
             "--skip-git-repo-check",
             "--sandbox",
             "read-only",
@@ -116,6 +156,18 @@ def main() -> int:
                 f"codex exec failed (rc={proc.returncode}): {err}",
             )
 
+        in_tok, out_tok, cached_in, reasoning_out = _parse_usage(
+            proc.stdout.decode(errors="replace")
+        )
+        # `cached_input_tokens` is a subset of `input_tokens` (ignored in total);
+        # `output_tokens` already includes reasoning per OpenAI usage convention,
+        # so `reasoning_output_tokens` is surfaced for transparency but NOT
+        # re-added. total = input + output only.
+        total = (
+            (in_tok or 0) + (out_tok or 0)
+            if (in_tok is not None or out_tok is not None)
+            else None
+        )
         response = {
             "version": "1.0",
             "task_id": task_id,
@@ -129,11 +181,15 @@ def main() -> int:
                 }
             ],
             "metrics": {
-                # `codex exec --output-last-message` reports no usage block, so
-                # token counts are unknown (null), not fabricated.
-                "total_tokens": None,
-                "input_tokens": None,
-                "output_tokens": None,
+                # Token counts come from codex's --json `turn.completed` usage
+                # event; cost ($) is not exposed by codex, so it stays null.
+                # cached_input/reasoning_output are subset breakdowns (not added
+                # to total), surfaced for future budget calc transparency.
+                "total_tokens": total,
+                "input_tokens": in_tok,
+                "output_tokens": out_tok,
+                "cached_input_tokens": cached_in,
+                "reasoning_output_tokens": reasoning_out,
                 "cost_usd": None,
             },
         }
