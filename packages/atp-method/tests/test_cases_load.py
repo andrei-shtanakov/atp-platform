@@ -16,8 +16,10 @@ SCHEMA = json.loads((ROOT / "method" / "agent-eval-case.schema.json").read_text(
 
 
 def test_cases_present() -> None:
-    # Full 5-level breakpoint sweep: clean / mild / moderate / severe / very_severe.
-    assert len(CASES) == 5
+    # 5-level SQLi breakpoint sweep (clean..very_severe) + P2 correctness cases
+    # (L1 off-by-one, L2 predicate, F1/F2/F3 FP-discipline, S1/S2 spec-violation,
+    # D1/D2 cross-file + D3 single-file distractor).
+    assert len(CASES) == 15
     axis_levels = {yaml.safe_load(p.read_text())["axis_level"] for p in CASES}
     assert axis_levels == {"clean", "mild", "moderate", "severe", "very_severe"}
 

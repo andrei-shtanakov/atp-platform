@@ -1,0 +1,84 @@
+id: case-code-review-correctness-distractor-argorder-001
+version: 1
+family: code-review-correctness
+status: active
+suite_type: probe
+capability: correctness
+construction_axis: adversarial_environment
+axis_level: severe
+task_type: review
+language: python
+tags: [review, distractor]
+instruction: >
+  Review the attached diff against the team coding rules (provided). Report each
+  issue with: rule_id, file:line, severity, and a concrete fix. Do not invent issues.
+artifacts:
+  - id: diff
+    type: text
+    content: |
+      --- limits.py ---
+      +1: def remaining(cap, used):
+      +2:     """Budget left = cap minus what's been used. Both are integer cents."""
+      +3:     return cap - used
+      +4:
+      +5: def is_exhausted(cap, used):
+      +6:     """True once nothing is left in the budget."""
+      +7:     return remaining(cap, used) <= 0
+      --- checkout.py ---
+      +60: from limits import remaining
+      +61:
+      +62: def can_charge(account, charge_cents):
+      +63:     cap_cents = account.budget_cap_cents
+      +64:     used_cents = account.spent_cents
+      +65:     # How much budget is still available on the account?
+      +66:     left_cents = remaining(used_cents, cap_cents)
+      +67:     # Allow the charge only if it fits in what remains.
+      +68:     return charge_cents <= left_cents
+  - id: kb-rules
+    type: text
+    content: "LOG-002: predicates must correctly express the intended validity logic."
+environment:
+  tools: [file_read]
+  side_effects: none
+constraints:
+  - cite rule_id for every issue
+  - do not flag compliant lines
+expected_failure_mode: >
+  Amid plausible refactors the agent misses that remaining(cap, used) is called
+  with its arguments swapped in checkout.py: remaining(used_cents, cap_cents)
+  computes used - cap (the negated budget), so can_charge approves charges it
+  should reject and rejects ones it should allow. Catching it requires matching
+  remaining's parameter order in limits.py against the call site in checkout.py.
+  The fix is to call remaining(cap_cents, used_cents).
+grader:
+  type: programmatic
+  checker: findings_match
+  expected_findings:
+    - rule_ids: [LOG-002, argument-order, swapped-args]
+      anchor: 'left_cents = remaining(used_cents, cap_cents)'
+      severity: critical
+  must_not_flag:
+    - anchor: '+1: def remaining(cap, used):'
+    - anchor: 'return cap - used'
+    - anchor: '+5: def is_exhausted(cap, used):'
+    - anchor: 'return remaining(cap, used) <= 0'
+    - anchor: 'from limits import remaining'
+    - anchor: 'def can_charge(account, charge_cents):'
+    - anchor: 'cap_cents = account.budget_cap_cents'
+    - anchor: 'used_cents = account.spent_cents'
+    - anchor: 'return charge_cents <= left_cents'
+  rubric:
+    - {criterion: cites LOG-002, weight: 0.25}
+    - criterion: identifies the swapped argument order against remaining's signature
+      weight: 0.4
+    - criterion: "fix passes remaining(cap_cents, used_cents)"
+      weight: 0.35
+  critical_check: >
+    Output flags the swapped-argument call (remaining(used_cents, cap_cents),
+    which negates the budget) as the defect. MUST NOT flag any compliant line,
+    including the correct remaining(cap, used) call inside is_exhausted.
+  scoring: "Fail if critical_check fails. Else score = weighted rubric sum, in [0,1]."
+provenance:
+  author: andrei
+  created: "2026-06-17"
+  source: hand-authored + LOG-002 (cross-file swapped-args under noise)

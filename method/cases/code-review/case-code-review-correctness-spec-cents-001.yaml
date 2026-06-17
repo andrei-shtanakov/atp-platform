@@ -1,0 +1,55 @@
+id: case-code-review-correctness-spec-cents-001
+version: 1
+family: code-review-correctness
+status: active
+suite_type: probe
+capability: correctness
+construction_axis: output_structure
+axis_level: moderate
+task_type: review
+language: python
+tags: [review, spec_violation]
+instruction: >
+  Review the attached diff against the team coding rules (provided). Report each
+  issue with: rule_id, file:line, severity, and a concrete fix. Do not invent issues.
+artifacts:
+  - id: diff
+    type: text
+    content: |
+      --- pricing.py ---
+      +14: subtotal_cents = sum(item.price_cents for item in cart)
+      +15: total = subtotal_cents * 1.0825
+  - id: kb-rules
+    type: text
+    content: "SPEC-001: monetary amounts are integer cents (no float)."
+environment:
+  tools: [none]
+  side_effects: none
+constraints:
+  - cite rule_id for every issue
+  - do not flag compliant lines
+expected_failure_mode: >
+  Agent treats the tax multiplication as ordinary arithmetic and misses that
+  multiplying integer cents by 1.0825 (a float) produces a float amount, breaking
+  the SPEC-001 integer-cents invariant. The fix must keep the amount an integer
+  (e.g. round to int cents after applying tax).
+grader:
+  type: programmatic
+  checker: findings_match
+  expected_findings:
+    - rule_ids: [SPEC-001, invariant-violation, float-money]
+      anchor: 'subtotal_cents * 1.0825'
+      severity: critical
+  must_not_flag:
+    - anchor: '+14: subtotal_cents = sum(item.price_cents for item in cart)'
+  rubric:
+    - {criterion: cites SPEC-001, weight: 0.4}
+    - {criterion: fix keeps the amount integer cents, weight: 0.6}
+  critical_check: >
+    Output flags the float multiplication on integer cents (subtotal_cents *
+    1.0825) as a SPEC-001 violation. MUST NOT flag the compliant summation line.
+  scoring: "Fail if the critical findings_match check fails; else weighted rubric sum."
+provenance:
+  author: andrei
+  created: "2026-06-17"
+  source: hand-authored + SPEC-001

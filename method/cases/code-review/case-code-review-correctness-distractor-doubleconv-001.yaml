@@ -1,0 +1,93 @@
+id: case-code-review-correctness-distractor-doubleconv-001
+version: 1
+family: code-review-correctness
+status: active
+suite_type: probe
+capability: correctness
+construction_axis: adversarial_environment
+axis_level: severe
+task_type: review
+language: python
+tags: [review, distractor]
+instruction: >
+  Review the attached diff against the team coding rules (provided). Report each
+  issue with: rule_id, file:line, severity, and a concrete fix. Do not invent issues.
+artifacts:
+  - id: diff
+    type: text
+    content: |
+      --- money.py ---
+      +1: # Dollars are floats; cents are ints. Conversions live here.
+      +2: def to_cents(dollars):
+      +3:     """Convert a dollar amount (float) to integer cents."""
+      +4:     return round(dollars * 100)
+      +5:
+      +6: def format_cents(cents):
+      +7:     """Render integer cents as a "$D.CC" string."""
+      +8:     return f"${cents // 100}.{cents % 100:02d}"
+      --- billing.py ---
+      +40: from money import to_cents, format_cents
+      +41:
+      +42: def build_invoice(order, shipping_cents):
+      +43:     # `order.line_items` each carry an integer `amount_cents` field.
+      +44:     line_total_cents = sum(li.amount_cents for li in order.line_items)
+      +45:     # Shipping is stored in cents on the order record.
+      +46:     shipping_total_cents = to_cents(shipping_cents)
+      +47:     grand_total_cents = line_total_cents + shipping_total_cents
+      +48:     return {
+      +49:         "lines": line_total_cents,
+      +50:         "shipping": shipping_total_cents,
+      +51:         "total": grand_total_cents,
+      +52:         "display_total": format_cents(grand_total_cents),
+      +53:     }
+  - id: kb-rules
+    type: text
+    content: "SPEC-001: monetary amounts are integer cents (no float)."
+environment:
+  tools: [file_read]
+  side_effects: none
+constraints:
+  - cite rule_id for every issue
+  - do not flag compliant lines
+expected_failure_mode: >
+  Amid believable refactors (an extracted money module, a renamed helper, a dict
+  return) the agent misses one cross-file unit bug: to_cents expects DOLLARS but
+  build_invoice passes shipping_cents, a value already in cents. The result is a
+  100x-inflated shipping total (double conversion). Catching it requires reading
+  to_cents's contract in money.py against its call site in billing.py — a
+  cross-file unit-mismatch trace. The fix is to drop the conversion and add
+  shipping_cents directly.
+grader:
+  type: programmatic
+  checker: findings_match
+  expected_findings:
+    - rule_ids: [SPEC-001, unit-mismatch, double-conversion]
+      anchor: 'shipping_total_cents = to_cents(shipping_cents)'
+      severity: critical
+  must_not_flag:
+    - anchor: '+2: def to_cents(dollars):'
+    - anchor: 'return round(dollars * 100)'
+    - anchor: '+6: def format_cents(cents):'
+    - anchor: 'return f"${cents // 100}.{cents % 100:02d}"'
+    - anchor: 'from money import to_cents, format_cents'
+    - anchor: 'def build_invoice(order, shipping_cents):'
+    - anchor: 'line_total_cents = sum(li.amount_cents for li in order.line_items)'
+    - anchor: 'grand_total_cents = line_total_cents + shipping_total_cents'
+    - anchor: '+48:     return {'
+    - anchor: '+49:         "lines": line_total_cents,'
+    - anchor: '+50:         "shipping": shipping_total_cents,'
+    - anchor: '+51:         "total": grand_total_cents,'
+    - anchor: '"display_total": format_cents(grand_total_cents),'
+  rubric:
+    - {criterion: cites SPEC-001, weight: 0.25}
+    - criterion: traces the cross-file unit mismatch (to_cents wants dollars, gets cents)
+      weight: 0.4
+    - {criterion: fix drops the conversion and adds shipping_cents directly, weight: 0.35}
+  critical_check: >
+    Output flags the double-conversion call (to_cents applied to a value already
+    in cents) as the defect. MUST NOT flag any of the compliant refactored lines.
+  scoring: "Fail if critical_check fails. Else score = weighted rubric sum, in [0,1]."
+provenance:
+  author: andrei
+  created: "2026-06-17"
+  source: hand-authored + SPEC-001 (cross-file unit mismatch under noise)

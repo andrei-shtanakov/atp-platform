@@ -9,6 +9,7 @@ Set FAKE_CODEX_FAIL=1 to exercise the failure path: exit non-zero, write nothing
 to the message file, and emit a canned error to stderr.
 """
 
+import json
 import os
 import sys
 
@@ -32,6 +33,21 @@ def main() -> int:
     if os.environ.get("FAKE_CODEX_FAIL") == "1":
         sys.stderr.write("fake codex: simulated failure\n")
         return 3
+    if "--json" in argv:
+        # Mirror the real codex `turn.completed` usage event shape.
+        print(
+            json.dumps(
+                {
+                    "type": "turn.completed",
+                    "usage": {
+                        "input_tokens": 1100,
+                        "cached_input_tokens": 500,
+                        "output_tokens": 400,
+                        "reasoning_output_tokens": 0,
+                    },
+                }
+            )
+        )
     out_path = _output_path(argv)
     if out_path is not None:
         with open(out_path, "w", encoding="utf-8") as fh:

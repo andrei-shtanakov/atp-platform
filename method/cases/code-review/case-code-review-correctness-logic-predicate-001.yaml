@@ -1,0 +1,53 @@
+id: case-code-review-correctness-logic-predicate-001
+version: 1
+family: code-review-correctness
+status: active
+suite_type: probe
+capability: correctness
+construction_axis: output_structure
+axis_level: moderate
+task_type: review
+language: python
+tags: [review, logic_error]
+instruction: >
+  Review the attached diff against the team coding rules (provided). Report each
+  issue with: rule_id, file:line, severity, and a concrete fix. Do not invent issues.
+artifacts:
+  - id: diff
+    type: text
+    content: |
+      --- access.py ---
+      +5: def can_view(user, doc):
+      +6:     # gate document visibility on the viewer's membership and standing
+      +7:     return user.is_member or user.is_banned
+  - id: kb-rules
+    type: text
+    content: "LOG-002: conditionals/predicates must correctly express the intended access/validity logic."
+environment:
+  tools: [none]
+  side_effects: none
+constraints:
+  - cite rule_id for every issue
+  - do not flag compliant lines
+expected_failure_mode: >
+  Agent skims can_view as a plausible membership gate and misses that the predicate
+  grants visibility to banned users (should be 'is_member and not is_banned').
+grader:
+  type: programmatic
+  checker: findings_match
+  expected_findings:
+    - rule_ids: [LOG-002, logic-error, incorrect-conditional, cwe-697]
+      anchor: 'is_member or user.is_banned'
+      severity: critical
+  must_not_flag:
+    - anchor: '+5: def can_view(user, doc):'
+  rubric:
+    - {criterion: identifies the inverted predicate, weight: 0.5}
+    - {criterion: fix denies banned users (and not is_banned), weight: 0.5}
+  critical_check: >
+    The inverted access predicate in can_view (grants view to banned users) is reported.
+  scoring: "Fail if the critical findings_match check fails; else weighted rubric sum."
+provenance:
+  author: andrei
+  created: "2026-06-17"
+  source: hand-authored + LOG-002

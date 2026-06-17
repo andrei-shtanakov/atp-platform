@@ -1,0 +1,111 @@
+id: case-code-review-correctness-distractor-singlefile-001
+version: 1
+family: code-review-correctness
+status: active
+suite_type: probe
+capability: correctness
+construction_axis: adversarial_environment
+axis_level: severe
+task_type: review
+language: python
+tags: [review, distractor]
+instruction: >
+  Review the attached diff against the team coding rules (provided). Report each
+  issue with: rule_id, file:line, severity, and a concrete fix. Do not invent issues.
+artifacts:
+  - id: diff
+    type: text
+    content: |
+      --- batching.py ---
+      +10: def chunk(items, size):
+      +11:     """Split items into consecutive batches of at most `size`."""
+      +12:     batches = []
+      +13:     start = 0
+      +14:     while start < len(items):
+      +15:         end = start + size
+      +16:         batches.append(items[start:end])
+      +17:         start = end
+      +18:     return batches
+      +19:
+      +20: def page_count(total, size):
+      +21:     """Number of pages needed to show `total` items, `size` per page."""
+      +22:     if total <= 0:
+      +23:         return 0
+      +24:     return (total + size - 1) // size
+      +25:
+      +26: def select_page(items, page, size):
+      +27:     """Return the items on 1-indexed `page`."""
+      +28:     first = (page - 1) * size
+      +29:     last = first + size
+      +30:     return items[first:last]
+      +31:
+      +32: def has_next_page(total, page, size):
+      +33:     """True if there is a page after the current 1-indexed `page`."""
+      +34:     return page < page_count(total, size)
+      +35:
+      +36: def clamp_page(page, total, size):
+      +37:     """Keep `page` within [1, last_page]."""
+      +38:     last_page = page_count(total, size)
+      +39:     if page > last_page:
+      +40:         return last_page
+      +41:     return page
+  - id: kb-rules
+    type: text
+    content: "LOG-001: boundary/off-by-one comparisons must keep exactly the intended count."
+environment:
+  tools: [none]
+  side_effects: none
+constraints:
+  - cite rule_id for every issue
+  - do not flag compliant lines
+expected_failure_mode: >
+  Amid correct pagination helpers, the agent misses that clamp_page never floors
+  the page: when page < 1 it returns page unchanged, so page=0 or a negative page
+  slips through and select_page then reads a wrong window. The docstring promises
+  to keep page within [1, last_page] but the low bound is never enforced. The fix
+  is to also clamp to 1 (e.g. return 1 when page < 1). No cross-file hop is
+  needed — this is a single-file needle in refactor noise.
+grader:
+  type: programmatic
+  checker: findings_match
+  expected_findings:
+    - rule_ids: [LOG-001, boundary-error, missing-lower-bound]
+      anchor: 'if page > last_page:'
+      severity: critical
+  must_not_flag:
+    - anchor: '+10: def chunk(items, size):'
+    - anchor: '+12:     batches = []'
+    - anchor: '+13:     start = 0'
+    - anchor: 'while start < len(items):'
+    - anchor: 'end = start + size'
+    - anchor: 'batches.append(items[start:end])'
+    - anchor: '+17:         start = end'
+    - anchor: '+18:     return batches'
+    - anchor: '+20: def page_count(total, size):'
+    - anchor: 'if total <= 0:'
+    - anchor: '+23:         return 0'
+    - anchor: 'return (total + size - 1) // size'
+    - anchor: '+26: def select_page(items, page, size):'
+    - anchor: 'first = (page - 1) * size'
+    - anchor: 'last = first + size'
+    - anchor: 'return items[first:last]'
+    - anchor: '+32: def has_next_page(total, page, size):'
+    - anchor: 'return page < page_count(total, size)'
+    - anchor: '+36: def clamp_page(page, total, size):'
+    - anchor: 'last_page = page_count(total, size)'
+    - anchor: '+40:         return last_page'
+    - anchor: '+41:     return page'
+  rubric:
+    - {criterion: cites LOG-001, weight: 0.25}
+    - criterion: identifies the missing lower bound (page < 1 not clamped to 1)
+      weight: 0.4
+    - {criterion: fix also clamps page up to 1, weight: 0.35}
+  critical_check: >
+    Output flags clamp_page's missing lower-bound check (only the upper bound is
+    enforced, so page < 1 passes through) as the defect. MUST NOT flag any of the
+    correct pagination helpers.
+  scoring: "Fail if critical_check fails. Else score = weighted rubric sum, in [0,1]."
+provenance:
+  author: andrei
+  created: "2026-06-17"
+  source: hand-authored + LOG-001 (single-file boundary bug under noise)

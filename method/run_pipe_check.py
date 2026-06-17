@@ -197,6 +197,9 @@ async def _grade_case(
         "axis_level": axis_level,
         "critical_pass": False,
         "malformed": False,
+        "recall": None,
+        "precision": None,
+        "fp_count": None,
         "rubric_score": 0.0,
         "tokens": tokens,
         "cost_usd": float(raw_cost) if cost_known else 0.0,
@@ -217,7 +220,11 @@ async def _grade_case(
             res = await evaluator.evaluate(test_def, response, run.events, assertion)
             check = res.checks[0]
             base["critical_pass"] = bool(check.passed)
-            base["malformed"] = bool((check.details or {}).get("malformed", False))
+            d = check.details or {}
+            base["malformed"] = bool(d.get("malformed", False))
+            base["recall"] = d.get("recall")
+            base["precision"] = d.get("precision")
+            base["fp_count"] = d.get("fp_count")
         elif assertion.type == METHOD_RUBRIC and with_rubric:
             res = await evaluator.evaluate(test_def, response, run.events, assertion)
             base["rubric_score"] = float(res.checks[0].score)
@@ -233,8 +240,12 @@ async def _run_agent(
     with_rubric: bool,
     timeout_s: float,
     benchmark_id: str,
-) -> dict[str, Any]:
-    """Run the family against one agent and build its report_benchmark payload."""
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Run the family against one agent and build its report_benchmark payload.
+
+    Returns the payload plus the per-case grading dicts (which carry the
+    continuous recall/precision/fp_count a downstream filter reads).
+    """
     suite = load_suite(str(case_dir))
     # Ollama rows share one shim; the model is selected per agent_id and injected
     # via the adapter's explicit `environment` config (no global os.environ
@@ -278,7 +289,12 @@ async def _run_agent(
     # null) rather than a misleading 0.0/partial sum.
     if any(not c["cost_known"] for c in case_results):
         payload["total_cost_usd"] = None
-    return payload
+    return payload, case_results
+
+
+def _write_case_details(path: Path, case_results: list[dict[str, Any]]) -> None:
+    """Write one JSON object per case_result as JSONL (downstream filter input)."""
+    path.write_text("\n".join(json.dumps(c) for c in case_results))
 
 
 def _insert(db_path: Path, payload: dict[str, Any]) -> None:
@@ -373,7 +389,7 @@ async def _main_async(args: argparse.Namespace) -> int:
     payloads: list[dict[str, Any]] = []
     for agent_id in runnable:
         print(f"Running {agent_id} ...")
-        payload = await _run_agent(
+        payload, case_results = await _run_agent(
             agent_id,
             case_dir,
             axis_by_id,
@@ -384,6 +400,7 @@ async def _main_async(args: argparse.Namespace) -> int:
         )
         out_file = out_dir / f"report_benchmark_{agent_id}.json"
         out_file.write_text(json.dumps(payload, indent=2))
+        _write_case_details(out_dir / f"case_details_{agent_id}.jsonl", case_results)
         payloads.append(payload)
         if db_path is not None:
             _insert(db_path, payload)
