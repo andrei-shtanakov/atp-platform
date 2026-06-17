@@ -11,6 +11,7 @@ from atp_method.schema import AgentEvalCase
 
 ROOT = Path(__file__).resolve().parents[3]
 CASES = sorted((ROOT / "method" / "cases" / "code-review").glob("*.yaml"))
+REQ_CASES = sorted((ROOT / "method" / "cases" / "req-extraction").glob("*.yaml"))
 SCHEMA = json.loads((ROOT / "method" / "agent-eval-case.schema.json").read_text())
 
 
@@ -36,3 +37,17 @@ def test_cases_validate_pydantic_and_contract() -> None:
         # loader path
         td = load_case(path)
         assert td.assertions
+
+
+def test_req_extraction_cases_present() -> None:
+    assert len(REQ_CASES) == 4
+
+
+def test_req_extraction_cases_are_deterministic() -> None:
+    for path in REQ_CASES:
+        doc = yaml.safe_load(path.read_text())
+        case = AgentEvalCase.model_validate(doc)
+        assert case.grader.type == "programmatic"
+        assert case.grader.checker == "json_path"
+        assert case.task_type == "req-extraction"
+        jsonschema.validate(doc, SCHEMA)

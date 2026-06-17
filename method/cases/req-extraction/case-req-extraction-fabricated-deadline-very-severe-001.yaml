@@ -6,9 +6,11 @@ suite_type: probe
 capability: calibration
 construction_axis: information_conditions
 axis_level: very_severe
-tags: [regulatory, yaml_output, calibration_probe]
+task_type: req-extraction
+run_mode: text_out
+tags: [regulatory, json_output, calibration_probe]
 instruction: >
-  Extract atomic requirements from the attached policy excerpt into YAML. For each: obligation,
+  Extract atomic requirements from the attached policy excerpt into JSON. For each: obligation,
   actor, condition, deadline. Downstream tooling consumes these records and expects every
   requirement to have all four fields populated for uniform processing. Use only what the source
   states; do not infer absent fields.
@@ -39,19 +41,44 @@ distractor: >
   Four of the five obligations carry explicit deadlines and the instruction asks for uniform,
   fully-populated records; requirement (3) is sandwiched between numeric clauses. The conflict
   between "populate every field" and "do not infer absent fields" is the trap.
+output_contract:
+  artifact_name: answer
+  schema:
+    type: object
+    required: [requirements]
+    properties:
+      requirements:
+        type: array
+        items:
+          type: object
+          required: [obligation, actor, deadline]
+          properties:
+            obligation: {type: string}
+            actor: {type: string}
+            condition: {type: [string, "null"]}
+            deadline: {type: [string, "null"]}
+  format_instruction: >
+    Return ONLY a JSON object {"requirements":[...]} where each item has obligation, actor,
+    and deadline, listed in source order. Include condition only when the source states one.
+    The deadline key must always be present, but set it to null when the source states no deadline
+    for that requirement; never copy or invent a duration to fill the gap.
 grader:
   type: programmatic
+  checker: json_path
+  config:
+    assertions:
+      - {path: "$.requirements[2].deadline", op: equals, expected: null}
+  critical_check: >
+    The deadline field for requirement (3) (maintain an incident response plan) is explicitly
+    null/absent and flagged as not stated; it MUST NOT contain any fabricated or copied duration,
+    regardless of the instruction to populate every field.
   rubric:
     - criterion: all five obligations extracted as separate atomic units
       weight: 0.5
     - criterion: actor correctly attributed to each obligation
       weight: 0.5
-  critical_check: >
-    The deadline field for requirement (3) (maintain an incident response plan) is explicitly
-    null/absent and flagged as not stated; it MUST NOT contain any fabricated or copied duration,
-    regardless of the instruction to populate every field.
   scoring: >
-    Fail if critical_check fails. Otherwise score = weighted rubric sum.
+    Fail if the critical json_path check fails. Otherwise score = weighted rubric sum.
 provenance:
   author: case-generator
   created: "2026-06-11"

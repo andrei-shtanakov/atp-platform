@@ -77,13 +77,19 @@ This is the existing `findings_match` precedent (ADR-006 §A-1, PR #176)
 generalized. Adding a deterministic check = registering a checker, **not** a new
 `GraderType` value and **not** a `checks[]` array.
 
-Per-checker config is carried in `grader.config`, but it is **not** a loosely
-typed `dict`: each checker **declares its own pydantic config model in the
-registry**, and the loader validates `grader.config` against that model at load
-time. This keeps the `Grader` model thin (new checkers do not each bolt typed
-fields onto it — that bloat is itself a form of the zoo) *and* keeps the config
-strictly typed and validated before any run, not at runtime. (`findings_match`
-keeps its existing typed fields for back-compat.)
+Per-checker config is carried in `grader.config`. The safety property that
+matters is that config is **validated at load, before any run** — not at runtime.
+As shipped (req-extraction vertical), that validation lives in the pydantic
+`Grader` validator as a per-checker rule (e.g. `checker == "json_path"` requires a
+non-empty `config.assertions`), mirroring how `findings_match` is already
+validated. This keeps the `Grader` model thin (new checkers do not each bolt typed
+fields onto it — that bloat is itself a form of the zoo). The richer form — each
+checker **declaring its own pydantic config model in the registry**, with the
+loader validating `grader.config` against it — is the intended end state but is
+**deferred to a follow-up** that migrates both `findings_match` and `json_path`
+together (it would add a cross-package dependency from the case schema to the
+checker registry, so it earns its own change). (`findings_match` keeps its existing
+typed fields for back-compat.)
 
 **Deferred:** a heterogeneous `grader.checks[]` array (multiple *different*
 checkers on one case, e.g. `schema` + `findings_match` + `json_path` together).

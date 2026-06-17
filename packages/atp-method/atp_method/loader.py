@@ -81,6 +81,10 @@ def _assertions(case: AgentEvalCase) -> list[Assertion]:
                 "must_not_flag": [
                     m.model_dump() for m in (case.grader.must_not_flag or [])
                 ],
+                "schema": (
+                    case.output_contract.json_schema if case.output_contract else None
+                ),
+                "assertions": (case.grader.config or {}).get("assertions", []),
             },
         )
     ]
@@ -110,6 +114,10 @@ def case_to_test_definition(case: AgentEvalCase) -> TestDefinition:
         input_data["distractor"] = case.distractor
     if case.turns:
         input_data["turns"] = [t.model_dump() for t in case.turns]
+    if case.output_contract is not None:
+        input_data["output_contract"] = case.output_contract.model_dump(
+            by_alias=True, exclude_none=True
+        )
 
     return TestDefinition(
         id=case.id,

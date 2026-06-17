@@ -7,8 +7,10 @@ from atp.evaluators.checkers.registry import (
     register_checker,
 )
 from atp.evaluators.findings.checker import findings_check
+from atp.evaluators.json_path.checker import json_path_check
 
 register_checker("findings_match", findings_check)
+register_checker("json_path", json_path_check)
 
 __all__ = [
     "Checker",
