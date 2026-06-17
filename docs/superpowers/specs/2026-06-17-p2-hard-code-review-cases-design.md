@@ -14,12 +14,19 @@ Frontier models catch known CWEs (SQLi) at any concealment — the easy axis, wh
 
 ## Definition of done (statistically guarded)
 
-Divergence is **measured on a continuous per-case score**, not binary `critical_pass`. The continuous score is the `CaseVerdict` composite **`0.5·recall + 0.5·precision`** (precision = `1 − fp_rate`); `critical_pass` (binary `findings_match`) stays only as the gate. Rationale: at n=3 a binary rate quantizes to {0, .33, .67, 1} and "gap > 2·sd" is near-tautological (sd from min–max → sd=0 makes any gap "infinitely significant"). A continuous composite is meaningful precisely on the multi-finding D/F cases where the real signal lives.
+Divergence is **measured on a continuous per-case score**, not binary `critical_pass` (which quantizes to {0,.33,.67,1} at n=3, making "gap > 2·sd" near-tautological). `critical_pass` (binary `findings_match`) stays only as the gate.
+
+**Per-type continuous metric (do NOT aggregate across types — different ranges):**
+- **Defect cases (L, S, D):** composite `0.5·recall + 0.5·precision`, read straight from `CaseVerdict.recall` / `CaseVerdict.precision` (the matcher's `precision = tp/(tp+fp)`, `matcher.py:198` — there is no `fp_rate` there; the earlier "1 − fp_rate" formula was wrong, removed).
+- **FP cases (F):** `expected_findings=[]` ⇒ no positives ⇒ recall is undefined and the blend is quasi-binary. Use an FP-specific continuous score **`fp_score = 1 − fp_count / N_safe`**, where `N_safe` = number of `must_not_flag` lines in the case. This grades *how many* safe lines were flagged, not all-or-nothing.
+- The real continuous signal lives in **D** (`tp∈{0,1}`, `fp∈{0..N}` → precision graduates) and **F** (`fp_count` graduates); L/S single-anchor cases are coarse 0/1 (controls).
 
 **DoD — all three required (multiple-testing + selection guard):**
-1. **Reproduced:** divergence holds on a **held-out confirmation run** (fresh seed, after the filter) — not just the run it was selected on.
-2. **Concordant or strong:** either **≥2 kept cases where the same routable agent leads the same defect-class**, *or* a single case whose routable-agent composite gap is **> 3·sd** (not 2·sd) **and** reproduced.
+1. **Reproduced (magnitude-preserving):** divergence re-appears on a **held-out confirmation run with a fresh seed at n=5–8** (not n=3 — sd is unestimable on 3 points; the KEEP shortlist is small, so the extra runs are cheap). The held-out gap must preserve **direction AND material size** (not merely "same agent ahead"): the absolute gap floor in (2) must still hold on held-out.
+2. **Concordant or strong, with an absolute floor:** either **≥2 kept cases where the same routable agent leads in the same tested *capability*** (capability = fp-discipline / distractor-recall / spec-adherence — **keyed on the skill under test, NOT the buried CWE**, so the D group can form a concordant pair), *or* a single case whose routable-agent composite gap is **> 3·sd AND ≥ 0.34 absolute** (≈ one full recall miss or ~two FPs on a D case) and reproduced per (1). Pre-registered: the 0.34 floor is fixed now, not eyeballed after.
 3. **Capability, not format:** the divergence is not explained by `malformed_rate` (reported separately, see §Report).
+
+Lean on the **concordant path** over the single-case path — it is the robust signal; `>3·sd` at n=3 is the weakest leg and only counts with the absolute floor + held-out reproduction.
 
 **Honest no-go is a valid outcome (outcome B):** if nothing clears the bar after one harden/clarify pass — or only *debatable* cases separate (see Integrity Guard) — the finding is "frontier agents are quality-equivalent on these classes." Then the routing lever is **cost/latency**, not quality (see Parallel track).
 
@@ -37,8 +44,8 @@ Reviews showed single-defect L-class bugs on a 5-line diff are caught as reliabl
 - **S (2) — spec/contract violation; anchor = violating line:**
   - **S1 invariant break.** KB `SPEC-001` "amounts are integer cents"; diff adds `price * 1.0825` / `/ 100`. `rule_ids: [SPEC-001, invariant-violation]`.
   - **S2 policy break.** KB `SPEC-002` "list endpoints paginate (≤100)"; diff adds unbounded `query.all()`. `rule_ids: [SPEC-002, missing-pagination]`.
-- **D (3) — distractor / needle-in-noise; the primary separators** (continuous recall/precision):
-  - **D1/D2/D3** — each a ~30–40-line diff of believable refactors with **one** real L- or S-class defect buried; `must_not_flag` lists **all** plausible-but-fine lines (so over-flagging costs precision). The three vary the defect class and the noise density. These give a continuous per-case recall/precision signal across the diff, which is what the DoD measures.
+- **D (3) — distractor / needle-in-noise; the primary separators** (continuous recall/precision). **All three share one tested capability — `distractor-recall` — which is the concordance key** (so D1+D2+D3 can form a concordant group: "agent X is consistently better at finding the needle under noise"). They **vary the buried defect's CWE for robustness** (D1 buries an L-class bug, D2 an S-class bug, D3 another), but the *skill measured* is the same:
+  - **D1/D2/D3** — each a ~30–40-line diff of believable refactors with **one** real defect buried; `must_not_flag` lists **all** plausible-but-fine lines (so over-flagging costs precision). Continuous recall/precision across the diff — what the DoD measures.
 
 **Dropped: D2-prioritization (severity-ranking).** The matcher does not compare agent severity to expected (`matcher.py:158-167`), and severity-matching is out of scope (no grader changes) — so a "surface the critical among minors" case is ungradeable as designed. Deferred as a matcher enhancement (§Out of scope).
 
@@ -71,14 +78,20 @@ The cases that best separate strong agents sit near the "debatable" boundary, bu
    - **KEEP — divergence only:** routable-agent composite gap meaningful per the DoD bar. *(No "both <1.0" branch — a low tie is "saturated harder" → harden, not keep.)*
    - **SATURATED:** both routable ≈ tie (high or low) → mark to **harden** (noise/class shift, not ambiguity).
    - **DEGENERATE:** all ≈ 0 or high-variance/ambiguous → mark to **clarify**.
-4. **One bounded harden/clarify iteration**, then a **held-out confirmation run** (fresh seed) on the KEEP set — divergence must reproduce.
+4. **One bounded harden/clarify iteration**, then a **held-out confirmation run at n=5–8 with a fresh seed** on the (small) KEEP set — divergence must reproduce magnitude-preserving (DoD §1). Concordance is keyed on the tested capability (D = distractor-recall, F = fp-discipline, S = spec-adherence), not the buried CWE.
 5. **Ship** the reproduced-divergence set into `method/cases/code-review/` + a **report** (§Report). If none reproduce → ship the report as outcome B + the cost analysis.
 
 ## Report (`_cowork_output/status/2026-06-17-p2-filter-results.md`)
-Per case × agent (n=3): composite mean±sd, `critical_pass_rate`, **`malformed_rate` (separate column — so format-divergence isn't mistaken for capability)**, **`total_cost_usd` + `duration` (separate columns — the cost/latency lever under outcome B)**. Plus: which defect classes separated frontier agents; kept/discarded; held-out reproduction result; spend.
+Per case × agent (n=3): the per-type composite mean±sd (defect blend for L/S/D, `fp_score` for F — **do not sum composites across types; they live on different ranges**), `critical_pass_rate`, **`malformed_rate` (separate column — so format-divergence isn't mistaken for capability)**, **`total_cost_usd` + `duration` (separate columns — the cost/latency lever; `codex_cli` cost present once the cost-capture task lands)**. Plus: which *capabilities* (distractor-recall / fp-discipline / spec-adherence) separated frontier agents; kept/discarded; held-out (n=5–8) reproduction result; spend.
 
-## Parallel track (recommended, cheap)
-`codex_cli` cost is currently **unmeasured** (`codex exec --output-last-message` emits no usage). If the filter yields outcome B (quality ties), **cost-per-score becomes the only working re-rank lever.** A mini-task — capture `codex exec --json` usage into the shim's metrics — likely unblocks the arbiter Task-4 A/B faster and cheaper than authoring quality cases. Run it in parallel; it de-risks the no-go branch.
+## Separate task (NOT part of P2): codex_cli cost capture — start now, gate P2 on its result
+
+`codex_cli` cost is **unmeasured** (`codex exec --output-last-message` emits no usage). This is its **own task with its own DoD** — *"`codex_cli` token/cost captured (via `codex exec --json` usage events) and reconciled against a known-cost run"* — and it is **pulled out of P2** because:
+- **Value is unconditional, not a hedge:** budget-aware re-rank needs `codex_cli` cost even under outcome A (both at 1.0 ⇒ cost is the *only* differentiator). It serves arbiter's cost features regardless of P2's result, so it must not be gated on case authoring.
+- **Data dependency:** the P2 report's `total_cost_usd` column for `codex_cli` is empty today; the capture must land **before** the filter-run for the "cost/latency lever" column to mean anything.
+- **It may be the shorter path to Task-4:** if cost *already* separates `claude_code` vs `codex_cli`, the first Task-4 A/B can be built on a **cost re-rank with no hard cases at all** — potentially making most of P2 unnecessary.
+
+**Sequencing:** start cost-capture **now, in parallel**; **glance at its result before fully investing in authoring all 10 cases** (cheap-scout-first). P2 references it but P2's ship-gate does not depend on it. The writing-plans output will make cost-capture Task 0 (parallel) with this early checkpoint.
 
 ## Out of scope
 - Concurrency/TOCTOU (#4).
