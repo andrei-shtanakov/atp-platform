@@ -1,79 +1,89 @@
 # Spec: P2 — harder code-review cases that separate frontier agents
 
-**Status:** approved (brainstormed 2026-06-17)
-**Context:** `_cowork_output/status/2026-06-17-r07-matrix-and-spend.md` (the matrix showing routable agents saturate), [[project_r07_phase1]], ADR-007 (taxonomy).
-**Scope:** `method/cases/code-review/` (new `code-review-correctness` family), the empirical filter run, a findings report. No new grader infra, no arbiter-side changes.
+**Status:** approved with review revisions (brainstormed 2026-06-17; revised after two reviews)
+**Context:** `_cowork_output/status/2026-06-17-r07-matrix-and-spend.md` (routable agents saturate), [[project_r07_phase1]], ADR-007.
+**Scope:** `method/cases/code-review/` (new `code-review-correctness` family), a small harness tweak to surface per-case recall/precision, the empirical filter run, a findings report. No grader-semantics changes, no arbiter-side changes.
 
 ## Goal
 
-Add code-review cases hard enough that arbiter's **routable** agents (`claude_code`, `codex_cli`) diverge on the `code-review` benchmark. Today the SQLi sweep saturates — both routable agents score 1.0 on every rung — so arbiter's (working, tested) re-rank has zero signal to act on. P2 raises the ceiling by changing the **defect class**, not the concealment.
+Add code-review cases hard enough that arbiter's **routable** agents (`claude_code`, `codex_cli`) **diverge** on the `code-review` benchmark, so the (working, tested) re-rank has a gap to act on. The lever is **defect class**, not concealment.
 
 ## Why defect class, not concealment
 
-Frontier models reliably catch known CWEs (SQLi) at any concealment — that is the *easy* axis, and it saturates. The capability frontier for strong reviewers is **subtle correctness**, **false-positive discipline**, and **spec adherence**. So the new cases plant defects in those classes. (Concurrency/TOCTOU is deferred — gradeability + staging cost.)
+Frontier models catch known CWEs (SQLi) at any concealment — the easy axis, which saturates. The frontier is **subtle correctness**, **false-positive discipline**, **spec adherence**. (Concurrency/TOCTOU deferred — gradeability + staging cost.)
 
-## Definition of done
+## Definition of done (statistically guarded)
 
-After authoring + the empirical filter loop, **≥1 kept case where `claude_code` and `codex_cli` diverge by > 2·sd at n=3** on `critical_pass`. The `code-review` benchmark then contains a case arbiter's re-rank can act on. An honest **no-go** (nothing separates them even after the harden pass) is a valid outcome and is reported as such (→ escalate to concurrency #4 or harder cases).
+Divergence is **measured on a continuous per-case score**, not binary `critical_pass`. The continuous score is the `CaseVerdict` composite **`0.5·recall + 0.5·precision`** (precision = `1 − fp_rate`); `critical_pass` (binary `findings_match`) stays only as the gate. Rationale: at n=3 a binary rate quantizes to {0, .33, .67, 1} and "gap > 2·sd" is near-tautological (sd from min–max → sd=0 makes any gap "infinitely significant"). A continuous composite is meaningful precisely on the multi-finding D/F cases where the real signal lives.
 
-## The candidate pool (~10 cases)
+**DoD — all three required (multiple-testing + selection guard):**
+1. **Reproduced:** divergence holds on a **held-out confirmation run** (fresh seed, after the filter) — not just the run it was selected on.
+2. **Concordant or strong:** either **≥2 kept cases where the same routable agent leads the same defect-class**, *or* a single case whose routable-agent composite gap is **> 3·sd** (not 2·sd) **and** reproduced.
+3. **Capability, not format:** the divergence is not explained by `malformed_rate` (reported separately, see §Report).
 
-All are native-style code-review cases: `artifacts` = a `diff` + a `kb-rules` block; grader = `findings_match` (same path as the SQLi family). Python. New family `code-review-correctness`, `task_type: review`.
+**Honest no-go is a valid outcome (outcome B):** if nothing clears the bar after one harden/clarify pass — or only *debatable* cases separate (see Integrity Guard) — the finding is "frontier agents are quality-equivalent on these classes." Then the routing lever is **cost/latency**, not quality (see Parallel track).
 
-### Logic / correctness (3) — *looks right, isn't*; anchor = buggy line
-- **L1 — off-by-one boundary.** A "keep last N" ring buffer / token-budget check whose comparison is off by one (`>=` vs `>`), dropping or duplicating one valid element. `rule_ids: [LOG-001, off-by-one, boundary-error]`.
-- **L2 — inverted predicate.** An access/validity check that grants/serves when it must not — e.g. `if user.is_member or user.is_banned: allow()` (needs `and not banned`), or `is_expired = now < expiry` (inverted). `rule_ids: [LOG-002, logic-error, incorrect-conditional, cwe-697]`.
-- **L3 — swallowed error / wrong edge default.** `except (KeyError, ValueError): return 0.0` that hides a real error and returns a valid-looking wrong number used downstream (price/discount), or mishandles empty/None. `rule_ids: [LOG-003, error-handling, swallowed-exception]`.
+## The candidate pool (~10 cases) — weighted toward where separation lives
 
-### False-positive discipline (2) — `expected_findings: []`; gate = `must_not_flag` the scary-but-safe line
-- **F1 — looks-like-SQLi, is safe.** `f"... WHERE status = '{Status.ACTIVE.value}'"` where the interpolated value is a hardcoded enum / int-cast, not user input. Over-applying SEC-011 false-flags it.
-- **F2 — looks-unsafe, is guarded.** `pickle.loads(blob)` / `subprocess.run(shlex.split(cmd))` / `eval(literal)` where the input is internally generated / trusted / quoted, evident in the diff.
+Reviews showed single-defect L-class bugs on a 5-line diff are caught as reliably as SQLi (saturation risk); real separation lives in **distractor recall/precision (D)** and **FP-discipline (F)**. Pool reweighted accordingly. All native-style (`diff` + `kb-rules` → `findings_match`), Python, family `code-review-correctness`, `task_type: review`.
 
-### Spec / contract violation (2) — kb-rules state the contract; code violates it subtly; anchor = violating line
-- **S1 — invariant break.** KB `SPEC-001`: "monetary amounts are integer cents." Diff introduces `total = price * 1.0825` / `/ 100` — silently breaks the cents invariant. `rule_ids: [SPEC-001, invariant-violation]`.
-- **S2 — policy break.** KB `SPEC-002`: "list endpoints MUST paginate (limit ≤ 100)." Diff adds a list endpoint returning `query.all()` unbounded. Code works; violates policy. `rule_ids: [SPEC-002, missing-pagination]`.
+- **L (2) — saturation controls** (expected to be caught by both; included to confirm the easy axis still saturates):
+  - **L1 off-by-one boundary** (`>=` vs `>` dropping/duplicating one element). `rule_ids: [LOG-001, off-by-one, boundary-error]`.
+  - **L2 inverted predicate** (`is_member or is_banned` grants; `now < expiry` inverted). `rule_ids: [LOG-002, logic-error, incorrect-conditional, cwe-697]`.
+- **F (3) — FP-discipline; `expected_findings: []`; `must_not_flag` *every* plausible-safe line** (pass = precision on the safe lines, **not** total silence):
+  - **F1 looks-like-SQLi, safe** (`f"... '{Status.ACTIVE.value}'"`, hardcoded enum/int-cast).
+  - **F2 looks-unsafe, guarded** (`pickle.loads`/`subprocess.run(shlex.split())`/`eval(literal)` on trusted/quoted input, evident in the diff).
+  - **F3 looks-like-a-bug, correct** (e.g. an intentional integer floor-division with a clarifying comment, or a deliberate early-return that looks like a missing branch).
+- **S (2) — spec/contract violation; anchor = violating line:**
+  - **S1 invariant break.** KB `SPEC-001` "amounts are integer cents"; diff adds `price * 1.0825` / `/ 100`. `rule_ids: [SPEC-001, invariant-violation]`.
+  - **S2 policy break.** KB `SPEC-002` "list endpoints paginate (≤100)"; diff adds unbounded `query.all()`. `rule_ids: [SPEC-002, missing-pagination]`.
+- **D (3) — distractor / needle-in-noise; the primary separators** (continuous recall/precision):
+  - **D1/D2/D3** — each a ~30–40-line diff of believable refactors with **one** real L- or S-class defect buried; `must_not_flag` lists **all** plausible-but-fine lines (so over-flagging costs precision). The three vary the defect class and the noise density. These give a continuous per-case recall/precision signal across the diff, which is what the DoD measures.
 
-### Distractor-amplified (2) — the modifier
-- **D1 — needle in plausible refactor.** ~30–40-line diff of believable refactors (renames, extracted helpers, reordering) with **one** real L- or S-class defect buried; `must_not_flag` several plausible-but-fine lines. Gates recall **and** precision.
-- **D2 — prioritization.** Several genuine *minor* issues + **one** critical; `expected_findings` = the critical only (minors neither required nor forbidden). Tests surfacing the critical among noise.
+**Dropped: D2-prioritization (severity-ranking).** The matcher does not compare agent severity to expected (`matcher.py:158-167`), and severity-matching is out of scope (no grader changes) — so a "surface the critical among minors" case is ungradeable as designed. Deferred as a matcher enhancement (§Out of scope).
 
 ## Grading & determinism
 
-- **Checker:** `findings_match` (anchor + `rule_ids` + `severity`, plus `must_not_flag`). No `output_contract`/`json_path` (that is req-extraction). The existing shims already emit findings JSON.
-- **Rule KB** per case (in the `kb-rules` artifact, like SEC-011): `LOG-001/002/003`, `SPEC-001/002`. Broad `rule_ids` synonyms so the gate matches *right line + defensible reason*, not exact wording. FP cases cite nothing.
-- **Precision:** defect-bearing cases (esp. D1) also set `must_not_flag` on plausible-but-fine lines, so over-flagging fails.
-- **Determinism bar (authoring discipline):** every case is **unambiguously** a defect or **unambiguously** safe — never a style opinion.
-  - Logic bugs: a real bug with one correct fix; exact buggy substring as anchor.
-  - FP cases: the scary code is *defensibly* safe and the safety is **visible in the diff**; a competent reviewer would not flag it.
-  - Spec cases: the violated rule is **explicit in kb-rules** → a contract check, not judgment.
-  - Anything genuinely debatable is discarded as degenerate.
-- Each authored case ships with a `findings_match` determinism proof (good→pass / bad→fail, identical across runs; FP cases: a correct no-flag passes), mirroring the existing code-review/req-extraction determinism tests.
+- **Checker:** `findings_match` (anchor + `rule_ids` + `severity`, plus `must_not_flag`). No `output_contract`/`json_path`. Shims already emit findings JSON.
+- **Continuous metric source:** the `CaseVerdict` already carries `recall`/`precision`/`fp_count` (`atp/evaluators/findings/`). The filter reads these per case. **Harness tweak (in scope):** `run_pipe_check` must surface per-case `recall`/`precision`/`fp_count` (today it emits `critical_pass`/`malformed`) — add them to the per-case output / DB row so the filter can compute the composite. This is the only code change; grader semantics are untouched.
+- **FP precision semantics (F + D):** `must_not_flag` must list **every** plausible-safe line, because the matcher only penalizes a flag on a *listed* anchor — a flag on an unlisted safe line goes to `unknown_extras` with `fp=0` and still passes (`matcher.py:170-183`). Pass = no flag on any listed safe line; total silence is **not** required.
+- **Rule KB** per case (`kb-rules` artifact, like SEC-011): `LOG-001/002`, `SPEC-001/002`; broad `rule_ids` synonyms (match = right line + defensible reason). F cases cite nothing.
+- **Determinism bar (authoring discipline):** every case **unambiguously** a defect or **unambiguously** safe — never style opinion. Logic: one correct fix, exact buggy substring as anchor. FP: defensibly safe with the safety **visible in the diff**. Spec: violated rule **explicit in kb-rules**.
+- **Determinism proof per case must include, beyond good→pass / bad→fail:**
+  - a **near-miss anchor** check — anchor overlap is bidirectional substring (`matcher.py:55-59`), so in multi-line D/L/S diffs a one-line anchor can collide with another; the proof confirms the correct finding isn't mis-scored and a safe line doesn't match an expected anchor.
+  - a **malformed** check — strict-global validation means one bad finding malforms the whole output (`matcher.py:78-95`); the proof confirms a well-formed correct answer is not malformed.
+
+### Integrity guard (pre-committed)
+The cases that best separate strong agents sit near the "debatable" boundary, but the determinism bar forbids debatable. The window "unambiguous **and** hard enough that one frontier misses" may be empty — **that is outcome B, not failure.** We **pre-commit NOT to relax the unambiguity bar to manufacture separation.** Concretely: the harden pass may add noise/distractors or shift defect class, but **must not** make a defect's status debatable to induce a miss. If only debatable cases separate, report outcome B; do not crank subtlety into ambiguity. (Same discipline as "don't tune the re-rank weight to force a flip.")
 
 ## Structure
-
-- Family `code-review-correctness`, `task_type: review` → rolls into `benchmark_id: code-review` (taxonomy already maps `review → code-review`).
-- `capability` per case: `correctness` (L1–3, S1, D1/D2), `safety_compliance` (F1–2, S2).
-- `axis_level` tentative per case (`mild`…`very_severe`); the empirical filter refines the true ordering.
-- `tags`: `review` + a class tag (`logic_error` / `false_positive` / `spec_violation` / `distractor`). Tags follow the controlled-vocab pattern `^[a-z0-9]+(?:_[a-z0-9]+)*$`.
-- Non-gating rubric kept (cites rule / severity / fix), like the SQLi cases.
+- Family `code-review-correctness`, `task_type: review` → `benchmark_id: code-review` (already mapped).
+- `capability`: `correctness` (L, S1, D), `safety_compliance` (F, S2).
+- `axis_level` tentative; the filter refines true difficulty.
+- `tags`: `review` + class tag (`logic_error`/`false_positive`/`spec_violation`/`distractor`), controlled-vocab `^[a-z0-9]+(?:_[a-z0-9]+)*$`.
+- Non-gating rubric kept.
 
 ## Empirical filter loop
 
-1. **Author** the 10 candidates + determinism proofs.
-2. **Run** `claude_code`, `codex_cli`, `deepseek` on the 10, **n=3**, into `_cowork_output/r07-pipecheck/p2-filter.db` via `run_pipe_check` (`--case-dir method/cases/code-review --agents claude_code,codex_cli,deepseek`, repeated 3× per the multi-invocation pattern, since `--runs>1` grades only `runs[0]`).
-3. **Classify each case by the routable pair** (`claude_code`, `codex_cli`):
-   - **KEEP** — gap between routable agents > 2·sd (divergence), *or* both routable agents stably < 1.0 (ceiling raised).
-   - **DISCARD-saturated** — both routable agents = 1.0 → mark to **harden**.
-   - **DISCARD-degenerate** — all agents ≈ 0.0 or high-variance/ambiguous → mark to **clarify**.
-4. **One bounded iteration:** harden the saturated, clarify the degenerate, re-run once.
-5. **Ship** the kept set into `method/cases/code-review/` + a **report** (`_cowork_output/status/2026-06-17-p2-filter-results.md`): which defect classes separated frontier agents, the kept/discarded breakdown, and spend.
+1. **Author** the 10 candidates + determinism proofs (good/bad/near-miss/malformed).
+2. **Run** `claude_code`, `codex_cli`, `deepseek`, **n=3**, into `_cowork_output/r07-pipecheck/p2-filter.db` (`run_pipe_check`, repeated 3× — `--runs>1` grades only `runs[0]`).
+3. **Classify by the routable pair** on the **continuous composite** (mean ± sd over n=3):
+   - **KEEP — divergence only:** routable-agent composite gap meaningful per the DoD bar. *(No "both <1.0" branch — a low tie is "saturated harder" → harden, not keep.)*
+   - **SATURATED:** both routable ≈ tie (high or low) → mark to **harden** (noise/class shift, not ambiguity).
+   - **DEGENERATE:** all ≈ 0 or high-variance/ambiguous → mark to **clarify**.
+4. **One bounded harden/clarify iteration**, then a **held-out confirmation run** (fresh seed) on the KEEP set — divergence must reproduce.
+5. **Ship** the reproduced-divergence set into `method/cases/code-review/` + a **report** (§Report). If none reproduce → ship the report as outcome B + the cost analysis.
+
+## Report (`_cowork_output/status/2026-06-17-p2-filter-results.md`)
+Per case × agent (n=3): composite mean±sd, `critical_pass_rate`, **`malformed_rate` (separate column — so format-divergence isn't mistaken for capability)**, **`total_cost_usd` + `duration` (separate columns — the cost/latency lever under outcome B)**. Plus: which defect classes separated frontier agents; kept/discarded; held-out reproduction result; spend.
+
+## Parallel track (recommended, cheap)
+`codex_cli` cost is currently **unmeasured** (`codex exec --output-last-message` emits no usage). If the filter yields outcome B (quality ties), **cost-per-score becomes the only working re-rank lever.** A mini-task — capture `codex exec --json` usage into the shim's metrics — likely unblocks the arbiter Task-4 A/B faster and cheaper than authoring quality cases. Run it in parallel; it de-risks the no-go branch.
 
 ## Out of scope
-- Concurrency / TOCTOU (#4) — deferred.
-- New grader infrastructure, `output_contract`, json_path.
-- Arbiter-side changes (the Task-4 A/B is downstream, once a separating case exists).
-- `aider` as a third routable agent (separate harness work).
+- Concurrency/TOCTOU (#4).
+- Severity-matching in the matcher (would enable D2-prioritization) — deferred enhancement.
+- `output_contract`/json_path, arbiter-side changes, `aider` as a third routable agent.
 
-## Open decisions
-- **Final difficulty mix if the first pass under/over-shoots:** if >half saturate, the harden pass leans into L2/F-class subtlety; if >half are degenerate, simplify anchors and tighten kb-rules. Resolved empirically in step 4.
-- **n for the filter:** n=3 (matches the established noise-guard). Bump only if a borderline case sits within 2·sd and the decision hinges on it.
+## Notes
+- **Signal shelf-life:** `claude_code` vs `codex_cli` divergence is version-specific; a tool update can collapse/invert it. Re-filter on version change (relevant at P5/Task-4).
