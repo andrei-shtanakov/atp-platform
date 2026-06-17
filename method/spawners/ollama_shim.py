@@ -82,14 +82,16 @@ def build_response(request: dict, raw: dict) -> dict:
     task_id = request.get("task_id", "")
     text = raw["message"]["content"]
     # Token counts are present on a non-streamed /api/chat response, but be
-    # defensive: default each to 0 and report None for the total only when
-    # NEITHER field is present (so "unknown" stays distinguishable from 0).
+    # defensive: a missing count stays None (unknown) rather than collapsing to
+    # 0, since downstream treats any non-None value as a real measurement. The
+    # total is None only when BOTH fields are absent.
     in_tok = raw.get("prompt_eval_count")
     out_tok = raw.get("eval_count")
-    if in_tok is None and out_tok is None:
-        total: int | None = None
-    else:
-        total = (in_tok or 0) + (out_tok or 0)
+    total = (
+        (in_tok or 0) + (out_tok or 0)
+        if in_tok is not None or out_tok is not None
+        else None
+    )
     return {
         "version": "1.0",
         "task_id": task_id,
@@ -104,8 +106,8 @@ def build_response(request: dict, raw: dict) -> dict:
         ],
         "metrics": {
             "total_tokens": total,
-            "input_tokens": in_tok or 0,
-            "output_tokens": out_tok or 0,
+            "input_tokens": in_tok,
+            "output_tokens": out_tok,
             # Local inference is free, but report null (unknown) rather than 0.0
             # so the harness never confuses "free" with a measured cost.
             "cost_usd": None,

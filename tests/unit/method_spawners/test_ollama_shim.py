@@ -1,4 +1,4 @@
-"""Tests for the ollama spawner shim (offline; urllib.urlopen is mocked)."""
+"""Tests for the ollama spawner shim (offline; urllib.request.urlopen is mocked)."""
 
 import importlib.util
 import io
@@ -74,10 +74,11 @@ def test_build_response_missing_token_counts() -> None:
     request = {"version": "1.0", "task_id": "t9"}
     resp = shim.build_response(request, {"message": {"content": "[]"}})
     assert resp["status"] == "completed"
-    # Neither count present => total is unknown (None), per-field default to 0.
+    # Neither count present => everything stays unknown (None), never collapsed
+    # to 0, so downstream doesn't read a missing measurement as a real zero.
     assert resp["metrics"]["total_tokens"] is None
-    assert resp["metrics"]["input_tokens"] == 0
-    assert resp["metrics"]["output_tokens"] == 0
+    assert resp["metrics"]["input_tokens"] is None
+    assert resp["metrics"]["output_tokens"] is None
 
 
 def test_main_success(monkeypatch: pytest.MonkeyPatch) -> None:

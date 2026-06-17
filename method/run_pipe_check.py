@@ -218,10 +218,12 @@ async def _run_agent(
 ) -> dict[str, Any]:
     """Run the family against one agent and build its report_benchmark payload."""
     suite = load_suite(str(case_dir))
-    # Ollama rows share one shim; the model is selected per agent_id via env.
-    # OLLAMA_MODEL is allowlisted, so the spawned shim inherits this value.
+    # Ollama rows share one shim; the model is selected per agent_id and injected
+    # via the adapter's explicit `environment` config (no global os.environ
+    # mutation, which would leak across agents in the same process).
+    adapter_env: dict[str, str] = {}
     if agent_id in OLLAMA_MODELS:
-        os.environ["OLLAMA_MODEL"] = OLLAMA_MODELS[agent_id]
+        adapter_env["OLLAMA_MODEL"] = OLLAMA_MODELS[agent_id]
     adapter = create_adapter(
         "cli",
         {
@@ -229,6 +231,7 @@ async def _run_agent(
             "args": [str(REPO_ROOT / SHIMS[agent_id])],
             "inherit_environment": True,
             "allowed_env_vars": ALLOWED_ENV,
+            "environment": adapter_env,
             "timeout_seconds": timeout_s,
         },
     )
