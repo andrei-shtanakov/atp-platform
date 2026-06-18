@@ -181,6 +181,11 @@ def test_case_details_path_for_derives_sibling(tmp_path: Path) -> None:
     assert imp.case_details_path_for(rp).name == "case_details_claude_code.jsonl"
 
 
+def test_case_details_path_for_rejects_non_report_name(tmp_path: Path) -> None:
+    with pytest.raises(ValueError):
+        imp.case_details_path_for(tmp_path / "something_else.json")
+
+
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"

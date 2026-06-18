@@ -116,6 +116,10 @@ def case_details_path_for(report_path: Path) -> Path:
     ``report_benchmark_<agent>.json`` -> ``case_details_<agent>.jsonl`` in the
     same directory.
     """
+    if "report_benchmark_" not in report_path.name:
+        raise ValueError(
+            f"expected a report_benchmark_*.json filename, got {report_path.name!r}"
+        )
     stem = report_path.name.replace("report_benchmark_", "case_details_", 1)
     stem = stem.rsplit(".json", 1)[0]
     return report_path.with_name(f"{stem}.jsonl")
