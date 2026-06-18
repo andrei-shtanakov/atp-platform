@@ -105,3 +105,16 @@ async def test_eval_run_detail_shows_notice_when_no_cases(fresh_app: tuple) -> N
         resp = await client.get("/ui/eval-run/code-review/anthropic_api")
     assert resp.status_code == 200
     assert "no per-case detail" in resp.text.lower()
+
+
+@pytest.mark.anyio
+async def test_eval_run_detail_no_completed_run(fresh_app: tuple) -> None:
+    """An unknown (suite, agent) pair gets a distinct 'no completed run' notice,
+    not the misleading aggregate-only message."""
+    app, _db = fresh_app
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/ui/eval-run/code-review/ghost-agent")
+    assert resp.status_code == 200
+    assert "no completed run found" in resp.text.lower()
+    assert "aggregate-only" not in resp.text.lower()

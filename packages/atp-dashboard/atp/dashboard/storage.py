@@ -1060,9 +1060,9 @@ class ResultStorage:
         rows = (
             (
                 await self._session.execute(
-                    select(TestExecution).where(
-                        TestExecution.suite_execution_id == run.id
-                    )
+                    select(TestExecution)
+                    .where(TestExecution.suite_execution_id == run.id)
+                    .order_by(TestExecution.id)
                 )
             )
             .scalars()

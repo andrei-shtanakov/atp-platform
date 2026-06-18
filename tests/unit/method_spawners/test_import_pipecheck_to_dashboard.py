@@ -186,6 +186,53 @@ def test_case_details_path_for_rejects_non_report_name(tmp_path: Path) -> None:
         imp.case_details_path_for(tmp_path / "something_else.json")
 
 
+def test_parse_report_tolerates_non_dict_score_components(tmp_path: Path) -> None:
+    r = imp.parse_report(
+        _write_report(tmp_path / "report_benchmark_x.json", score_components=[1, 2])
+    )
+    assert r is not None
+    assert r.critical_pass_rate is None
+    assert r.malformed_rate is None
+
+
+def test_task_type_tolerates_non_list_per_task(tmp_path: Path) -> None:
+    r = imp.parse_report(
+        _write_report(
+            tmp_path / "report_benchmark_x.json",
+            benchmark_id="req-extraction",
+            per_task={"not": "a list"},
+        )
+    )
+    assert r is not None
+    assert r.task_type == "req-extraction"  # fell back to the benchmark map
+
+
+@pytest.mark.anyio
+async def test_import_case_id_fallback_is_unique(tmp_path: Path) -> None:
+    """Rows missing case_id get distinct index-based ids (no uq_suite_test clash)."""
+    db_url = f"sqlite+aiosqlite:///{tmp_path / 'd.db'}"
+    _write_report(tmp_path / "report_benchmark_claude_code.json", run_id="r1")
+    (tmp_path / "case_details_claude_code.jsonl").write_text(
+        '{"axis_level":"clean","critical_pass":true}\n'
+        '{"axis_level":"severe","critical_pass":false}'
+    )
+    reports = imp.discover_reports(tmp_path)
+    imported, _ = await imp.import_reports(reports, db_url=db_url)
+    assert imported == 1  # did not crash on a unique-constraint violation
+
+    from sqlalchemy import select
+
+    from atp.dashboard import init_database
+    from atp.dashboard.models import TestExecution
+
+    db = await init_database(url=db_url)
+    async with db.session() as session:
+        ids = sorted(
+            (await session.execute(select(TestExecution.test_id))).scalars().all()
+        )
+        assert ids == ["case-0", "case-1"]
+
+
 @pytest.mark.anyio
 async def test_import_writes_case_rows_when_sibling_present(tmp_path: Path) -> None:
     db_url = f"sqlite+aiosqlite:///{tmp_path / 'd.db'}"

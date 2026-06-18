@@ -63,8 +63,8 @@ class ParsedReport:
 
 def _task_type_for(report: dict[str, Any], benchmark_id: str) -> str | None:
     """Derive task_type from the first per-task row, falling back to the suite map."""
-    per_task = report.get("per_task") or []
-    if per_task and isinstance(per_task[0], dict):
+    per_task = report.get("per_task")
+    if isinstance(per_task, list) and per_task and isinstance(per_task[0], dict):
         tt = per_task[0].get("task_type")
         if tt:
             return str(tt)
@@ -83,7 +83,9 @@ def parse_report(path: Path) -> ParsedReport | None:
     ts = data.get("ts")
     if not (run_uuid and benchmark_id and agent_id and ts):
         return None
-    comps = data.get("score_components") or {}
+    comps = data.get("score_components")
+    if not isinstance(comps, dict):
+        comps = {}
     bp = data.get("breakpoint_axis_level")
     return ParsedReport(
         run_uuid=str(run_uuid),
@@ -228,9 +230,13 @@ async def import_reports(
                     "breakpoint_axis_level": r.breakpoint_axis_level,
                 },
             )
-            for c in parse_case_details(case_details_path_for(r.source_file)):
+            for idx, c in enumerate(
+                parse_case_details(case_details_path_for(r.source_file))
+            ):
                 started = r.started_at
-                case_id = str(c.get("case_id") or "unknown")
+                # Index-based fallback keeps a case_id-less row instead of
+                # colliding on uq_suite_test (suite_execution_id, test_id).
+                case_id = str(c.get("case_id") or f"case-{idx}")
                 te = await storage.create_test_execution(
                     suite_execution=execution,
                     test_id=case_id,

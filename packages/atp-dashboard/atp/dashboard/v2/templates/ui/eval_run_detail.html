@@ -11,7 +11,10 @@
   {{ "%.3f"|format(run.critical_pass_rate) if run.critical_pass_rate is not none else "—" }}
   · breakpoint {{ run.breakpoint_axis_level or "—" }}</p>
 {% endif %}
-{% if not cases %}
+{% if run is none %}
+<p>No completed run found for <code>{{ agent_name }}</code> on
+  <code>{{ suite_name }}</code> yet.</p>
+{% elif not cases %}
 <p>No per-case detail for this run (aggregate-only import — re-run the sweep with
   the current harness to capture <code>case_details</code>).</p>
 {% else %}
