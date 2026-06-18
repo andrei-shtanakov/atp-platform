@@ -186,6 +186,54 @@ def test_case_details_path_for_rejects_non_report_name(tmp_path: Path) -> None:
         imp.case_details_path_for(tmp_path / "something_else.json")
 
 
+@pytest.mark.anyio
+async def test_import_writes_case_rows_when_sibling_present(tmp_path: Path) -> None:
+    db_url = f"sqlite+aiosqlite:///{tmp_path / 'd.db'}"
+    _write_report(tmp_path / "report_benchmark_claude_code.json", run_id="r1")
+    (tmp_path / "case_details_claude_code.jsonl").write_text(
+        '{"case_id":"c1","axis_level":"clean","critical_pass":true,'
+        '"recall":1.0,"precision":1.0,"fp_count":0,"duration_seconds":1.0}\n'
+        '{"case_id":"c2","axis_level":"severe","critical_pass":false,'
+        '"recall":0.5,"precision":0.5,"fp_count":2,"duration_seconds":2.0}'
+    )
+    reports = imp.discover_reports(tmp_path)
+    await imp.import_reports(reports, db_url=db_url)
+
+    from sqlalchemy import select
+
+    from atp.dashboard import init_database
+    from atp.dashboard.models import TestExecution
+
+    db = await init_database(url=db_url)
+    async with db.session() as session:
+        rows = (await session.execute(select(TestExecution))).scalars().all()
+        by_id = {r.test_id: r for r in rows}
+        assert set(by_id) == {"c1", "c2"}
+        assert by_id["c2"].axis_level == "severe"
+        assert by_id["c2"].fp_count == 2
+        assert by_id["c1"].critical_pass is True
+        assert by_id["c1"].task_type == "review"
+
+
+@pytest.mark.anyio
+async def test_import_writes_no_case_rows_when_sibling_absent(tmp_path: Path) -> None:
+    db_url = f"sqlite+aiosqlite:///{tmp_path / 'd.db'}"
+    _write_report(
+        tmp_path / "report_benchmark_codex_cli.json", run_id="r2", agent_id="codex_cli"
+    )
+    reports = imp.discover_reports(tmp_path)
+    await imp.import_reports(reports, db_url=db_url)
+
+    from sqlalchemy import select
+
+    from atp.dashboard import init_database
+    from atp.dashboard.models import TestExecution
+
+    db = await init_database(url=db_url)
+    async with db.session() as session:
+        assert (await session.execute(select(TestExecution))).scalars().all() == []
+
+
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"

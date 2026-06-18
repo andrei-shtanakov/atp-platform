@@ -196,6 +196,33 @@ async def import_reports(
                     "breakpoint_axis_level": r.breakpoint_axis_level,
                 },
             )
+            for c in parse_case_details(case_details_path_for(r.source_file)):
+                started = r.started_at
+                case_id = str(c.get("case_id") or "unknown")
+                te = await storage.create_test_execution(
+                    suite_execution=execution,
+                    test_id=case_id,
+                    test_name=case_id,
+                    started_at=started,
+                    dimensions={
+                        "axis_level": c.get("axis_level"),
+                        "critical_pass": c.get("critical_pass"),
+                        "malformed": c.get("malformed"),
+                        "recall": c.get("recall"),
+                        "precision": c.get("precision"),
+                        "fp_count": c.get("fp_count"),
+                        "rubric_score": c.get("rubric_score"),
+                        "task_type": r.task_type,
+                    },
+                )
+                dur = float(c.get("duration_seconds") or 0.0)
+                await storage.update_test_execution(
+                    te,
+                    completed_at=started + timedelta(seconds=dur),
+                    success=bool(c.get("critical_pass")),
+                    score=float(c.get("rubric_score") or 0.0),
+                    status="completed",
+                )
             imported += 1
         await session.commit()
     return imported, skipped
