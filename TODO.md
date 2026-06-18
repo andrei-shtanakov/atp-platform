@@ -44,9 +44,9 @@
     (atp, PR #171) + `../arbiter/2026-06-13-r07-phase1-arbiter-rerank-plan.md`.
     - [x] atp-срез: vendored контракт + claude_code shim (CLI-adapter) + 2 кейса
       (clean/moderate, SEC-011) + `report_benchmark` reporter + smoke. Ветка `r07/code-review-eval`.
-    - [ ] **Задача 6 — pipe-check (НЕ бенчмарк):** прогон против живого `claude` + судьи,
-      убедиться что труба пропускает реальный сигнал. Платно, `--runs=1`.
-    - [ ] **arbiter-план** (reader + re-rank + A/B) — написан, не исполнен; после go.
+    - [x] **Задача 6 — pipe-check (НЕ бенчмарк):** ✅ 2026-06-17. Прогон против живого `claude` + судьи,
+      труба пропускает реальный сигнал — подтверждено. Детали ниже (см. отметку у «платного pipe-check»).
+    - [ ] **arbiter-план** (reader + re-rank + A/B) — написан, не исполнен; после go. **Go получен** (сигнал дискриминирует).
 
   - **Eval-improvements (план от 2026-06-14, NEXT SESSION):** ревью двух рецензентов сошлось,
     зафиксировано в [`../_cowork_output/10-code-review-eval-improvements-proposals.md`](../_cowork_output/10-code-review-eval-improvements-proposals.md) (v2).
@@ -58,14 +58,19 @@
       `MatchResult.malformed: bool` отдельно от `critical_pass`; оба консьюмера
       (native `FindingsMatchEvaluator` + method `case_evaluator`) зовут единый путь.
       `malformed_rate` → `score_components` (контракт numbers-only, без изменений схемы).
-    - [ ] **Задача 6 — платный pipe-check** на закалённом гейте (go/no-go). После P3.
-      Обвязка готова: `method/run_pipe_check.py` (CLI-адаптер → шим → оркестратор →
-      findings_match → `report_benchmark` payload + sqlite INSERT; `--dry-run`/`--db`/
-      `--with-rubric`). Два агента: `claude_code` (`claude -p`, через сессию CC) и
-      `anthropic_api` (raw API, шим `method/spawners/anthropic_api_shim.py` — labeled
-      baseline, НЕ замена CLI agent_id в роутинге). **Блок:** `ANTHROPIC_API_KEY` в
-      окружении НЕ задан → `anthropic_api` пропускается; `claude_code` готов к прогону.
-      Запуск платный — по решению Андрея (`uv run python method/run_pipe_check.py`).
+    - [x] **Задача 6 — платный pipe-check** на закалённом гейте (go/no-go). ✅ **СДЕЛАНО 2026-06-15…17.**
+      Результаты: `_cowork_output/r07-pipecheck/` (81 отчёта `report_benchmark_*.json` +
+      sqlite: `sweep.db`, `p2-filter.db`, `p2-heldout.db`, `arbiter-stats.db`).
+      **Итог: GO** — труба различает агентов чисто. code-review `crit_pass`:
+      ollama-llama32-1b 0.00 → qwen25-3b 0.07 → qwen25-7b 0.13 → llama32-3b 0.20 →
+      codex_cli 0.62 → anthropic_api 0.70 → deepseek 0.77 → qwen25-14b 0.87 → claude_code 0.90.
+      req-extraction-ловушка: слабые модели 0.08–0.42, сильные 1.00. Прогнаны 9 агентов
+      (`claude_code`, `anthropic_api`, `codex_cli`, `deepseek`, ollama-матрица 1b/3b/7b/14b).
+      **Cost:** записан только у `claude_code` = $17.08 (18 прогонов); у остальных `total_cost_usd: null`,
+      реальный расход ≈ $24+ (судья + не-учтённые агенты). Сводка: `_cowork_output/r07-pipecheck/SUMMARY.md`.
+      Обвязка: `method/run_pipe_check.py` (CLI-адаптер → шим → оркестратор → findings_match →
+      `report_benchmark` payload + sqlite). **Остаток:** per-task `score` в отчётах = 0.0 при высоком
+      агрегатном `critical_pass_rate` — свериться, что per-task поле несёт не-гейтящую рубрику, а не баг.
     - [ ] **P4 + prefill судьи (~0.5д).** strengths/weaknesses → только локальные логи (numeric-only
       payload). Prefill (anthropic API) — робастность СУДЬИ, отдельный PR от P1.
     - [ ] **P1 (~1д) — batched rubric** через отдельный structured-judge путь в method evaluator
@@ -209,15 +214,36 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
   сравнение для CLI/method-прогонов (а не только benchmark-платформа); провести аудит
   пересечения `SuiteExecution` ↔ benchmark `Run`, выбрать один дом, мосты/депрекейт для
   второго. Родитель для `/ui/executions` и для R-07-визуализации ниже.
-- [ ] **R-07: визуализация результатов code-review на дашборде.** Сейчас
+- [~] **R-07: визуализация результатов code-review на дашборде.** Сейчас
   `method/run_pipe_check.py` эмитит `report_benchmark-v1` в JSON/локальный sqlite для
   роутинга arbiter — в дашборде ATP **ничего не рендерится**. Нужен вид для code-review-
   вертикали: по агентам `critical_pass_rate` / `malformed_rate` / `breakpoint_axis_level`,
   свип по `axis_level`, по-кейсный `critical_pass` + recall/FP, история прогонов и
   сравнение агентов (`claude_code` vs `anthropic_api`). **Решение по источнику данных:**
-  (a) гнать pipe-check через `atp test`, чтобы он сохранялся как `SuiteExecution` (тогда
-  нужен `/ui/executions` ниже), либо (b) отдельная таблица/эндпоинт результатов code-review.
-  Зависит от EPIC выше. Контекст: R-07 Phase 1, `method/run_pipe_check.py`.
+  ~~(a) гнать pipe-check через `atp test`~~ / ~~(b) отдельная таблица~~ →
+  **выбран мост (b-lite): импортёр существующих JSON в SP-1 store** (2026-06-18).
+  - [x] **`method/import_pipecheck_to_dashboard.py`** — читает `report_benchmark_*.json`,
+    пишет по одному completed `SuiteExecution` (idempotent по `run_uuid`), переиспользуя
+    уже потраченный прогон без повторного вызова агентов. Рендерится через **существующие**
+    `/ui/eval-leaderboard` (ранжир по `critical_pass_rate`) и `/ui/eval-trends` (тренд по агенту).
+    Тест: `tests/unit/method_spawners/test_import_pipecheck_to_dashboard.py`.
+  - [x] **Прогнан на Mac (3.12, 2026-06-18):** 10/10 тестов, pyrefly 0, ruff чисто; импорт 81
+    отчёта → `~/.atp/dashboard.db`, `atp dashboard` стартует, `/ui/eval-leaderboard?suite_name=code-review`
+    рендерит всех агентов с `critical_pass_rate`/`malformed_rate`/`breakpoint`. По пути закрыты 2 бага:
+    (1) тест не собирался — модуль грузился через `importlib` без регистрации в `sys.modules`, а
+    `from __future__ import annotations` ломал `@dataclass`-резолв строковых аннотаций (фикс:
+    `sys.modules[_spec.name] = imp`); (2) `atp dashboard` падал на старте — пустой `ATP_DATABASE_URL=`
+    в `.env` давал `database_url=""`, проскакивавший проверку `is None` в `create_async_engine("")`
+    (фикс: `if not url:` → дефолт, в `database.py`; `.env.example:65` везёт ту же ловушку).
+  - [x] **`breakpoint_axis_level` проброшен** через импортёр (2026-06-18): поле есть в 54/81 отчётах
+    на верхнем уровне payload (clean…very_severe), модель/storage/шаблон уже поддерживали — импортёр
+    его выбрасывал, колонка `breakpoint` была пустой. Теперь заполняется. `language` — 0/81 в payload
+    (нет в данных), per-case recall/FP — `per_task` тонкий (`task_index/task_type/score/tokens/...`).
+  - [ ] **Осталось из исходного запроса** (требует правки `run_pipe_check.py`, не моста): свип по
+    `axis_level` (leaderboard берёт *последний* прогон на агента — `suite_leaderboard`, дисперсию
+    схлопывает), по-кейсный recall/FP (нет в payload), языковая ось (нет в payload). Отдельный вид +
+    обогащение `report_benchmark` — EPIC-уровень, см. родителя выше.
+  Контекст: R-07 Phase 1, `method/run_pipe_check.py`.
 - [ ] **CLI run-history page `/ui/executions`**: SuiteExecution history (from `atp test`) is
   only reachable via the JSON API — no HTML page renders it (`/ui/*` is wired to the
   separate benchmark `Run` model). New page: list + detail + per-run statistics +

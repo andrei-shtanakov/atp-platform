@@ -19,7 +19,8 @@
       <th>mean_rubric</th><th>breakpoint</th><th>task_type</th></tr></thead>
   <tbody>
     {% for e in entries %}
-    <tr><td>{{ loop.index }}</td><td>{{ e.agent_name }}</td>
+    <tr><td>{{ loop.index }}</td>
+      <td><a href="/ui/eval-run/{{ suite_name }}/{{ e.agent_name }}">{{ e.agent_name }}</a></td>
       <td>{{ "%.3f"|format(e.critical_pass_rate) if e.critical_pass_rate is not none else "—" }}</td>
       <td>{{ "%.3f"|format(e.malformed_rate) if e.malformed_rate is not none else "—" }}</td>
       <td>{{ "%.3f"|format(e.mean_rubric) if e.mean_rubric is not none else "—" }}</td>

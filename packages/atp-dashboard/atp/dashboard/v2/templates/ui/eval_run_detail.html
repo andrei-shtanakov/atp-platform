@@ -1,0 +1,47 @@
+{% extends "ui/base_ui.html" %}
+
+{% block title %}Eval Run — {{ agent_name }} / {{ suite_name }} - ATP Platform{% endblock %}
+
+{% block content %}
+<h2>Eval Run: {{ agent_name }} <small>/ {{ suite_name }}</small></h2>
+<p><a href="/ui/eval-leaderboard?suite_name={{ suite_name }}">← back to leaderboard</a></p>
+{% if run %}
+<p>Latest run <code>{{ run.run_uuid }}</code> ·
+  critical_pass_rate
+  {{ "%.3f"|format(run.critical_pass_rate) if run.critical_pass_rate is not none else "—" }}
+  · breakpoint {{ run.breakpoint_axis_level or "—" }}</p>
+{% endif %}
+{% if run is none %}
+<p>No completed run found for <code>{{ agent_name }}</code> on
+  <code>{{ suite_name }}</code> yet.</p>
+{% elif not cases %}
+<p>No per-case detail for this run (aggregate-only import — re-run the sweep with
+  the current harness to capture <code>case_details</code>).</p>
+{% else %}
+<h3>Axis sweep</h3>
+<table>
+  <thead><tr><th>axis_level</th><th>cases</th><th>critical_pass</th><th>pass_rate</th></tr></thead>
+  <tbody>
+    {% for a in axis_sweep %}
+    <tr><td>{{ a.axis_level }}</td><td>{{ a.n }}</td><td>{{ a.critical_pass }}</td>
+      <td>{{ "%.3f"|format(a.pass_rate) }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+<h3>Per-case ({{ cases|length }})</h3>
+<table>
+  <thead><tr><th>case_id</th><th>axis_level</th><th>critical_pass</th><th>malformed</th>
+    <th>recall</th><th>precision</th><th>fp_count</th></tr></thead>
+  <tbody>
+    {% for c in cases %}
+    <tr><td>{{ c.case_id }}</td><td>{{ c.axis_level or "—" }}</td>
+      <td>{{ "✓" if c.critical_pass else "✗" }}</td>
+      <td>{{ "✓" if c.malformed else "" }}</td>
+      <td>{{ "%.3f"|format(c.recall) if c.recall is not none else "—" }}</td>
+      <td>{{ "%.3f"|format(c.precision) if c.precision is not none else "—" }}</td>
+      <td>{{ c.fp_count if c.fp_count is not none else "—" }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}
