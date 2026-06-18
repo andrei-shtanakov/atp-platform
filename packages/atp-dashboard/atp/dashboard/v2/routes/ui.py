@@ -1977,6 +1977,33 @@ async def ui_eval_trends(
     )
 
 
+@router.get("/eval-run/{suite_name}/{agent_name}", response_class=HTMLResponse)
+@limiter.limit("120/minute")
+async def ui_eval_run_detail(
+    request: Request,
+    session: DBSession,
+    suite_name: str,
+    agent_name: str,
+) -> HTMLResponse:
+    """Per-case axis-sweep drill-down for one (suite, agent) latest run."""
+    user = await _get_ui_user(request, session)
+    storage = ResultStorage(session)
+    detail = await storage.suite_agent_case_detail(suite_name, agent_name)
+    return _templates(request).TemplateResponse(
+        request=request,
+        name="ui/eval_run_detail.html",
+        context={
+            "active_page": "eval_leaderboard",
+            "user": user,
+            "suite_name": suite_name,
+            "agent_name": agent_name,
+            "run": detail["run"],
+            "cases": detail["cases"],
+            "axis_sweep": detail["axis_sweep"],
+        },
+    )
+
+
 @router.get("/suites", response_class=HTMLResponse)
 @limiter.limit("120/minute")
 async def ui_suites(
