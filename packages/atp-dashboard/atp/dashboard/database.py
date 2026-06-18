@@ -35,12 +35,15 @@ class Database:
         """Initialize database connection.
 
         Args:
-            url: Database URL. If None, uses SQLite at ~/.atp/dashboard.db.
+            url: Database URL. If None or empty, uses SQLite at
+                 ~/.atp/dashboard.db. An empty string (e.g. ``ATP_DATABASE_URL=``
+                 left blank in ``.env``) is treated as unset rather than passed
+                 to SQLAlchemy, which would raise on an unparseable URL.
                  For SQLite: "sqlite+aiosqlite:///path/to/db.sqlite"
                  For PostgreSQL: "postgresql+asyncpg://user:pass@host/db"
             echo: Whether to echo SQL statements (for debugging).
         """
-        if url is None:
+        if not url:
             # Default to SQLite in user's home directory
             db_path = Path.home() / ".atp" / "dashboard.db"
             db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -184,7 +187,7 @@ async def init_database(url: str | None = None, echo: bool = False) -> Database:
     import os
 
     global _database
-    if url is None:
+    if not url:
         url = os.environ.get("ATP_DATABASE_URL") or None
     _database = Database(url=url, echo=echo)
     await _database.create_tables()
