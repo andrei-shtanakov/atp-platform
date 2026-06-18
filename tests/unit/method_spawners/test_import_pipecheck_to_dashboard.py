@@ -234,6 +234,30 @@ async def test_import_writes_no_case_rows_when_sibling_absent(tmp_path: Path) ->
         assert (await session.execute(select(TestExecution))).scalars().all() == []
 
 
+@pytest.mark.anyio
+async def test_child_rows_not_duplicated_on_reimport(tmp_path: Path) -> None:
+    """Child TestExecution rows not duplicated on second import when sibling present."""
+    db_url = f"sqlite+aiosqlite:///{tmp_path / 'd.db'}"
+    _write_report(tmp_path / "report_benchmark_claude_code.json", run_id="r1")
+    (tmp_path / "case_details_claude_code.jsonl").write_text(
+        '{"case_id":"c1","axis_level":"clean","critical_pass":true}\n'
+        '{"case_id":"c2","axis_level":"severe","critical_pass":false}'
+    )
+    reports = imp.discover_reports(tmp_path)
+    await imp.import_reports(reports, db_url=db_url)
+    await imp.import_reports(reports, db_url=db_url)  # second pass: parent skipped
+
+    from sqlalchemy import select
+
+    from atp.dashboard import init_database
+    from atp.dashboard.models import TestExecution
+
+    db = await init_database(url=db_url)
+    async with db.session() as session:
+        rows = (await session.execute(select(TestExecution))).scalars().all()
+        assert len(rows) == 2  # not 4 — second pass writes no child rows
+
+
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
