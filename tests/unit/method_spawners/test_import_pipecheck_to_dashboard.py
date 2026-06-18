@@ -258,6 +258,40 @@ async def test_child_rows_not_duplicated_on_reimport(tmp_path: Path) -> None:
         assert len(rows) == 2  # not 4 — second pass writes no child rows
 
 
+@pytest.mark.anyio
+async def test_replace_purges_prior_pipecheck_rows(tmp_path: Path) -> None:
+    db_url = f"sqlite+aiosqlite:///{tmp_path / 'd.db'}"
+    _write_report(tmp_path / "report_benchmark_claude_code.json", run_id="r1")
+    await imp.import_reports(imp.discover_reports(tmp_path), db_url=db_url)
+
+    # second sweep: new run_uuid, replace=True must supersede the first
+    _write_report(tmp_path / "report_benchmark_claude_code.json", run_id="r2")
+    imported, skipped = await imp.import_reports(
+        imp.discover_reports(tmp_path), db_url=db_url, replace=True
+    )
+    assert (imported, skipped) == (1, 0)
+
+    from sqlalchemy import select
+
+    from atp.dashboard import init_database
+    from atp.dashboard.models import SuiteExecution
+
+    db = await init_database(url=db_url)
+    async with db.session() as session:
+        runs = (
+            (
+                await session.execute(
+                    select(SuiteExecution.run_uuid).where(
+                        SuiteExecution.suite_name == "code-review"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert runs == ["r2"]
+
+
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"

@@ -150,9 +150,14 @@ def parse_case_details(path: Path) -> list[dict[str, Any]]:
 
 
 async def import_reports(
-    reports: list[ParsedReport], db_url: str | None = None
+    reports: list[ParsedReport], db_url: str | None = None, replace: bool = False
 ) -> tuple[int, int]:
-    """Write reports into the dashboard store. Returns (imported, skipped)."""
+    """Write reports into the dashboard store. Returns (imported, skipped).
+
+    When ``replace`` is True, existing ``pipe-check`` rows for the suites in
+    ``reports`` (and their child TestExecution rows) are deleted first, so a
+    fresh sweep supersedes earlier partial data.
+    """
     try:
         from atp.dashboard import ResultStorage, init_database
         from atp.dashboard.models import SuiteExecution
@@ -166,6 +171,34 @@ async def import_reports(
     imported = 0
     skipped = 0
     async with db.session() as session:
+        from sqlalchemy import delete
+
+        if replace:
+            suite_names = {r.suite_name for r in reports}
+            ids = (
+                (
+                    await session.execute(
+                        select(SuiteExecution.id).where(
+                            SuiteExecution.adapter == "pipe-check",
+                            SuiteExecution.suite_name.in_(suite_names),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            if ids:
+                from atp.dashboard.models import TestExecution
+
+                await session.execute(
+                    delete(TestExecution).where(
+                        TestExecution.suite_execution_id.in_(ids)
+                    )
+                )
+                await session.execute(
+                    delete(SuiteExecution).where(SuiteExecution.id.in_(ids))
+                )
+                print(f"--replace: purged {len(ids)} prior pipe-check run(s).")
         storage = ResultStorage(session)
         for r in reports:
             existing = (
@@ -246,6 +279,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Parse and list reports without writing to the database",
     )
+    parser.add_argument(
+        "--replace",
+        action="store_true",
+        help="Purge prior pipe-check runs for these suites before importing",
+    )
     args = parser.parse_args(argv)
 
     results_dir: Path = args.results_dir
@@ -270,7 +308,9 @@ def main(argv: list[str] | None = None) -> int:
         print("\n--dry-run: nothing written.")
         return 0
 
-    imported, skipped = asyncio.run(import_reports(reports, db_url=args.db))
+    imported, skipped = asyncio.run(
+        import_reports(reports, db_url=args.db, replace=args.replace)
+    )
     print(f"\nImported {imported} new run(s); skipped {skipped} already present.")
     print("Open: atp dashboard → /ui/eval-leaderboard and /ui/eval-trends")
     return 0
