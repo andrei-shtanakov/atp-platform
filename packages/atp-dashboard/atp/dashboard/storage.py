@@ -32,6 +32,8 @@ from atp.dashboard.models import (
     TestExecution,
 )
 
+AXIS_ORDER = ["clean", "mild", "moderate", "severe", "very_severe"]
+
 
 def _json_default(obj: Any) -> str:
     """JSON fallback for values the default encoder rejects.
@@ -1031,3 +1033,78 @@ class ResultStorage:
             }
             for r in rows
         ]
+
+    async def suite_agent_case_detail(
+        self, suite_name: str, agent_name: str
+    ) -> dict[str, Any]:
+        """Latest completed run's per-case rows + axis sweep for (suite, agent).
+
+        Returns {"run", "cases", "axis_sweep"}. ``axis_sweep`` carries the
+        critical_pass rate per axis_level in canonical order (only levels that
+        have cases). Empty when the pair has no completed run or no case rows.
+        """
+        run = (
+            await self._session.execute(
+                select(SuiteExecution)
+                .where(
+                    SuiteExecution.suite_name == suite_name,
+                    SuiteExecution.agent_name == agent_name,
+                    SuiteExecution.status == "completed",
+                )
+                .order_by(SuiteExecution.started_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if run is None:
+            return {"run": None, "cases": [], "axis_sweep": []}
+        rows = (
+            (
+                await self._session.execute(
+                    select(TestExecution).where(
+                        TestExecution.suite_execution_id == run.id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        cases = [
+            {
+                "case_id": t.test_id,
+                "axis_level": t.axis_level,
+                "critical_pass": t.critical_pass,
+                "malformed": t.malformed,
+                "recall": t.recall,
+                "precision": t.precision,
+                "fp_count": t.fp_count,
+                "duration_seconds": t.duration_seconds,
+            }
+            for t in rows
+        ]
+        by_axis: dict[str, list[TestExecution]] = {}
+        for t in rows:
+            by_axis.setdefault(t.axis_level or "unknown", []).append(t)
+        axis_sweep: list[dict[str, Any]] = []
+        for level in AXIS_ORDER:
+            group = by_axis.get(level)
+            if not group:
+                continue
+            passed = sum(1 for t in group if t.critical_pass)
+            axis_sweep.append(
+                {
+                    "axis_level": level,
+                    "n": len(group),
+                    "critical_pass": passed,
+                    "pass_rate": round(passed / len(group), 6),
+                }
+            )
+        return {
+            "run": {
+                "run_uuid": run.run_uuid,
+                "started_at": run.started_at,
+                "critical_pass_rate": run.critical_pass_rate,
+                "breakpoint_axis_level": run.breakpoint_axis_level,
+            },
+            "cases": cases,
+            "axis_sweep": axis_sweep,
+        }

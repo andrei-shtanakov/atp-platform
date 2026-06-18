@@ -892,3 +892,58 @@ class TestResultStorageSP3Views:
         agents = await storage.agents_for_suite("code-review")
 
         assert agents == ["anthropic_api", "claude_code"]
+
+
+@pytest.mark.anyio
+async def test_suite_agent_case_detail_axis_sweep() -> None:
+    from atp.dashboard.database import Database
+    from atp.dashboard.models import Base
+    from atp.dashboard.storage import ResultStorage
+
+    db = Database(url="sqlite+aiosqlite:///:memory:", echo=False)
+    async with db.engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async with db.session() as session:
+        storage = ResultStorage(session)
+        ex = await storage.create_suite_execution_by_name(
+            suite_name="code-review",
+            agent_name="claude_code",
+            started_at=datetime(2026, 6, 17, 10, 0, 0),
+            adapter="pipe-check",
+        )
+        await storage.update_suite_execution(ex, status="completed")
+        for axis, passed in [("clean", True), ("severe", True), ("severe", False)]:
+            te = await storage.create_test_execution(
+                suite_execution=ex,
+                test_id=f"{axis}-{passed}",
+                test_name=f"{axis}-{passed}",
+                dimensions={"axis_level": axis, "critical_pass": passed},
+            )
+            await storage.update_test_execution(te, status="completed", success=passed)
+        await session.commit()
+
+        detail = await storage.suite_agent_case_detail("code-review", "claude_code")
+        assert detail["run"] is not None
+        assert len(detail["cases"]) == 3
+        sweep = {a["axis_level"]: a for a in detail["axis_sweep"]}
+        assert [a["axis_level"] for a in detail["axis_sweep"]] == ["clean", "severe"]
+        assert sweep["clean"]["pass_rate"] == 1.0
+        assert sweep["severe"]["n"] == 2
+        assert sweep["severe"]["pass_rate"] == 0.5
+    await db.close()
+
+
+@pytest.mark.anyio
+async def test_suite_agent_case_detail_no_run_is_empty() -> None:
+    from atp.dashboard.database import Database
+    from atp.dashboard.models import Base
+    from atp.dashboard.storage import ResultStorage
+
+    db = Database(url="sqlite+aiosqlite:///:memory:", echo=False)
+    async with db.engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async with db.session() as session:
+        storage = ResultStorage(session)
+        detail = await storage.suite_agent_case_detail("code-review", "ghost")
+        assert detail == {"run": None, "cases": [], "axis_sweep": []}
+    await db.close()
