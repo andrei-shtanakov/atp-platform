@@ -198,7 +198,6 @@ async def import_reports(
                 await session.execute(
                     delete(SuiteExecution).where(SuiteExecution.id.in_(ids))
                 )
-                print(f"--replace: purged {len(ids)} prior pipe-check run(s).")
         storage = ResultStorage(session)
         for r in reports:
             existing = (
@@ -308,6 +307,8 @@ def main(argv: list[str] | None = None) -> int:
         print("\n--dry-run: nothing written.")
         return 0
 
+    if args.replace:
+        print("--replace: purging prior pipe-check runs for these suites first.")
     imported, skipped = asyncio.run(
         import_reports(reports, db_url=args.db, replace=args.replace)
     )
