@@ -110,6 +110,41 @@ def discover_reports(results_dir: Path) -> list[ParsedReport]:
     return reports
 
 
+def case_details_path_for(report_path: Path) -> Path:
+    """Sibling ``case_details_<agent>.jsonl`` for a report_benchmark file.
+
+    ``report_benchmark_<agent>.json`` -> ``case_details_<agent>.jsonl`` in the
+    same directory.
+    """
+    stem = report_path.name.replace("report_benchmark_", "case_details_", 1)
+    stem = stem.rsplit(".json", 1)[0]
+    return report_path.with_name(f"{stem}.jsonl")
+
+
+def parse_case_details(path: Path) -> list[dict[str, Any]]:
+    """Parse a ``case_details_<agent>.jsonl`` file into per-case dicts.
+
+    Returns [] if the file is missing or unreadable. Skips blank and malformed
+    lines so a single bad line never sinks the whole import.
+    """
+    try:
+        text = path.read_text()
+    except OSError:
+        return []
+    rows: list[dict[str, Any]] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            obj = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            rows.append(obj)
+    return rows
+
+
 async def import_reports(
     reports: list[ParsedReport], db_url: str | None = None
 ) -> tuple[int, int]:

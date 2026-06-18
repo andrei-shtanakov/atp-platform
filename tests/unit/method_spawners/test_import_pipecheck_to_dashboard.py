@@ -160,6 +160,27 @@ async def test_import_reports_idempotent(tmp_path: Path) -> None:
         assert [e["agent_name"] for e in board] == ["claude_code", "anthropic_api"]
 
 
+def test_parse_case_details_skips_blank_and_malformed(tmp_path: Path) -> None:
+    p = tmp_path / "case_details_x.jsonl"
+    p.write_text(
+        '{"case_id":"a","axis_level":"clean","critical_pass":true}\n'
+        "\n"
+        "not json {\n"
+        '{"case_id":"b","axis_level":"severe","critical_pass":false}'
+    )
+    rows = imp.parse_case_details(p)
+    assert [r["case_id"] for r in rows] == ["a", "b"]
+
+
+def test_parse_case_details_missing_file_is_empty(tmp_path: Path) -> None:
+    assert imp.parse_case_details(tmp_path / "nope.jsonl") == []
+
+
+def test_case_details_path_for_derives_sibling(tmp_path: Path) -> None:
+    rp = tmp_path / "report_benchmark_claude_code.json"
+    assert imp.case_details_path_for(rp).name == "case_details_claude_code.jsonl"
+
+
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
