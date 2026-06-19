@@ -42,6 +42,30 @@ grader:
   critical_check: >
     The intentional floor-division on integer cents is NOT flagged (no false positive).
   scoring: "Fail if the must_not_flag line is flagged; else pass."
+output_contract:
+  artifact_name: findings
+  content_type: application/json
+  schema:
+    type: object
+    required: [findings]
+    properties:
+      findings:
+        type: array
+        items:
+          type: object
+          required: [rule_id, anchor, severity]
+          properties:
+            rule_id: {type: string}
+            file: {type: string}
+            anchor: {type: string}
+            severity: {type: string, enum: [critical, major, minor]}
+            fix: {type: string}
+  format_instruction: >
+    Return ONLY a JSON object with a single key "findings" whose value is an
+    array. Each finding is an object with keys: "rule_id" (the rule/CWE id),
+    "file", "anchor" (the exact offending code substring), "severity"
+    (critical|major|minor), "fix". If the code is compliant, return
+    {"findings": []}. No prose, no markdown fence.
 provenance:
   author: andrei
   created: "2026-06-17"
