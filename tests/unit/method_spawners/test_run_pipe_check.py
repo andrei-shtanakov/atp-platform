@@ -22,7 +22,9 @@ def _run(args: list[str]) -> subprocess.CompletedProcess[bytes]:
 def test_unknown_task_type_exits_2_with_stderr() -> None:
     # Fail fast on an unknown --task-type: one-line stderr + exit 2 (not a
     # traceback), before any agent runs.
-    proc = _run(["--agents", "claude_code", "--task-type", "bogus", "--dry-run"])
+    proc = _run(
+        ["--agents", "claude_code@claude-opus-4-8", "--task-type", "bogus", "--dry-run"]
+    )
     assert proc.returncode == 2
     err = proc.stderr.decode()
     assert "unknown task_type" in err
@@ -176,3 +178,33 @@ def test_write_case_details_one_line_per_case(tmp_path: Path) -> None:
         assert "recall" in obj
         assert "precision" in obj
         assert "fp_count" in obj
+
+
+def test_agents_registry_builds_harness_at_model_ids() -> None:
+    from method.run_pipe_check import AGENTS
+
+    assert "claude_code@claude-opus-4-8" in AGENTS
+    assert "anthropic_api@claude-opus-4-8" in AGENTS
+    assert "deepseek@deepseek-chat" in AGENTS
+    assert "ollama@qwen2.5:14b" in AGENTS
+    # codex is NOT in the default matrix (no pinned model)
+    assert not any(a.startswith("codex_cli@") for a in AGENTS)
+    spec = AGENTS["ollama@qwen2.5:14b"]
+    assert spec["model"] == "qwen2.5:14b"
+    assert spec["model_env"] == "OLLAMA_MODEL"
+    assert spec["harness"] == "ollama"
+    assert spec["shim"].endswith("ollama_shim.py")
+
+
+def test_safe_agent_id_renders_filesystem_safe() -> None:
+    from method.run_pipe_check import safe_agent_id
+
+    assert safe_agent_id("ollama@qwen2.5:14b") == "ollama_qwen2_5_14b"
+    assert safe_agent_id("claude_code@claude-opus-4-8") == "claude_code_claude-opus-4-8"
+
+
+def test_legacy_bare_harness_id_is_unknown() -> None:
+    # The old harness-only id no longer resolves; must exit 2.
+    proc = _run(["--agents", "claude_code", "--task-type", "review", "--dry-run"])
+    assert proc.returncode == 2
+    assert "Unknown agent" in proc.stderr.decode()
