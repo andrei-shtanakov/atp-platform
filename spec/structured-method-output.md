@@ -1,8 +1,18 @@
 # Spec: structured outputs and deterministic scoring for `atp-method`
 
-**Status:** reconciled draft
+**Status:** reconciled draft — code-review migration LANDED 2026-06-19
 **Created:** 2026-06-14
-**Updated:** 2026-06-16
+**Updated:** 2026-06-19
+
+> **2026-06-19 status:** both verticals now use structured output + a deterministic
+> programmatic gate. req-extraction → `json_path` + `output_contract`; code-review →
+> object `{"findings":[...]}` + `output_contract` schema gate in `findings_match`
+> (legacy bare array still parses). Satisfied here: `output_contract` drives the
+> schema gate; `findings_match` prefers the structured (object) form with text
+> fallback; prompt output-shape comes from `output_contract.format_instruction`.
+> Deferred: `ArtifactStructured.data` transport through adapters (the codebase grades
+> JSON text, not a typed structured artifact) and the registry-declared per-checker
+> config models. See `docs/superpowers/plans/2026-06-19-code-review-structured-output.md`.
 **Disposition:** this draft is reconciled with the #188 direction described in
 ADR-007 and the req-extraction deterministic vertical design. It should not
 introduce a second grading taxonomy.

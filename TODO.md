@@ -82,13 +82,26 @@
 
   - **Phase-1b/2 (через БРЕЙНШТОРМ, после pipe-check):** 4 вопроса 2026-06-13 показали,
     что MVP — узкий зонд. Внедряем оси (приоритет в порядке):
-    - [ ] **#1 структурированный вывод (JSON findings) + `programmatic` critical_check** —
-      детерминизм вместо `model_graded` (как `examples/req-extraction-json`). Высший приоритет.
+    - [x] **#1 структурированный вывод (JSON findings) + `programmatic` critical_check.**
+      ✅ 2026-06-19. `programmatic`-детерминизм был у обоих семейств; теперь структурный
+      вывод **единообразен**: code-review мигрирован на объектную форму `{"findings":[...]}` —
+      во все 15 кейсов добавлен `output_contract` (объектная схема, выровненная с моделью
+      `Finding`: req `rule_id/anchor/severity`), а `findings_match` стал object-aware +
+      делает `jsonschema`-гейт против `output_contract.schema` (malformed при нарушении),
+      зеркаля `json_path`. Голый массив — legacy-fallback. Промпт берётся из
+      `output_contract.format_instruction` (единый источник). Примечание: «структурный» в
+      этой кодобазе = текст-JSON + schema-валидация (НЕ `ArtifactStructured` через адаптеры —
+      это отложено, не нужно для паритета с req-extraction). Ветка `r07/code-review-structured-output`.
+      План: `docs/superpowers/plans/2026-06-19-code-review-structured-output.md`.
+      **Риск к ре-базлайну (выходной прогон):** массив→объект меняет формат вывода агента,
+      а `output_contract` уводит промпт на `GENERIC_ENVELOPE` (теряется строка-персона
+      «senior code reviewer», роль остаётся в `instruction`) — проверить эффект на сигнале.
     - [ ] **#4 языковая ось** — в схеме `agent-eval-case` нет поля `language`, а arbiter
       роутит по языку (`features.rs` f[1]/f[16]) → скоры надо разбивать по языку + протянуть
-      в `benchmark_runs`. Влияет на валидность роутинга.
-    - [ ] **#2 correctness-семейство** — `code-review-correctness` (capability `correctness`):
-      посеянные ЛОГИЧЕСКИЕ баги / расхождение с требованием, не только нарушение правил.
+      в `benchmark_runs`. Влияет на валидность роутинга. **Реально не начата — следующая ось.**
+    - [x] **#2 correctness-семейство** — `code-review-correctness` (capability `correctness`):
+      ✅ сделано — 7 кейсов в `method/cases/code-review/case-code-review-correctness-*`
+      (logic/spec/distractor/fp), посеянные логические баги и ловушки на ложные срабатывания.
     - ❌ **#3 проверка использования линтеров — НЕ делаем.** Линтеры детерминированы; LLM
       бенчмаркаем на семантике. Запуск линтера агентом = file_write/exec = возврат проблемы
       fidelity спавнера, от которой ушли через text-out.

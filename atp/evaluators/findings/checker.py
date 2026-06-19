@@ -11,13 +11,14 @@ FINDINGS_CHECKER_VERSION = "findings_match@1"
 def findings_check(config: dict[str, Any], text: str | None) -> CaseVerdict:
     """Run the deterministic findings matcher and map it to a CaseVerdict.
 
-    ``config`` carries ``expected_findings`` / ``must_not_flag`` (the grader's
-    ground truth). ``text`` is the agent's primary output.
+    ``config`` carries ``expected_findings`` / ``must_not_flag`` (ground truth)
+    and optional ``schema`` (the output contract). ``text`` is the agent output.
     """
     r = grade_findings(
         text,
         config.get("expected_findings", []),
         config.get("must_not_flag", []),
+        schema=config.get("schema"),
     )
     return CaseVerdict(
         critical_pass=r.critical_pass,
