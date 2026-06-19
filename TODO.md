@@ -82,13 +82,20 @@
 
   - **Phase-1b/2 (через БРЕЙНШТОРМ, после pipe-check):** 4 вопроса 2026-06-13 показали,
     что MVP — узкий зонд. Внедряем оси (приоритет в порядке):
-    - [ ] **#1 структурированный вывод (JSON findings) + `programmatic` critical_check** —
-      детерминизм вместо `model_graded` (как `examples/req-extraction-json`). Высший приоритет.
+    - [~] **#1 структурированный вывод (JSON findings) + `programmatic` critical_check.**
+      `programmatic`-детерминизм (вместо `model_graded`) уже у ОБОИХ семейств:
+      code-review → `findings_match`, req-extraction → `json_path` + `output_contract`.
+      **Осталось** (Phase 3 спеки `spec/structured-method-output.md`): мигрировать
+      code-review findings на структурный артефакт — добавить `output_contract` в кейсы
+      code-review и научить `findings_match` предпочитать `ArtifactStructured.data`
+      (сейчас `findings_check(config, text)` парсит JSON из текста), оставив текст как fallback;
+      `output_contract.schema` → ATP `schema`-assertion + единый источник prompt-формата.
     - [ ] **#4 языковая ось** — в схеме `agent-eval-case` нет поля `language`, а arbiter
       роутит по языку (`features.rs` f[1]/f[16]) → скоры надо разбивать по языку + протянуть
-      в `benchmark_runs`. Влияет на валидность роутинга.
-    - [ ] **#2 correctness-семейство** — `code-review-correctness` (capability `correctness`):
-      посеянные ЛОГИЧЕСКИЕ баги / расхождение с требованием, не только нарушение правил.
+      в `benchmark_runs`. Влияет на валидность роутинга. **Реально не начата — следующая ось.**
+    - [x] **#2 correctness-семейство** — `code-review-correctness` (capability `correctness`):
+      ✅ сделано — 7 кейсов в `method/cases/code-review/case-code-review-correctness-*`
+      (logic/spec/distractor/fp), посеянные логические баги и ловушки на ложные срабатывания.
     - ❌ **#3 проверка использования линтеров — НЕ делаем.** Линтеры детерминированы; LLM
       бенчмаркаем на семантике. Запуск линтера агентом = file_write/exec = возврат проблемы
       fidelity спавнера, от которой ушли через text-out.
