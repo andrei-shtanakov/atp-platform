@@ -297,6 +297,32 @@ def _write_case_details(path: Path, case_results: list[dict[str, Any]]) -> None:
     path.write_text("\n".join(json.dumps(c) for c in case_results))
 
 
+async def _export_to_dashboard(out_dir: Path, replace: bool) -> None:
+    """Import the reports just written to ``out_dir`` into the dashboard store.
+
+    Reuses ``method/import_pipecheck_to_dashboard.py`` so a paid sweep lands in
+    the dashboard's ``/ui/eval-*`` views without a separate manual import step.
+    The dashboard package is optional (this harness otherwise has no DB
+    dependency); a clear message is printed and the run still succeeds if it is
+    absent.
+    """
+    method_dir = str(Path(__file__).resolve().parent)
+    if method_dir not in sys.path:
+        sys.path.insert(0, method_dir)
+    import import_pipecheck_to_dashboard as bridge  # pyrefly: ignore[missing-import]
+
+    reports = bridge.discover_reports(out_dir)
+    if not reports:
+        print("--to-dashboard: no reports to import.")
+        return
+    try:
+        imported, skipped = await bridge.import_reports(reports, replace=replace)
+    except SystemExit as exc:  # dashboard package not installed
+        print(f"--to-dashboard: skipped — {exc}")
+        return
+    print(f"--to-dashboard: imported {imported} run(s), skipped {skipped}.")
+
+
 def _insert(db_path: Path, payload: dict[str, Any]) -> None:
     """Insert a payload into a local benchmark_runs table (idempotent)."""
     conn = sqlite3.connect(db_path)
@@ -421,6 +447,9 @@ async def _main_async(args: argparse.Namespace) -> int:
         spread = max(rates.values()) - min(rates.values())
         print(f"\ncritical_pass_rate spread across agents: {spread:.3f} ({rates})")
         print("(Phase-0 anti-pattern: spread ~0 => no differentiating signal.)")
+
+    if args.to_dashboard:
+        await _export_to_dashboard(out_dir, replace=args.dashboard_replace)
     return 0
 
 
@@ -450,6 +479,18 @@ def main() -> int:
     )
     p.add_argument(
         "--dry-run", action="store_true", help="show the plan, make no calls"
+    )
+    p.add_argument(
+        "--to-dashboard",
+        action="store_true",
+        help="after the run, import the reports into the dashboard SP-1 store "
+        "(reuses import_pipecheck_to_dashboard.py; needs the dashboard package)",
+    )
+    p.add_argument(
+        "--dashboard-replace",
+        action="store_true",
+        help="with --to-dashboard, purge prior pipe-check rows for these "
+        "suites before importing (supersede partial data)",
     )
     return asyncio.run(_main_async(p.parse_args()))
 

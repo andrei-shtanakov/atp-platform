@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 HARNESS = Path(__file__).resolve().parents[3] / "method" / "run_pipe_check.py"
 
 
@@ -95,6 +97,52 @@ def test_grade_case_surfaces_continuous_metrics() -> None:
     assert base["recall"] == 0.5
     assert base["precision"] == 0.75
     assert base["fp_count"] == 1
+
+
+def test_export_to_dashboard_imports_written_reports(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """--to-dashboard wiring reuses the bridge to land reports in the store."""
+    import json
+
+    import anyio
+
+    from method.run_pipe_check import _export_to_dashboard
+
+    # Point the bridge's default DB at a throwaway sqlite (init_database reads
+    # ATP_DATABASE_URL when no url is passed) so the dev DB is untouched.
+    db_url = f"sqlite+aiosqlite:///{tmp_path / 'd.db'}"
+    monkeypatch.setenv("ATP_DATABASE_URL", db_url)
+    (tmp_path / "report_benchmark_claude_code.json").write_text(
+        json.dumps(
+            {
+                "payload_version": "1.0.0",
+                "run_id": "rpc-run-1",
+                "benchmark_id": "code-review",
+                "agent_id": "claude_code",
+                "ts": "2026-06-19T10:00:00+00:00",
+                "score": 0.9,
+                "score_components": {"critical_pass_rate": 0.9},
+                "duration_seconds": 1.0,
+            }
+        )
+    )
+
+    anyio.run(_export_to_dashboard, tmp_path, False)
+
+    from sqlalchemy import select
+
+    from atp.dashboard import init_database
+    from atp.dashboard.models import SuiteExecution
+
+    async def _check() -> list[str]:
+        db = await init_database(url=db_url)
+        async with db.session() as session:
+            return list(
+                (await session.execute(select(SuiteExecution.run_uuid))).scalars().all()
+            )
+
+    assert anyio.run(_check) == ["rpc-run-1"]
 
 
 def test_write_case_details_one_line_per_case(tmp_path: Path) -> None:
