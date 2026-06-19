@@ -196,6 +196,20 @@ def test_agents_registry_builds_harness_at_model_ids() -> None:
     assert spec["shim"].endswith("ollama_shim.py")
 
 
+def test_default_registry_has_no_safe_id_collisions() -> None:
+    from method.run_pipe_check import AGENTS, _safe_id_collision
+
+    assert _safe_id_collision(list(AGENTS)) is None
+
+
+def test_safe_id_collision_detects_collapsing_ids() -> None:
+    from method.run_pipe_check import _safe_id_collision
+
+    # Two distinct ids that collapse to the same file stem (ollama_qwen2_5_14b).
+    pair = _safe_id_collision(["ollama@qwen2.5:14b", "ollama@qwen2_5_14b"])
+    assert pair == ("ollama@qwen2.5:14b", "ollama@qwen2_5_14b")
+
+
 def test_safe_agent_id_renders_filesystem_safe() -> None:
     from method.run_pipe_check import safe_agent_id
 

@@ -38,11 +38,13 @@ Replace `SHIMS` (agent_id→shim) + `OLLAMA_MODELS` (agent_id→model) with one 
 - codex declares its model(s) explicitly in `AGENT_MODELS` (symmetric with ollama). The shim's "don't hardcode a global default" note still holds — the model is per-agent registry data, not a global constant.
 
 ### 2. Filename / path safety
-`agent_id` flows into filenames (`report_benchmark_<id>.json`, `case_details_<id>.jsonl`) and the drill-down URL (`/ui/eval-run/{suite}/{agent}`). `@`/`:`/`.` are filesystem- and URL-awkward. Add a shared `safe_agent_id(agent_id) -> str` (replace `@`,`:`,`.` → `_`) used **only** for file/path derivation, in the harness and the importer (sibling `case_details` lookup). The faithful `agent_id` is preserved in the payload, the dashboard `agent_name`, the DB, and the arbiter key.
+`agent_id` flows into filenames (`report_benchmark_<id>.json`, `case_details_<id>.jsonl`) and the drill-down URL (`/ui/eval-run/{suite}/{agent}`). `@`/`:`/`.` are filesystem- and URL-awkward. Add a `safe_agent_id(agent_id) -> str` (replace `@`,`:`,`.` → `_`) used **only** in the **harness**, which writes both output files with the same safe stem. The mapping is lossy/non-injective, so the harness guards against two ids collapsing to one stem (`_safe_id_collision` → fail-fast). The **importer does not call `safe_agent_id`**: it discovers `report_benchmark_*.json` by glob and derives the sibling `case_details` path from that filename (`case_details_path_for`, which swaps the prefix on the already-safe stem) — it never reconstructs a filename from the faithful id. The faithful `agent_id` is preserved in the payload, the dashboard `agent_name`, the DB, and the arbiter key.
 
 ### 3. Importer (`method/import_pipecheck_to_dashboard.py`)
 - Parse `harness, _, model = agent_id.partition("@")`; write the real `model` into `SuiteExecution.model` (instead of `agent_name`). `agent_name` stays the full `agent_id`.
-- Derive the sibling `case_details` path via `safe_agent_id`.
+- Derive the sibling `case_details` path from the report filename
+  (`case_details_path_for`) — no `safe_agent_id` call; the report file the
+  harness wrote already carries the safe stem.
 
 ### 4. Data migration (existing runs)
 - **Our dashboard:** the weekend pipe-check run with `--dashboard-replace` re-bases the pipe-check rows on the new ids — no separate migration required.
@@ -59,7 +61,7 @@ Replace `SHIMS` (agent_id→shim) + `OLLAMA_MODELS` (agent_id→model) with one 
 
 ## Testing (for the eventual plan, post-ack)
 - Registry: `AGENTS` builds expected `agent_id`s from `(harness, model)` pairs; `_run_agent` sets the correct model env var per harness.
-- `safe_agent_id`: `@`/`:`/`.` → `_`; round-trips into a valid filename; importer sibling-path uses it.
+- `safe_agent_id`: `@`/`:`/`.` → `_`; renders a valid filename; `_safe_id_collision` flags any two ids that collapse to one stem.
 - Importer: `agent_id` `harness@model` → `SuiteExecution.model == model`, `agent_name == agent_id`.
 - Unknown-agent / preflight paths still exit 2 with the new ids.
 

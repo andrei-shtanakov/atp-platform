@@ -94,9 +94,26 @@ def safe_agent_id(agent_id: str) -> str:
     """Filesystem-safe rendering of an agent_id for output file names.
 
     The faithful id (with '@', ':', '.') stays in the payload/dashboard/key;
-    only file names use this form.
+    only file names use this form. The mapping is lossy, so callers writing
+    per-agent files must guard against collisions via ``_safe_id_collision``.
     """
     return re.sub(r"[@:.]", "_", agent_id)
+
+
+def _safe_id_collision(agent_ids: list[str]) -> tuple[str, str] | None:
+    """First pair of agent_ids that collapse to the same ``safe_agent_id``.
+
+    ``safe_agent_id`` is not injective, so two distinct ids could map to one
+    file stem and silently overwrite each other's reports. Returns the first
+    colliding (earlier, later) pair, or None when every id is distinct.
+    """
+    seen: dict[str, str] = {}
+    for agent_id in agent_ids:
+        stem = safe_agent_id(agent_id)
+        if stem in seen:
+            return (seen[stem], agent_id)
+        seen[stem] = agent_id
+    return None
 
 
 # Env vars the shims need, passed through the adapter's filtered inheritance.
@@ -414,6 +431,16 @@ async def _main_async(args: argparse.Namespace) -> int:
     rubric = "on" if args.with_rubric else "off"
     print(f"Pipe-check: {n_cases} case(s) in {case_dir} | task_type={args.task_type}")
     print(f"Agents: {agents} | runs={args.runs} | rubric={rubric}")
+
+    collision = _safe_id_collision(agents)
+    if collision:
+        print(
+            f"agent_id filename collision: {collision[0]!r} and {collision[1]!r} "
+            f"both map to file stem {safe_agent_id(collision[0])!r}; "
+            "rename one model to avoid silent report overwrite.",
+            file=sys.stderr,
+        )
+        return 2
 
     runnable: list[str] = []
     for agent_id in agents:
