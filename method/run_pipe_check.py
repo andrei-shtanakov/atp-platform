@@ -22,7 +22,7 @@ Agents (two spawners, by design):
 Usage:
   uv run python method/run_pipe_check.py --dry-run        # show plan, no calls
   uv run python method/run_pipe_check.py                  # both agents (PAID)
-  uv run python method/run_pipe_check.py --agents claude_code
+  uv run python method/run_pipe_check.py --agents claude_code@claude-opus-4-8
   uv run python method/run_pipe_check.py --with-rubric --db /tmp/bench.db
 """
 
