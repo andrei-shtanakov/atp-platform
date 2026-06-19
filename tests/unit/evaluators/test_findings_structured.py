@@ -71,6 +71,14 @@ def test_grade_findings_valid_object_matches() -> None:
     assert r.malformed is False
 
 
+def test_grade_findings_object_without_findings_key_is_malformed() -> None:
+    # A JSON object lacking "findings" must be malformed, not a KeyError —
+    # the schema=None native path stays non-raising for any JSON object.
+    r = grade_findings('{"foo": 1}', _EXPECTED, [], schema=None)
+    assert r.malformed is True
+    assert r.critical_pass is False
+
+
 def test_findings_check_threads_schema_from_config() -> None:
     v = findings_check(
         {

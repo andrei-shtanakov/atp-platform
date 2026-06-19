@@ -126,7 +126,9 @@ def grade_findings(
             jsonschema.validate(raw, schema)
         except (jsonschema.ValidationError, jsonschema.SchemaError):
             return _malformed_result()
-    parsed = raw["findings"] if isinstance(raw, dict) else raw
+    # A dict without a "findings" list is malformed, not a crash (the
+    # schema=None native path must stay non-raising for any JSON object).
+    parsed = raw.get("findings") if isinstance(raw, dict) else raw
     if not isinstance(parsed, list):
         return _malformed_result()
     findings = validate_findings(parsed)

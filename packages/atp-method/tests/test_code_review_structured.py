@@ -9,7 +9,12 @@ _CASES = sorted(
         "*.yaml"
     )
 )
-assert len(_CASES) == 15, f"expected 15 code-review cases, got {len(_CASES)}"
+
+
+def test_all_code_review_cases_discovered() -> None:
+    # A normal test (not an import-time assert): a wrong/empty glob fails here
+    # with a clear name, and isn't stripped under `python -O`.
+    assert len(_CASES) == 15, f"expected 15 code-review cases, got {len(_CASES)}"
 
 
 def test_every_code_review_case_declares_object_output_contract() -> None:
