@@ -9,6 +9,7 @@ _CASES = sorted(
         "*.yaml"
     )
 )
+assert len(_CASES) == 15, f"expected 15 code-review cases, got {len(_CASES)}"
 
 
 def test_every_code_review_case_declares_object_output_contract() -> None:
@@ -22,6 +23,7 @@ def test_every_code_review_case_declares_object_output_contract() -> None:
         schema = case.output_contract.json_schema
         assert schema.get("type") == "object", path.name
         assert "findings" in schema.get("required", []), path.name
+        assert case.output_contract.format_instruction, path.name
 
 
 def test_code_review_prompt_uses_object_format_instruction() -> None:
