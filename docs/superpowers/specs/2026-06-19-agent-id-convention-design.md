@@ -1,7 +1,7 @@
 # Agent-id convention: `<harness>@<model>` — design
 
 **Date:** 2026-06-19
-**Status:** approved (brainstorm); **implementation GATED on arbiter ack**
+**Status:** approved (brainstorm); **arbiter ACKED 2026-06-19** (implementing their side + informing Maestro) → implementation unblocked
 **Branch:** `r07/agent-id-convention`
 **Cross-project:** changes the `report_benchmark` `agent_id` (arbiter's routing key) — coordination notice: `../_cowork_output/contracts/2026-06-19-agent-id-convention-change.md`
 
