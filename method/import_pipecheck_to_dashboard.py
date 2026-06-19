@@ -210,12 +210,15 @@ async def import_reports(
             if existing is not None:
                 skipped += 1
                 continue
+            # model lives inside the agent_id (<harness>@<model>); fall back to
+            # the full id for legacy ids without '@'.
+            model_label = r.agent_name.partition("@")[2] or r.agent_name
             execution = await storage.create_suite_execution_by_name(
                 suite_name=r.suite_name,
                 agent_name=r.agent_name,
                 started_at=r.started_at,
                 adapter="pipe-check",
-                model=r.agent_name,
+                model=model_label,
             )
             execution.run_uuid = r.run_uuid
             await storage.update_suite_execution(
