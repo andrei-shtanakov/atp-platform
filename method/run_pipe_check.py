@@ -306,10 +306,21 @@ async def _export_to_dashboard(out_dir: Path, replace: bool) -> None:
     dependency); a clear message is printed and the run still succeeds if it is
     absent.
     """
-    method_dir = str(Path(__file__).resolve().parent)
-    if method_dir not in sys.path:
-        sys.path.insert(0, method_dir)
-    import import_pipecheck_to_dashboard as bridge  # pyrefly: ignore[missing-import]
+    # Load the sibling bridge by explicit path — no global sys.path mutation.
+    # It must be registered in sys.modules before exec (its frozen dataclass
+    # resolves string annotations via sys.modules[cls.__module__]).
+    import importlib.util
+
+    name = "import_pipecheck_to_dashboard"
+    bridge = sys.modules.get(name)
+    if bridge is None:
+        bridge_path = Path(__file__).resolve().parent / f"{name}.py"
+        spec = importlib.util.spec_from_file_location(name, bridge_path)
+        if spec is None or spec.loader is None:  # pragma: no cover - defensive
+            raise RuntimeError(f"cannot load bridge at {bridge_path}")
+        bridge = importlib.util.module_from_spec(spec)
+        sys.modules[name] = bridge
+        spec.loader.exec_module(bridge)
 
     reports = bridge.discover_reports(out_dir)
     if not reports:
@@ -492,7 +503,14 @@ def main() -> int:
         help="with --to-dashboard, purge prior pipe-check rows for these "
         "suites before importing (supersede partial data)",
     )
-    return asyncio.run(_main_async(p.parse_args()))
+    args = p.parse_args()
+    if args.dashboard_replace and not args.to_dashboard:
+        print(
+            "--dashboard-replace requires --to-dashboard.",
+            file=sys.stderr,
+        )
+        return 2
+    return asyncio.run(_main_async(args))
 
 
 if __name__ == "__main__":

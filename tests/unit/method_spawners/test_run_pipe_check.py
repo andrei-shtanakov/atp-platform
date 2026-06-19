@@ -35,6 +35,16 @@ def test_unknown_agent_exits_2() -> None:
     assert "Unknown agent" in proc.stderr.decode()
 
 
+def test_dashboard_replace_without_to_dashboard_exits_2() -> None:
+    # --dashboard-replace alone is a misconfiguration: fail fast (exit 2),
+    # not silently no-op.
+    proc = _run(["--dashboard-replace", "--agents", "claude_code", "--dry-run"])
+    assert proc.returncode == 2
+    err = proc.stderr.decode()
+    assert "--dashboard-replace requires --to-dashboard" in err
+    assert "Traceback" not in err
+
+
 def _completed_test_result() -> object:
     """Build a minimal completed TestResult for a real code-review case."""
     from datetime import UTC, datetime
@@ -128,7 +138,9 @@ def test_export_to_dashboard_imports_written_reports(
         )
     )
 
+    path_before = list(sys.path)
     anyio.run(_export_to_dashboard, tmp_path, False)
+    assert sys.path == path_before  # helper must not mutate global sys.path
 
     from sqlalchemy import select
 
