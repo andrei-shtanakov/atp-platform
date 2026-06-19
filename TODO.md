@@ -243,6 +243,20 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
     `axis_level` (leaderboard берёт *последний* прогон на агента — `suite_leaderboard`, дисперсию
     схлопывает), по-кейсный recall/FP (нет в payload), языковая ось (нет в payload). Отдельный вид +
     обогащение `report_benchmark` — EPIC-уровень, см. родителя выше.
+  - [x] **Эргономика: `run_pipe_check.py --to-dashboard`** (2026-06-19): после прогона зовёт мост
+    (`import_pipecheck_to_dashboard`) на своей out-dir — новые свипы попадают в `/ui/eval-*` без
+    отдельной команды; `--dashboard-replace` для supersede. Guarded import → в песочнице без дашборда
+    флаг просто скипается. Развязка харнесс↔дашборд сохранена.
+  - [ ] **ИССЛЕДОВАТЬ (перспектива): полное слияние путей оценки** — дописать `BenchmarkReporter`
+    (сейчас `NotImplementedError`; маппинг `SuiteReport→report_benchmark` помечен Phase-1b), тогда
+    `atp test method/cases/X -o report_benchmark` сам даёт arbiter-payload, а `run_pipe_check`
+    становится тонким циклом `atp test` по агентам → пишет в `SuiteExecution` нативно И эмитит payload
+    → мост нужен только для исторических данных. Один путь оценки. Открытый вопрос: оправдывает ли
+    выигрыш связывание чистого продьюсера (харнесс, без БД-зависимости, работает в 3.10-песочнице) с
+    тяжёлым опциональным потребителем (дашборд). Также свести дублирование агрегатов
+    (`breakpoint_axis_level`/`critical_pass_rate` считаются и в `benchmark_reporter.py`, и в
+    `dashboard/dimensions.py`). Зависит от обогащения payload; смыкается с родительским EPIC.
+    См. `docs/research/2026-06-19-unify-eval-paths.md`.
   Контекст: R-07 Phase 1, `method/run_pipe_check.py`.
 - [ ] **CLI run-history page `/ui/executions`**: SuiteExecution history (from `atp test`) is
   only reachable via the JSON API — no HTML page renders it (`/ui/*` is wired to the
