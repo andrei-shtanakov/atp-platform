@@ -260,6 +260,14 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
     (`import_pipecheck_to_dashboard`) на своей out-dir — новые свипы попадают в `/ui/eval-*` без
     отдельной команды; `--dashboard-replace` для supersede. Guarded import → в песочнице без дашборда
     флаг просто скипается. Развязка харнесс↔дашборд сохранена.
+  - [x] **Конвенция `agent_id = <harness>@<model>`** (2026-06-19, arbiter ACKED): единый data-driven
+    реестр `HARNESSES`+`AGENT_MODELS`→`AGENTS` в `run_pipe_check.py`; модель явная у каждого агента и
+    пишется в `SuiteExecution.model` (импортёр парсит `@`); `safe_agent_id()` только для имён файлов,
+    faithful id — в payload/дашборде/ключе arbiter. ollama-id меняют форму (`ollama@qwen2.5:14b`).
+    **codex_cli вне дефолтной матрицы** — оператор добавляет `("codex_cli","<model>")` в `AGENT_MODELS`
+    при конфигурации прогона (вместе с новыми моделями/ключами). Выходной прогон ре-базлайнит на новых
+    id. Нотис: `_cowork_output/contracts/2026-06-19-agent-id-convention-change.md`. Спека+план в
+    `docs/superpowers/{specs,plans}/2026-06-19-agent-id-convention*`.
   - [ ] **ИССЛЕДОВАТЬ (перспектива): полное слияние путей оценки** — дописать `BenchmarkReporter`
     (сейчас `NotImplementedError`; маппинг `SuiteReport→report_benchmark` помечен Phase-1b), тогда
     `atp test method/cases/X -o report_benchmark` сам даёт arbiter-payload, а `run_pipe_check`

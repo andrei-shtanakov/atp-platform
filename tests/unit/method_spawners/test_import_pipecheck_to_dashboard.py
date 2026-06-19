@@ -339,6 +339,51 @@ async def test_replace_purges_prior_pipecheck_rows(tmp_path: Path) -> None:
         assert runs == ["r2"]
 
 
+@pytest.mark.anyio
+async def test_import_sets_model_from_agent_id(tmp_path: Path) -> None:
+    db_url = f"sqlite+aiosqlite:///{tmp_path / 'd.db'}"
+    _write_report(
+        tmp_path / "report_benchmark_claude_code_claude-opus-4-8.json",
+        run_id="run-x",
+        agent_id="claude_code@claude-opus-4-8",
+    )
+    await imp.import_reports(imp.discover_reports(tmp_path), db_url=db_url)
+
+    from sqlalchemy import select
+
+    from atp.dashboard import init_database
+    from atp.dashboard.models import SuiteExecution
+
+    db = await init_database(url=db_url)
+    async with db.session() as session:
+        row = (await session.execute(select(SuiteExecution))).scalars().one()
+        assert row.agent_name == "claude_code@claude-opus-4-8"
+        assert row.model == "claude-opus-4-8"
+
+
+@pytest.mark.anyio
+async def test_import_model_falls_back_to_agent_name_without_at(
+    tmp_path: Path,
+) -> None:
+    db_url = f"sqlite+aiosqlite:///{tmp_path / 'd.db'}"
+    _write_report(
+        tmp_path / "report_benchmark_legacy.json",
+        run_id="run-l",
+        agent_id="legacy_agent",
+    )
+    await imp.import_reports(imp.discover_reports(tmp_path), db_url=db_url)
+
+    from sqlalchemy import select
+
+    from atp.dashboard import init_database
+    from atp.dashboard.models import SuiteExecution
+
+    db = await init_database(url=db_url)
+    async with db.session() as session:
+        row = (await session.execute(select(SuiteExecution))).scalars().one()
+        assert row.model == "legacy_agent"
+
+
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"

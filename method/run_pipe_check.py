@@ -22,7 +22,7 @@ Agents (two spawners, by design):
 Usage:
   uv run python method/run_pipe_check.py --dry-run        # show plan, no calls
   uv run python method/run_pipe_check.py                  # both agents (PAID)
-  uv run python method/run_pipe_check.py --agents claude_code
+  uv run python method/run_pipe_check.py --agents claude_code@claude-opus-4-8
   uv run python method/run_pipe_check.py --with-rubric --db /tmp/bench.db
 """
 
@@ -32,6 +32,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import shlex
 import shutil
 import sqlite3
@@ -54,30 +55,66 @@ from atp.runner import TestOrchestrator
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# agent_id -> shim path (relative to repo root). Both run via the current
-# interpreter so the raw-API shim sees the installed `anthropic` SDK.
-_OLLAMA_SHIM = "method/spawners/ollama_shim.py"
-SHIMS: dict[str, str] = {
-    "claude_code": "method/spawners/claude_code_shim.py",
-    "codex_cli": "method/spawners/codex_cli_shim.py",
-    "anthropic_api": "method/spawners/anthropic_api_shim.py",
-    "deepseek": "method/spawners/deepseek_shim.py",
-    "ollama_llama32_1b": _OLLAMA_SHIM,
-    "ollama_llama32_3b": _OLLAMA_SHIM,
-    "ollama_qwen25_3b": _OLLAMA_SHIM,
-    "ollama_qwen25_7b": _OLLAMA_SHIM,
-    "ollama_qwen25_14b": _OLLAMA_SHIM,
+# harness -> (shim path relative to repo root, env var that pins the model).
+HARNESSES: dict[str, tuple[str, str]] = {
+    "claude_code": ("method/spawners/claude_code_shim.py", "CLAUDE_MODEL"),
+    "codex_cli": ("method/spawners/codex_cli_shim.py", "CODEX_MODEL"),
+    "anthropic_api": ("method/spawners/anthropic_api_shim.py", "CLAUDE_MODEL"),
+    "deepseek": ("method/spawners/deepseek_shim.py", "DEEPSEEK_MODEL"),
+    "ollama": ("method/spawners/ollama_shim.py", "OLLAMA_MODEL"),
 }
 
-# Local-model matrix rows: agent_id -> concrete Ollama model tag. The shim reads
-# the model from OLLAMA_MODEL, which _run_agent sets per agent_id before spawning.
-OLLAMA_MODELS: dict[str, str] = {
-    "ollama_llama32_1b": "llama3.2:1b",
-    "ollama_llama32_3b": "llama3.2:3b",
-    "ollama_qwen25_3b": "qwen2.5:3b",
-    "ollama_qwen25_7b": "qwen2.5:7b",
-    "ollama_qwen25_14b": "qwen2.5:14b",
+# Default (harness, model) matrix. agent_id = f"{harness}@{model}". The model is
+# the faithful provider id. codex_cli is intentionally absent: it has no pinned
+# model, so the operator adds ("codex_cli", "<model>") here when it is known.
+AGENT_MODELS: list[tuple[str, str]] = [
+    ("claude_code", "claude-opus-4-8"),
+    ("anthropic_api", "claude-opus-4-8"),
+    ("deepseek", "deepseek-chat"),
+    ("ollama", "llama3.2:1b"),
+    ("ollama", "llama3.2:3b"),
+    ("ollama", "qwen2.5:3b"),
+    ("ollama", "qwen2.5:7b"),
+    ("ollama", "qwen2.5:14b"),
+]
+
+# agent_id -> resolved spec. The id is the routing key (faithful, with '@').
+AGENTS: dict[str, dict[str, str]] = {
+    f"{harness}@{model}": {
+        "shim": HARNESSES[harness][0],
+        "model_env": HARNESSES[harness][1],
+        "model": model,
+        "harness": harness,
+    }
+    for harness, model in AGENT_MODELS
 }
+
+
+def safe_agent_id(agent_id: str) -> str:
+    """Filesystem-safe rendering of an agent_id for output file names.
+
+    The faithful id (with '@', ':', '.') stays in the payload/dashboard/key;
+    only file names use this form. The mapping is lossy, so callers writing
+    per-agent files must guard against collisions via ``_safe_id_collision``.
+    """
+    return re.sub(r"[@:.]", "_", agent_id)
+
+
+def _safe_id_collision(agent_ids: list[str]) -> tuple[str, str] | None:
+    """First pair of agent_ids that collapse to the same ``safe_agent_id``.
+
+    ``safe_agent_id`` is not injective, so two distinct ids could map to one
+    file stem and silently overwrite each other's reports. Returns the first
+    colliding (earlier, later) pair, or None when every id is distinct.
+    """
+    seen: dict[str, str] = {}
+    for agent_id in agent_ids:
+        stem = safe_agent_id(agent_id)
+        if stem in seen:
+            return (seen[stem], agent_id)
+        seen[stem] = agent_id
+    return None
+
 
 # Env vars the shims need, passed through the adapter's filtered inheritance.
 # API-key-shaped names are blocked by default, so they MUST be allowlisted.
@@ -124,29 +161,28 @@ def _axis_by_id(case_dir: Path) -> dict[str, str]:
 
 def _preflight(agent_id: str) -> str | None:
     """Return a skip-reason if the agent can't run here, else None."""
-    if agent_id == "claude_code":
-        # The shim invokes CLAUDE_BIN (default "claude"), which may be an absolute
-        # path or a "python .../fake.py" command — not necessarily on PATH. Check
-        # the first token resolves (on PATH or as an existing file).
+    spec = AGENTS.get(agent_id)
+    if spec is None:
+        return f"unknown agent: {agent_id}"
+    harness = spec["harness"]
+    if harness == "claude_code":
         claude_bin = os.environ.get("CLAUDE_BIN", "claude")
         parts = shlex.split(claude_bin) if claude_bin else ["claude"]
         binary = parts[0] if parts else "claude"
         if shutil.which(binary) is None and not Path(binary).exists():
             return f"claude binary not found (CLAUDE_BIN={claude_bin!r})"
-    if agent_id == "codex_cli":
-        # Same first-token resolution check as claude_code: CODEX_BIN may be an
-        # absolute path or a "python .../fake_codex.py" command (used in tests).
+    if harness == "codex_cli":
         codex_bin = os.environ.get("CODEX_BIN", "codex")
         parts = shlex.split(codex_bin) if codex_bin else ["codex"]
         binary = parts[0] if parts else "codex"
         if shutil.which(binary) is None and not Path(binary).exists():
             return f"codex binary not found (CODEX_BIN={codex_bin!r})"
-    if agent_id == "anthropic_api" and not os.environ.get("ANTHROPIC_API_KEY"):
+    if harness == "anthropic_api" and not os.environ.get("ANTHROPIC_API_KEY"):
         return "ANTHROPIC_API_KEY not set"
-    if agent_id == "deepseek" and not os.environ.get("DEEPSEEK_API_KEY"):
+    if harness == "deepseek" and not os.environ.get("DEEPSEEK_API_KEY"):
         return "DEEPSEEK_API_KEY not set"
-    if agent_id in OLLAMA_MODELS:
-        return _preflight_ollama(OLLAMA_MODELS[agent_id])
+    if harness == "ollama":
+        return _preflight_ollama(spec["model"])
     return None
 
 
@@ -247,17 +283,13 @@ async def _run_agent(
     continuous recall/precision/fp_count a downstream filter reads).
     """
     suite = load_suite(str(case_dir))
-    # Ollama rows share one shim; the model is selected per agent_id and injected
-    # via the adapter's explicit `environment` config (no global os.environ
-    # mutation, which would leak across agents in the same process).
-    adapter_env: dict[str, str] = {}
-    if agent_id in OLLAMA_MODELS:
-        adapter_env["OLLAMA_MODEL"] = OLLAMA_MODELS[agent_id]
+    spec = AGENTS[agent_id]
+    adapter_env: dict[str, str] = {spec["model_env"]: spec["model"]}
     adapter = create_adapter(
         "cli",
         {
             "command": sys.executable,
-            "args": [str(REPO_ROOT / SHIMS[agent_id])],
+            "args": [str(REPO_ROOT / spec["shim"])],
             "inherit_environment": True,
             "allowed_env_vars": ALLOWED_ENV,
             "environment": adapter_env,
@@ -382,9 +414,9 @@ async def _main_async(args: argparse.Namespace) -> int:
     case_dir = (REPO_ROOT / args.case_dir).resolve()
     axis_by_id = _axis_by_id(case_dir)
     agents = [a.strip() for a in args.agents.split(",") if a.strip()]
-    unknown = [a for a in agents if a not in SHIMS]
+    unknown = [a for a in agents if a not in AGENTS]
     if unknown:
-        print(f"Unknown agent(s): {unknown}. Known: {list(SHIMS)}", file=sys.stderr)
+        print(f"Unknown agent(s): {unknown}. Known: {list(AGENTS)}", file=sys.stderr)
         return 2
 
     try:
@@ -399,6 +431,16 @@ async def _main_async(args: argparse.Namespace) -> int:
     rubric = "on" if args.with_rubric else "off"
     print(f"Pipe-check: {n_cases} case(s) in {case_dir} | task_type={args.task_type}")
     print(f"Agents: {agents} | runs={args.runs} | rubric={rubric}")
+
+    collision = _safe_id_collision(agents)
+    if collision:
+        print(
+            f"agent_id filename collision: {collision[0]!r} and {collision[1]!r} "
+            f"both map to file stem {safe_agent_id(collision[0])!r}; "
+            "rename one model to avoid silent report overwrite.",
+            file=sys.stderr,
+        )
+        return 2
 
     runnable: list[str] = []
     for agent_id in agents:
@@ -435,9 +477,10 @@ async def _main_async(args: argparse.Namespace) -> int:
             args.timeout,
             benchmark_id,
         )
-        out_file = out_dir / f"report_benchmark_{agent_id}.json"
+        safe = safe_agent_id(agent_id)
+        out_file = out_dir / f"report_benchmark_{safe}.json"
         out_file.write_text(json.dumps(payload, indent=2))
-        _write_case_details(out_dir / f"case_details_{agent_id}.jsonl", case_results)
+        _write_case_details(out_dir / f"case_details_{safe}.jsonl", case_results)
         payloads.append(payload)
         if db_path is not None:
             _insert(db_path, payload)
@@ -478,7 +521,7 @@ def main() -> int:
         default="review",
         help="internal task_type; benchmark_id is derived for the arbiter export",
     )
-    p.add_argument("--agents", default=",".join(SHIMS))
+    p.add_argument("--agents", default=",".join(AGENTS))
     p.add_argument("--runs", type=int, default=1)
     p.add_argument(
         "--with-rubric", action="store_true", help="grade the LLM rubric too"

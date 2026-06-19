@@ -118,3 +118,26 @@ async def test_eval_run_detail_no_completed_run(fresh_app: tuple) -> None:
     assert resp.status_code == 200
     assert "no completed run found" in resp.text.lower()
     assert "aggregate-only" not in resp.text.lower()
+
+
+@pytest.mark.anyio
+async def test_eval_run_detail_resolves_at_model_agent_id(fresh_app: tuple) -> None:
+    from atp.dashboard.storage import ResultStorage
+
+    app, db = fresh_app
+    async with db.session() as session:
+        storage = ResultStorage(session)
+        ex = await storage.create_suite_execution_by_name(
+            suite_name="code-review",
+            agent_name="ollama@qwen2.5:14b",
+            started_at=datetime.now(),
+            adapter="pipe-check",
+        )
+        await storage.update_suite_execution(ex, status="completed")
+        await session.commit()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/ui/eval-run/code-review/ollama@qwen2.5:14b")
+    assert resp.status_code == 200
+    assert "ollama@qwen2.5:14b" in resp.text
