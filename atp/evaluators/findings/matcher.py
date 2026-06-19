@@ -9,6 +9,7 @@ import json
 import re
 from typing import Any, Literal
 
+import jsonschema
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 
@@ -59,9 +60,11 @@ def _anchor_overlap(a: str, b: str) -> bool:
     return bool(na) and bool(nb) and (na in nb or nb in na)
 
 
-def parse_findings(text: str) -> list[dict[str, Any]] | None:
-    """Parse a findings JSON array from the agent's response text, tolerating a
-    surrounding markdown code fence. Returns None if it is not a JSON array."""
+def _load_json(text: str | None) -> Any:
+    """Parse JSON from agent text, tolerating one surrounding markdown fence.
+
+    Returns the parsed value (object/array/...) or None if it is not JSON.
+    """
     if text is None:
         return None
     stripped = text.strip()
@@ -69,9 +72,17 @@ def parse_findings(text: str) -> list[dict[str, Any]] | None:
     if fence:
         stripped = fence.group(1).strip()
     try:
-        data = json.loads(stripped)
+        return json.loads(stripped)
     except (ValueError, TypeError):
         return None
+
+
+def parse_findings(text: str | None) -> list[dict[str, Any]] | None:
+    """Findings array from agent text. Accepts the structured object form
+    ``{"findings": [...]}`` (preferred) and a bare array (legacy fallback)."""
+    data = _load_json(text)
+    if isinstance(data, dict) and isinstance(data.get("findings"), list):
+        return data["findings"]
     return data if isinstance(data, list) else None
 
 
@@ -99,20 +110,24 @@ def grade_findings(
     text: str | None,
     expected: list[dict[str, Any]],
     must_not_flag: list[dict[str, Any]],
+    schema: dict[str, Any] | None = None,
 ) -> MatchResult:
-    """Parse, strictly validate, and match agent output in a single pass.
+    """Parse, optionally schema-validate, strictly validate, and match in one pass.
 
-    Collapses the two failure modes into one :class:`MatchResult`:
-
-    - ``malformed=True`` (with ``critical_pass=False``) when the output is not a
-      JSON array of valid :class:`Finding` objects — whether it failed to parse
-      *or* a finding failed strict validation. This is distinct from a
-      legitimately missed defect (``malformed=False, critical_pass=False``).
-    - otherwise the usual recall/precision/critical_pass from
-      :func:`match_findings`.
+    When ``schema`` is given (the case's ``output_contract.schema``), the parsed
+    JSON is validated against it first; a violation is ``malformed`` — the
+    contract gate, mirroring ``json_path_check``.
     """
-    parsed = parse_findings(text) if text is not None else None
-    if parsed is None:
+    raw = _load_json(text)
+    if raw is None:
+        return _malformed_result()
+    if schema is not None:
+        try:
+            jsonschema.validate(raw, schema)
+        except (jsonschema.ValidationError, jsonschema.SchemaError):
+            return _malformed_result()
+    parsed = raw["findings"] if isinstance(raw, dict) else raw
+    if not isinstance(parsed, list):
         return _malformed_result()
     findings = validate_findings(parsed)
     if findings is None:
