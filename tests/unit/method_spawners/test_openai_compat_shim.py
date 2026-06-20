@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 _SPAWNERS = Path(__file__).resolve().parents[3] / "method" / "spawners"
 
 
@@ -67,3 +69,32 @@ def test_mimo_shim_fails_clearly_without_model() -> None:
     out = _run_shim("mimo_shim", {"MIMO_API_KEY": "x"})
     assert out["status"] == "failed"
     assert "MIMO_MODEL not set" in out["error"]
+
+
+def test_call_builds_single_v1_chat_completions_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """URL must not duplicate the version segment when host already contains /v1."""
+    mod = _load("_openai_compat")
+    captured: dict[str, str] = {}
+
+    class _Resp:
+        def __enter__(self) -> "_Resp":
+            return self
+
+        def __exit__(self, *a: object) -> bool:
+            return False
+
+        def read(self) -> bytes:
+            return b'{"choices":[{"message":{"content":"[]"}}]}'
+
+    def _fake_urlopen(req: object, timeout: float | None = None) -> _Resp:
+        captured["url"] = req.full_url  # type: ignore[attr-defined]
+        return _Resp()
+
+    monkeypatch.setattr(mod.urllib.request, "urlopen", _fake_urlopen)
+    mod._call("https://token-plan-sgp.xiaomimimo.com/v1", "k", "m", "p")
+    assert (
+        captured["url"] == "https://token-plan-sgp.xiaomimimo.com/v1/chat/completions"
+    )
+    assert "/v1/v1/" not in captured["url"]

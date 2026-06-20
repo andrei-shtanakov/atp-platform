@@ -39,7 +39,7 @@ def _fail(task_id: str, error: str) -> int:
 
 def _call(host: str, key: str, model: str, prompt: str) -> dict:
     """POST a single user turn and return the parsed JSON (errors propagate)."""
-    url = f"{host.rstrip('/')}/v1/chat/completions"
+    url = f"{host.rstrip('/')}/chat/completions"
     body = json.dumps(
         {
             "model": model,
