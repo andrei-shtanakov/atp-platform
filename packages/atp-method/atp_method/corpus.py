@@ -101,6 +101,17 @@ def _safe_manifest_path(path: str) -> str:
     return normalized
 
 
+def _safe_corpus_id(corpus_id: str) -> str:
+    if not corpus_id or "\x00" in corpus_id:
+        raise ValueError(f"unsafe corpus_id: {corpus_id!r}")
+    if "/" in corpus_id or "\\" in corpus_id:
+        raise ValueError(f"unsafe corpus_id: {corpus_id!r}")
+    path = Path(corpus_id)
+    if path.is_absolute() or corpus_id.startswith("~") or corpus_id in (".", ".."):
+        raise ValueError(f"unsafe corpus_id: {corpus_id!r}")
+    return corpus_id
+
+
 def _line_index(text: str) -> dict[int, str]:
     return {i: line for i, line in enumerate(text.splitlines(), start=1)}
 
@@ -247,7 +258,11 @@ class CorpusMaterializer:
         self, resolved: CorpusVerificationResult, workspace: Path
     ) -> MaterializedCorpus:
         """Materialize selected files under ``workspace/<corpus_id>``."""
-        root = workspace / resolved.corpus_id
+        corpus_id = _safe_corpus_id(resolved.corpus_id)
+        workspace_root = workspace.resolve()
+        root = (workspace_root / corpus_id).resolve()
+        if not root.is_relative_to(workspace_root):
+            raise ValueError(f"unsafe corpus_id: {resolved.corpus_id!r}")
         if root.exists():
             shutil.rmtree(root)
         root.mkdir(parents=True, exist_ok=True)

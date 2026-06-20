@@ -60,6 +60,28 @@ def _write_corpus(case_dir: Path, manifest_lines: list[str] | None = None) -> Pa
     return root
 
 
+def _verified_corpus(corpus_id: str):
+    from atp_method.corpus import CorpusVerificationResult, VerifiedCorpusFile
+
+    return CorpusVerificationResult(
+        corpus_id=corpus_id,
+        root=Path("/unused/source"),
+        files=(
+            VerifiedCorpusFile(
+                relative_path="policy-current.md",
+                path=Path("/unused/source/policy-current.md"),
+                sha256=_sha256_lf("Title\nDeadline line\n"),
+                normalized_text="Title\nDeadline line\n",
+                lines={1: "Title", 2: "Deadline line"},
+                metadata={"role": "source"},
+            ),
+        ),
+        manifest_path=Path("/unused/source/manifest.sha256"),
+        metadata_path=None,
+        metadata={"policy-current.md": {"role": "source"}},
+    )
+
+
 def test_resolver_selects_canonical_sorted_included_files(tmp_path: Path) -> None:
     from atp_method.corpus import CorpusResolver
 
@@ -188,3 +210,54 @@ def test_materializer_copies_verified_files_preserving_relative_paths(
         "Title\nDeadline line\n"
     )
     assert (materialized.root / "archive" / "policy-2023.md").is_file()
+
+
+def test_materializer_accepts_safe_single_corpus_id(tmp_path: Path) -> None:
+    from atp_method.corpus import CorpusMaterializer
+
+    workspace = tmp_path / "workspace"
+    verified = _verified_corpus("req-corpus")
+
+    materialized = CorpusMaterializer().materialize(verified, workspace)
+
+    assert materialized.root == workspace / "req-corpus"
+    assert (workspace / "req-corpus" / "policy-current.md").read_text() == (
+        "Title\nDeadline line\n"
+    )
+
+
+@pytest.mark.parametrize("corpus_id", ["../outside", "nested/corpus"])
+def test_materializer_rejects_unsafe_relative_corpus_id_without_touching_outside_paths(
+    tmp_path: Path, corpus_id: str
+) -> None:
+    from atp_method.corpus import CorpusMaterializer
+
+    workspace = tmp_path / "workspace"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "sentinel.txt"
+    sentinel.write_text("keep\n")
+    verified = _verified_corpus(corpus_id)
+
+    with pytest.raises(ValueError, match="corpus_id"):
+        CorpusMaterializer().materialize(verified, workspace)
+
+    assert sentinel.read_text() == "keep\n"
+
+
+def test_materializer_rejects_absolute_corpus_id_without_touching_outside_paths(
+    tmp_path: Path,
+) -> None:
+    from atp_method.corpus import CorpusMaterializer
+
+    workspace = tmp_path / "workspace"
+    outside = tmp_path / "absolute-target"
+    outside.mkdir()
+    sentinel = outside / "sentinel.txt"
+    sentinel.write_text("keep\n")
+    verified = _verified_corpus(str(outside))
+
+    with pytest.raises(ValueError, match="corpus_id"):
+        CorpusMaterializer().materialize(verified, workspace)
+
+    assert sentinel.read_text() == "keep\n"
