@@ -139,3 +139,64 @@ def test_pi_shim_fails_when_binary_missing() -> None:
     )
     assert out["status"] == "failed"
     assert "invocation error" in out["error"] or "failed" in out["error"]
+
+
+def test_opencode_parse_tolerates_non_dict_jsonl_line() -> None:
+    # A valid-JSON line that is not an object (e.g. "[]") must be skipped,
+    # not crash the parser via .get() on a list.
+    oc = _load("opencode_shim")
+    stdout = '[]\n42\n"plain"\n{"type":"text","part":{"text":"ok"}}\n'
+    text, in_tok, out_tok = oc._parse(stdout)
+    assert text == "ok"
+    assert (in_tok, out_tok) == (None, None)
+
+
+def test_pi_parse_tolerates_non_dict_jsonl_line() -> None:
+    pi = _load("pi_shim")
+    stdout = (
+        "[]\n"
+        '{"type":"message_end","message":{"role":"assistant",'
+        '"content":[{"type":"text","text":"ok"}],"usage":{"input":1,"output":2}}}\n'
+    )
+    text, in_tok, out_tok = pi._parse(stdout)
+    assert text == "ok"
+    assert (in_tok, out_tok) == (1, 2)
+
+
+def test_run_parse_error_yields_failed(monkeypatch) -> None:
+    # parse_output raising must become a contract-shaped failed response,
+    # never an uncaught crash.
+    import io
+
+    cli = _load("_cli_common")
+
+    class _Proc:
+        returncode = 0
+        stdout = b"whatever"
+        stderr = b""
+
+    monkeypatch.setattr(cli.subprocess, "run", lambda *a, **k: _Proc())
+    monkeypatch.setenv("X_MODEL", "m")
+    monkeypatch.setattr(
+        cli.sys,
+        "stdin",
+        io.StringIO('{"task_id":"t","task":{"description":"x","input_data":{}}}'),
+    )
+    buf = io.StringIO()
+    monkeypatch.setattr(cli.sys, "stdout", buf)
+
+    def _boom(_s: str):
+        raise ValueError("kaboom")
+
+    rc = cli.run(
+        bin_env="X_BIN",
+        default_bin="true",
+        model_env="X_MODEL",
+        default_provider="openai",
+        argv=lambda b, m, p: [*b, p],
+        parse_output=_boom,
+    )
+    out = json.loads(buf.getvalue())
+    assert rc == 0
+    assert out["status"] == "failed"
+    assert "output parse error" in out["error"]

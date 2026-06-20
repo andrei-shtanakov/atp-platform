@@ -92,8 +92,11 @@ def run(
         return fail(task_id, f"{model_env} not set")
     binary = shlex.split(os.environ.get(bin_env, default_bin)) or [default_bin]
 
-    prompt = build_prompt(request, get_envelope("review"))
-    cmd = argv(binary, model_arg(model, default_provider), prompt)
+    try:
+        prompt = build_prompt(request, get_envelope("review"))
+        cmd = argv(binary, model_arg(model, default_provider), prompt)
+    except Exception as exc:  # noqa: BLE001 — contract: any error → failed
+        return fail(task_id, f"{binary[0]} command build error: {exc}")
     try:
         proc = subprocess.run(cmd, capture_output=True, timeout=REQUEST_TIMEOUT_S)
     except subprocess.TimeoutExpired:
@@ -107,7 +110,10 @@ def run(
             f"{binary[0]} failed (rc={proc.returncode}): "
             f"{proc.stderr.decode(errors='replace')[:2000]}",
         )
-    text, in_tok, out_tok = parse_output(proc.stdout.decode(errors="replace"))
+    try:
+        text, in_tok, out_tok = parse_output(proc.stdout.decode(errors="replace"))
+    except Exception as exc:  # noqa: BLE001 — contract: any error → failed
+        return fail(task_id, f"{binary[0]} output parse error: {exc}")
     if not text.strip():
         return fail(task_id, f"{binary[0]} produced no output text")
 

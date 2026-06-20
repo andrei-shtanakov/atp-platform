@@ -39,6 +39,8 @@ def _parse(stdout: str) -> tuple[str, int | None, int | None]:
             event = json.loads(line)
         except (ValueError, TypeError):
             continue
+        if not isinstance(event, dict):
+            continue
         message = event.get("message") or {}
         if message.get("role") != "assistant":
             continue

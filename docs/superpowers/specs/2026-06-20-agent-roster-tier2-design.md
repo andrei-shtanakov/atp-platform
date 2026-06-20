@@ -32,8 +32,8 @@ Structure: read ATPRequest from stdin → `build_prompt(request, get_envelope("r
 ### 2. Registry (`method/run_pipe_check.py`)
 - `HARNESSES`: `"pi": ("method/spawners/pi_shim.py", "PI_MODEL")`, `"opencode": ("method/spawners/opencode_shim.py", "OPENCODE_MODEL")`.
 - `AGENT_MODELS`: `("pi", "gpt-5")`, `("opencode", "glm-5.1")`.
-- `ALLOWED_ENV`: `PI_MODEL`, `OPENCODE_MODEL`, `OPENCODE_GLM_API_KEY`.
-- `_preflight`: pi/opencode — skip with a reason if the binary is absent (mirror the claude_code/codex_cli binary check via `CLAUDE_BIN`-style; pi/opencode have no `_BIN` override — check `shutil.which("pi")` / `shutil.which("opencode")`).
+- `ALLOWED_ENV`: `PI_BIN`, `PI_MODEL`, `OPENCODE_BIN`, `OPENCODE_MODEL`, `OPENCODE_GLM_API_KEY`. (Implementation note: `PI_BIN`/`OPENCODE_BIN` overrides were added during build — the shared `_cli_common` reads the binary via `bin_env`, so a `_BIN` override is uniform across CLI shims, mirroring `CLAUDE_BIN`/`CODEX_BIN`.)
+- `_preflight`: pi/opencode — skip with a reason if the binary is absent, honoring the `PI_BIN`/`OPENCODE_BIN` override when set, else `shutil.which("pi")` / `shutil.which("opencode")`.
 
 ### 3. Live smoke (the Tier-2 gate)
 Before any paid inclusion: run each agent against a SINGLE code-review case and confirm `status:"completed"` with a parsed finding/text (not `failed`/timeout). opencode is expected to pass; pi is the risk. Only the agents that smoke green go into a paid sweep.

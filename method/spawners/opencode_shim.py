@@ -28,6 +28,8 @@ def _parse(stdout: str) -> tuple[str, int | None, int | None]:
             event = json.loads(line)
         except (ValueError, TypeError):
             continue
+        if not isinstance(event, dict):
+            continue
         if event.get("type") == "text":
             text += (event.get("part") or {}).get("text", "")
         elif event.get("type") == "step_finish":
