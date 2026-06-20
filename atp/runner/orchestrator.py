@@ -613,13 +613,28 @@ class TestOrchestrator:
 
             request = self._create_request(test, workspace_path)
             timeout = float(test.constraints.effective_timeout_seconds)
-            set_span_attribute("atp.task.id", request.task_id)
-            set_span_attribute("atp.timeout_seconds", timeout)
 
             events: list[ATPEvent] = []
             error: str | None = None
+            cleanup_prepared = None
 
             try:
+                preparer_name = (test.task.input_data or {}).get("request_preparer")
+                if preparer_name:
+                    from atp.runner.preparation import get_request_preparer
+
+                    preparer = get_request_preparer(str(preparer_name))
+                    if preparer is None:
+                        raise TestExecutionError(
+                            f"Unknown request preparer: {preparer_name}",
+                            test_id=test.id,
+                        )
+                    prepared = await preparer.prepare(test, request)
+                    request = prepared.request
+                    cleanup_prepared = prepared.cleanup
+
+                set_span_attribute("atp.task.id", request.task_id)
+                set_span_attribute("atp.timeout_seconds", timeout)
                 response, events = await self._execute_with_timeout(
                     request=request,
                     timeout_seconds=timeout,
@@ -644,6 +659,21 @@ class TestOrchestrator:
                 error = str(e)
                 span.record_exception(e)
                 span.set_status(Status(StatusCode.ERROR, str(e)))
+            except Exception as e:
+                response = ATPResponse(
+                    task_id=request.task_id,
+                    status=ResponseStatus.FAILED,
+                    error=str(e),
+                )
+                error = str(e)
+                span.record_exception(e)
+                span.set_status(Status(StatusCode.ERROR, str(e)))
+            finally:
+                if cleanup_prepared is not None:
+                    try:
+                        await cleanup_prepared()
+                    except Exception as e:
+                        logger.warning("Prepared request cleanup failed: %s", e)
 
             end_time = datetime.now(tz=UTC)
 

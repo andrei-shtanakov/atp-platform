@@ -57,6 +57,16 @@ def build_prompt(request: dict[str, Any], envelope: str) -> str:
     for art in artifacts:
         if art.get("content"):
             body += f"\n\n--- {art.get('id', 'artifact')} ---\n{art['content']}"
+    corpus = input_data.get("artifact_corpus") or {}
+    if input_data.get("run_mode") == "read_only_corpus" and corpus:
+        corpus_id = corpus.get("id", "corpus")
+        paths = corpus.get("files") or []
+        if paths:
+            path_list = "\n".join(f"- {path}" for path in paths)
+            body += (
+                "\n\nRead-only corpus available through file_read. "
+                f"Corpus id: {corpus_id}. Available paths:\n{path_list}"
+            )
     contract = input_data.get("output_contract") or {}
     instruction = contract.get("format_instruction")
     if instruction:

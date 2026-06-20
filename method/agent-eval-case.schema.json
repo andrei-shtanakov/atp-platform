@@ -108,6 +108,10 @@
       "description": "Input materials supplied to the agent (documents, transcripts, files).",
       "items": { "$ref": "#/$defs/artifact" }
     },
+    "artifact_corpus": {
+      "$ref": "#/$defs/artifact_corpus",
+      "description": "Read-only corpus declaration for read_only_corpus cases."
+    },
     "environment": {
       "type": "object",
       "description": "Tooling and side-effect surface available to the agent for this case.",
@@ -263,6 +267,56 @@
         }
       }
     },
+    "corpus_digest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "manifest_path", "normalization"],
+      "properties": {
+        "algorithm": { "type": "string", "const": "sha256" },
+        "manifest_path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!~)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*//)(?!.*\\u0000).+$"
+        },
+        "normalization": { "type": "string", "const": "lf" }
+      }
+    },
+    "artifact_corpus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "root", "include", "digest"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "root": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!~)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*//)(?!.*\\u0000).+$"
+        },
+        "include": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!/)(?!~)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*//)(?!.*\\u0000).+$"
+          },
+          "minItems": 1
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!/)(?!~)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*//)(?!.*\\u0000).+$"
+          }
+        },
+        "digest": { "$ref": "#/$defs/corpus_digest" },
+        "metadata_path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!~)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*//)(?!.*\\u0000).+$"
+        }
+      }
+    },
     "expected_finding": {
       "type": "object",
       "additionalProperties": false,
@@ -399,6 +453,56 @@
                 "required": ["assertions"],
                 "properties": {
                   "assertions": { "type": "array", "minItems": 1 }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "$comment": "artifact_corpus is only valid with read_only_corpus.",
+      "if": {
+        "required": ["artifact_corpus"]
+      },
+      "then": {
+        "properties": {
+          "run_mode": { "const": "read_only_corpus" }
+        }
+      }
+    },
+    {
+      "$comment": "read_only_corpus requires artifact_corpus.",
+      "if": {
+        "properties": { "run_mode": { "const": "read_only_corpus" } },
+        "required": ["run_mode"]
+      },
+      "then": {
+        "required": ["artifact_corpus"]
+      }
+    },
+    {
+      "$comment": "citation_grounding checker requires config.expected (non-empty array).",
+      "if": {
+        "properties": {
+          "grader": {
+            "properties": {
+              "type": { "const": "programmatic" },
+              "checker": { "const": "citation_grounding" }
+            },
+            "required": ["checker"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "grader": {
+            "required": ["config"],
+            "properties": {
+              "config": {
+                "required": ["expected"],
+                "properties": {
+                  "expected": { "type": "array", "minItems": 1 }
                 }
               }
             }

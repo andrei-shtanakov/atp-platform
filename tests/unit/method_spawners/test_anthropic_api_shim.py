@@ -4,7 +4,9 @@ import json
 import os
 import subprocess
 import sys
+import threading
 from pathlib import Path
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 SHIM = (
     Path(__file__).resolve().parents[3]
@@ -60,6 +62,37 @@ def _run_shim(request: dict, env: dict) -> dict:
     )
     assert proc.returncode == 0, proc.stderr.decode()
     return json.loads(proc.stdout.decode())
+
+
+class _ToolHandler(BaseHTTPRequestHandler):
+    def do_POST(self) -> None:  # noqa: N802 - stdlib hook name
+        length = int(self.headers.get("content-length", "0"))
+        body = json.loads(self.rfile.read(length))
+        assert self.path == "/tools/call"
+        assert body["tool"] == "file_read"
+        response = {
+            "tool": "file_read",
+            "status": "success",
+            "output": {"content": "policy line\n"},
+            "duration_ms": 1.0,
+        }
+        payload = json.dumps(response).encode()
+        self.send_response(200)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def log_message(self, format: str, *args: object) -> None:
+        return None
+
+
+def _serve_tools() -> tuple[HTTPServer, str]:
+    server = HTTPServer(("127.0.0.1", 0), _ToolHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address
+    return server, f"http://{host}:{port}"
 
 
 def test_missing_key_emits_failed() -> None:
@@ -149,3 +182,143 @@ def test_missing_usage_defaults_tokens_zero(tmp_path: Path) -> None:
     assert resp["status"] == "completed"
     assert resp["metrics"]["total_tokens"] == 0
     assert resp["metrics"]["input_tokens"] == 0
+
+
+_FAKE_ANTHROPIC_TOOL_LOOP = """
+import json as _json
+import os as _os
+from pathlib import Path as _Path
+
+_LOG = _Path(_os.environ["FAKE_ANTHROPIC_LOG"])
+
+
+class _Block:
+    def __init__(self, type, text=None, id=None, name=None, input=None):
+        self.type = type
+        self.text = text
+        self.id = id
+        self.name = name
+        self.input = input
+
+
+class _Usage:
+    input_tokens = 3
+    output_tokens = 4
+
+
+class _Msg:
+    def __init__(self, content):
+        self.content = content
+        self.usage = _Usage()
+
+
+class _Messages:
+    def __init__(self):
+        self.calls = 0
+
+    def create(self, *a, **k):
+        self.calls += 1
+        _LOG.write_text(_json.dumps({"calls": self.calls, "kwargs": k}, default=str))
+        if self.calls == 1:
+            assert k["tools"][0]["name"] == "file_read"
+            return _Msg([_Block("tool_use", id="toolu_1", name="file_read", input={"path": "policy.md"})])
+        assert any(
+            block.get("type") == "tool_result"
+            and block.get("tool_use_id") == "toolu_1"
+            and "content" in block
+            for block in k["messages"][-1]["content"]
+        )
+        return _Msg([_Block("text", text='{"ok": true}')])
+
+
+class Anthropic:
+    def __init__(self, *a, **k):
+        self.messages = _Messages()
+"""
+
+
+def test_file_read_tool_loop_when_constraints_allow_endpoint(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "anthropic.py").write_text(_FAKE_ANTHROPIC_TOOL_LOOP)
+    log_path = tmp_path / "anthropic-log.json"
+    env = {
+        **os.environ,
+        "ANTHROPIC_API_KEY": "test-key",
+        "FAKE_ANTHROPIC_LOG": str(log_path),
+        "PYTHONPATH": str(tmp_path) + os.pathsep + os.environ.get("PYTHONPATH", ""),
+    }
+    server, endpoint = _serve_tools()
+    try:
+        request = {
+            "version": "1.0",
+            "task_id": "t-tools",
+            "task": {"description": "Extract", "input_data": {}},
+            "constraints": {"allowed_tools": ["file_read"]},
+            "context": {"tools_endpoint": endpoint, "workspace_path": "/w"},
+        }
+
+        resp = _run_shim(request, env)
+    finally:
+        server.shutdown()
+
+    assert resp["status"] == "completed"
+    assert json.loads(resp["artifacts"][0]["content"]) == {"ok": True}
+    logged = json.loads(log_path.read_text())
+    assert logged["calls"] == 2
+    assert logged["kwargs"]["tools"][0]["name"] == "file_read"
+
+
+_FAKE_ANTHROPIC_ALWAYS_TOOL = """
+class _Block:
+    def __init__(self):
+        self.type = "tool_use"
+        self.id = "toolu_loop"
+        self.name = "file_read"
+        self.input = {"path": "policy.md"}
+
+
+class _Msg:
+    content = [_Block()]
+    usage = None
+
+
+class _Messages:
+    def create(self, *a, **k):
+        return _Msg()
+
+
+class Anthropic:
+    def __init__(self, *a, **k):
+        self.messages = _Messages()
+"""
+
+
+def test_file_read_tool_loop_fails_contract_shaped_on_max_iterations(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "anthropic.py").write_text(_FAKE_ANTHROPIC_ALWAYS_TOOL)
+    env = {
+        **os.environ,
+        "ANTHROPIC_API_KEY": "test-key",
+        "ANTHROPIC_TOOL_MAX_ITERATIONS": "2",
+        "PYTHONPATH": str(tmp_path) + os.pathsep + os.environ.get("PYTHONPATH", ""),
+    }
+    server, endpoint = _serve_tools()
+    try:
+        request = {
+            "version": "1.0",
+            "task_id": "t-loop",
+            "task": {"description": "Extract", "input_data": {}},
+            "constraints": {"allowed_tools": ["file_read"]},
+            "context": {"tools_endpoint": endpoint},
+        }
+
+        resp = _run_shim(request, env)
+    finally:
+        server.shutdown()
+
+    assert resp["task_id"] == "t-loop"
+    assert resp["status"] == "failed"
+    assert "tool" in resp["error"].lower()
+    assert "iteration" in resp["error"].lower()

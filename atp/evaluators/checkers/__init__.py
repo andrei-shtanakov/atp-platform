@@ -6,9 +6,11 @@ from atp.evaluators.checkers.registry import (
     list_checkers,
     register_checker,
 )
+from atp.evaluators.citation_grounding.checker import citation_grounding_check
 from atp.evaluators.findings.checker import findings_check
 from atp.evaluators.json_path.checker import json_path_check
 
+register_checker("citation_grounding", citation_grounding_check)
 register_checker("findings_match", findings_check)
 register_checker("json_path", json_path_check)
 

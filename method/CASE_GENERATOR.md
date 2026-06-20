@@ -94,6 +94,10 @@ These come from the schema. Violating any of them produces an invalid case.
 - If `environment.tools` includes `none`, it must be the only tool listed.
 - Quote ISO dates in YAML (`created: "2026-06-06"`) — unquoted, YAML parses them as date
   objects and the case fails string validation.
+- Use `run_mode: read_only_corpus` for document-grounded agentic cases where the agent should
+  inspect files through tools instead of receiving inline excerpts. The corpus block must point
+  to a case-relative asset directory, include `manifest.sha256`, and use `digest.algorithm:
+  sha256` with `digest.normalization: lf`.
 
 These the schema does **not** enforce — you are responsible for them:
 
@@ -115,6 +119,33 @@ These the schema does **not** enforce — you are responsible for them:
 - The grader is `human` or `model_graded` when a `programmatic` check would have worked → prefer
   the most automatic grader the case allows; it makes the suite cheap to re-run.
 - The business story is a contrived puzzle rather than plausible work.
+
+## Read-only corpus cases
+
+Use this layout when the case should test file-grounded behavior:
+
+```text
+cases/<family>/
+  case-<family>-<trap>-corpus-<level>-001.yaml
+  assets/<corpus-id>/
+    policy-current.md
+    archive/policy-2023.md
+    manifest.sha256
+    corpus.meta.yaml
+```
+
+The manifest contains one SHA-256 digest and one corpus-relative path per line:
+
+```text
+<sha256>  policy-current.md
+<sha256>  archive/policy-2023.md
+```
+
+Hashes are computed over UTF-8 text after CRLF/CR newlines are normalized to LF.
+Do not inline corpus file contents in `artifacts`; list `environment.tools:
+[file_read]`, set `artifact_corpus.include` to the selected `*.md` / `*.txt`
+patterns, and use `grader.checker: citation_grounding` when source paths and
+line ranges are part of the critical check.
 
 ---
 

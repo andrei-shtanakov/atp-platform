@@ -39,8 +39,13 @@ an arbitrary difficulty). The full rationale is in the methodology.
   cases/
     req-extraction/
       case-req-extraction-fabricated-deadline-clean-001.yaml
+      case-req-extraction-fabricated-deadline-corpus-clean-001.yaml
       case-req-extraction-fabricated-deadline-moderate-001.yaml
       case-req-extraction-fabricated-deadline-severe-001.yaml
+      assets/
+        fabricated-deadline-clean-corpus-001/
+          manifest.sha256
+          corpus.meta.yaml
   gold/
   0. archive/
 ```
@@ -65,6 +70,10 @@ family scores `calibration` along `information_conditions`; the shared trap is f
 value absent from the source. Pressure grows across the three levels: an explicit deadline
 (`clean`), a vague qualifier that tempts quantification (`moderate`), and a missing deadline
 surrounded by present ones (`severe`).
+
+The same family also includes a `read_only_corpus` case. It verifies a text/markdown corpus by
+`manifest.sha256`, materializes it into the run workspace, exposes only `file_read`, and grades
+JSON citations with `citation_grounding`.
 
 ## Run I/O contract
 
