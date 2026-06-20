@@ -67,15 +67,16 @@ HARNESSES: dict[str, tuple[str, str]] = {
 }
 
 # Default (harness, model) matrix. agent_id = f"{harness}@{model}". The model is
-# the faithful provider id. claude_code@claude-sonnet-4-6 and codex_cli@gpt-5-codex
+# the faithful provider id. claude_code@claude-sonnet-4-6 and codex_cli@gpt-5.5
 # are arbiter's routable keys — they MUST be emitted here, or arbiter's re-rank
-# join returns None (silent no-op).
+# join returns None (silent no-op). (codex: gpt-5-codex is unavailable on a
+# ChatGPT account → use gpt-5.5, codex's configured default.)
 AGENT_MODELS: list[tuple[str, str]] = [
     ("claude_code", "claude-sonnet-4-6"),
-    ("codex_cli", "gpt-5-codex"),
+    ("codex_cli", "gpt-5.5"),
     ("anthropic_api", "claude-sonnet-4-6"),
     ("deepseek", "deepseek-chat"),
-    ("mimo", "MiMo-V2.5-Pro"),
+    ("mimo", "mimo-v2.5-pro"),
     ("qwen", "qwen3.6-plus"),
     ("ollama", "llama3.2:1b"),
     ("ollama", "llama3.2:3b"),

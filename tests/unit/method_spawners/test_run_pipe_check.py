@@ -193,8 +193,9 @@ def test_agents_registry_builds_harness_at_model_ids() -> None:
     assert "anthropic_api@claude-sonnet-4-6" in AGENTS
     assert "deepseek@deepseek-chat" in AGENTS
     assert "ollama@qwen2.5:14b" in AGENTS
-    # codex now pinned (gpt-5-codex) — it is arbiter's second routable key.
-    assert "codex_cli@gpt-5-codex" in AGENTS
+    # codex pinned to gpt-5.5 (gpt-5-codex is unavailable on a ChatGPT account) —
+    # it is arbiter's second routable key.
+    assert "codex_cli@gpt-5.5" in AGENTS
     spec = AGENTS["ollama@qwen2.5:14b"]
     assert spec["model"] == "qwen2.5:14b"
     assert spec["model_env"] == "OLLAMA_MODEL"
@@ -238,12 +239,12 @@ def test_registry_has_sonnet_and_new_api_agents_no_opus() -> None:
 
     assert "claude_code@claude-sonnet-4-6" in AGENTS
     assert "anthropic_api@claude-sonnet-4-6" in AGENTS
-    assert "mimo@MiMo-V2.5-Pro" in AGENTS
+    assert "mimo@mimo-v2.5-pro" in AGENTS
     assert "qwen@qwen3.6-plus" in AGENTS
     # opus fully retired
     assert not any("claude-opus-4-8" in a for a in AGENTS)
-    assert AGENTS["mimo@MiMo-V2.5-Pro"]["model_env"] == "MIMO_MODEL"
-    assert AGENTS["mimo@MiMo-V2.5-Pro"]["shim"].endswith("mimo_shim.py")
+    assert AGENTS["mimo@mimo-v2.5-pro"]["model_env"] == "MIMO_MODEL"
+    assert AGENTS["mimo@mimo-v2.5-pro"]["shim"].endswith("mimo_shim.py")
     assert AGENTS["qwen@qwen3.6-plus"]["shim"].endswith("qwen_shim.py")
 
 
@@ -252,5 +253,5 @@ def test_preflight_skips_mimo_qwen_without_key(monkeypatch: pytest.MonkeyPatch) 
 
     monkeypatch.delenv("MIMO_API_KEY", raising=False)
     monkeypatch.delenv("QWEN_API_KEY", raising=False)
-    assert _preflight("mimo@MiMo-V2.5-Pro") == "MIMO_API_KEY not set"
+    assert _preflight("mimo@mimo-v2.5-pro") == "MIMO_API_KEY not set"
     assert _preflight("qwen@qwen3.6-plus") == "QWEN_API_KEY not set"
