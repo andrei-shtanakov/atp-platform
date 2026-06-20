@@ -17,6 +17,8 @@ classifiers = [
 dependencies = [
     "pydantic>=2.0",
     "pyyaml>=6.0",
+    "fastapi>=0.128.0",
+    "uvicorn>=0.40.0",
     # atp-platform provides the loader models (atp.loader), the suite-source /
     # format-dispatch registries (added in 2.1.0), the evaluator base + LLM judge
     # (atp.evaluators), and the critical-assertion hard gate (2.1.0) the plugin
