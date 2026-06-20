@@ -268,6 +268,14 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
     при конфигурации прогона (вместе с новыми моделями/ключами). Выходной прогон ре-базлайнит на новых
     id. Нотис: `_cowork_output/contracts/2026-06-19-agent-id-convention-change.md`. Спека+план в
     `docs/superpowers/{specs,plans}/2026-06-19-agent-id-convention*`.
+  - [x] **Ростер выходного прогона — Tier-1** (2026-06-20): opus полностью убран; claude → `claude-sonnet-4-6`
+    (CLI `claude_code` + API-baseline `anthropic_api`); добавлены `mimo@MiMo-V2.5-Pro` и `qwen@qwen3.6-plus`
+    через один общий OpenAI-compat шим (`method/spawners/_openai_compat.py` + тонкие `mimo_shim`/`qwen_shim`;
+    `deepseek_shim` не тронут). `.env.example` несёт `MIMO_API_KEY`/`QWEN_API_KEY`/`OPENCODE_GLM_API_KEY`.
+    Оператор добавляет `("codex_cli","gpt-5-codex")` к прогону. arbiter правит `config/agents.toml`
+    (claude→sonnet, +codex, −aider). Спека+план: `docs/superpowers/{specs,plans}/2026-06-20-agent-roster-expansion*`.
+  - [ ] **Ростер Tier-2 (fast-follow):** `pi@gpt-5.4` (CLI, без ключа) и `opencode@GLM-5.1` (CLI,
+    `OPENCODE_GLM_API_KEY` провизорно) — новые CLI-шимы, нужен живой смоук до включения в платный прогон.
   - [ ] **ИССЛЕДОВАТЬ (перспектива): полное слияние путей оценки** — дописать `BenchmarkReporter`
     (сейчас `NotImplementedError`; маппинг `SuiteReport→report_benchmark` помечен Phase-1b), тогда
     `atp test method/cases/X -o report_benchmark` сам даёт arbiter-payload, а `run_pipe_check`
