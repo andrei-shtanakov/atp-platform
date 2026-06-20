@@ -2,11 +2,14 @@
 
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, HTTPServer
+
+from atp_method.envelopes import build_prompt, get_envelope
 
 SHIM = (
     Path(__file__).resolve().parents[3]
@@ -53,6 +56,11 @@ class Anthropic:
 
 
 def _run_shim(request: dict, env: dict) -> dict:
+    proc = _run_shim_raw(request, env)
+    return json.loads(proc.stdout.decode())
+
+
+def _run_shim_raw(request: dict, env: dict) -> subprocess.CompletedProcess[bytes]:
     proc = subprocess.run(
         [sys.executable, str(SHIM)],
         input=json.dumps(request).encode(),
@@ -61,7 +69,7 @@ def _run_shim(request: dict, env: dict) -> dict:
         timeout=30,
     )
     assert proc.returncode == 0, proc.stderr.decode()
-    return json.loads(proc.stdout.decode())
+    return proc
 
 
 class _ToolHandler(BaseHTTPRequestHandler):
@@ -95,6 +103,29 @@ def _serve_tools() -> tuple[HTTPServer, str]:
     return server, f"http://{host}:{port}"
 
 
+def _debug_files_by_suffix(
+    debug_dir: Path, safe_task_id: str, expected_suffixes: set[str]
+) -> dict[str, Path]:
+    timestamp_pattern = r"\d{8}-\d{6}-\d{6}"
+    pattern = re.compile(
+        rf"^(?P<timestamp>{timestamp_pattern})-{re.escape(safe_task_id)}-(?P<suffix>.+)$"
+    )
+    matches: dict[str, tuple[str, Path]] = {}
+    unexpected = []
+    for path in debug_dir.iterdir():
+        match = pattern.fullmatch(path.name)
+        if not match:
+            unexpected.append(path.name)
+            continue
+        matches[match.group("suffix")] = (match.group("timestamp"), path)
+
+    assert unexpected == []
+    assert set(matches) == expected_suffixes
+    timestamps = {timestamp for timestamp, _path in matches.values()}
+    assert len(timestamps) == 1
+    return {suffix: path for suffix, (_timestamp, path) in matches.items()}
+
+
 def test_missing_key_emits_failed() -> None:
     env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
     resp = _run_shim(
@@ -111,6 +142,7 @@ def test_success_with_fake_sdk(tmp_path: Path) -> None:
         "ANTHROPIC_API_KEY": "test-key",
         "PYTHONPATH": str(tmp_path) + os.pathsep + os.environ.get("PYTHONPATH", ""),
     }
+    env.pop("ATP_METHOD_DEBUG_IO_DIR", None)
     request = {
         "version": "1.0",
         "task_id": "t2",
@@ -118,6 +150,8 @@ def test_success_with_fake_sdk(tmp_path: Path) -> None:
         "context": {"artifacts": []},
     }
     resp = _run_shim(request, env)
+    assert list(tmp_path.glob("*-t2-*.txt")) == []
+    assert list(tmp_path.glob("*-t2-*.json")) == []
     assert resp["task_id"] == "t2"
     assert resp["status"] == "completed"
     arts = resp["artifacts"]
@@ -128,6 +162,50 @@ def test_success_with_fake_sdk(tmp_path: Path) -> None:
     assert resp["metrics"]["total_tokens"] == 920
     # raw API response carries no cost field; the baseline leaves it null
     assert resp["metrics"]["cost_usd"] is None
+
+
+def test_success_writes_debug_io_files_when_enabled(tmp_path: Path) -> None:
+    (tmp_path / "anthropic.py").write_text(_FAKE_ANTHROPIC)
+    debug_dir = tmp_path / "debug"
+    env = {
+        **os.environ,
+        "ANTHROPIC_API_KEY": "test-key",
+        "ATP_METHOD_DEBUG_IO_DIR": str(debug_dir),
+        "PYTHONPATH": str(tmp_path) + os.pathsep + os.environ.get("PYTHONPATH", ""),
+    }
+    request = {
+        "version": "1.0",
+        "task_id": "debug/task",
+        "task": {"description": "Review the diff against the rules."},
+        "context": {"artifacts": []},
+    }
+
+    proc = _run_shim_raw(request, env)
+
+    stdout_response = json.loads(proc.stdout.decode())
+    debug_files = _debug_files_by_suffix(
+        debug_dir,
+        "debug_task",
+        {
+            "prompt.txt",
+            "raw_response.json",
+            "final_output.txt",
+            "atp_response.json",
+        },
+    )
+    atp_response = json.loads(debug_files["atp_response.json"].read_text())
+    assert stdout_response == atp_response
+    assert debug_files["prompt.txt"].read_text() == build_prompt(
+        request, get_envelope("review")
+    )
+    assert debug_files["final_output.txt"].read_text() == (
+        stdout_response["artifacts"][0]["content"]
+    )
+    raw_response = json.loads(debug_files["raw_response.json"].read_text())
+    assert raw_response["content"] == [
+        {"type": "text", "text": stdout_response["artifacts"][0]["content"]}
+    ]
+    assert raw_response["usage"] == {"input_tokens": 800, "output_tokens": 120}
 
 
 def test_invalid_stdin_emits_failed_not_crash() -> None:
@@ -242,9 +320,11 @@ def test_file_read_tool_loop_when_constraints_allow_endpoint(
 ) -> None:
     (tmp_path / "anthropic.py").write_text(_FAKE_ANTHROPIC_TOOL_LOOP)
     log_path = tmp_path / "anthropic-log.json"
+    debug_dir = tmp_path / "debug"
     env = {
         **os.environ,
         "ANTHROPIC_API_KEY": "test-key",
+        "ATP_METHOD_DEBUG_IO_DIR": str(debug_dir),
         "FAKE_ANTHROPIC_LOG": str(log_path),
         "PYTHONPATH": str(tmp_path) + os.pathsep + os.environ.get("PYTHONPATH", ""),
     }
@@ -267,6 +347,27 @@ def test_file_read_tool_loop_when_constraints_allow_endpoint(
     logged = json.loads(log_path.read_text())
     assert logged["calls"] == 2
     assert logged["kwargs"]["tools"][0]["name"] == "file_read"
+    debug_files = _debug_files_by_suffix(
+        debug_dir,
+        "t-tools",
+        {"prompt.txt", "raw_tool_loop.json", "final_output.txt", "atp_response.json"},
+    )
+    raw_tool_loop = json.loads(debug_files["raw_tool_loop.json"].read_text())
+    assert raw_tool_loop["steps"][0]["assistant"]["content"] == [
+        {
+            "type": "tool_use",
+            "id": "toolu_1",
+            "name": "file_read",
+            "input": {"path": "policy.md"},
+        }
+    ]
+    assert raw_tool_loop["steps"][0]["tool_results"][0]["response"]["output"] == {
+        "content": "policy line\n"
+    }
+    assert raw_tool_loop["steps"][1]["assistant"]["content"] == [
+        {"type": "text", "text": '{"ok": true}'}
+    ]
+    assert raw_tool_loop["steps"][1]["tool_results"] == []
 
 
 _FAKE_ANTHROPIC_ALWAYS_TOOL = """

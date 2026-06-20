@@ -89,6 +89,41 @@ def test_build_prompt_uses_format_instruction_when_present() -> None:
     }
     prompt = build_prompt(request, get_envelope("review"))
     assert "Return ONLY JSON" in prompt
+    assert "Response JSON Schema:" not in prompt
+    assert "Vendor must submit." in prompt
+    assert "senior code reviewer" not in prompt
+
+
+def test_build_prompt_includes_response_schema_with_format_instruction() -> None:
+    request = {
+        "task": {
+            "description": "Extract requirements",
+            "input_data": {
+                "artifacts": [{"id": "doc", "content": "Vendor must submit."}],
+                "output_contract": {
+                    "artifact_name": "answer",
+                    "format_instruction": "Return ONLY JSON.",
+                    "schema": {
+                        "type": "object",
+                        "required": ["requirements"],
+                        "properties": {
+                            "requirements": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                            }
+                        },
+                    },
+                },
+            },
+        }
+    }
+
+    prompt = build_prompt(request, get_envelope("review"))
+
+    assert "Return ONLY JSON." in prompt
+    assert "Response JSON Schema:" in prompt
+    assert '"requirements"' in prompt
+    assert '"type": "object"' in prompt
     assert "Vendor must submit." in prompt
     assert "senior code reviewer" not in prompt
 
@@ -173,6 +208,10 @@ def test_build_prompt_lists_fixture_corpus_paths_without_inlining_fixture_text()
     prompt = build_prompt(json.loads(req.model_dump_json()), get_envelope("review"))
 
     assert "fabricated-deadline-clean-corpus" in prompt
+    assert "Response JSON Schema:" in prompt
+    assert "citations.deadline as a single citation object" in prompt
+    assert '"citations"' in prompt
+    assert '"deadline"' in prompt
     assert "policy-current.md" in prompt
     assert "vendor-addendum.md" in prompt
     assert "archive/policy-2023.md" in prompt

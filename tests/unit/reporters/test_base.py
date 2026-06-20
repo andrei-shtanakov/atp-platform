@@ -363,3 +363,137 @@ class TestSuiteReportFromSuiteResult:
         assert report.tests[0].score == 85.0
         assert report.tests[0].scored_result is not None
         assert report.tests[0].scored_result.passed is True
+
+    def test_from_suite_result_scored_failure_updates_success_and_counts(
+        self, sample_test_definition: TestDefinition, sample_response: ATPResponse
+    ) -> None:
+        """Verify scored failures gate report success and suite counts."""
+        from atp.loader.models import TaskDefinition, TestDefinition
+        from atp.runner.models import RunResult
+
+        second_test_definition = TestDefinition(
+            id="test-002",
+            name="Test Two",
+            task=TaskDefinition(description="Second task"),
+        )
+        test_results = []
+        for test_definition in [sample_test_definition, second_test_definition]:
+            run_result = RunResult(
+                test_id=test_definition.id,
+                run_number=1,
+                response=sample_response,
+                start_time=datetime.now(),
+                end_time=datetime.now(),
+            )
+            test_results.append(
+                TestResult(
+                    test=test_definition,
+                    runs=[run_result],
+                    start_time=datetime.now(),
+                    end_time=datetime.now(),
+                )
+            )
+
+        suite_result = SuiteResult(
+            suite_name="test-suite",
+            agent_name="test-agent",
+            tests=test_results,
+            start_time=datetime.now(),
+            end_time=datetime.now(),
+        )
+
+        component = ComponentScore(
+            name="quality",
+            raw_value=0.2,
+            normalized_value=0.2,
+            weight=0.4,
+            weighted_value=0.08,
+        )
+        breakdown = ScoreBreakdown(
+            quality=component,
+            completeness=component,
+            efficiency=component,
+            cost=component,
+        )
+        scored_results = {
+            "test-001": ScoredTestResult(
+                test_id="test-001",
+                score=20.0,
+                breakdown=breakdown,
+                passed=False,
+            )
+        }
+
+        report = SuiteReport.from_suite_result(
+            suite_result, scored_results=scored_results
+        )
+
+        assert [test.success for test in report.tests] == [False, True]
+        assert report.tests[0].score == 20.0
+        assert report.passed_tests == 1
+        assert report.failed_tests == 1
+        assert report.success_rate == 0.5
+
+    def test_from_suite_result_execution_failure_overrides_scored_pass(
+        self, sample_test_definition: TestDefinition
+    ) -> None:
+        """Verify failed execution cannot pass because scoring passed."""
+        from atp.protocol import ATPResponse, ResponseStatus
+        from atp.runner.models import RunResult
+
+        failed_response = ATPResponse(
+            task_id="test-001",
+            status=ResponseStatus.FAILED,
+        )
+        run_result = RunResult(
+            test_id="test-001",
+            run_number=1,
+            response=failed_response,
+            start_time=datetime.now(),
+            end_time=datetime.now(),
+        )
+        test_result = TestResult(
+            test=sample_test_definition,
+            runs=[run_result],
+            start_time=datetime.now(),
+            end_time=datetime.now(),
+        )
+        suite_result = SuiteResult(
+            suite_name="test-suite",
+            agent_name="test-agent",
+            tests=[test_result],
+            start_time=datetime.now(),
+            end_time=datetime.now(),
+        )
+
+        component = ComponentScore(
+            name="quality",
+            raw_value=1.0,
+            normalized_value=1.0,
+            weight=0.4,
+            weighted_value=0.4,
+        )
+        breakdown = ScoreBreakdown(
+            quality=component,
+            completeness=component,
+            efficiency=component,
+            cost=component,
+        )
+        scored_results = {
+            "test-001": ScoredTestResult(
+                test_id="test-001",
+                score=100.0,
+                breakdown=breakdown,
+                passed=True,
+            )
+        }
+
+        report = SuiteReport.from_suite_result(
+            suite_result, scored_results=scored_results
+        )
+
+        assert report.tests[0].success is False
+        assert report.tests[0].score == 100.0
+        assert report.passed_tests == 0
+        assert report.failed_tests == 1
+        assert report.success_rate == 0.0

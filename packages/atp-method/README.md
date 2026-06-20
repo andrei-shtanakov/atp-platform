@@ -24,3 +24,14 @@ case or a whole sweep (directory):
 atp test method/cases/req-extraction --adapter=http \
   --adapter-config endpoint=http://agent:8000/execute,allow_internal=true --runs=10
 ```
+
+`read_only_corpus` cases are prepared before adapter execution. The loader keeps
+the corpus declaration in `task.input_data`, marks the test with
+`request_preparer: corpus`, verifies the selected text/markdown files against
+`manifest.sha256`, materializes them into the run workspace, and exposes
+`file_read` through `Context.tools_endpoint`. The prompt lists corpus-relative
+paths and the response schema, but does not inline corpus file contents.
+
+The first tool-capable method spawner is `anthropic_api`. Product CLI shims are
+still prompt-only for this mode and should not be used as corpus-grounded
+signals until they call the ATP tools endpoint.

@@ -8,6 +8,7 @@ importing another — which removes the N×M drift and keeps the API-vs-CLI abla
 equivalent by construction.
 """
 
+import json
 from typing import Any
 
 # Pinned model for the code-review vertical (override per shim via CLAUDE_MODEL).
@@ -70,5 +71,12 @@ def build_prompt(request: dict[str, Any], envelope: str) -> str:
     contract = input_data.get("output_contract") or {}
     instruction = contract.get("format_instruction")
     if instruction:
-        return GENERIC_ENVELOPE.format(task=f"{body}\n\n{instruction}")
+        schema = contract.get("schema")
+        schema_text = (
+            "\n\nResponse JSON Schema:\n"
+            f"{json.dumps(schema, indent=2, sort_keys=True)}"
+            if schema
+            else ""
+        )
+        return GENERIC_ENVELOPE.format(task=f"{body}\n\n{instruction}{schema_text}")
     return envelope.format(task=body)

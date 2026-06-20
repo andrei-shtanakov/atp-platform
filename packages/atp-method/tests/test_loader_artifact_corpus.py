@@ -120,6 +120,23 @@ def test_loader_loads_corpus_backed_req_extraction_fixture() -> None:
     assert td.assertions[0].config["expected"][0]["source_path"] == (
         "policy-current.md"
     )
+    requirements_items = td.task.input_data["output_contract"]["schema"][
+        "properties"
+    ]["requirements"]["items"]
+    citations_schema = requirements_items["properties"]["citations"]
+    assert citations_schema["required"] == ["deadline"]
+    assert citations_schema["properties"]["deadline"]["type"] == "object"
+    assert citations_schema["properties"]["deadline"]["required"] == [
+        "path",
+        "page",
+        "line_start",
+        "line_end",
+        "field",
+    ]
+    assert (
+        "citations.deadline as a single citation object"
+        in td.task.input_data["output_contract"]["format_instruction"]
+    )
     assert "within 30 days of onboarding" not in yaml.safe_dump(td.task.input_data)
 
 

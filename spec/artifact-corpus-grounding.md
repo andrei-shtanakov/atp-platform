@@ -1,6 +1,6 @@
 # Spec: `read_only_corpus` grounding for method cases
 
-**Status:** reconciled draft - implementation requires runtime wiring first
+**Status:** implemented first text/markdown slice
 **Created:** 2026-06-14
 **Updated:** 2026-06-20
 **Scope:** `method/`, `packages/atp-method/`, `read_only_corpus` run mode,
@@ -28,13 +28,12 @@ contract: parse the agent's primary JSON text artifact, validate it against the
 case `output_contract.schema`, then run deterministic citation checks. Typed
 structured-artifact transport remains out of scope.
 
-The current codebase also names `read_only_corpus` in the method schema, but
-rejects it at load time because only `text_out` is wired. That guard is correct
-until corpus preparation, mock file serving, and spawner/tool wiring exist. Do
-not flip `read_only_corpus` into the wired run-mode set until a corpus-backed
-case can be loaded, materialized, served through `Context.tools_endpoint`, run
-through at least one method spawner that can call `file_read`, and graded by
-`citation_grounding`.
+The first runtime slice is wired for text/markdown corpora. `read_only_corpus`
+is now in `WIRED_RUN_MODES` only because corpus-backed cases can be loaded,
+materialized, served through `Context.tools_endpoint`, run through the
+`anthropic_api` method spawner with provider-native `file_read` calls, and
+graded by `citation_grounding`. Prompt-only product CLI shims remain outside
+the supported corpus execution path until they gain real tool wiring.
 
 The first slice should support text and markdown only; PDF/DOCX page-line
 normalization is a separate sub-project.
@@ -228,9 +227,9 @@ the same files into the prompt is still `text_out`, not `read_only_corpus`.
 - File access should be served through the existing mock-tools / tools endpoint
   seam, but the mock tool must be directory-backed for this mode rather than
   static response-rule based.
-- `read_only_corpus` must remain rejected by the method schema until corpus
-  preparation and at least one method spawner can execute a `file_read` call
-  through `Context.tools_endpoint`.
+- `read_only_corpus` is wired only for the text/markdown corpus path backed by
+  request preparation, directory-backed `file_read`, and a tool-capable method
+  spawner.
 - Prompt-only shims that ignore `Context.tools_endpoint` are insufficient for
   `read_only_corpus`. They may still run `text_out` cases.
 - Metadata is optional unless a checker references metadata fields.
@@ -243,89 +242,79 @@ the same files into the prompt is still `text_out`, not `read_only_corpus`.
 
 ## Functional Requirements
 
-- [ ] Extend the method case schema with `run_mode: read_only_corpus` and
+- [x] Extend the method case schema with `run_mode: read_only_corpus` and
       `artifact_corpus`.
-- [ ] Extend the Pydantic method schema with corpus models and path validators
+- [x] Extend the Pydantic method schema with corpus models and path validators
       that reuse ATP protocol path-safety behavior.
-- [ ] Keep `read_only_corpus` outside `WIRED_RUN_MODES` until runtime
-      preparation, file serving, spawner tool use, and citation grading are all
-      covered by tests.
-- [ ] Add deterministic include/exclude expansion with canonical sorted paths.
-- [ ] Add SHA-256 manifest parsing and normalized-content verification.
-- [ ] Fail pre-run preparation when selected files and manifest entries differ.
-- [ ] Copy selected corpus files into a per-run workspace.
-- [ ] Add a directory-backed `file_read` implementation to the mock tool server
+- [x] Gate `read_only_corpus` in `WIRED_RUN_MODES` until runtime preparation,
+      file serving, spawner tool use, and citation grading are all covered by
+      tests.
+- [x] Add deterministic include/exclude expansion with canonical sorted paths.
+- [x] Add SHA-256 manifest parsing and normalized-content verification.
+- [x] Fail pre-run preparation when selected files and manifest entries differ.
+- [x] Copy selected corpus files into a per-run workspace.
+- [x] Add a directory-backed `file_read` implementation to the mock tool server
       and serve it through `Context.tools_endpoint`.
-- [ ] Add a method run-preparation layer that resolves/verifies/materializes the
+- [x] Add a method run-preparation layer that resolves/verifies/materializes the
       corpus and attaches `workspace_path` plus `tools_endpoint` to the
       `ATPRequest`.
-- [ ] Update at least one method spawner path to call `file_read` through
+- [x] Update at least one method spawner path to call `file_read` through
       `Context.tools_endpoint` when `allowed_tools` includes `file_read`.
-- [ ] Ensure the task prompt references the corpus root and does not inline file
+- [x] Ensure the task prompt references the corpus root and does not inline file
       content.
-- [ ] Add a named `citation_grounding` programmatic checker with a
+- [x] Add a named `citation_grounding` programmatic checker with a
       load-validated config model.
-- [ ] Make `citation_grounding` parse the primary JSON text artifact and apply
+- [x] Make `citation_grounding` parse the primary JSON text artifact and apply
       `output_contract.schema`, following the landed `json_path` /
       `findings_match` pattern.
-- [ ] Implement line-range validation for text and markdown files.
-- [ ] Reuse existing malformed/critical-pass result fields when structured
+- [x] Implement line-range validation for text and markdown files.
+- [x] Reuse existing malformed/critical-pass result fields when structured
       citations are missing or malformed.
-- [ ] Update case-generation guidance to create corpus folders and
+- [x] Update case-generation guidance to create corpus folders and
       `manifest.sha256` files for agentic document cases.
 
 ## Implementation Tasks
 
-- [ ] Add schema contract tests for valid and invalid `artifact_corpus` blocks,
+- [x] Add schema contract tests for valid and invalid `artifact_corpus` blocks,
       including rejection when `artifact_corpus` appears without
       `run_mode: read_only_corpus`.
-- [ ] Add a test proving `read_only_corpus` still fails while it is not in
-      `WIRED_RUN_MODES`, then update that test only when the runtime path is
-      complete.
-- [ ] Add tests for absolute paths, traversal, duplicate manifest entries,
+- [x] Add schema tests for the unwired guard, then update them to assert
+      `read_only_corpus` is wired only after the runtime path is complete.
+- [x] Add tests for absolute paths, traversal, duplicate manifest entries,
       missing files, extra files, and hash mismatches.
-- [ ] Add tests proving hash input and citation line indexing use the same LF
+- [x] Add tests proving hash input and citation line indexing use the same LF
       normalized content.
-- [ ] Add tests for absent metadata when no metadata-sensitive check exists.
-- [ ] Add tests requiring metadata when a checker references `status` or `role`.
-- [ ] Add workspace materialization tests proving files are copied into an
+- [x] Add tests for absent metadata when no metadata-sensitive check exists.
+- [x] Add tests requiring metadata when a checker references `status` or `role`.
+- [x] Add workspace materialization tests proving files are copied into an
       isolated run directory.
-- [ ] Add directory-backed mock-tools `file_read` tests for the materialized
+- [x] Add directory-backed mock-tools `file_read` tests for the materialized
       corpus: valid path, missing path, traversal attempt, and directory read.
-- [ ] Add method run-preparation tests proving the resulting `ATPRequest`
+- [x] Add method run-preparation tests proving the resulting `ATPRequest`
       contains `Context.tools_endpoint`, `Context.workspace_path`, and no inline
       corpus file contents.
-- [ ] Add spawner/tool-use tests for the first supported method spawner, proving
+- [x] Add spawner/tool-use tests for the first supported method spawner, proving
       a `file_read` call is sent to `Context.tools_endpoint`.
-- [ ] Add citation-grounding checker tests for valid citations, missing files,
+- [x] Add citation-grounding checker tests for valid citations, missing files,
       invalid line ranges, obsolete-source citations, malformed citations, and
       multi-match JSON paths.
-- [ ] Add citation-grounding tests proving JSON text schema violations are
+- [x] Add citation-grounding tests proving JSON text schema violations are
       reported as `malformed=True` and `critical_pass=False`.
-- [ ] Add a documented helper or CLI command to generate `manifest.sha256`.
-- [ ] Add one small text/markdown req-extraction corpus fixture with source,
+- [x] Add a documented helper or CLI command to generate `manifest.sha256`.
+- [x] Add one small text/markdown req-extraction corpus fixture with source,
       supporting, and obsolete distractor documents.
 
 ## Migration Strategy
 
-Phase 1 uses the landed structured-output path as-is: JSON text output,
-`output_contract.schema`, and named programmatic checkers. Do not wait for
-`ArtifactStructured.data` transport.
-
-Phase 2 adds corpus schema/models, resolver, verifier, materializer, and
-directory-backed mock `file_read`, while keeping `read_only_corpus` rejected as
-unwired.
-
-Phase 3 adds method run preparation and one spawner path that can actually use
-`Context.tools_endpoint`. Only after this path is covered by tests should
-`read_only_corpus` be added to `WIRED_RUN_MODES`.
-
-Phase 4 adds `citation_grounding` and one corpus-backed req-extraction fixture,
-then runs the corpus-backed sweep while preserving the inline suite. The inline
+The implemented slice uses the landed structured-output path as-is: JSON text
+output, `output_contract.schema`, and named programmatic checkers. It includes
+corpus schema/models, resolver, verifier, materializer, directory-backed
+`file_read`, method run preparation, `anthropic_api` tool calling,
+`citation_grounding`, and one corpus-backed req-extraction fixture. The inline
 suite remains the single-call signal; the corpus suite becomes the agentic
 file-grounded signal.
 
-Phase 5 evaluates whether PDF/DOCX normalized page-line artifacts are worth a
+The next phase evaluates whether PDF/DOCX normalized page-line artifacts are worth a
 separate design.
 
 ## Deferred

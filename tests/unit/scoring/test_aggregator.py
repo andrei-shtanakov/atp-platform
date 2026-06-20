@@ -834,3 +834,58 @@ class TestCriticalHardGate:
 
         assert scored.passed is True
         assert scored.score > 0.0
+
+    @pytest.mark.parametrize(
+        ("rubric_score", "expected_score"),
+        [
+            (0.0, 0.0),
+            (0.8, 80.0),
+        ],
+    )
+    def test_agent_eval_case_rubric_score_drives_methodology_score(
+        self, rubric_score: float, expected_score: float
+    ) -> None:
+        """A passed critical agent-eval-case result gates pass/fail, not score."""
+        aggregator = ScoreAggregator()
+        results = [
+            EvalResult(
+                evaluator="agent_eval_case",
+                checks=[
+                    EvalCheck(name="critical_check", passed=True, score=1.0),
+                ],
+                critical=True,
+            ),
+            EvalResult(
+                evaluator="agent_eval_case",
+                checks=[
+                    EvalCheck(name="rubric", passed=True, score=rubric_score),
+                ],
+            ),
+        ]
+        scored = aggregator.score_test_result("case-003", results)
+
+        assert scored.passed is True
+        assert scored.score == expected_score
+
+    def test_failed_agent_eval_case_critical_zeroes_methodology_score(self) -> None:
+        """A failed critical agent-eval-case result overrides a high rubric score."""
+        aggregator = ScoreAggregator()
+        results = [
+            EvalResult(
+                evaluator="agent_eval_case",
+                checks=[
+                    EvalCheck(name="critical_check", passed=False, score=0.0),
+                ],
+                critical=True,
+            ),
+            EvalResult(
+                evaluator="agent_eval_case",
+                checks=[
+                    EvalCheck(name="rubric", passed=True, score=1.0),
+                ],
+            ),
+        ]
+        scored = aggregator.score_test_result("case-004", results)
+
+        assert scored.passed is False
+        assert scored.score == 0.0
