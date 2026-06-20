@@ -92,4 +92,20 @@ class CorpusRunPreparer:
         request_input["run_mode"] = "read_only_corpus"
         request.task.input_data = request_input
 
+        citation_assertions = [
+            assertion
+            for assertion in test.assertions
+            if assertion.config.get("checker") == "citation_grounding"
+        ]
+        if citation_assertions:
+            files_config = {
+                file.relative_path: {
+                    "line_count": file.line_count,
+                    "metadata": dict(file.metadata),
+                }
+                for file in materialized.files
+            }
+            for assertion in citation_assertions:
+                assertion.config["files"] = files_config
+
         return PreparedRequest(request=request, cleanup=served.cleanup)
