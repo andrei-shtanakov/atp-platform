@@ -193,7 +193,8 @@ def test_agents_registry_builds_harness_at_model_ids() -> None:
     assert "anthropic_api@claude-sonnet-4-6" in AGENTS
     assert "deepseek@deepseek-chat" in AGENTS
     assert "ollama@qwen2.5:14b" in AGENTS
-    # codex now pinned (gpt-5-codex) — it is arbiter's second routable key.
+    # codex pinned to gpt-5.5 (gpt-5-codex is unavailable on a ChatGPT account) —
+    # it is arbiter's second routable key.
     assert "codex_cli@gpt-5.5" in AGENTS
     spec = AGENTS["ollama@qwen2.5:14b"]
     assert spec["model"] == "qwen2.5:14b"
