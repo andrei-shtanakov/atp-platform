@@ -73,8 +73,7 @@ def build_prompt(request: dict[str, Any], envelope: str) -> str:
     if instruction:
         schema = contract.get("schema")
         schema_text = (
-            "\n\nResponse JSON Schema:\n"
-            f"{json.dumps(schema, indent=2, sort_keys=True)}"
+            f"\n\nResponse JSON Schema:\n{json.dumps(schema, indent=2, sort_keys=True)}"
             if schema
             else ""
         )

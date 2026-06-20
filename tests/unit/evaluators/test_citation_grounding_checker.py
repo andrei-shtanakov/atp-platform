@@ -47,9 +47,7 @@ def _config() -> dict:
                 "status": "current",
             }
         ],
-        "forbidden": [
-            {"source_path": "archive/policy-2023.md", "status": "obsolete"}
-        ],
+        "forbidden": [{"source_path": "archive/policy-2023.md", "status": "obsolete"}],
     }
 
 
@@ -160,7 +158,9 @@ def test_citation_grounding_fixture_rejects_obsolete_archive_citation() -> None:
     assert verdict.critical_pass is False
     assert verdict.malformed is False
     assert verdict.details["results"][0]["ok"] is False
-    assert "expected source policy-current.md" in verdict.details["results"][0]["reason"]
+    assert (
+        "expected source policy-current.md" in verdict.details["results"][0]["reason"]
+    )
 
 
 def test_citation_grounding_bad_json_is_malformed() -> None:

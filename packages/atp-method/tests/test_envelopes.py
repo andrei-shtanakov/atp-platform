@@ -174,7 +174,9 @@ def test_build_prompt_includes_corpus_id_and_paths_without_file_contents() -> No
     assert "within 30 days of onboarding" not in prompt
 
 
-def test_build_prompt_lists_fixture_corpus_paths_without_inlining_fixture_text() -> None:
+def test_build_prompt_lists_fixture_corpus_paths_without_inlining_fixture_text() -> (
+    None
+):
     import json
     from pathlib import Path
 

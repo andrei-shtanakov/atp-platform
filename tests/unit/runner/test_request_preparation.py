@@ -75,7 +75,10 @@ def test_request_preparer_registry_resolves_named_preparer() -> None:
 
 @pytest.mark.anyio
 async def test_orchestrator_applies_named_preparer_before_adapter_execution() -> None:
-    from atp.runner.preparation import register_request_preparer, unregister_request_preparer
+    from atp.runner.preparation import (
+        register_request_preparer,
+        unregister_request_preparer,
+    )
 
     preparer = _RecordingPreparer()
     adapter = _Adapter()
@@ -92,7 +95,10 @@ async def test_orchestrator_applies_named_preparer_before_adapter_execution() ->
 
 @pytest.mark.anyio
 async def test_orchestrator_cleans_up_prepared_request_after_adapter_failure() -> None:
-    from atp.runner.preparation import register_request_preparer, unregister_request_preparer
+    from atp.runner.preparation import (
+        register_request_preparer,
+        unregister_request_preparer,
+    )
 
     preparer = _RecordingPreparer()
     register_request_preparer("corpus", preparer)

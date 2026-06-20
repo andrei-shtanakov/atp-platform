@@ -4,7 +4,6 @@ from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
-
 from atp.loader.models import Assertion, TaskDefinition, TestDefinition
 from atp.protocol import ATPRequest, Task
 
@@ -168,9 +167,7 @@ async def test_corpus_run_preparer_adds_file_metadata_to_citation_grounding_conf
         test, request
     )
 
-    assert prepared.request.task.input_data["artifact_corpus"]["files"] == [
-        "policy.md"
-    ]
+    assert prepared.request.task.input_data["artifact_corpus"]["files"] == ["policy.md"]
     assert assertion.config["files"] == {
         "policy.md": {
             "line_count": 3,

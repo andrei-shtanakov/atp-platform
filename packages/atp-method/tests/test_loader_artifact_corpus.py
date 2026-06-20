@@ -6,7 +6,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CORPUS_CASE_PATH = (
     REPO_ROOT
@@ -120,9 +119,9 @@ def test_loader_loads_corpus_backed_req_extraction_fixture() -> None:
     assert td.assertions[0].config["expected"][0]["source_path"] == (
         "policy-current.md"
     )
-    requirements_items = td.task.input_data["output_contract"]["schema"][
-        "properties"
-    ]["requirements"]["items"]
+    requirements_items = td.task.input_data["output_contract"]["schema"]["properties"][
+        "requirements"
+    ]["items"]
     citations_schema = requirements_items["properties"]["citations"]
     assert citations_schema["required"] == ["deadline"]
     assert citations_schema["properties"]["deadline"]["type"] == "object"

@@ -9,7 +9,9 @@ from pydantic import ValidationError
 def _corpus() -> dict:
     return {
         "id": "fabricated-deadline-clean-corpus",
-        "root": "method/cases/req-extraction/assets/fabricated-deadline-clean-corpus-001",
+        "root": (
+            "method/cases/req-extraction/assets/fabricated-deadline-clean-corpus-001"
+        ),
         "include": ["**/*.md", "**/*.txt"],
         "exclude": ["README.md"],
         "digest": {

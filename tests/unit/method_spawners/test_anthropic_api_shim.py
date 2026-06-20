@@ -6,8 +6,8 @@ import re
 import subprocess
 import sys
 import threading
-from pathlib import Path
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 
 from atp_method.envelopes import build_prompt, get_envelope
 
@@ -198,8 +198,9 @@ def test_success_writes_debug_io_files_when_enabled(tmp_path: Path) -> None:
     assert debug_files["prompt.txt"].read_text() == build_prompt(
         request, get_envelope("review")
     )
-    assert debug_files["final_output.txt"].read_text() == (
-        stdout_response["artifacts"][0]["content"]
+    assert (
+        debug_files["final_output.txt"].read_text()
+        == (stdout_response["artifacts"][0]["content"])
     )
     raw_response = json.loads(debug_files["raw_response.json"].read_text())
     assert raw_response["content"] == [
@@ -299,7 +300,16 @@ class _Messages:
         _LOG.write_text(_json.dumps({"calls": self.calls, "kwargs": k}, default=str))
         if self.calls == 1:
             assert k["tools"][0]["name"] == "file_read"
-            return _Msg([_Block("tool_use", id="toolu_1", name="file_read", input={"path": "policy.md"})])
+            return _Msg(
+                [
+                    _Block(
+                        "tool_use",
+                        id="toolu_1",
+                        name="file_read",
+                        input={"path": "policy.md"},
+                    )
+                ]
+            )
         assert any(
             block.get("type") == "tool_result"
             and block.get("tool_use_id") == "toolu_1"

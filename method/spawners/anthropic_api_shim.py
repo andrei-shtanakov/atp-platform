@@ -233,7 +233,9 @@ def main() -> int:
 
 
 def _run_tool_loop(
-    client, request: dict, messages: list[dict]  # type: ignore[no-untyped-def]
+    client,
+    request: dict,
+    messages: list[dict],  # type: ignore[no-untyped-def]
 ) -> tuple[str, int, int]:
     """Run a bounded Anthropic tool loop for file_read."""
     task_id = request.get("task_id", "")

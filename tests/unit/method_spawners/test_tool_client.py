@@ -4,7 +4,9 @@ import pytest
 
 
 @pytest.mark.anyio
-async def test_call_tool_posts_to_tools_call_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_call_tool_posts_to_tools_call_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from method.spawners import _tool_client
 
     calls: list[dict] = []
