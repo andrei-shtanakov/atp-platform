@@ -67,10 +67,12 @@ HARNESSES: dict[str, tuple[str, str]] = {
 }
 
 # Default (harness, model) matrix. agent_id = f"{harness}@{model}". The model is
-# the faithful provider id. codex_cli is intentionally absent: it has no pinned
-# model, so the operator adds ("codex_cli", "<model>") here when it is known.
+# the faithful provider id. claude_code@claude-sonnet-4-6 and codex_cli@gpt-5-codex
+# are arbiter's routable keys — they MUST be emitted here, or arbiter's re-rank
+# join returns None (silent no-op).
 AGENT_MODELS: list[tuple[str, str]] = [
     ("claude_code", "claude-sonnet-4-6"),
+    ("codex_cli", "gpt-5-codex"),
     ("anthropic_api", "claude-sonnet-4-6"),
     ("deepseek", "deepseek-chat"),
     ("mimo", "MiMo-V2.5-Pro"),
