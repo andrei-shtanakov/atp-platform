@@ -23,7 +23,13 @@ def test_unknown_task_type_exits_2_with_stderr() -> None:
     # Fail fast on an unknown --task-type: one-line stderr + exit 2 (not a
     # traceback), before any agent runs.
     proc = _run(
-        ["--agents", "claude_code@claude-opus-4-8", "--task-type", "bogus", "--dry-run"]
+        [
+            "--agents",
+            "claude_code@claude-sonnet-4-6",
+            "--task-type",
+            "bogus",
+            "--dry-run",
+        ]
     )
     assert proc.returncode == 2
     err = proc.stderr.decode()
@@ -183,12 +189,12 @@ def test_write_case_details_one_line_per_case(tmp_path: Path) -> None:
 def test_agents_registry_builds_harness_at_model_ids() -> None:
     from method.run_pipe_check import AGENTS
 
-    assert "claude_code@claude-opus-4-8" in AGENTS
-    assert "anthropic_api@claude-opus-4-8" in AGENTS
+    assert "claude_code@claude-sonnet-4-6" in AGENTS
+    assert "anthropic_api@claude-sonnet-4-6" in AGENTS
     assert "deepseek@deepseek-chat" in AGENTS
     assert "ollama@qwen2.5:14b" in AGENTS
-    # codex is NOT in the default matrix (no pinned model)
-    assert not any(a.startswith("codex_cli@") for a in AGENTS)
+    # codex now pinned (gpt-5-codex) — it is arbiter's second routable key.
+    assert "codex_cli@gpt-5-codex" in AGENTS
     spec = AGENTS["ollama@qwen2.5:14b"]
     assert spec["model"] == "qwen2.5:14b"
     assert spec["model_env"] == "OLLAMA_MODEL"
@@ -214,7 +220,10 @@ def test_safe_agent_id_renders_filesystem_safe() -> None:
     from method.run_pipe_check import safe_agent_id
 
     assert safe_agent_id("ollama@qwen2.5:14b") == "ollama_qwen2_5_14b"
-    assert safe_agent_id("claude_code@claude-opus-4-8") == "claude_code_claude-opus-4-8"
+    assert (
+        safe_agent_id("claude_code@claude-sonnet-4-6")
+        == "claude_code_claude-sonnet-4-6"
+    )
 
 
 def test_legacy_bare_harness_id_is_unknown() -> None:
@@ -222,3 +231,26 @@ def test_legacy_bare_harness_id_is_unknown() -> None:
     proc = _run(["--agents", "claude_code", "--task-type", "review", "--dry-run"])
     assert proc.returncode == 2
     assert "Unknown agent" in proc.stderr.decode()
+
+
+def test_registry_has_sonnet_and_new_api_agents_no_opus() -> None:
+    from method.run_pipe_check import AGENTS
+
+    assert "claude_code@claude-sonnet-4-6" in AGENTS
+    assert "anthropic_api@claude-sonnet-4-6" in AGENTS
+    assert "mimo@MiMo-V2.5-Pro" in AGENTS
+    assert "qwen@qwen3.6-plus" in AGENTS
+    # opus fully retired
+    assert not any("claude-opus-4-8" in a for a in AGENTS)
+    assert AGENTS["mimo@MiMo-V2.5-Pro"]["model_env"] == "MIMO_MODEL"
+    assert AGENTS["mimo@MiMo-V2.5-Pro"]["shim"].endswith("mimo_shim.py")
+    assert AGENTS["qwen@qwen3.6-plus"]["shim"].endswith("qwen_shim.py")
+
+
+def test_preflight_skips_mimo_qwen_without_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    from method.run_pipe_check import _preflight
+
+    monkeypatch.delenv("MIMO_API_KEY", raising=False)
+    monkeypatch.delenv("QWEN_API_KEY", raising=False)
+    assert _preflight("mimo@MiMo-V2.5-Pro") == "MIMO_API_KEY not set"
+    assert _preflight("qwen@qwen3.6-plus") == "QWEN_API_KEY not set"

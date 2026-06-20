@@ -21,8 +21,8 @@ Agents (two spawners, by design):
 
 Usage:
   uv run python method/run_pipe_check.py --dry-run        # show plan, no calls
-  uv run python method/run_pipe_check.py                  # both agents (PAID)
-  uv run python method/run_pipe_check.py --agents claude_code@claude-opus-4-8
+  uv run python method/run_pipe_check.py                  # all agents (PAID)
+  uv run python method/run_pipe_check.py --agents claude_code@claude-sonnet-4-6
   uv run python method/run_pipe_check.py --with-rubric --db /tmp/bench.db
 """
 
@@ -61,16 +61,22 @@ HARNESSES: dict[str, tuple[str, str]] = {
     "codex_cli": ("method/spawners/codex_cli_shim.py", "CODEX_MODEL"),
     "anthropic_api": ("method/spawners/anthropic_api_shim.py", "CLAUDE_MODEL"),
     "deepseek": ("method/spawners/deepseek_shim.py", "DEEPSEEK_MODEL"),
+    "mimo": ("method/spawners/mimo_shim.py", "MIMO_MODEL"),
+    "qwen": ("method/spawners/qwen_shim.py", "QWEN_MODEL"),
     "ollama": ("method/spawners/ollama_shim.py", "OLLAMA_MODEL"),
 }
 
 # Default (harness, model) matrix. agent_id = f"{harness}@{model}". The model is
-# the faithful provider id. codex_cli is intentionally absent: it has no pinned
-# model, so the operator adds ("codex_cli", "<model>") here when it is known.
+# the faithful provider id. claude_code@claude-sonnet-4-6 and codex_cli@gpt-5-codex
+# are arbiter's routable keys — they MUST be emitted here, or arbiter's re-rank
+# join returns None (silent no-op).
 AGENT_MODELS: list[tuple[str, str]] = [
-    ("claude_code", "claude-opus-4-8"),
-    ("anthropic_api", "claude-opus-4-8"),
+    ("claude_code", "claude-sonnet-4-6"),
+    ("codex_cli", "gpt-5-codex"),
+    ("anthropic_api", "claude-sonnet-4-6"),
     ("deepseek", "deepseek-chat"),
+    ("mimo", "MiMo-V2.5-Pro"),
+    ("qwen", "qwen3.6-plus"),
     ("ollama", "llama3.2:1b"),
     ("ollama", "llama3.2:3b"),
     ("ollama", "qwen2.5:3b"),
@@ -131,6 +137,12 @@ ALLOWED_ENV = [
     "DEEPSEEK_API_KEY",
     "DEEPSEEK_MODEL",
     "DEEPSEEK_HOST",
+    "MIMO_API_KEY",
+    "MIMO_HOST",
+    "MIMO_MODEL",
+    "QWEN_API_KEY",
+    "QWEN_HOST",
+    "QWEN_MODEL",
 ]
 
 _BENCH_DDL = """
@@ -181,6 +193,10 @@ def _preflight(agent_id: str) -> str | None:
         return "ANTHROPIC_API_KEY not set"
     if harness == "deepseek" and not os.environ.get("DEEPSEEK_API_KEY"):
         return "DEEPSEEK_API_KEY not set"
+    if harness == "mimo" and not os.environ.get("MIMO_API_KEY"):
+        return "MIMO_API_KEY not set"
+    if harness == "qwen" and not os.environ.get("QWEN_API_KEY"):
+        return "QWEN_API_KEY not set"
     if harness == "ollama":
         return _preflight_ollama(spec["model"])
     return None
