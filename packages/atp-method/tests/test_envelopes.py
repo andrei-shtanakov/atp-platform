@@ -89,6 +89,41 @@ def test_build_prompt_uses_format_instruction_when_present() -> None:
     }
     prompt = build_prompt(request, get_envelope("review"))
     assert "Return ONLY JSON" in prompt
+    assert "Response JSON Schema:" not in prompt
+    assert "Vendor must submit." in prompt
+    assert "senior code reviewer" not in prompt
+
+
+def test_build_prompt_includes_response_schema_with_format_instruction() -> None:
+    request = {
+        "task": {
+            "description": "Extract requirements",
+            "input_data": {
+                "artifacts": [{"id": "doc", "content": "Vendor must submit."}],
+                "output_contract": {
+                    "artifact_name": "answer",
+                    "format_instruction": "Return ONLY JSON.",
+                    "schema": {
+                        "type": "object",
+                        "required": ["requirements"],
+                        "properties": {
+                            "requirements": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                            }
+                        },
+                    },
+                },
+            },
+        }
+    }
+
+    prompt = build_prompt(request, get_envelope("review"))
+
+    assert "Return ONLY JSON." in prompt
+    assert "Response JSON Schema:" in prompt
+    assert '"requirements"' in prompt
+    assert '"type": "object"' in prompt
     assert "Vendor must submit." in prompt
     assert "senior code reviewer" not in prompt
 
@@ -111,3 +146,76 @@ def test_build_prompt_contract_without_instruction_uses_review() -> None:
     }
     prompt = build_prompt(request, get_envelope("review"))
     assert "senior code reviewer" in prompt
+
+
+def test_build_prompt_includes_corpus_id_and_paths_without_file_contents() -> None:
+    request = {
+        "task": {
+            "description": "Extract requirements with citations",
+            "input_data": {
+                "run_mode": "read_only_corpus",
+                "artifact_corpus": {
+                    "id": "req-corpus",
+                    "files": ["policy-current.md", "archive/policy-2023.md"],
+                },
+                "output_contract": {
+                    "artifact_name": "answer",
+                    "format_instruction": "Return JSON with citations.",
+                },
+            },
+        }
+    }
+
+    prompt = build_prompt(request, get_envelope("review"))
+
+    assert "req-corpus" in prompt
+    assert "policy-current.md" in prompt
+    assert "archive/policy-2023.md" in prompt
+    assert "within 30 days of onboarding" not in prompt
+
+
+def test_build_prompt_lists_fixture_corpus_paths_without_inlining_fixture_text() -> (
+    None
+):
+    import json
+    from pathlib import Path
+
+    from atp.protocol.models import ATPRequest, Task
+
+    from atp_method.corpus import CorpusIntegrityVerifier, CorpusResolver
+    from atp_method.loader import load_case
+    from atp_method.schema import ArtifactCorpus
+
+    repo_root = Path(__file__).resolve().parents[3]
+    case_path = (
+        repo_root
+        / "method"
+        / "cases"
+        / "req-extraction"
+        / "case-req-extraction-fabricated-deadline-corpus-clean-001.yaml"
+    )
+    td = load_case(case_path)
+    corpus = ArtifactCorpus.model_validate(td.task.input_data["artifact_corpus"])
+    resolved = CorpusResolver().resolve(case_path, corpus)
+    verified = CorpusIntegrityVerifier().verify(resolved)
+    input_data = dict(td.task.input_data)
+    artifact_corpus = dict(input_data["artifact_corpus"])
+    artifact_corpus["files"] = [file.relative_path for file in verified.files]
+    input_data["artifact_corpus"] = artifact_corpus
+    req = ATPRequest(
+        task_id=td.id,
+        task=Task(description=td.task.description, input_data=input_data),
+    )
+
+    prompt = build_prompt(json.loads(req.model_dump_json()), get_envelope("review"))
+
+    assert "fabricated-deadline-clean-corpus" in prompt
+    assert "Response JSON Schema:" in prompt
+    assert "citations.deadline as a single citation object" in prompt
+    assert '"citations"' in prompt
+    assert '"deadline"' in prompt
+    assert "policy-current.md" in prompt
+    assert "vendor-addendum.md" in prompt
+    assert "archive/policy-2023.md" in prompt
+    assert "within 30 days of onboarding" not in prompt
+    assert "within 45 days of onboarding" not in prompt

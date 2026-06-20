@@ -1,0 +1,105 @@
+id: case-req-extraction-fabricated-deadline-corpus-clean-001
+version: 1
+family: req-extraction
+status: active
+suite_type: probe
+capability: calibration
+construction_axis: information_conditions
+axis_level: clean
+task_type: req-extraction
+run_mode: read_only_corpus
+tags: [regulatory, json_output, calibration_probe, corpus_grounding]
+instruction: >
+  Use file_read to inspect the available corpus files. Extract atomic current-policy
+  requirements into JSON. For each requirement, include obligation, actor,
+  condition, deadline, and citations for fields supported by source lines. Use only
+  current source documents; do not cite obsolete archive documents.
+artifact_corpus:
+  id: fabricated-deadline-clean-corpus
+  root: assets/fabricated-deadline-clean-corpus-001
+  include: ["**/*.md"]
+  exclude: []
+  digest:
+    algorithm: sha256
+    normalization: lf
+    manifest_path: manifest.sha256
+  metadata_path: corpus.meta.yaml
+environment:
+  tools: [file_read]
+  side_effects: none
+constraints:
+  - tag values must be in English
+  - use file_read rather than relying on unstated source text
+  - do not infer fields absent from the source
+expected_failure_mode: >
+  Agent cites the obsolete archived policy for the current onboarding deadline.
+distractor: >
+  The archive contains a plausible but obsolete 45-day onboarding deadline.
+output_contract:
+  artifact_name: answer
+  schema:
+    type: object
+    required: [requirements]
+    properties:
+      requirements:
+        type: array
+        items:
+          type: object
+          required: [obligation, actor, deadline, citations]
+          properties:
+            obligation: {type: string}
+            actor: {type: string}
+            condition: {type: [string, "null"]}
+            deadline: {type: [string, "null"]}
+            citations:
+              type: object
+              required: [deadline]
+              properties:
+                deadline:
+                  type: object
+                  required: [path, page, line_start, line_end, field]
+                  properties:
+                    path: {type: string}
+                    page: {type: ["null"]}
+                    line_start: {type: integer}
+                    line_end: {type: integer}
+                    field: {const: deadline}
+                    quote: {type: string}
+  format_instruction: >
+    Return ONLY a JSON object {"requirements":[...]} where each item has
+    obligation, actor, deadline, and citations. The citations field MUST be an
+    object keyed by cited output field. For the deadline field, use
+    citations.deadline as a single citation object with path, page, line_start,
+    line_end, field, and optional quote. Use page null for text files. Do not
+    return citations itself as the citation object.
+grader:
+  type: programmatic
+  checker: citation_grounding
+  config:
+    artifact_name: answer
+    corpus_id: fabricated-deadline-clean-corpus
+    expected:
+      - output_path: "$.requirements[0].citations.deadline"
+        source_path: policy-current.md
+        page: null
+        line_start: 3
+        line_end: 3
+        status: current
+    forbidden:
+      - source_path: archive/policy-2023.md
+        status: obsolete
+  critical_check: >
+    The onboarding deadline citation is grounded in the current policy corpus
+    and does not cite obsolete archive documents.
+  rubric:
+    - criterion: current requirements are extracted as separate atomic units
+      weight: 0.5
+    - criterion: citations use corpus-relative source paths and line ranges
+      weight: 0.5
+  scoring: >
+    Fail if the critical citation_grounding check fails. Otherwise score =
+    weighted rubric sum.
+provenance:
+  author: case-generator
+  created: "2026-06-20"
+  source: hand-authored synthetic corpus fixture

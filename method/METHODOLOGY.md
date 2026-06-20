@@ -167,6 +167,10 @@ to an authoring linter:
 1. Pick one **capability** to put under the lens.
 2. Pick one **construction axis** to vary, and the **axis_level** for this instance.
 3. Write the task and its input artifacts. Plant the **distractor**.
+   For document-grounded agentic cases, prefer `run_mode: read_only_corpus`:
+   place text/markdown files under an `assets/<corpus-id>/` directory, include a
+   `manifest.sha256` over LF-normalized content, expose `environment.tools:
+   [file_read]`, and grade citations with `checker: citation_grounding`.
 4. State the **expected_failure_mode** in one concrete sentence.
 5. Write the **critical_check** that detects exactly that failure — binary, must-pass.
 6. Add a **rubric** for graded quality where it matters.

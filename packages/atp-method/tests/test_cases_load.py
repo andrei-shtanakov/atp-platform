@@ -42,14 +42,26 @@ def test_cases_validate_pydantic_and_contract() -> None:
 
 
 def test_req_extraction_cases_present() -> None:
-    assert len(REQ_CASES) == 4
+    # Text-out severity sweep plus one read-only corpus grounding case.
+    assert len(REQ_CASES) == 5
 
 
 def test_req_extraction_cases_are_deterministic() -> None:
+    checkers: dict[str, str] = {}
     for path in REQ_CASES:
         doc = yaml.safe_load(path.read_text())
         case = AgentEvalCase.model_validate(doc)
         assert case.grader.type == "programmatic"
-        assert case.grader.checker == "json_path"
         assert case.task_type == "req-extraction"
         jsonschema.validate(doc, SCHEMA)
+        checkers[path.name] = case.grader.checker or ""
+
+    assert checkers == {
+        "case-req-extraction-fabricated-deadline-clean-001.yaml": "json_path",
+        "case-req-extraction-fabricated-deadline-corpus-clean-001.yaml": (
+            "citation_grounding"
+        ),
+        "case-req-extraction-fabricated-deadline-moderate-001.yaml": "json_path",
+        "case-req-extraction-fabricated-deadline-severe-001.yaml": "json_path",
+        "case-req-extraction-fabricated-deadline-very-severe-001.yaml": "json_path",
+    }

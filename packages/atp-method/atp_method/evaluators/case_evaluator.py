@@ -50,6 +50,23 @@ class AgentEvalCaseEvaluator(Evaluator):
             self._judge = LLMJudgeEvaluator()
         return self._judge
 
+    def _select_text_artifact(
+        self, response: ATPResponse, artifact_name: str | None
+    ) -> str | None:
+        """Select named artifact content, preserving first-content fallback."""
+        artifacts_with_content = [
+            artifact
+            for artifact in response.artifacts
+            if getattr(artifact, "content", None)
+        ]
+        if artifact_name:
+            for artifact in artifacts_with_content:
+                if getattr(artifact, "name", None) == artifact_name:
+                    return artifact.content
+                if getattr(artifact, "path", None) == artifact_name:
+                    return artifact.content
+        return artifacts_with_content[0].content if artifacts_with_content else None
+
     async def _judge_score(
         self,
         task: TestDefinition,
@@ -119,9 +136,8 @@ class AgentEvalCaseEvaluator(Evaluator):
                         )
                     ],
                 )
-            text = next(
-                (a.content for a in response.artifacts if getattr(a, "content", None)),
-                None,
+            text = self._select_text_artifact(
+                response, assertion.config.get("artifact_name")
             )
             verdict = checker(assertion.config, text)
             message = (

@@ -386,10 +386,13 @@ class SuiteReport(BaseModel):
         for test_result in result.tests:
             test_id = test_result.test.id
             scored = scored_results.get(test_id)
+            test_success = test_result.success and (
+                scored.passed if scored is not None else True
+            )
             test_report = TestReport(
                 test_id=test_id,
                 test_name=test_result.test.name,
-                success=test_result.success,
+                success=test_success,
                 score=scored.score if scored else None,
                 duration_seconds=test_result.duration_seconds,
                 total_runs=test_result.total_runs,
@@ -401,13 +404,18 @@ class SuiteReport(BaseModel):
             )
             test_reports.append(test_report)
 
+        passed_tests = sum(1 for test in test_reports if test.success)
+        total_tests = len(test_reports)
+        failed_tests = total_tests - passed_tests
+        success_rate = passed_tests / total_tests if total_tests else 0.0
+
         return cls(
             suite_name=result.suite_name,
             agent_name=result.agent_name,
-            total_tests=result.total_tests,
-            passed_tests=result.passed_tests,
-            failed_tests=result.failed_tests,
-            success_rate=result.success_rate,
+            total_tests=total_tests,
+            passed_tests=passed_tests,
+            failed_tests=failed_tests,
+            success_rate=success_rate,
             duration_seconds=result.duration_seconds,
             runs_per_test=result.runs_per_test,
             tests=test_reports,

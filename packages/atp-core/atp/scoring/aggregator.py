@@ -373,6 +373,29 @@ class ScoreAggregator:
             cost=cost,
         )
 
+    def _methodology_score(self, eval_results: list[EvalResult]) -> float | None:
+        """Return agent-eval-case score in 0..100, when those checks are present."""
+        rubric_scores = [
+            check.score
+            for result in eval_results
+            if result.evaluator == "agent_eval_case"
+            for check in result.checks
+            if check.name == "rubric"
+        ]
+        if rubric_scores:
+            score = rubric_scores[-1]
+            return max(0.0, min(1.0, score)) * 100
+
+        has_method_critical = any(
+            result.evaluator == "agent_eval_case"
+            and any(check.name == "critical_check" for check in result.checks)
+            for result in eval_results
+        )
+        if has_method_critical:
+            return 100.0
+
+        return None
+
     def score_test_result(
         self,
         test_id: str,
@@ -412,10 +435,18 @@ class ScoreAggregator:
         # Hard gate: a failed critical check fails the test with score 0,
         # regardless of the weighted rubric (agent-eval-case grader.critical_check).
         critical_failed = any(r.critical and not r.passed for r in eval_results)
+        methodology_score = self._methodology_score(eval_results)
+        score = (
+            0.0
+            if critical_failed
+            else methodology_score
+            if methodology_score is not None
+            else breakdown.final_score
+        )
 
         return ScoredTestResult(
             test_id=test_id,
-            score=0.0 if critical_failed else breakdown.final_score,
+            score=score,
             breakdown=breakdown,
             passed=all_passed and not critical_failed,
         )

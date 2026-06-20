@@ -5,7 +5,7 @@ import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -13,6 +13,13 @@ from pydantic import BaseModel
 from atp.mock_tools.loader import MockDefinitionLoader
 from atp.mock_tools.models import MockDefinition, MockResponse, MockTool, ToolCall
 from atp.mock_tools.recorder import CallRecorder
+
+
+class ToolHandler(Protocol):
+    """Async callable that implements one dynamic mock tool."""
+
+    async def __call__(self, call: ToolCall) -> MockResponse:
+        """Return a mock response for ``call``."""
 
 
 class ToolCallRequest(BaseModel):
@@ -62,6 +69,7 @@ class MockToolServer:
         """
         self._definition = definition or MockDefinition(name="default")
         self._recorder = CallRecorder() if record_calls else None
+        self._handlers: dict[str, ToolHandler] = {}
         self._app: FastAPI | None = None
 
     @property
@@ -95,6 +103,10 @@ class MockToolServer:
             default_delay_ms=self._definition.default_delay_ms,
         )
 
+    def add_handler(self, name: str, handler: ToolHandler) -> None:
+        """Register a dynamic handler for ``name``."""
+        self._handlers[name] = handler
+
     def load_definition(self, file_path: str | Path) -> None:
         """Load mock definition from YAML file.
 
@@ -125,7 +137,8 @@ class MockToolServer:
         start_time = time.perf_counter()
 
         tool = self._definition.get_tool(call.tool)
-        if tool is None:
+        handler = self._handlers.get(call.tool)
+        if tool is None and handler is None:
             error_msg = f"Unknown tool: {call.tool}"
             duration_ms = (time.perf_counter() - start_time) * 1000
 
@@ -147,13 +160,17 @@ class MockToolServer:
                 duration_ms=duration_ms,
             )
 
-        # Get matching response
-        response: MockResponse = tool.get_response(call.input)
+        if handler is not None:
+            response = await handler(call)
+        else:
+            assert tool is not None
+            # Get matching response
+            response = tool.get_response(call.input)
 
-        # Apply delay
-        delay_ms = response.delay_ms or self._definition.default_delay_ms
-        if delay_ms > 0:
-            await asyncio.sleep(delay_ms / 1000.0)
+            # Apply delay
+            delay_ms = response.delay_ms or self._definition.default_delay_ms
+            if delay_ms > 0:
+                await asyncio.sleep(delay_ms / 1000.0)
 
         duration_ms = (time.perf_counter() - start_time) * 1000
 
@@ -233,14 +250,20 @@ def create_mock_app(server: MockToolServer) -> FastAPI:
             }
             for tool in server.definition.tools
         ]
+        tool_names = {tool["name"] for tool in tools}
+        for name in sorted(server._handlers):
+            if name not in tool_names:
+                tools.append({"name": name, "description": None})
         return ToolListResponse(tools=tools)
 
     @app.get("/tools/{tool_name}")
     async def get_tool(tool_name: str) -> dict[str, Any]:
         """Get tool details."""
         tool = server.definition.get_tool(tool_name)
-        if tool is None:
+        if tool is None and tool_name not in server._handlers:
             raise HTTPException(status_code=404, detail=f"Tool not found: {tool_name}")
+        if tool is None:
+            return {"name": tool_name, "description": None}
         return {
             "name": tool.name,
             "description": tool.description,

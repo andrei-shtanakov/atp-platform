@@ -1,0 +1,13 @@
+files:
+  policy-current.md:
+    role: source
+    status: current
+    document_id: policy-current
+  vendor-addendum.md:
+    role: source
+    status: current
+    document_id: vendor-addendum
+  archive/policy-2023.md:
+    role: distractor
+    status: obsolete
+    document_id: policy-archive-2023

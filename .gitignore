@@ -123,3 +123,4 @@ results/
 # method/ superseded-case archive (override common global **/0. Archive/ rules)
 !method/0. archive/
 !method/0. archive/**
+.atp-runs/

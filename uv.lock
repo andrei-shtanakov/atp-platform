@@ -360,8 +360,10 @@ version = "0.1.0"
 source = { editable = "packages/atp-method" }
 dependencies = [
     { name = "atp-platform" },
+    { name = "fastapi" },
     { name = "pydantic" },
     { name = "pyyaml" },
+    { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
@@ -376,8 +378,10 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "atp-platform", editable = "." },
+    { name = "fastapi", specifier = ">=0.128.0" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pyyaml", specifier = ">=6.0" },
+    { name = "uvicorn", specifier = ">=0.40.0" },
 ]
 
 [package.metadata.requires-dev]

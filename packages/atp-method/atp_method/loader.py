@@ -65,11 +65,13 @@ def _tags(case: AgentEvalCase) -> list[str]:
 
 def _assertions(case: AgentEvalCase) -> list[Assertion]:
     """Build the critical-check (hard gate) and optional rubric assertions."""
+    checker_config = dict(case.grader.config or {})
     assertions = [
         Assertion(
             type=METHOD_CRITICAL_CHECK,
             critical=True,
             config={
+                **checker_config,
                 "check": case.grader.critical_check,
                 "expected_failure_mode": case.expected_failure_mode,
                 "grader_type": case.grader.type,
@@ -84,7 +86,7 @@ def _assertions(case: AgentEvalCase) -> list[Assertion]:
                 "schema": (
                     case.output_contract.json_schema if case.output_contract else None
                 ),
-                "assertions": (case.grader.config or {}).get("assertions", []),
+                "assertions": checker_config.get("assertions", []),
             },
         )
     ]
@@ -104,12 +106,22 @@ def _assertions(case: AgentEvalCase) -> list[Assertion]:
     return assertions
 
 
-def case_to_test_definition(case: AgentEvalCase) -> TestDefinition:
+def case_to_test_definition(
+    case: AgentEvalCase, case_path: str | Path | None = None
+) -> TestDefinition:
     """Translate a validated agent-eval-case into an ATP ``TestDefinition``."""
     input_data: dict[str, Any] = {
         "artifacts": [a.model_dump(exclude_none=True) for a in case.artifacts],
         "constraints": case.constraints,
+        "run_mode": case.run_mode,
     }
+    if case_path is not None:
+        input_data["case_path"] = str(case_path)
+    if case.artifact_corpus is not None:
+        input_data["artifact_corpus"] = case.artifact_corpus.model_dump(
+            exclude_none=True
+        )
+        input_data["request_preparer"] = "corpus"
     if case.distractor is not None:
         input_data["distractor"] = case.distractor
     if case.turns:
@@ -138,7 +150,7 @@ def load_case(path: str | Path) -> TestDefinition:
     with open(path) as f:
         doc = yaml.safe_load(f)
     case = AgentEvalCase.model_validate(doc)
-    return case_to_test_definition(case)
+    return case_to_test_definition(case, Path(path))
 
 
 def _case_files(path: Path) -> list[Path]:

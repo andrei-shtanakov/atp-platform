@@ -12,11 +12,40 @@
 
 from __future__ import annotations
 
+import importlib
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from atp.loader.models import TestDefinition
+    from atp.protocol import ATPRequest
+    from atp.runner.preparation import PreparedRequest
+
+
+class _LazyCorpusRunPreparer:
+    """Load corpus runtime dependencies only when corpus preparation is used."""
+
+    async def prepare(
+        self, test: TestDefinition, request: ATPRequest
+    ) -> PreparedRequest:
+        """Prepare a corpus request with the runtime preparer."""
+        try:
+            runtime = importlib.import_module("atp_method.runtime")
+        except ModuleNotFoundError as exc:
+            if exc.name not in {"fastapi", "uvicorn"}:
+                raise
+            raise RuntimeError(
+                "corpus-backed method cases require mock tool server dependencies "
+                "fastapi and uvicorn"
+            ) from exc
+
+        return await runtime.CorpusRunPreparer().prepare(test, request)
+
 
 def register() -> None:
     """Register the evaluator and the agent-eval-case source format."""
     from atp.evaluators.registry import get_registry
     from atp.loader import get_suite_source_registry
+    from atp.runner.preparation import register_request_preparer
 
     from atp_method.evaluators import AgentEvalCaseEvaluator
     from atp_method.loader import (
@@ -34,3 +63,4 @@ def register() -> None:
     get_suite_source_registry().register(
         "agent_eval_case", is_agent_eval_case, load_suite
     )
+    register_request_preparer("corpus", _LazyCorpusRunPreparer())

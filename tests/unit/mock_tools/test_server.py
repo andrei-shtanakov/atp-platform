@@ -164,6 +164,31 @@ class TestMockToolServer:
         assert records[0].status == "error"
 
     @pytest.mark.anyio
+    async def test_call_tool_dispatches_dynamic_handler_and_records_call(self) -> None:
+        """Dynamic handlers serve tools that are not static MockTool rules."""
+        server = MockToolServer(record_calls=True)
+
+        async def handler(call: ToolCall) -> MockResponse:
+            assert call.input == {"path": "policy.md"}
+            return MockResponse(output={"content": "policy\n"})
+
+        server.add_handler("file_read", handler)
+
+        response = await server.call_tool(
+            ToolCall(tool="file_read", input={"path": "policy.md"}, task_id="t1")
+        )
+
+        assert response.status == "success"
+        assert response.output == {"content": "policy\n"}
+        assert server.recorder is not None
+        records = server.recorder.get_records()
+        assert len(records) == 1
+        assert records[0].tool == "file_read"
+        assert records[0].input == {"path": "policy.md"}
+        assert records[0].output == {"content": "policy\n"}
+        assert records[0].status == "success"
+
+    @pytest.mark.anyio
     async def test_call_tool_with_delay(self) -> None:
         """Test calling tool with delay."""
         import time

@@ -52,9 +52,26 @@ GraderType = Literal[
 ]
 TurnRole = Literal["user", "inject", "assistant"]
 RunMode = Literal["text_out", "read_only_corpus", "workspace"]
-# Only text_out is wired today; the loader/validator rejects the rest so a case
-# cannot declare fidelity the harness cannot deliver (ADR-007 §3).
-WIRED_RUN_MODES = frozenset({"text_out"})
+# Keep this to modes the harness can actually execute, so a case cannot declare
+# fidelity the runtime cannot deliver (ADR-007 §3).
+WIRED_RUN_MODES = frozenset({"text_out", "read_only_corpus"})
+
+
+def _validate_safe_relative_path(value: str, *, field_name: str = "path") -> str:
+    """Validate ATP-safe relative corpus paths and glob patterns."""
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{field_name} must be a non-empty relative path")
+    if "\x00" in value:
+        raise ValueError(f"{field_name} contains an unsafe null byte")
+    if value.startswith("/") or value.startswith("~"):
+        raise ValueError(f"{field_name} must be a relative path")
+    normalized = value.replace("\\", "/")
+    if "//" in normalized:
+        raise ValueError(f"{field_name} contains an empty path segment")
+    parts = normalized.split("/")
+    if any(part in ("", ".", "..") for part in parts):
+        raise ValueError(f"{field_name} contains an unsafe path segment")
+    return value
 
 
 class Artifact(BaseModel):
@@ -67,6 +84,85 @@ class Artifact(BaseModel):
     path: str | None = None
     content: str | None = None
     note: str | None = None
+
+
+class CorpusDigest(BaseModel):
+    """Digest manifest declaration for a read-only artifact corpus."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    algorithm: Literal["sha256"]
+    manifest_path: str
+    normalization: Literal["lf"]
+
+    @field_validator("manifest_path")
+    @classmethod
+    def validate_manifest_path(cls, v: str) -> str:
+        """Manifest paths are safe and relative to the corpus root."""
+        return _validate_safe_relative_path(v, field_name="manifest_path")
+
+
+class ArtifactCorpus(BaseModel):
+    """A corpus folder exposed to an agent through read-only file tools."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(..., min_length=1)
+    root: str
+    include: list[str] = Field(..., min_length=1)
+    exclude: list[str] = Field(default_factory=list)
+    digest: CorpusDigest
+    metadata_path: str | None = None
+
+    @field_validator("root")
+    @classmethod
+    def validate_root(cls, v: str) -> str:
+        """Corpus root is relative to the case file."""
+        return _validate_safe_relative_path(v, field_name="root")
+
+    @field_validator("include", "exclude")
+    @classmethod
+    def validate_patterns(cls, v: list[str]) -> list[str]:
+        """Glob patterns still obey safe relative path rules."""
+        for pattern in v:
+            _validate_safe_relative_path(pattern, field_name="path pattern")
+        return v
+
+    @field_validator("metadata_path")
+    @classmethod
+    def validate_metadata_path(cls, v: str | None) -> str | None:
+        """Optional metadata path is relative to the corpus root."""
+        if v is None:
+            return None
+        return _validate_safe_relative_path(v, field_name="metadata_path")
+
+
+class CorpusFileMetadata(BaseModel):
+    """Semantic metadata for a selected corpus file."""
+
+    model_config = ConfigDict(extra="allow")
+
+    role: str | None = None
+    status: str | None = None
+    document_id: str | None = None
+
+
+class CorpusMetadata(BaseModel):
+    """Optional semantic metadata keyed by corpus-relative file path."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    files: dict[str, CorpusFileMetadata] = Field(default_factory=dict)
+
+    @field_validator("files")
+    @classmethod
+    def validate_file_paths(
+        cls, v: dict[str, CorpusFileMetadata]
+    ) -> dict[str, CorpusFileMetadata]:
+        """Metadata keys use the same safe relative corpus path rules."""
+        for path in v:
+            _validate_safe_relative_path(path, field_name="metadata file path")
+        return v
 
 
 class RubricItem(BaseModel):
@@ -168,6 +264,13 @@ class Grader(BaseModel):
                     "checker 'json_path' requires grader.config.assertions "
                     "(a non-empty list)"
                 )
+        if self.checker == "citation_grounding":
+            expected = (self.config or {}).get("expected")
+            if not isinstance(expected, list) or not expected:
+                raise ValueError(
+                    "checker 'citation_grounding' requires grader.config.expected "
+                    "(a non-empty list)"
+                )
         return self
 
 
@@ -230,6 +333,7 @@ class AgentEvalCase(BaseModel):
     grader: Grader
     output_contract: OutputContract | None = None
     run_mode: RunMode = "text_out"
+    artifact_corpus: ArtifactCorpus | None = None
     turns: list[Turn] = Field(default_factory=list)
     provenance: Provenance
 
@@ -253,6 +357,15 @@ class AgentEvalCase(BaseModel):
                     "requirements_volatility cases require >=2 turns including an "
                     "'inject' turn"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def validate_artifact_corpus_run_mode(self) -> AgentEvalCase:
+        """Corpus declarations and read_only_corpus mode are paired."""
+        if self.artifact_corpus is not None and self.run_mode != "read_only_corpus":
+            raise ValueError("artifact_corpus requires run_mode 'read_only_corpus'")
+        if self.run_mode == "read_only_corpus" and self.artifact_corpus is None:
+            raise ValueError("run_mode 'read_only_corpus' requires artifact_corpus")
         return self
 
     @model_validator(mode="after")
