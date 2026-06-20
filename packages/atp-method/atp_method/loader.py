@@ -71,6 +71,7 @@ def _assertions(case: AgentEvalCase) -> list[Assertion]:
             type=METHOD_CRITICAL_CHECK,
             critical=True,
             config={
+                **checker_config,
                 "check": case.grader.critical_check,
                 "expected_failure_mode": case.expected_failure_mode,
                 "grader_type": case.grader.type,
@@ -86,7 +87,6 @@ def _assertions(case: AgentEvalCase) -> list[Assertion]:
                     case.output_contract.json_schema if case.output_contract else None
                 ),
                 "assertions": checker_config.get("assertions", []),
-                **checker_config,
             },
         )
     ]

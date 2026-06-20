@@ -128,6 +128,66 @@ def test_loader_threads_checker_into_critical_config() -> None:
     assert crit.config["checker"] == "findings_match"
 
 
+def test_loader_preserves_reserved_critical_config_values() -> None:
+    """grader.config cannot override critical-check fields derived from the case."""
+    expected_schema = {
+        "type": "object",
+        "properties": {"findings": {"type": "array"}},
+    }
+    expected_findings = [
+        {"rule_ids": ["deadline"], "anchor": "deadline", "severity": "critical"}
+    ]
+    doc = {
+        "id": "case-1",
+        "version": 1,
+        "family": "f",
+        "status": "active",
+        "suite_type": "probe",
+        "capability": "safety_compliance",
+        "construction_axis": "adversarial_environment",
+        "axis_level": "moderate",
+        "instruction": "review",
+        "artifacts": [{"id": "d", "type": "text", "content": "x"}],
+        "environment": {"tools": ["file_read"], "side_effects": "none"},
+        "expected_failure_mode": "misses the planted deadline",
+        "grader": {
+            "type": "programmatic",
+            "checker": "findings_match",
+            "gold": "top-level-gold",
+            "expected_findings": expected_findings,
+            "critical_check": "flag the planted deadline",
+            "scoring": "fail if critical fails",
+            "config": {
+                "checker": "json_path",
+                "gold": "config-gold",
+                "expected_findings": [],
+                "schema": {"type": "string"},
+            },
+        },
+        "output_contract": {
+            "artifact_name": "findings",
+            "schema": expected_schema,
+        },
+        "provenance": {"author": "a", "created": "2026-06-14"},
+    }
+
+    td = case_to_test_definition(AgentEvalCase.model_validate(doc))
+
+    crit = next(a for a in td.assertions if a.type == METHOD_CRITICAL_CHECK)
+    reserved_config = {
+        "checker": crit.config["checker"],
+        "gold": crit.config["gold"],
+        "expected_findings": crit.config["expected_findings"],
+        "schema": crit.config["schema"],
+    }
+    assert reserved_config == {
+        "checker": "findings_match",
+        "gold": "top-level-gold",
+        "expected_findings": expected_findings,
+        "schema": expected_schema,
+    }
+
+
 def test_tags_include_case_version() -> None:
     """The case version is emitted as a version_<n> tag for SP-1 persistence."""
     doc = {
