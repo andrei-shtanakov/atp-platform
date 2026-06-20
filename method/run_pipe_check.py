@@ -64,6 +64,8 @@ HARNESSES: dict[str, tuple[str, str]] = {
     "mimo": ("method/spawners/mimo_shim.py", "MIMO_MODEL"),
     "qwen": ("method/spawners/qwen_shim.py", "QWEN_MODEL"),
     "ollama": ("method/spawners/ollama_shim.py", "OLLAMA_MODEL"),
+    "pi": ("method/spawners/pi_shim.py", "PI_MODEL"),
+    "opencode": ("method/spawners/opencode_shim.py", "OPENCODE_MODEL"),
 }
 
 # Default (harness, model) matrix. agent_id = f"{harness}@{model}". The model is
@@ -83,6 +85,8 @@ AGENT_MODELS: list[tuple[str, str]] = [
     ("ollama", "qwen2.5:3b"),
     ("ollama", "qwen2.5:7b"),
     ("ollama", "qwen2.5:14b"),
+    ("pi", "gpt-5"),
+    ("opencode", "glm-5.1"),
 ]
 
 # agent_id -> resolved spec. The id is the routing key (faithful, with '@').
@@ -144,6 +148,11 @@ ALLOWED_ENV = [
     "QWEN_API_KEY",
     "QWEN_HOST",
     "QWEN_MODEL",
+    "PI_BIN",
+    "PI_MODEL",
+    "OPENCODE_BIN",
+    "OPENCODE_MODEL",
+    "OPENCODE_GLM_API_KEY",
 ]
 
 _BENCH_DDL = """
@@ -198,6 +207,18 @@ def _preflight(agent_id: str) -> str | None:
         return "MIMO_API_KEY not set"
     if harness == "qwen" and not os.environ.get("QWEN_API_KEY"):
         return "QWEN_API_KEY not set"
+    if harness == "pi":
+        binary = os.environ.get("PI_BIN", "pi")
+        parts = shlex.split(binary) if binary else ["pi"]
+        head = parts[0] if parts else "pi"
+        if shutil.which(head) is None and not Path(head).exists():
+            return f"pi binary not found (PI_BIN={binary!r})"
+    if harness == "opencode":
+        binary = os.environ.get("OPENCODE_BIN", "opencode")
+        parts = shlex.split(binary) if binary else ["opencode"]
+        head = parts[0] if parts else "opencode"
+        if shutil.which(head) is None and not Path(head).exists():
+            return f"opencode binary not found (OPENCODE_BIN={binary!r})"
     if harness == "ollama":
         return _preflight_ollama(spec["model"])
     return None

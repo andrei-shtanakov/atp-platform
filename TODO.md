@@ -275,8 +275,15 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
     `("codex_cli","gpt-5-codex")` теперь в `AGENT_MODELS` (это 2-й routable-ключ arbiter — без него
     re-rank join по codex вернёт None). arbiter правит `config/agents.toml`
     (claude→sonnet, +codex, −aider). Спека+план: `docs/superpowers/{specs,plans}/2026-06-20-agent-roster-expansion*`.
-  - [ ] **Ростер Tier-2 (fast-follow):** `pi@gpt-5.4` (CLI, без ключа) и `opencode@GLM-5.1` (CLI,
-    `OPENCODE_GLM_API_KEY` провизорно) — новые CLI-шимы, нужен живой смоук до включения в платный прогон.
+  - [x] **Ростер Tier-2** (2026-06-20): `pi@gpt-5` и `opencode@glm-5.1` — два новых CLI-харнесса,
+    общий раннер `method/spawners/_cli_common.py` + тонкие `pi_shim`/`opencode_shim`. Оба **non-routable**
+    (как deepseek/mimo/qwen — только `benchmark_runs`, без Maestro-спаунера/arbiter `agents.toml`, см.
+    runbook Case B). pi запускается с `openai/`-префиксом + `--no-prompt-templates` + 600 s timeout-гард
+    (агентный CLI, риск hang). `ALLOWED_ENV` += `PI_BIN/PI_MODEL/OPENCODE_BIN/OPENCODE_MODEL/OPENCODE_GLM_API_KEY`.
+    **Живой смоук (гейт) пройден обоими:** opencode@glm-5.1 `critical_pass_rate=1.000 malformed=0.000`,
+    pi@gpt-5 `critical_pass_rate=1.000 malformed=0.000` (pi не завис — гейт зелёный, обе строки остаются).
+    Спека+план: `docs/superpowers/{specs,plans}/2026-06-20-agent-roster-tier2*`. Следующее: включить в
+    платный прогон (свежий `--out-dir` + `--dashboard-replace`) вместе с остальным ростером.
   - [ ] **ИССЛЕДОВАТЬ (перспектива): полное слияние путей оценки** — дописать `BenchmarkReporter`
     (сейчас `NotImplementedError`; маппинг `SuiteReport→report_benchmark` помечен Phase-1b), тогда
     `atp test method/cases/X -o report_benchmark` сам даёт arbiter-payload, а `run_pipe_check`

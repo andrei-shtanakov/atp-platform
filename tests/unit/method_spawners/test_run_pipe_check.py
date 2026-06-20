@@ -255,3 +255,24 @@ def test_preflight_skips_mimo_qwen_without_key(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.delenv("QWEN_API_KEY", raising=False)
     assert _preflight("mimo@mimo-v2.5-pro") == "MIMO_API_KEY not set"
     assert _preflight("qwen@qwen3.6-plus") == "QWEN_API_KEY not set"
+
+
+def test_registry_has_pi_and_opencode() -> None:
+    from method.run_pipe_check import AGENTS
+
+    assert "pi@gpt-5" in AGENTS
+    assert "opencode@glm-5.1" in AGENTS
+    assert AGENTS["pi@gpt-5"]["model_env"] == "PI_MODEL"
+    assert AGENTS["pi@gpt-5"]["shim"].endswith("pi_shim.py")
+    assert AGENTS["opencode@glm-5.1"]["shim"].endswith("opencode_shim.py")
+
+
+def test_preflight_skips_pi_opencode_without_binary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from method.run_pipe_check import _preflight
+
+    monkeypatch.setenv("PI_BIN", "definitely-not-a-real-bin-xyz")
+    monkeypatch.setenv("OPENCODE_BIN", "definitely-not-a-real-bin-xyz")
+    assert "pi binary not found" in (_preflight("pi@gpt-5") or "")
+    assert "opencode binary not found" in (_preflight("opencode@glm-5.1") or "")
