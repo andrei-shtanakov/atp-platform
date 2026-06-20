@@ -61,3 +61,9 @@ def test_qwen_shim_fails_clearly_without_key() -> None:
     out = _run_shim("qwen_shim", {})
     assert out["status"] == "failed"
     assert "QWEN_API_KEY not set" in out["error"]
+
+
+def test_mimo_shim_fails_clearly_without_model() -> None:
+    out = _run_shim("mimo_shim", {"MIMO_API_KEY": "x"})
+    assert out["status"] == "failed"
+    assert "MIMO_MODEL not set" in out["error"]

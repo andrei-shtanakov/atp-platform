@@ -105,6 +105,9 @@ def run(prefix: str, default_host: str) -> int:
     key = os.environ.get(f"{prefix}_API_KEY")
     if not key:
         return _fail(task_id, f"{prefix}_API_KEY not set")
+    # Required, no default: the model is part of the agent_id and is injected
+    # by the harness registry. A fallback could emit under a different model
+    # than the agent_id claims, breaking the faithful-id guarantee.
     model = os.environ.get(f"{prefix}_MODEL")
     if not model:
         return _fail(task_id, f"{prefix}_MODEL not set")
