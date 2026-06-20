@@ -2,8 +2,9 @@
 """Shared OpenAI-compatible spawner logic for ATP's CLI adapter.
 
 Provider-agnostic core: read an ATPRequest JSON from stdin, call an
-OpenAI-compatible ``/v1/chat/completions`` endpoint, normalize the result into
-an ATPResponse JSON on stdout. A thin per-provider shim calls ``run(prefix,
+OpenAI-compatible chat-completions endpoint (``{host}/chat/completions`` — the
+host already carries any version segment such as ``/v1``), normalize the result
+into an ATPResponse JSON on stdout. A thin per-provider shim calls ``run(prefix,
 default_host)`` — the prefix selects the ``{prefix}_API_KEY`` / ``{prefix}_HOST``
 / ``{prefix}_MODEL`` env vars. Mirrors ``deepseek_shim.py`` (kept separate so
 working Tier-1 code is not churned). Stdlib only — no new dependency.

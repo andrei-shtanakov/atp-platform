@@ -28,7 +28,7 @@
 - Test: `tests/unit/method_spawners/test_openai_compat_shim.py`
 
 **Interfaces:**
-- Produces: `_openai_compat.run(prefix: str, default_host: str) -> int` (reads `{prefix}_API_KEY`/`{prefix}_HOST`/`{prefix}_MODEL`, calls `{host}/v1/chat/completions`, writes an ATPResponse to stdout); `_openai_compat.build_response(request: dict, raw: dict) -> dict`.
+- Produces: `_openai_compat.run(prefix: str, default_host: str) -> int` (reads `{prefix}_API_KEY`/`{prefix}_HOST`/`{prefix}_MODEL`, calls `{host}/chat/completions` — the host carries any version segment like `/v1`, so the helper does NOT add one, avoiding `/v1/v1`; writes an ATPResponse to stdout); `_openai_compat.build_response(request: dict, raw: dict) -> dict`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -110,8 +110,9 @@ Expected: FAIL — the shim files don't exist (`FileNotFoundError`/import error)
 """Shared OpenAI-compatible spawner logic for ATP's CLI adapter.
 
 Provider-agnostic core: read an ATPRequest JSON from stdin, call an
-OpenAI-compatible ``/v1/chat/completions`` endpoint, normalize the result into
-an ATPResponse JSON on stdout. A thin per-provider shim calls ``run(prefix,
+OpenAI-compatible chat-completions endpoint (``{host}/chat/completions`` — the
+host already carries any version segment such as ``/v1``), normalize the result
+into an ATPResponse JSON on stdout. A thin per-provider shim calls ``run(prefix,
 default_host)`` — the prefix selects the ``{prefix}_API_KEY`` / ``{prefix}_HOST``
 / ``{prefix}_MODEL`` env vars. Mirrors ``deepseek_shim.py`` (kept separate so
 working Tier-1 code is not churned). Stdlib only — no new dependency.
@@ -147,7 +148,7 @@ def _fail(task_id: str, error: str) -> int:
 
 def _call(host: str, key: str, model: str, prompt: str) -> dict:
     """POST a single user turn and return the parsed JSON (errors propagate)."""
-    url = f"{host.rstrip('/')}/v1/chat/completions"
+    url = f"{host.rstrip('/')}/chat/completions"  # host carries /v1; don't double it
     body = json.dumps(
         {
             "model": model,

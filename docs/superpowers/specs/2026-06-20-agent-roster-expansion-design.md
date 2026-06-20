@@ -17,7 +17,7 @@ Expand the pipe-check agent roster for the weekend paid sweep (feeds the ~2026-0
 | `anthropic_api@claude-sonnet-4-6` | anthropic_api | existing | `CLAUDE_MODEL=claude-sonnet-4-6` | `ANTHROPIC_API_KEY` | 1 |
 | `codex_cli@gpt-5-codex` | codex_cli (CLI) | existing | `CODEX_MODEL=gpt-5-codex` | `OPENAI_API_KEY` | 1 |
 | `deepseek@deepseek-chat` | deepseek (API) | existing | `DEEPSEEK_MODEL=deepseek-chat` | `DEEPSEEK_API_KEY` | 1 |
-| `ollama@llama3.2:1b` / `:3.2:3b` / `qwen2.5:3b` / `:7b` / `:14b` | ollama (local) | existing | per-id | — | 1 |
+| `ollama@llama3.2:1b`, `ollama@llama3.2:3b`, `ollama@qwen2.5:3b`, `ollama@qwen2.5:7b`, `ollama@qwen2.5:14b` | ollama (local) | existing | per-id | — | 1 |
 | `mimo@MiMo-V2.5-Pro` | mimo (OpenAI-compat API) | **new generic** | `MIMO_MODEL=MiMo-V2.5-Pro` | `MIMO_API_KEY` | 1 |
 | `qwen@qwen3.6-plus` | qwen (OpenAI-compat API) | **new generic** | `QWEN_MODEL=qwen3.6-plus` | `QWEN_API_KEY` | 1 |
 | `pi@gpt-5.4` | pi (CLI) | **new CLI** | `--model gpt-5.4` | session (none) | 2 |
@@ -38,7 +38,7 @@ Expand the pipe-check agent roster for the weekend paid sweep (feeds the ~2026-0
 - `ALLOWED_ENV`: add `MIMO_API_KEY`, `MIMO_HOST`, `QWEN_API_KEY`, `QWEN_HOST` (Tier-1) and `OPENCODE_GLM_API_KEY` (Tier-2). `CLAUDE_MODEL` is already allowlisted (claude moves model, not env).
 
 ### 2. Generic OpenAI-compatible shim (Tier-1: mimo, qwen)
-- New shared helper `method/spawners/_openai_compat.py`: `run(prefix: str, default_host: str)` reads `{prefix}_API_KEY` / `{prefix}_HOST` (default `default_host`) / `{prefix}_MODEL`, POSTs `{host}/v1/chat/completions` (Bearer), normalizes to the ATPResponse JSON contract — mirroring `deepseek_shim.py` (which stays as-is; DRY-migrating deepseek onto this helper is a deferred follow-up to avoid churning working Tier-1 code).
+- New shared helper `method/spawners/_openai_compat.py`: `run(prefix: str, default_host: str)` reads `{prefix}_API_KEY` / `{prefix}_HOST` (default `default_host`) / `{prefix}_MODEL` (required, no default — registry-injected), POSTs `{host}/chat/completions` (Bearer; the default host already carries the version segment, e.g. mimo `…/v1`, qwen `…/compatible-mode/v1`), normalizes to the ATPResponse JSON contract — mirroring `deepseek_shim.py` (which stays as-is; DRY-migrating deepseek onto this helper is a deferred follow-up to avoid churning working Tier-1 code).
 - Thin per-provider shims that set the prefix + default host:
   - `method/spawners/mimo_shim.py` → `run("MIMO", "https://token-plan-sgp.xiaomimimo.com/v1")`
   - `method/spawners/qwen_shim.py` → `run("QWEN", "https://dashscope-intl.aliyuncs.com/compatible-mode/v1")`
