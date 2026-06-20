@@ -250,8 +250,9 @@ def create_mock_app(server: MockToolServer) -> FastAPI:
             }
             for tool in server.definition.tools
         ]
+        tool_names = {tool["name"] for tool in tools}
         for name in sorted(server._handlers):
-            if not any(tool["name"] == name for tool in tools):
+            if name not in tool_names:
                 tools.append({"name": name, "description": None})
         return ToolListResponse(tools=tools)
 

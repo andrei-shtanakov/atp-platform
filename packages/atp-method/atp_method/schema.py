@@ -52,8 +52,8 @@ GraderType = Literal[
 ]
 TurnRole = Literal["user", "inject", "assistant"]
 RunMode = Literal["text_out", "read_only_corpus", "workspace"]
-# Only text_out is wired today; the loader/validator rejects the rest so a case
-# cannot declare fidelity the harness cannot deliver (ADR-007 §3).
+# Keep this to modes the harness can actually execute, so a case cannot declare
+# fidelity the runtime cannot deliver (ADR-007 §3).
 WIRED_RUN_MODES = frozenset({"text_out", "read_only_corpus"})
 
 

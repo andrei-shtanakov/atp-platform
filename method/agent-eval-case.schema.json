@@ -207,7 +207,7 @@
       "type": "string",
       "enum": ["text_out", "read_only_corpus", "workspace"],
       "default": "text_out",
-      "description": "How the agent interacts with the world (ADR-007). Only text_out is wired; pydantic load rejects unwired tiers."
+      "description": "How the agent interacts with the world (ADR-007). The pydantic loader rejects unwired tiers."
     },
     "output_contract": {
       "type": "object",
