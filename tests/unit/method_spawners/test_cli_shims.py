@@ -117,3 +117,25 @@ def test_run_timeout_yields_failed(monkeypatch) -> None:
     assert rc == 0
     assert out["status"] == "failed"
     assert "timed out" in out["error"]
+
+
+def test_pi_parse_output_assistant_text_and_usage() -> None:
+    pi = _load("pi_shim")
+    stdout = (
+        '{"type":"message_start","message":{"role":"assistant","content":[],'
+        '"usage":{"input":0,"output":0,"totalTokens":0}}}\n'
+        '{"type":"message_end","message":{"role":"assistant",'
+        '"content":[{"type":"text","text":"[]"}],'
+        '"usage":{"input":12,"output":3,"totalTokens":15}}}\n'
+    )
+    text, in_tok, out_tok = pi._parse(stdout)
+    assert text == "[]"
+    assert (in_tok, out_tok) == (12, 3)
+
+
+def test_pi_shim_fails_when_binary_missing() -> None:
+    out = _run_shim(
+        "pi_shim", {"PI_BIN": "definitely-not-a-real-bin-xyz", "PI_MODEL": "gpt-5"}
+    )
+    assert out["status"] == "failed"
+    assert "invocation error" in out["error"] or "failed" in out["error"]
