@@ -5,7 +5,7 @@ A thin per-tool shim supplies an argv template + a JSONL parser; this module
 runs the subprocess with a hard timeout and normalizes the result into the
 ATPResponse contract on stdout. Any error (bad stdin, missing model, non-zero
 exit, timeout, empty output) becomes a status:"failed" response — never a crash.
-Mirrors codex_cli_shim.py; stdlib only.
+Mirrors codex_cli_shim.py; stdlib + ``atp_method`` (workspace), no new dependency.
 """
 
 import json

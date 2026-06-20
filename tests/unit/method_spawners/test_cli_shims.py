@@ -34,6 +34,7 @@ def test_build_response_shape_and_token_total() -> None:
     r = cli.build_response("t1", "[]", 10, 4)
     assert r["status"] == "completed"
     assert r["task_id"] == "t1"
+    assert r["version"] == "1.0"
     assert r["artifacts"][0]["content"] == "[]"
     assert r["metrics"]["total_tokens"] == 14
     assert r["metrics"]["cost_usd"] is None
@@ -83,3 +84,36 @@ def test_opencode_shim_fails_without_model() -> None:
     out = _run_shim("opencode_shim", {"OPENCODE_MODEL": ""})
     assert out["status"] == "failed"
     assert "OPENCODE_MODEL not set" in out["error"]
+
+
+def test_run_timeout_yields_failed(monkeypatch) -> None:
+    import io
+
+    cli = _load("_cli_common")
+
+    def _raise(*a, **k):
+        raise subprocess.TimeoutExpired(cmd="x", timeout=1)
+
+    monkeypatch.setattr(cli.subprocess, "run", _raise)
+    monkeypatch.setenv("X_MODEL", "m")
+    monkeypatch.setattr(
+        cli.sys,
+        "stdin",
+        io.StringIO('{"task_id":"t","task":{"description":"x","input_data":{}}}'),
+    )
+    buf = io.StringIO()
+    monkeypatch.setattr(cli.sys, "stdout", buf)
+    rc = cli.run(
+        bin_env="X_BIN",
+        default_bin="true",
+        model_env="X_MODEL",
+        default_provider="openai",
+        argv=lambda b, m, p: [*b, p],
+        parse_output=lambda s: ("", None, None),
+    )
+    import json as _json
+
+    out = _json.loads(buf.getvalue())
+    assert rc == 0
+    assert out["status"] == "failed"
+    assert "timed out" in out["error"]
