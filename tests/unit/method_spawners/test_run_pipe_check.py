@@ -117,6 +117,46 @@ def test_grade_case_surfaces_continuous_metrics() -> None:
     assert base["fp_count"] == 1
 
 
+@pytest.mark.parametrize(
+    ("status", "expected_error_class"),
+    [
+        ("failed", "test_failure"),
+        ("timeout", "timeout"),
+        ("cancelled", "other"),
+        ("partial", "other"),
+    ],
+)
+def test_grade_case_normalizes_non_completed_status_error_class(
+    status: str, expected_error_class: str
+) -> None:
+    import anyio
+
+    from atp.protocol import ResponseStatus
+    from method.run_pipe_check import _grade_case
+
+    tr = _completed_test_result()
+    tr.runs[0].response.status = ResponseStatus(status)
+
+    base = anyio.run(_grade_case, object(), tr, "moderate", False)
+
+    assert base["critical_pass"] is False
+    assert base["error_class"] == expected_error_class
+
+
+def test_grade_case_normalizes_missing_run_error_class() -> None:
+    import anyio
+
+    from method.run_pipe_check import _grade_case
+
+    tr = _completed_test_result()
+    tr.runs = []
+
+    base = anyio.run(_grade_case, object(), tr, "moderate", False)
+
+    assert base["critical_pass"] is False
+    assert base["error_class"] == "test_failure"
+
+
 def test_export_to_dashboard_imports_written_reports(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -7,6 +7,8 @@ from atp.reporters.base import Reporter, SuiteReport
 
 _AXIS_ORDER = ["clean", "mild", "moderate", "severe", "very_severe"]
 PAYLOAD_VERSION = "1.0.0"
+_REPORT_ERROR_CLASSES = {"timeout", "crash", "test_failure", "other"}
+_TEST_FAILURE_STATUSES = {"failed", "no_run"}
 
 
 def _breakpoint(case_results: list[dict[str, Any]]) -> str | None:
@@ -16,6 +18,18 @@ def _breakpoint(case_results: list[dict[str, Any]]) -> str | None:
     if not failed:
         return None
     return min(failed, key=lambda a: _AXIS_ORDER.index(a) if a in _AXIS_ORDER else 99)
+
+
+def normalize_report_error_class(error_class: Any) -> str | None:
+    """Map run statuses to the report_benchmark-v1 error_class enum."""
+    if error_class is None:
+        return None
+    value = str(error_class)
+    if value in _REPORT_ERROR_CLASSES:
+        return value
+    if value in _TEST_FAILURE_STATUSES:
+        return "test_failure"
+    return "other"
 
 
 def build_report_benchmark_payload(
@@ -56,7 +70,7 @@ def build_report_benchmark_payload(
             "score": round(c["rubric_score"] if c["critical_pass"] else 0.0, 6),
             "tokens_used": c["tokens"],
             "duration_seconds": c["duration_seconds"],
-            "error_class": c["error_class"],
+            "error_class": normalize_report_error_class(c["error_class"]),
         }
         for i, c in enumerate(case_results)
     ]
