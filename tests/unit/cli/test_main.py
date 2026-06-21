@@ -371,6 +371,171 @@ class TestRunSuiteReporterConfig:
             assert "format" not in reporter_config
         reporter.report.assert_called_once_with(report)
 
+    def test_run_suite_forwards_scored_failure_progress_events(self) -> None:
+        """Test progress reflects evaluation failure after successful execution."""
+        from atp.core.results import (
+            EvalCheck,
+            EvalResult,
+            ProgressEvent,
+            ProgressEventType,
+            RunResult,
+            SuiteResult,
+            TestResult,
+        )
+        from atp.loader.models import Assertion, TaskDefinition, TestDefinition
+        from atp.protocol import ATPResponse, ResponseStatus
+        from atp.scoring.models import (
+            ComponentScore,
+            ScoreBreakdown,
+            ScoredTestResult,
+        )
+
+        progress_events: list[ProgressEvent] = []
+
+        class FakeOrchestrator:
+            def __init__(self, *args: object, **kwargs: object) -> None:
+                self.progress_callback = kwargs["progress_callback"]
+
+            async def __aenter__(self) -> "FakeOrchestrator":
+                return self
+
+            async def __aexit__(self, *args: object) -> None:
+                pass
+
+            async def run_suite(self, *args: object, **kwargs: object) -> SuiteResult:
+                test = TestDefinition(
+                    id="critical-eval",
+                    name="Critical Eval",
+                    task=TaskDefinition(description="complete task"),
+                    assertions=[Assertion(type="agent_eval_case", critical=True)],
+                )
+                run = RunResult(
+                    test_id=test.id,
+                    run_number=1,
+                    response=ATPResponse(
+                        task_id=test.id,
+                        status=ResponseStatus.COMPLETED,
+                    ),
+                )
+                test_result = TestResult(test=test, runs=[run])
+
+                self.progress_callback(
+                    ProgressEvent(
+                        event_type=ProgressEventType.TEST_COMPLETED,
+                        test_id=test.id,
+                        test_name=test.name,
+                        success=True,
+                    )
+                )
+                self.progress_callback(
+                    ProgressEvent(
+                        event_type=ProgressEventType.SUITE_COMPLETED,
+                        suite_name="test-suite",
+                        success=True,
+                        details={
+                            "passed_tests": 1,
+                            "failed_tests": 0,
+                            "success_rate": 1.0,
+                        },
+                    )
+                )
+
+                return SuiteResult(
+                    suite_name="test-suite",
+                    agent_name="test-agent",
+                    tests=[test_result],
+                )
+
+        eval_result = EvalResult(
+            evaluator="agent_eval_case",
+            critical=True,
+            checks=[
+                EvalCheck(
+                    name="critical_check",
+                    passed=False,
+                    score=0.0,
+                    message="failed",
+                )
+            ],
+        )
+        evaluator = MagicMock()
+        evaluator.evaluate = AsyncMock(return_value=eval_result)
+        evaluator_registry = MagicMock()
+        evaluator_registry.create_for_assertion.return_value = evaluator
+        zero_component = ComponentScore(
+            name="zero",
+            normalized_value=0.0,
+            weight=0.0,
+            weighted_value=0.0,
+        )
+        scored_failure = ScoredTestResult(
+            test_id="critical-eval",
+            score=0.0,
+            breakdown=ScoreBreakdown(
+                quality=zero_component,
+                completeness=zero_component,
+                efficiency=zero_component,
+                cost=zero_component,
+            ),
+            passed=False,
+        )
+        suite = SimpleNamespace(test_suite="test-suite")
+        reporter = MagicMock()
+        report = MagicMock()
+
+        with (
+            patch("atp.adapters.create_adapter", return_value=MagicMock()),
+            patch("atp.runner.TestOrchestrator", FakeOrchestrator),
+            patch(
+                "atp.runner.create_progress_callback",
+                return_value=progress_events.append,
+            ),
+            patch(
+                "atp.evaluators.registry.get_registry",
+                return_value=evaluator_registry,
+            ),
+            patch(
+                "atp.scoring.aggregator.ScoreAggregator.score_test_result",
+                return_value=scored_failure,
+            ),
+            patch("atp.reporters.create_reporter", return_value=reporter),
+            patch("atp.reporters.SuiteReport.from_suite_result", return_value=report),
+        ):
+            result = asyncio.run(
+                _run_suite(
+                    suite=suite,
+                    adapter_type="http",
+                    adapter_config={},
+                    agent_name="test-agent",
+                    model=None,
+                    parallel=1,
+                    runs_per_test=1,
+                    fail_fast=False,
+                    sandbox_enabled=False,
+                    verbose=False,
+                    output_format="console",
+                    output_file=None,
+                    save_to_db=False,
+                )
+            )
+
+        test_events = [
+            event for event in progress_events if event.test_id == "critical-eval"
+        ]
+        suite_events = [
+            event
+            for event in progress_events
+            if event.event_type == ProgressEventType.SUITE_COMPLETED
+        ]
+
+        assert result is False
+        assert test_events[-1].event_type == ProgressEventType.TEST_FAILED
+        assert test_events[-1].success is False
+        assert suite_events[-1].success is False
+        assert suite_events[-1].details["passed_tests"] == 0
+        assert suite_events[-1].details["failed_tests"] == 1
+        assert suite_events[-1].details["success_rate"] == 0.0
+
 
 class TestRunCommand:
     """Tests for run command (backward compatibility alias)."""

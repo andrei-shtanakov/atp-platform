@@ -167,6 +167,102 @@ def _split_config_item(item: str) -> list[str]:
     return result
 
 
+class _ScoredProgressCallback:
+    """Delay terminal progress events until evaluation/scoring is available."""
+
+    def __init__(self, callback: Any) -> None:
+        self._callback = callback
+        self._terminal_test_events: dict[str, Any] = {}
+        self._suite_completed_event: Any | None = None
+
+    def __call__(self, event: Any) -> None:
+        from atp.runner.models import ProgressEventType
+
+        if event.event_type in {
+            ProgressEventType.TEST_COMPLETED,
+            ProgressEventType.TEST_FAILED,
+            ProgressEventType.TEST_TIMEOUT,
+        }:
+            if event.test_id is not None:
+                self._terminal_test_events[event.test_id] = event
+            return
+        if event.event_type == ProgressEventType.SUITE_COMPLETED:
+            self._suite_completed_event = event
+            return
+        self._callback(event)
+
+    def replay_scored(self, result: Any, scored_results: dict[str, Any]) -> None:
+        from atp.protocol import ResponseStatus
+        from atp.runner.models import ProgressEventType
+
+        for test_result in result.tests:
+            test_id = test_result.test.id
+            original = self._terminal_test_events.get(test_id)
+            if original is None:
+                continue
+            passed = _test_passed_after_scoring(test_result, scored_results)
+            if test_result.status == ResponseStatus.TIMEOUT:
+                event_type = ProgressEventType.TEST_TIMEOUT
+            else:
+                event_type = (
+                    ProgressEventType.TEST_COMPLETED
+                    if passed
+                    else ProgressEventType.TEST_FAILED
+                )
+            self._callback(
+                original.model_copy(
+                    update={
+                        "event_type": event_type,
+                        "success": passed,
+                    }
+                )
+            )
+
+        original_suite = self._suite_completed_event
+        if original_suite is None:
+            return
+        total = len(result.tests)
+        passed_tests = sum(
+            1
+            for test_result in result.tests
+            if _test_passed_after_scoring(test_result, scored_results)
+        )
+        suite_success = _suite_success_after_scoring(result, scored_results)
+        details = dict(original_suite.details)
+        details.update(
+            {
+                "passed_tests": passed_tests,
+                "failed_tests": total - passed_tests,
+                "success_rate": passed_tests / total if total else 0.0,
+            }
+        )
+        self._callback(
+            original_suite.model_copy(
+                update={
+                    "success": suite_success,
+                    "details": details,
+                }
+            )
+        )
+
+
+def _test_passed_after_scoring(
+    test_result: Any, scored_results: dict[str, Any]
+) -> bool:
+    scored = scored_results.get(test_result.test.id)
+    eval_passed = scored.passed if scored is not None else True
+    return bool(test_result.success and eval_passed)
+
+
+def _suite_success_after_scoring(result: Any, scored_results: dict[str, Any]) -> bool:
+    if not result.tests:
+        return bool(result.success)
+    return all(
+        _test_passed_after_scoring(test_result, scored_results)
+        for test_result in result.tests
+    )
+
+
 @click.group(invoke_without_command=True)
 @click.option(
     "--config",
@@ -748,6 +844,7 @@ async def _run_suite(
 
     # Choose progress display: live Rich or plain tracker
     live_display = None
+    scored_progress_callback: _ScoredProgressCallback | None = None
     if live:
         from atp.cli.live_display import (
             LiveProgressDisplay,
@@ -767,6 +864,8 @@ async def _run_suite(
             verbose=verbose,
             use_colors=True,
         )
+        scored_progress_callback = _ScoredProgressCallback(progress_callback)
+        progress_callback = scored_progress_callback
 
     # Determine if parallel execution should be used
     use_parallel = parallel > 1 and not fail_fast
@@ -887,6 +986,9 @@ async def _run_suite(
                     err=True,
                 )
 
+    if scored_progress_callback is not None:
+        scored_progress_callback.replay_scored(result, all_scored_results)
+
     # Record traces if enabled
     if enable_tracing:
         from atp.tracing import (
@@ -959,7 +1061,7 @@ async def _run_suite(
             eval_results=all_eval_results,
         )
 
-    return result.success
+    return _suite_success_after_scoring(result, all_scored_results)
 
 
 def _save_results_to_dir(
