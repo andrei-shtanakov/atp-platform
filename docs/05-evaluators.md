@@ -140,7 +140,7 @@ assertions:
     config:
       must_use_tools:
         - web_search
-      must_not_use_tools:
+      forbidden_tools:
         - code_execution  # Not allowed for this task
       max_tool_calls: 15
 
@@ -155,6 +155,61 @@ assertions:
       tool_call_efficiency:
         max_redundant_calls: 2  # Same tool, same input
 ```
+
+**Tool-call argument checks**:
+
+Behavior assertions can also match `tool_call` trace events by tool name,
+status, input arguments, output values, and optional expected order. Matching is
+partial: extra fields in the tool input or output are allowed. Supported payload
+fields are `tool`, `status`, `input`, `args`, and `output`; `input` is the
+canonical argument object, and `args` is accepted when `input` is absent.
+
+```yaml
+assertions:
+  - type: behavior
+    config:
+      expected_tool_calls:
+        - tool: db_save
+          status: success
+          input_matches:
+            - path: $.table
+              equals: document_results
+            - path: $.record.status
+              equals: approved
+            - path: $.record.source_ids
+              exists: true
+          output_matches:
+            - path: $.id
+              exists: true
+      forbidden_tool_calls:
+        - tool: send_email
+      tool_call_order: expected
+```
+
+For the negative branch, assert the manager notification and forbid the save:
+
+```yaml
+assertions:
+  - type: behavior
+    config:
+      expected_tool_calls:
+        - tool: send_email
+          input_matches:
+            - path: $.to
+              equals: manager@example.com
+            - path: $.reason
+              equals: data_mismatch
+      forbidden_tool_calls:
+        - tool: db_save
+```
+
+`expected_tool_calls` is existential: each configured pattern must match at
+least one trace event. `forbidden_tool_calls` fails only when a full forbidden
+pattern matches. `input_matches` and `output_matches` use the deterministic
+JSONPath subset `$`, `.key`, and `[index]`, with one rule operator per entry:
+`equals`, `exists: true`, or `absent: true`. Method `grader.checker`
+integration is deferred; normal ATP behavior assertions are the supported path
+for these checks.
 
 **Trace Analysis**:
 

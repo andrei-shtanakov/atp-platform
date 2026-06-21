@@ -74,6 +74,19 @@ def create_tool_call_event(
     )
 
 
+def create_tool_call_payload_event(
+    payload: dict[str, object], task_id: str = "test-001", sequence: int = 0
+) -> ATPEvent:
+    """Helper to create tool call events with custom payload."""
+    return ATPEvent(
+        task_id=task_id,
+        timestamp=datetime.now(),
+        sequence=sequence,
+        event_type=EventType.TOOL_CALL,
+        payload=payload,
+    )
+
+
 def create_error_event(
     message: str, task_id: str = "test-001", sequence: int = 0
 ) -> ATPEvent:
@@ -549,6 +562,485 @@ class TestBehaviorCombined:
         )
         assert result.passed is True
         assert result.total_checks == 1
+
+
+class TestBehaviorToolCallAssertions:
+    """Tests for behavior config tool-call assertion checks."""
+
+    @pytest.mark.anyio
+    async def test_expected_tool_calls_tool_status_and_input_matches_pass(
+        self,
+        evaluator: BehaviorEvaluator,
+        sample_task: TestDefinition,
+        successful_response: ATPResponse,
+    ) -> None:
+        """Test expected tool call passes when payload rules match."""
+        trace = [
+            create_tool_call_payload_event(
+                {
+                    "tool": "web_search",
+                    "status": "success",
+                    "input": {
+                        "query": "ATP platform",
+                        "options": {"limit": 3},
+                    },
+                }
+            )
+        ]
+        assertion = Assertion(
+            type="behavior",
+            config={
+                "expected_tool_calls": [
+                    {
+                        "tool": "web_search",
+                        "status": "success",
+                        "input_matches": [
+                            {"path": "$.query", "equals": "ATP platform"},
+                            {"path": "$.options.limit", "equals": 3},
+                            {"path": "$.options", "exists": True},
+                        ],
+                    }
+                ]
+            },
+        )
+        result = await evaluator.evaluate(
+            sample_task, successful_response, trace, assertion
+        )
+        assert result.passed is True
+        assert result.checks[0].name == "expected_tool_calls"
+
+    @pytest.mark.anyio
+    async def test_expected_tool_calls_missing_tool_fails(
+        self,
+        evaluator: BehaviorEvaluator,
+        sample_task: TestDefinition,
+        successful_response: ATPResponse,
+    ) -> None:
+        """Test expected tool call fails when the expected tool was not called."""
+        trace = [create_tool_call_payload_event({"tool": "file_read"})]
+        assertion = Assertion(
+            type="behavior",
+            config={"expected_tool_calls": [{"tool": "web_search"}]},
+        )
+        result = await evaluator.evaluate(
+            sample_task, successful_response, trace, assertion
+        )
+        assert result.passed is False
+        assert result.checks[0].name == "expected_tool_calls"
+        assert "web_search" in result.checks[0].message
+
+    @pytest.mark.anyio
+    async def test_expected_tool_calls_input_equals_mismatch_fails(
+        self,
+        evaluator: BehaviorEvaluator,
+        sample_task: TestDefinition,
+        successful_response: ATPResponse,
+    ) -> None:
+        """Test expected tool call fails when a matching tool has different input."""
+        trace = [
+            create_tool_call_payload_event(
+                {
+                    "tool": "web_search",
+                    "input": {"query": "wrong query"},
+                }
+            )
+        ]
+        assertion = Assertion(
+            type="behavior",
+            config={
+                "expected_tool_calls": [
+                    {
+                        "tool": "web_search",
+                        "input_matches": [
+                            {"path": "$.query", "equals": "ATP platform"},
+                        ],
+                    }
+                ]
+            },
+        )
+        result = await evaluator.evaluate(
+            sample_task, successful_response, trace, assertion
+        )
+        assert result.passed is False
+        assert result.checks[0].name == "expected_tool_calls"
+        assert "$.query" in result.checks[0].message
+
+    @pytest.mark.anyio
+    async def test_expected_tool_calls_args_used_when_input_absent_passes(
+        self,
+        evaluator: BehaviorEvaluator,
+        sample_task: TestDefinition,
+        successful_response: ATPResponse,
+    ) -> None:
+        """Test expected tool call uses args when input is absent."""
+        trace = [
+            create_tool_call_payload_event(
+                {
+                    "tool": "calculator",
+                    "args": {"expression": "2 + 2"},
+                }
+            )
+        ]
+        assertion = Assertion(
+            type="behavior",
+            config={
+                "expected_tool_calls": [
+                    {
+                        "tool": "calculator",
+                        "input_matches": [
+                            {"path": "$.expression", "equals": "2 + 2"},
+                        ],
+                    }
+                ]
+            },
+        )
+        result = await evaluator.evaluate(
+            sample_task, successful_response, trace, assertion
+        )
+        assert result.passed is True
+        assert result.checks[0].name == "expected_tool_calls"
+
+    @pytest.mark.anyio
+    async def test_expected_tool_calls_output_matches_output_payload_passes(
+        self,
+        evaluator: BehaviorEvaluator,
+        sample_task: TestDefinition,
+        successful_response: ATPResponse,
+    ) -> None:
+        """Test expected tool call checks output payload when configured."""
+        trace = [
+            create_tool_call_payload_event(
+                {
+                    "tool": "calculator",
+                    "input": {"expression": "2 + 2"},
+                    "output": {"value": 4, "meta": {"cached": False}},
+                }
+            )
+        ]
+        assertion = Assertion(
+            type="behavior",
+            config={
+                "expected_tool_calls": [
+                    {
+                        "tool": "calculator",
+                        "output_matches": [
+                            {"path": "$.value", "equals": 4},
+                            {"path": "$.meta.cached", "exists": True},
+                        ],
+                    }
+                ]
+            },
+        )
+        result = await evaluator.evaluate(
+            sample_task, successful_response, trace, assertion
+        )
+        assert result.passed is True
+        assert result.checks[0].name == "expected_tool_calls"
+
+    @pytest.mark.anyio
+    async def test_expected_tool_calls_invalid_jsonpath_fails_with_config_message(
+        self,
+        evaluator: BehaviorEvaluator,
+        sample_task: TestDefinition,
+        successful_response: ATPResponse,
+    ) -> None:
+        """Test invalid JSONPath produces a configuration-oriented failure."""
+        trace = [
+            create_tool_call_payload_event(
+                {
+                    "tool": "web_search",
+                    "input": {"query": "ATP platform"},
+                }
+            )
+        ]
+        assertion = Assertion(
+            type="behavior",
+            config={
+                "expected_tool_calls": [
+                    {
+                        "tool": "web_search",
+                        "input_matches": [
+                            {"path": "$..query", "equals": "ATP platform"},
+                        ],
+                    }
+                ]
+            },
+        )
+        result = await evaluator.evaluate(
+            sample_task, successful_response, trace, assertion
+        )
+        assert result.passed is False
+        assert result.checks[0].name == "expected_tool_calls"
+        assert "config" in result.checks[0].message.lower()
+        assert "$..query" in result.checks[0].message
+
+    @pytest.mark.anyio
+    async def test_forbidden_tool_calls_matching_tool_event_fails(
+        self,
+        evaluator: BehaviorEvaluator,
+        sample_task: TestDefinition,
+        successful_response: ATPResponse,
+    ) -> None:
+        """Test forbidden tool call fails when a full pattern matches."""
+        trace = [
+            create_tool_call_payload_event(
+                {
+                    "tool": "shell",
+                    "status": "success",
+                    "input": {"command": "rm -rf /tmp/example"},
+                }
+            )
+        ]
+        assertion = Assertion(
+            type="behavior",
+            config={
+                "forbidden_tool_calls": [
+                    {
+                        "tool": "shell",
+                        "status": "success",
+                        "input_matches": [
+                            {"path": "$.command", "exists": True},
+                        ],
+                    }
+                ]
+            },
+        )
+        result = await evaluator.evaluate(
+            sample_task, successful_response, trace, assertion
+        )
+        assert result.passed is False
+        assert result.checks[0].name == "forbidden_tool_calls"
+        assert "shell" in result.checks[0].message
+
+    @pytest.mark.anyio
+    async def test_forbidden_tool_calls_tool_only_match_fails(
+        self,
+        evaluator: BehaviorEvaluator,
+        sample_task: TestDefinition,
+        successful_response: ATPResponse,
+    ) -> None:
+        """Test forbidden tool call can match by tool name only."""
+        trace = [create_tool_call_payload_event({"tool": "delete_file"})]
+        assertion = Assertion(
+            type="behavior",
+            config={"forbidden_tool_calls": [{"tool": "delete_file"}]},
+        )
+        result = await evaluator.evaluate(
+            sample_task, successful_response, trace, assertion
+        )
+        assert result.passed is False
+        assert result.checks[0].name == "forbidden_tool_calls"
+        assert "delete_file" in result.checks[0].message
+
+    @pytest.mark.anyio
+    async def test_forbidden_tool_calls_tool_and_input_rules_match_fails(
+        self,
+        evaluator: BehaviorEvaluator,
+        sample_task: TestDefinition,
+        successful_response: ATPResponse,
+    ) -> None:
+        """Test forbidden tool call can match by tool plus input rules."""
+        trace = [
+            create_tool_call_payload_event(
+                {
+                    "tool": "database_query",
+                    "input": {"sql": "DROP TABLE users", "dry_run": False},
+                }
+            )
+        ]
+        assertion = Assertion(
+            type="behavior",
+            config={
+                "forbidden_tool_calls": [
+                    {
+                        "tool": "database_query",
+                        "input_matches": [
+                            {"path": "$.sql", "equals": "DROP TABLE users"},
+                            {"path": "$.dry_run", "equals": False},
+                        ],
+                    }
+                ]
+            },
+        )
+        result = await evaluator.evaluate(
+            sample_task, successful_response, trace, assertion
+        )
+        assert result.passed is False
+        assert result.checks[0].name == "forbidden_tool_calls"
+        assert "database_query" in result.checks[0].message
+
+    @pytest.mark.anyio
+    async def test_forbidden_tool_calls_same_tool_non_matching_arguments_passes(
+        self,
+        evaluator: BehaviorEvaluator,
+        sample_task: TestDefinition,
+        successful_response: ATPResponse,
+    ) -> None:
+        """Test forbidden tool call passes for same tool with non-matching input."""
+        trace = [
+            create_tool_call_payload_event(
+                {
+                    "tool": "database_query",
+                    "input": {"sql": "SELECT * FROM users", "dry_run": True},
+                }
+            )
+        ]
+        assertion = Assertion(
+            type="behavior",
+            config={
+                "forbidden_tool_calls": [
+                    {
+                        "tool": "database_query",
+                        "input_matches": [
+                            {"path": "$.sql", "equals": "DROP TABLE users"},
+                        ],
+                    }
+                ]
+            },
+        )
+        result = await evaluator.evaluate(
+            sample_task, successful_response, trace, assertion
+        )
+        assert result.passed is True
+        assert result.checks[0].name == "forbidden_tool_calls"
+
+    @pytest.mark.anyio
+    async def test_forbidden_tools_and_forbidden_tool_calls_create_separate_checks(
+        self,
+        evaluator: BehaviorEvaluator,
+        sample_task: TestDefinition,
+        successful_response: ATPResponse,
+    ) -> None:
+        """Test forbidden tool checks remain separate from forbidden call checks."""
+        trace = [
+            create_tool_call_payload_event({"tool": "web_search"}),
+            create_tool_call_payload_event({"tool": "delete_file"}),
+        ]
+        assertion = Assertion(
+            type="behavior",
+            config={
+                "forbidden_tools": ["web_search"],
+                "forbidden_tool_calls": [{"tool": "delete_file"}],
+            },
+        )
+        result = await evaluator.evaluate(
+            sample_task, successful_response, trace, assertion
+        )
+        assert result.passed is False
+        assert [check.name for check in result.checks] == [
+            "forbidden_tools",
+            "forbidden_tool_calls",
+        ]
+        assert all(check.passed is False for check in result.checks)
+
+    @pytest.mark.anyio
+    async def test_expected_tool_calls_ordered_in_listed_order_passes(
+        self,
+        evaluator: BehaviorEvaluator,
+        sample_task: TestDefinition,
+        successful_response: ATPResponse,
+    ) -> None:
+        """Test ordered expected tool calls pass in listed sequence order."""
+        trace = [
+            create_tool_call_payload_event({"tool": "search"}, sequence=10),
+            create_tool_call_payload_event({"tool": "summarize"}, sequence=20),
+        ]
+        assertion = Assertion(
+            type="behavior",
+            config={
+                "tool_call_order": "expected",
+                "expected_tool_calls": [
+                    {"tool": "search"},
+                    {"tool": "summarize"},
+                ],
+            },
+        )
+        result = await evaluator.evaluate(
+            sample_task, successful_response, trace, assertion
+        )
+        assert result.passed is True
+        assert result.checks[0].name == "expected_tool_calls"
+
+    @pytest.mark.anyio
+    async def test_expected_tool_calls_ordered_out_of_order_fails(
+        self,
+        evaluator: BehaviorEvaluator,
+        sample_task: TestDefinition,
+        successful_response: ATPResponse,
+    ) -> None:
+        """Test ordered expected tool calls fail when sequence is out of order."""
+        trace = [
+            create_tool_call_payload_event({"tool": "summarize"}, sequence=10),
+            create_tool_call_payload_event({"tool": "search"}, sequence=20),
+        ]
+        assertion = Assertion(
+            type="behavior",
+            config={
+                "tool_call_order": "expected",
+                "expected_tool_calls": [
+                    {"tool": "search"},
+                    {"tool": "summarize"},
+                ],
+            },
+        )
+        result = await evaluator.evaluate(
+            sample_task, successful_response, trace, assertion
+        )
+        assert result.passed is False
+        assert result.checks[0].name == "expected_tool_calls"
+        assert "order" in result.checks[0].message.lower()
+
+    @pytest.mark.anyio
+    async def test_expected_tool_calls_unordered_out_of_order_passes(
+        self,
+        evaluator: BehaviorEvaluator,
+        sample_task: TestDefinition,
+        successful_response: ATPResponse,
+    ) -> None:
+        """Test unordered expected tool calls pass when trace order differs."""
+        trace = [
+            create_tool_call_payload_event({"tool": "summarize"}, sequence=10),
+            create_tool_call_payload_event({"tool": "search"}, sequence=20),
+        ]
+        assertion = Assertion(
+            type="behavior",
+            config={
+                "tool_call_order": "any",
+                "expected_tool_calls": [
+                    {"tool": "search"},
+                    {"tool": "summarize"},
+                ],
+            },
+        )
+        result = await evaluator.evaluate(
+            sample_task, successful_response, trace, assertion
+        )
+        assert result.passed is True
+        assert result.checks[0].name == "expected_tool_calls"
+
+    @pytest.mark.anyio
+    async def test_expected_tool_calls_unsupported_order_fails_with_config_message(
+        self,
+        evaluator: BehaviorEvaluator,
+        sample_task: TestDefinition,
+        successful_response: ATPResponse,
+    ) -> None:
+        """Test unsupported tool_call_order produces a configuration failure."""
+        trace = [create_tool_call_payload_event({"tool": "search"})]
+        assertion = Assertion(
+            type="behavior",
+            config={
+                "tool_call_order": "reverse",
+                "expected_tool_calls": [{"tool": "search"}],
+            },
+        )
+        result = await evaluator.evaluate(
+            sample_task, successful_response, trace, assertion
+        )
+        assert result.passed is False
+        assert result.checks[0].name == "expected_tool_calls"
+        assert "config" in result.checks[0].message.lower()
+        assert "tool_call_order" in result.checks[0].message
 
 
 class TestUnknownAssertionType:
