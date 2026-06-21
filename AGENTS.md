@@ -20,7 +20,7 @@ uv run pytest tests/ -v -m "not slow" --cov=atp --cov-report=term-missing --cov-
 uv run pytest tests/unit -v         # Unit only
 uv run pytest tests/unit/dashboard/tournament -v                        # Tournament unit only
 uv run pytest tests/integration/dashboard/tournament -v                 # Tournament integration
-uv run pytest tests/ -v -m slow     # Slow tests (needs real uvicorn+FashMCP SSE or container image)
+uv run pytest tests/ -v -m slow     # Slow tests (needs real uvicorn+FastMCP SSE or container image)
 uv run pytest tests/ -k <pattern>   # Filter by name
 
 # Makefile shortcuts
@@ -102,7 +102,7 @@ Auto-deploys on every push to `main` via `.github/workflows/deploy.yml` using SS
 ## Environment Variables
 
 Dashboard requires `.env` (copy from `.env.example`). Key vars:
-- `ATP_DASHBOARD_SECRET_KEY` — JWT signing (required in production)
+- `ATP_SECRET_KEY` — JWT signing (required in production)
 - `ATP_DATABASE_URL` — DB connection (default: SQLite at `~/.atp/dashboard.db`)
 - `ATP_DISABLE_AUTH` — Disable auth (dev only)
 - `ATP_GITHUB_CLIENT_ID/SECRET` — GitHub OAuth
