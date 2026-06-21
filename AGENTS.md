@@ -16,7 +16,7 @@ uv run ruff check .                 # Lint (auto-fix: --fix)
 uv run pyrefly check                # Type check
 
 # Testing
-uv run pytest tests/ -v -m "not slow" --cov=atp --cov-report=term-missing --cov-fail-under=80  # CI default
+uv run pytest tests/ -v -m "not slow" --cov=atp --cov-report=term-missing --cov-report=xml --cov-fail-under=80  # CI default
 uv run pytest tests/unit -v         # Unit only
 uv run pytest tests/unit/dashboard/tournament -v                        # Tournament unit only
 uv run pytest tests/integration/dashboard/tournament -v                 # Tournament integration
@@ -32,7 +32,7 @@ uv run alembic upgrade head          # Apply migrations
 
 ## Pre-commit Hooks
 
-Run `uv run pre-commit install` to activate. Hooks: trailing-whitespace, end-of-file-fixer, check-yaml, check-json, check-toml, check-merge-conflict, check-added-large-files, debug-statements, ruff (with --fix), ruff-format, pyrefly. CI enforces the same checks.
+Run `uv run pre-commit install` to activate. Hooks: trailing-whitespace, end-of-file-fixer, check-yaml, check-json, check-toml, check-merge-conflict, check-added-large-files, debug-statements, ruff (with --fix), ruff-format, pyrefly. CI re-runs the ruff (format + check) and pyrefly checks; the file-hygiene hooks (trailing-whitespace, check-yaml, etc.) run only locally via pre-commit.
 
 ## Monorepo Layout
 
