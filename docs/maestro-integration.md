@@ -81,10 +81,10 @@ cheap "is the suite still valid" smoke before a heavier task.
 ATP writes:
 
 - **`stdout`** — human-readable progress plus the selected reporter output.
-  `atp test` / `atp run` accept `--output=console|json|junit` with `console`
-  as the default. `console` prints the rich terminal view including a compact
-  failure summary; `json` writes a single parseable JSON document; `junit`
-  writes JUnit XML.
+  `atp test` / `atp run` accept `--output=console|json|junit|summary` with
+  `console` as the default. `console` prints the rich terminal view including a
+  compact failure summary; `summary` prints a compact operational summary;
+  `json` writes a single parseable JSON document; `junit` writes JUnit XML.
 - **`stderr`** — log lines emitted via Python's stdlib `logging`, plus a
   final `Error: ...` line on exit code `2`.
 

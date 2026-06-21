@@ -37,10 +37,12 @@ def citation_grounding_check(config: dict[str, Any], text: str | None) -> CaseVe
 
     results: list[dict[str, Any]] = []
     for expectation in expected:
-        ok, reason, malformed = _check_expected(data, config, expectation)
+        ok, reason, malformed, diagnostics = _check_expected(data, config, expectation)
         if malformed:
             return _malformed(reason)
-        results.append({"expected": expectation, "ok": ok, "reason": reason})
+        result = {"expected": expectation, "ok": ok, "reason": reason}
+        result.update(diagnostics)
+        results.append(result)
 
     forbidden_results = [
         _check_forbidden(data, config, item) for item in config.get("forbidden", [])
@@ -57,36 +59,93 @@ def citation_grounding_check(config: dict[str, Any], text: str | None) -> CaseVe
 
 def _check_expected(
     data: Any, config: dict[str, Any], expectation: dict[str, Any]
-) -> tuple[bool, str, bool]:
+) -> tuple[bool, str, bool, dict[str, Any]]:
     path = expectation.get("output_path")
     if not isinstance(path, str):
-        return False, "output_path must be a string", False
+        return False, "output_path must be a string", False, {}
     try:
         found, citation = resolve(data, path)
     except InvalidPath:
-        return False, f"invalid output_path: {path}", False
+        return False, f"invalid output_path: {path}", False, {}
     if not found:
-        return False, f"output_path not found: {path}", False
+        return (
+            False,
+            f"output_path not found: {path}",
+            False,
+            _diagnostic(path, _field_name(path), "citation object", "missing"),
+        )
     if not isinstance(citation, dict):
-        return False, "citation node is not an object", True
+        return False, "citation node is not an object", True, {}
 
     ok, reason, malformed = _validate_citation_shape(citation)
     if not ok:
-        return False, reason, malformed
+        return False, reason, malformed, {}
 
     source_path = expectation.get("source_path")
     if not isinstance(source_path, str):
-        return False, "source_path must be a string", False
+        return False, "source_path must be a string", False, {}
     if citation["path"] != source_path:
-        return False, f"expected source {source_path}, got {citation['path']}", False
+        return (
+            False,
+            f"expected source {source_path}, got {citation['path']}",
+            False,
+            _diagnostic(f"{path}.path", "path", source_path, citation["path"]),
+        )
     if citation.get("page") != expectation.get("page"):
-        return False, "citation page does not match expected page", False
+        return (
+            False,
+            "citation page does not match expected page",
+            False,
+            _diagnostic(
+                f"{path}.page",
+                "page",
+                expectation.get("page"),
+                citation.get("page"),
+            ),
+        )
     if citation["line_start"] != expectation.get("line_start") or citation[
         "line_end"
     ] != expectation.get("line_end"):
-        return False, "citation line range does not match expected range", False
+        return (
+            False,
+            "citation line range does not match expected range",
+            False,
+            _diagnostic(
+                f"{path}.line_range",
+                "line_range",
+                {
+                    "line_start": expectation.get("line_start"),
+                    "line_end": expectation.get("line_end"),
+                },
+                {
+                    "line_start": citation["line_start"],
+                    "line_end": citation["line_end"],
+                },
+            ),
+        )
 
-    return _validate_file_and_metadata(config, citation, expectation)
+    ok, reason, malformed = _validate_file_and_metadata(config, citation, expectation)
+    return ok, reason, malformed, {}
+
+
+def _diagnostic(
+    path: str,
+    field: str | None,
+    expected_value: Any,
+    received_value: Any,
+) -> dict[str, Any]:
+    return {
+        "path": path,
+        "field": field,
+        "expected_value": expected_value,
+        "received_value": received_value,
+    }
+
+
+def _field_name(path: str) -> str | None:
+    if not path:
+        return None
+    return path.rsplit(".", 1)[-1].rsplit("[", 1)[0]
 
 
 def _check_forbidden(

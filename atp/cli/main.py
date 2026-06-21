@@ -315,14 +315,20 @@ def version_cmd() -> None:
 )
 @click.option(
     "--output",
-    type=click.Choice(["console", "json", "junit"]),
+    type=click.Choice(["console", "json", "junit", "summary"]),
     default="console",
-    help="Output format (console, json, or junit)",
+    help="Output format (console, json, junit, or summary)",
+)
+@click.option(
+    "--summary-format",
+    type=click.Choice(["console", "json"]),
+    default="console",
+    help="Rendering format for --output=summary",
 )
 @click.option(
     "--output-file",
     type=click.Path(path_type=Path),
-    help="Output file path (for json output)",
+    help="Output file path (for json, junit, or summary output)",
 )
 @click.option(
     "--no-save",
@@ -363,6 +369,7 @@ def test_cmd(
     sandbox: bool,
     verbose: bool,
     output: str,
+    summary_format: str,
     output_file: Path | None,
     no_save: bool,
     save_results: Path | None,
@@ -493,6 +500,7 @@ def test_cmd(
                 sandbox_enabled=sandbox,
                 verbose=verbose,
                 output_format=output,
+                summary_format=summary_format,
                 output_file=output_file,
                 save_to_db=not no_save,
                 save_results_dir=save_results,
@@ -591,14 +599,20 @@ def test_cmd(
 )
 @click.option(
     "--output",
-    type=click.Choice(["console", "json", "junit"]),
+    type=click.Choice(["console", "json", "junit", "summary"]),
     default="console",
-    help="Output format (console, json, or junit)",
+    help="Output format (console, json, junit, or summary)",
+)
+@click.option(
+    "--summary-format",
+    type=click.Choice(["console", "json"]),
+    default="console",
+    help="Rendering format for --output=summary",
 )
 @click.option(
     "--output-file",
     type=click.Path(path_type=Path),
-    help="Output file path (for json output)",
+    help="Output file path (for json, junit, or summary output)",
 )
 @click.option(
     "--no-save",
@@ -639,6 +653,7 @@ def run(
     sandbox: bool,
     verbose: bool,
     output: str,
+    summary_format: str,
     output_file: Path | None,
     no_save: bool,
     save_results: Path | None,
@@ -666,6 +681,7 @@ def run(
         sandbox=sandbox,
         verbose=verbose,
         output=output,
+        summary_format=summary_format,
         output_file=output_file,
         no_save=no_save,
         save_results=save_results,
@@ -686,7 +702,8 @@ async def _run_suite(
     sandbox_enabled: bool,
     verbose: bool,
     output_format: str,
-    output_file: Path | None,
+    summary_format: str = "console",
+    output_file: Path | None = None,
     save_to_db: bool = True,
     save_results_dir: Path | None = None,
     live: bool = False,
@@ -704,7 +721,8 @@ async def _run_suite(
         fail_fast: Stop on first failure
         sandbox_enabled: Enable sandbox isolation
         verbose: Enable verbose output
-        output_format: Output format (console or json)
+        output_format: Output format (console, json, junit, or summary)
+        summary_format: Rendering format for the summary reporter
         output_file: Output file path (for json output)
         save_to_db: Whether to save results to dashboard database
         live: Whether to use Rich live display
@@ -904,6 +922,8 @@ async def _run_suite(
 
     if output_file:
         reporter_config["output_file"] = output_file
+    if output_format == "summary":
+        reporter_config["format"] = summary_format
 
     reporter = create_reporter(output_format, reporter_config)
     report = SuiteReport.from_suite_result(
