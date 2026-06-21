@@ -105,6 +105,19 @@
     - ❌ **#3 проверка использования линтеров — НЕ делаем.** Линтеры детерминированы; LLM
       бенчмаркаем на семантике. Запуск линтера агентом = file_write/exec = возврат проблемы
       fidelity спавнера, от которой ушли через text-out.
+    - [ ] **#5 grounding/recency-ось на CLI-ростере (Путь A) — ВАЖНАЯ задача развития.**
+      PR #203 (fomih) добавил `run_mode: read_only_corpus` + детерминированный грейдер
+      `citation_grounding` (агент обнаруживает/читает файлы корпуса, отсеивает устаревший
+      дистрактор, цитирует источник; SHA-256-верифицированный корпус → материализация →
+      `Context.tools_endpoint`). Но wired только под `anthropic_api` — **наши CLI-шимы
+      (claude_code/codex_cli/pi/opencode) этот режим не умеют**: продуктовый CLI имеет свой
+      закрытый tool-набор и не знает про ATP `tools_endpoint`. Путь A: нацелить нативные
+      инструменты CLI на **уже материализованную** директорию корпуса (`cwd=workspace_path`
+      + confinement), HTTP-эндпоинт для CLI не нужен. Объём: расщепить `CorpusRunPreparer`
+      (materialize-only), corpus-режим в `_cli_common.py`, per-CLI confine-флаги, нормализация
+      относительных путей цитат, тул-агностичная инструкция, confinement-тест + живой смоук
+      (гейт). Per-CLI работа, начинать с `claude_code`. Дизайн:
+      [`docs/superpowers/specs/2026-06-21-cli-corpus-grounding-design.md`](docs/superpowers/specs/2026-06-21-cli-corpus-grounding-design.md).
 
 ### Ждём от других проектов
 
