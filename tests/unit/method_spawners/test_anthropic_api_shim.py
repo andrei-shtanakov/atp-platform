@@ -11,6 +11,8 @@ from pathlib import Path
 
 from atp_method.envelopes import build_prompt, get_envelope
 
+from atp.protocol import ATPEvent
+
 SHIM = (
     Path(__file__).resolve().parents[3]
     / "method"
@@ -72,6 +74,12 @@ def _run_shim_raw(request: dict, env: dict) -> subprocess.CompletedProcess[bytes
     return proc
 
 
+def _stderr_json_lines(proc: subprocess.CompletedProcess[bytes]) -> list[dict]:
+    return [
+        json.loads(line) for line in proc.stderr.decode().splitlines() if line.strip()
+    ]
+
+
 class _ToolHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802 - stdlib hook name
         length = int(self.headers.get("content-length", "0"))
@@ -95,8 +103,33 @@ class _ToolHandler(BaseHTTPRequestHandler):
         return None
 
 
-def _serve_tools() -> tuple[HTTPServer, str]:
-    server = HTTPServer(("127.0.0.1", 0), _ToolHandler)
+class _ToolErrorHandler(BaseHTTPRequestHandler):
+    def do_POST(self) -> None:  # noqa: N802 - stdlib hook name
+        length = int(self.headers.get("content-length", "0"))
+        body = json.loads(self.rfile.read(length))
+        assert self.path == "/tools/call"
+        assert body["tool"] == "file_read"
+        response = {
+            "tool": "file_read",
+            "status": "error",
+            "error": "policy not found",
+            "duration_ms": 1.0,
+        }
+        payload = json.dumps(response).encode()
+        self.send_response(200)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def log_message(self, format: str, *args: object) -> None:
+        return None
+
+
+def _serve_tools(
+    handler: type[BaseHTTPRequestHandler] = _ToolHandler,
+) -> tuple[HTTPServer, str]:
+    server = HTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     host, port = server.server_address
@@ -348,12 +381,24 @@ def test_file_read_tool_loop_when_constraints_allow_endpoint(
             "context": {"tools_endpoint": endpoint, "workspace_path": "/w"},
         }
 
-        resp = _run_shim(request, env)
+        proc = _run_shim_raw(request, env)
+        resp = json.loads(proc.stdout.decode())
     finally:
         server.shutdown()
 
     assert resp["status"] == "completed"
     assert json.loads(resp["artifacts"][0]["content"]) == {"ok": True}
+    stderr_events = _stderr_json_lines(proc)
+    assert len(stderr_events) == 1
+    event = ATPEvent.model_validate({"sequence": 0, **stderr_events[0]})
+    assert event.event_type == "tool_call"
+    assert event.task_id == "t-tools"
+    assert event.payload == {
+        "tool": "file_read",
+        "input": {"path": "policy.md"},
+        "status": "success",
+        "output": {"content": "policy line\n"},
+    }
     logged = json.loads(log_path.read_text())
     assert logged["calls"] == 2
     assert logged["kwargs"]["tools"][0]["name"] == "file_read"
@@ -378,6 +423,44 @@ def test_file_read_tool_loop_when_constraints_allow_endpoint(
         {"type": "text", "text": '{"ok": true}'}
     ]
     assert raw_tool_loop["steps"][1]["tool_results"] == []
+
+
+def test_file_read_tool_loop_stderr_event_includes_tool_error(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "anthropic.py").write_text(_FAKE_ANTHROPIC_TOOL_LOOP)
+    log_path = tmp_path / "anthropic-log.json"
+    env = {
+        **os.environ,
+        "ANTHROPIC_API_KEY": "test-key",
+        "FAKE_ANTHROPIC_LOG": str(log_path),
+        "PYTHONPATH": str(tmp_path) + os.pathsep + os.environ.get("PYTHONPATH", ""),
+    }
+    server, endpoint = _serve_tools(_ToolErrorHandler)
+    try:
+        request = {
+            "version": "1.0",
+            "task_id": "t-tool-error",
+            "task": {"description": "Extract", "input_data": {}},
+            "constraints": {"allowed_tools": ["file_read"]},
+            "context": {"tools_endpoint": endpoint, "workspace_path": "/w"},
+        }
+
+        proc = _run_shim_raw(request, env)
+    finally:
+        server.shutdown()
+
+    stderr_events = _stderr_json_lines(proc)
+    assert len(stderr_events) == 1
+    event = ATPEvent.model_validate({"sequence": 0, **stderr_events[0]})
+    assert event.event_type == "tool_call"
+    assert event.task_id == "t-tool-error"
+    assert event.payload == {
+        "tool": "file_read",
+        "input": {"path": "policy.md"},
+        "status": "error",
+        "error": "policy not found",
+    }
 
 
 _FAKE_ANTHROPIC_ALWAYS_TOOL = """

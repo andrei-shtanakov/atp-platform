@@ -128,6 +128,62 @@ def test_loader_threads_checker_into_critical_config() -> None:
     assert crit.config["checker"] == "findings_match"
 
 
+def test_loader_appends_behavior_assertions_as_normal_assertions() -> None:
+    """Top-level behavior_assertions become ATP behavior assertions."""
+    behavior_config = {
+        "expected_tool_calls": [
+            {
+                "tool": "file_read",
+                "status": "success",
+                "input_matches": [{"path": "$.path", "equals": "policy-current.md"}],
+            }
+        ],
+        "forbidden_tool_calls": [
+            {
+                "tool": "file_read",
+                "input_matches": [
+                    {"path": "$.path", "equals": "archive/policy-2023.md"}
+                ],
+            }
+        ],
+    }
+    doc = {
+        "id": "case-1",
+        "version": 1,
+        "family": "f",
+        "status": "active",
+        "suite_type": "probe",
+        "capability": "safety_compliance",
+        "construction_axis": "adversarial_environment",
+        "axis_level": "moderate",
+        "instruction": "review",
+        "artifacts": [{"id": "d", "type": "text", "content": "x"}],
+        "environment": {"tools": ["file_read"], "side_effects": "none"},
+        "expected_failure_mode": "misses it",
+        "grader": {
+            "type": "programmatic",
+            "checker": "findings_match",
+            "expected_findings": [],
+            "critical_check": "flag it",
+            "scoring": "fail if critical fails",
+        },
+        "behavior_assertions": [
+            {"type": "behavior", "critical": True, "config": behavior_config}
+        ],
+        "provenance": {"author": "a", "created": "2026-06-14"},
+    }
+
+    td = case_to_test_definition(AgentEvalCase.model_validate(doc))
+
+    assert [assertion.type for assertion in td.assertions] == [
+        METHOD_CRITICAL_CHECK,
+        "behavior",
+    ]
+    behavior = td.assertions[1]
+    assert behavior.critical is True
+    assert behavior.config == behavior_config
+
+
 def test_loader_preserves_reserved_critical_config_values() -> None:
     """grader.config cannot override critical-check fields derived from the case."""
     expected_schema = {

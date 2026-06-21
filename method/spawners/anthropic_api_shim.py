@@ -147,15 +147,21 @@ def _call_tool_sync(endpoint: str, tool: str, input_data: dict, task_id: str) ->
 
 
 def _emit_tool_event(task_id: str, tool: str, input_data: dict, response: dict) -> None:
+    payload = {
+        "tool": tool,
+        "input": input_data,
+        "status": response.get("status"),
+    }
+    if "output" in response:
+        payload["output"] = response.get("output")
+    if "error" in response:
+        payload["error"] = response.get("error")
     sys.stderr.write(
         json.dumps(
             {
-                "event": "tool_call",
+                "event_type": "tool_call",
                 "task_id": task_id,
-                "tool": tool,
-                "input": input_data,
-                "status": response.get("status"),
-                "error": response.get("error"),
+                "payload": payload,
             }
         )
         + "\n"

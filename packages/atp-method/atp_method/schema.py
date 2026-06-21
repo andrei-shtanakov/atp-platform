@@ -274,6 +274,16 @@ class Grader(BaseModel):
         return self
 
 
+class BehaviorAssertion(BaseModel):
+    """A native ATP behavior assertion carried by an agent-eval-case."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["behavior"]
+    critical: bool = False
+    config: dict[str, Any]
+
+
 class OutputContract(BaseModel):
     """The structured artifact the agent must return for this case."""
 
@@ -331,6 +341,7 @@ class AgentEvalCase(BaseModel):
     expected_failure_mode: str = Field(..., min_length=1)
     distractor: str | None = None
     grader: Grader
+    behavior_assertions: list[BehaviorAssertion] = Field(default_factory=list)
     output_contract: OutputContract | None = None
     run_mode: RunMode = "text_out"
     artifact_corpus: ArtifactCorpus | None = None

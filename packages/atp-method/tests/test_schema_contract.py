@@ -104,3 +104,47 @@ def test_contract_accepts_task_type_language() -> None:
     case["task_type"] = "review"
     case["language"] = "python"
     jsonschema.validate(case, SCHEMA)  # must not raise
+
+
+def test_contract_accepts_behavior_assertions_and_rejects_extra_keys() -> None:
+    case = _case(
+        {
+            "type": "programmatic",
+            "checker": "findings_match",
+            "expected_findings": [],
+            "critical_check": "c",
+            "scoring": "s",
+        }
+    )
+    case["behavior_assertions"] = [
+        {
+            "type": "behavior",
+            "config": {
+                "expected_tool_calls": [
+                    {
+                        "tool": "file_read",
+                        "status": "success",
+                        "input_matches": [
+                            {"path": "$.path", "equals": "policy-current.md"}
+                        ],
+                    }
+                ],
+                "forbidden_tool_calls": [
+                    {
+                        "tool": "file_read",
+                        "input_matches": [
+                            {"path": "$.path", "equals": "archive/policy-2023.md"}
+                        ],
+                    }
+                ],
+            },
+        }
+    ]
+    jsonschema.validate(case, SCHEMA)  # must not raise
+
+    invalid = dict(case)
+    invalid["behavior_assertions"] = [
+        {"type": "behavior", "config": {}, "unexpected": True}
+    ]
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(invalid, SCHEMA)

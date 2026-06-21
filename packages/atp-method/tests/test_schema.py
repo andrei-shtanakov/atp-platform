@@ -83,6 +83,56 @@ def test_extra_field_forbidden() -> None:
         AgentEvalCase.model_validate(doc)
 
 
+def test_behavior_assertions_default_empty_and_validate_entries() -> None:
+    """behavior_assertions is optional and rejects unknown assertion keys."""
+    case = AgentEvalCase.model_validate(_minimal())
+    assert case.behavior_assertions == []
+
+    doc = _minimal()
+    doc["behavior_assertions"] = [
+        {
+            "type": "behavior",
+            "config": {
+                "expected_tool_calls": [
+                    {
+                        "tool": "file_read",
+                        "status": "success",
+                        "input_matches": [
+                            {"path": "$.path", "equals": "policy-current.md"}
+                        ],
+                    }
+                ]
+            },
+        },
+        {
+            "type": "behavior",
+            "critical": True,
+            "config": {"forbidden_tools": ["file_write"]},
+        },
+    ]
+
+    case = AgentEvalCase.model_validate(doc)
+
+    assert [assertion.type for assertion in case.behavior_assertions] == [
+        "behavior",
+        "behavior",
+    ]
+    assert [assertion.critical for assertion in case.behavior_assertions] == [
+        False,
+        True,
+    ]
+    assert case.behavior_assertions[0].config["expected_tool_calls"][0]["tool"] == (
+        "file_read"
+    )
+
+    invalid = _minimal()
+    invalid["behavior_assertions"] = [
+        {"type": "behavior", "config": {}, "unexpected": True}
+    ]
+    with pytest.raises(ValidationError):
+        AgentEvalCase.model_validate(invalid)
+
+
 def test_findings_match_grader_accepts_structured_ground_truth() -> None:
     g = Grader(
         type="programmatic",
