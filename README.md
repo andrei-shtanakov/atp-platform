@@ -249,6 +249,16 @@ uv run atp test suite.yaml --adapter=cli \
 uv run atp test suite.yaml --adapter=cli \
   --adapter-config='command=python' \
   --adapter-config='args=["agent.py"]' \
+  --output=summary
+
+uv run atp test suite.yaml --adapter=cli \
+  --adapter-config='command=python' \
+  --adapter-config='args=["agent.py"]' \
+  --output=summary --summary-format=json --output-file=summary.json
+
+uv run atp test suite.yaml --adapter=cli \
+  --adapter-config='command=python' \
+  --adapter-config='args=["agent.py"]' \
   --output=junit --output-file=results.xml
 
 # Pass environment variables (for API keys)

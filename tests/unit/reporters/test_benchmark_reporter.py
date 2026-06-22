@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import jsonschema
+import pytest
 
 from atp.reporters.benchmark_reporter import build_report_benchmark_payload
 
@@ -93,3 +94,33 @@ def test_malformed_rate_defaults_zero_for_legacy_case_dicts() -> None:
         case_results=[legacy],
     )
     assert payload["score_components"]["malformed_rate"] == 0.0
+
+
+@pytest.mark.parametrize(
+    ("raw_error_class", "expected_error_class"),
+    [
+        ("failed", "test_failure"),
+        ("no_run", "test_failure"),
+        ("timeout", "timeout"),
+        ("cancelled", "other"),
+        ("partial", "other"),
+        ("unexpected_status", "other"),
+        (None, None),
+    ],
+)
+def test_payload_normalizes_per_task_error_class_to_contract_enum(
+    raw_error_class: str | None, expected_error_class: str | None
+) -> None:
+    case = _case_result("moderate-001", "moderate", False, 0.0)
+    case["error_class"] = raw_error_class
+
+    payload = build_report_benchmark_payload(
+        run_id=f"run-error-{raw_error_class or 'none'}",
+        benchmark_id="code-review",
+        agent_id="claude_code",
+        ts="2026-06-14T10:00:00Z",
+        case_results=[case],
+    )
+
+    assert payload["per_task"][0]["error_class"] == expected_error_class
+    jsonschema.validate(payload, SCHEMA)

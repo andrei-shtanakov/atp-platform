@@ -75,6 +75,21 @@ def _answer(citation: dict | None = None) -> str:
     )
 
 
+def _answer_without_deadline_citation() -> str:
+    return json.dumps(
+        {
+            "requirements": [
+                {
+                    "obligation": "raw answer text must stay out of diagnostics",
+                    "actor": "vendors",
+                    "deadline": "within 30 days of onboarding",
+                    "citations": {},
+                }
+            ]
+        }
+    )
+
+
 def _fixture_config() -> dict:
     repo_root = Path(__file__).resolve().parents[3]
     case_path = (
@@ -161,6 +176,95 @@ def test_citation_grounding_fixture_rejects_obsolete_archive_citation() -> None:
     assert (
         "expected source policy-current.md" in verdict.details["results"][0]["reason"]
     )
+
+
+def test_citation_grounding_source_mismatch_includes_bounded_diagnostics() -> None:
+    from atp.evaluators.citation_grounding.checker import citation_grounding_check
+
+    verdict = citation_grounding_check(
+        _config(),
+        _answer(
+            {
+                "path": "archive/policy-2023.md",
+                "page": None,
+                "line_start": 14,
+                "line_end": 14,
+            }
+        ),
+    )
+
+    result = verdict.details["results"][0]
+    assert verdict.critical_pass is False
+    assert result["ok"] is False
+    assert result["path"].endswith(".path")
+    assert result["field"] == "path"
+    assert result["expected_value"] == "policy-current.md"
+    assert result["received_value"] == "archive/policy-2023.md"
+
+
+def test_citation_grounding_page_mismatch_includes_bounded_diagnostics() -> None:
+    from atp.evaluators.citation_grounding.checker import citation_grounding_check
+
+    config = _config()
+    config["expected"][0]["page"] = 2
+    verdict = citation_grounding_check(config, _answer())
+
+    result = verdict.details["results"][0]
+    assert verdict.critical_pass is False
+    assert result["ok"] is False
+    assert result["path"].endswith(".page")
+    assert result["field"] == "page"
+    assert result["expected_value"] == 2
+    assert result["received_value"] is None
+
+
+def test_citation_grounding_line_range_mismatch_includes_compact_range() -> None:
+    from atp.evaluators.citation_grounding.checker import citation_grounding_check
+
+    verdict = citation_grounding_check(
+        _config(),
+        _answer(
+            {
+                "path": "policy-current.md",
+                "page": None,
+                "line_start": 13,
+                "line_end": 15,
+            }
+        ),
+    )
+
+    result = verdict.details["results"][0]
+    assert verdict.critical_pass is False
+    assert result["ok"] is False
+    assert result["field"] == "line_range" or "line_range" in result["path"]
+    assert result["expected_value"] == {"line_start": 14, "line_end": 14}
+    assert result["received_value"] == {"line_start": 13, "line_end": 15}
+
+
+def test_citation_grounding_missing_output_path_diagnostic_is_bounded() -> None:
+    from atp.evaluators.citation_grounding.checker import citation_grounding_check
+
+    verdict = citation_grounding_check(_config(), _answer_without_deadline_citation())
+
+    result = verdict.details["results"][0]
+    assert verdict.critical_pass is False
+    assert verdict.malformed is False
+    assert result["ok"] is False
+    assert result["path"] == "$.requirements[0].citations.deadline"
+    assert result["field"] == "deadline"
+    assert result["expected_value"] == "citation object"
+    assert result["received_value"] == "missing"
+    assert "raw answer text must stay out of diagnostics" not in str(result)
+
+
+def test_citation_grounding_malformed_output_shape_has_no_results_list() -> None:
+    from atp.evaluators.citation_grounding.checker import citation_grounding_check
+
+    verdict = citation_grounding_check(_config(), _answer("not an object"))
+
+    assert verdict.critical_pass is False
+    assert verdict.malformed is True
+    assert "results" not in verdict.details
 
 
 def test_citation_grounding_bad_json_is_malformed() -> None:
