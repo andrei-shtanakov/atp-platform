@@ -1,5 +1,7 @@
 """rank_score tiebreaker (R-07 track B slice A) — pure math + payload emission."""
 
+import pytest
+
 from atp.reporters.benchmark_reporter import (
     _bp_ordinal,
     _rank_score,
@@ -17,7 +19,8 @@ def test_bp_ordinal_none_is_best_and_levels_map_to_index() -> None:
 
 
 def test_rank_score_equals_cpr_at_max_tiebreaker() -> None:
-    # t == 1 (bp None + malformed 0), which only happens at the cpr==1.0 ceiling
+    # t == 1 (bp None + malformed 0). In real payloads bp None ⇒ cpr == 1.0, so
+    # this coincides with the ceiling; here it is exercised directly.
     assert _rank_score(1.0, 5, 0.0, 5) == 1.0
 
 
@@ -31,11 +34,17 @@ def test_rank_score_monotonic_in_breakpoint() -> None:
     assert _rank_score(0.8, 3, 0.0, 5) > _rank_score(0.8, 2, 0.0, 5)
 
 
-def test_rank_score_never_crosses_real_gap_adversarial() -> None:
-    # lower cpr + best tiebreaker vs higher cpr + worst tiebreaker: higher wins
-    low = _rank_score(0.6, 5, 0.0, 5)  # cpr 3/5, t=1 → 0.6
-    high = _rank_score(0.8, 0, 1.0, 5)  # cpr 4/5, t=0 → 0.633333
-    assert high > low
+@pytest.mark.parametrize("n", [3, 5, 15, 100])
+def test_rank_score_never_crosses_real_gap_adversarial(n: int) -> None:
+    # For any N: an agent one critical-pass step higher (k+1 vs k) must keep the
+    # higher rank_score even with the WORST tiebreaker (t=0) against the lower
+    # agent's BEST (t=1). Sweeps k across the range.
+    for k in range(n):
+        cpr_low = round(k / n, 6)
+        cpr_high = round((k + 1) / n, 6)
+        low_best = _rank_score(cpr_low, 5, 0.0, n)  # t = 1
+        high_worst = _rank_score(cpr_high, 0, 1.0, n)  # t = 0
+        assert high_worst > low_best, (n, k, high_worst, low_best)
 
 
 def test_rank_score_breaks_ceiling_tie_within_bounds() -> None:

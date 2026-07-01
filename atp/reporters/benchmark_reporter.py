@@ -34,6 +34,11 @@ def _rank_score(
     ``rank_score = cpr + (t - 1)/(N + 1)`` with ``t ∈ [0, 1]``: bounded so it
     can never cross a genuine 1/N critical-pass gap, and ``<= pass_rate <= 1.0``
     by construction (fixes the ceiling clamp). See the design spec.
+
+    Preconditions: ``malformed_rate ∈ [0, 1]`` and ``bp_ordinal ∈ [0,
+    len(_AXIS_ORDER)]`` (both hold for real payloads) ⇒ ``t ∈ [0, 1]``. The
+    ``round(..., 6)`` assumes N ≪ 1000 (the genuine-difference margin
+    ``1/(N(N+1))`` stays above 1e-6 there).
     """
     if n == 0:
         return 0.0
