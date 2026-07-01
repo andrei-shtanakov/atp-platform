@@ -14,7 +14,7 @@ jobs:
         python-version: ["3.12"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -61,7 +61,7 @@ jobs:
   tournament-unit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Sync deps
@@ -89,7 +89,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: tournament-unit
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Sync deps
@@ -118,7 +118,7 @@ jobs:
       github.event_name == 'push' ||
       contains(github.event.pull_request.labels.*.name, 'tournament-e2e')
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Sync deps
@@ -145,7 +145,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [tournament-unit, tournament-integration]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -182,7 +182,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -209,7 +209,7 @@ jobs:
   docker-build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build production Docker image
         run: docker compose -f deploy/docker-compose.yml build platform
