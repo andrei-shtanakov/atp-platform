@@ -1,0 +1,247 @@
+# agents-catalog.toml — единый источник истины (SSOT) для моделей, harness и
+# зачисления агентов в экосистеме (ATP + Maestro + arbiter).
+#
+# Реализует ADR-ECO-003 (decisions/2026-07-01-adr-eco-003-agent-catalog.md),
+# расширяя D3 из ADR-ECO-002 model-осью.
+#
+# ЭТО ИСТОЧНИК, НЕ СГЕНЕРЁННОЕ. Файл ведётся руками (owner: Andrei/PM).
+# Локальные конфиги трёх репов ГЕНЕРЯТСЯ из него и несут маркер `# GENERATED`:
+#   - ATP:     HARNESSES + AGENT_MODELS  (method/run_pipe_check.py:59-89)
+#   - Maestro: DEFAULT_<H>_MODEL         (spawners/*.py:20)  [полная harness-ген блокирована ADR-002 D2]
+#   - arbiter: scaffold секций agents.toml (только ключи; policy-поля руками)
+#
+# Каждый реп ВЕНДОРИТ пинованную копию (как spec-runner@fa6b106) и генерит из неё.
+# CI-conformance (devtools/) проверяет байт-в-байт согласованность agent_id
+# между репами — убивает класс «тихий None → re-rank no-op».
+#
+# Снято с реального состояния 2026-07-01:
+#   atp-platform/method/run_pipe_check.py:59-89  (HARNESSES + AGENT_MODELS)
+#   arbiter/config/agents.toml                   (routable-секции + policy)
+#   Maestro/maestro/spawners/{claude_code,codex}.py:20  (DEFAULT_<H>_MODEL)
+
+# =====================================================================
+#  ПЛОСКОСТЬ 1: МОДЕЛИ — то, что обновляет вендор (Поток 1, частый/дешёвый)
+#  status: active | deprecated | retired
+#  Владелец lifecycle — PM/Andrei (кросс-режущий факт). retired → CI-fail
+#  при живой ссылке из [[agents]].
+# =====================================================================
+
+[models."claude-sonnet-4-6"]
+vendor  = "anthropic"
+status  = "active"
+aliases = []
+
+[models."gpt-5.5"]
+vendor  = "openai"
+status  = "active"
+
+[models."gpt-5"]
+vendor  = "openai"
+status  = "active"
+
+[models."deepseek-chat"]
+vendor  = "deepseek"
+status  = "active"
+
+[models."mimo-v2.5-pro"]
+vendor  = "xiaomi"
+status  = "active"
+
+[models."qwen3.6-plus"]
+vendor  = "alibaba"
+status  = "active"
+
+[models."glm-5.1"]
+vendor  = "zhipu"
+status  = "active"
+
+[models."llama3.2:1b"]
+vendor  = "meta"
+status  = "active"
+
+[models."llama3.2:3b"]
+vendor  = "meta"
+status  = "active"
+
+[models."qwen2.5:3b"]
+vendor  = "alibaba"
+status  = "active"
+
+[models."qwen2.5:7b"]
+vendor  = "alibaba"
+status  = "active"
+
+[models."qwen2.5:14b"]
+vendor  = "alibaba"
+status  = "active"
+
+# =====================================================================
+#  ПЛОСКОСТЬ 2: HARNESS — launch-механика (= D3-descriptor из ADR-002)
+#  kind: cli | api-baseline | local
+#  shim       — ATP-сторона (method/spawners/*_shim.py)
+#  model_env  — env, которым ATP-shim пинит модель
+#  model_flag — CLI-флаг модели на стороне Maestro-спаунера (только там, где он есть)
+#  routable   — может ли harness роутиться в принципе (arbiter). Требует
+#               Maestro-спаунера. Сейчас true только у claude_code / codex_cli.
+# =====================================================================
+
+[harnesses.claude_code]
+kind       = "cli"
+shim       = "method/spawners/claude_code_shim.py"
+model_env  = "CLAUDE_MODEL"
+model_flag = "--model"
+routable   = true
+
+[harnesses.codex_cli]
+kind       = "cli"
+shim       = "method/spawners/codex_cli_shim.py"
+model_env  = "CODEX_MODEL"
+model_flag = "-m"                                    # `codex exec -m <model>` (Maestro migrated #33)
+routable   = true
+
+[harnesses.anthropic_api]
+kind      = "api-baseline"
+shim      = "method/spawners/anthropic_api_shim.py"
+model_env = "CLAUDE_MODEL"
+routable  = false                                    # harness-vs-raw-API baseline; никогда не замещает CLI в роутинге
+
+[harnesses.deepseek]
+kind      = "cli"
+shim      = "method/spawners/deepseek_shim.py"
+model_env = "DEEPSEEK_MODEL"
+routable  = false                                    # измеряется в ATP; нет Maestro-спаунера
+
+[harnesses.mimo]
+kind      = "cli"
+shim      = "method/spawners/mimo_shim.py"
+model_env = "MIMO_MODEL"
+routable  = false
+
+[harnesses.qwen]
+kind      = "cli"
+shim      = "method/spawners/qwen_shim.py"
+model_env = "QWEN_MODEL"
+routable  = false
+
+[harnesses.pi]
+kind      = "cli"
+shim      = "method/spawners/pi_shim.py"
+model_env = "PI_MODEL"
+routable  = false
+
+[harnesses.opencode]
+kind      = "cli"
+shim      = "method/spawners/opencode_shim.py"
+model_env = "OPENCODE_MODEL"
+routable  = false
+
+[harnesses.ollama]
+kind      = "local"
+shim      = "method/spawners/ollama_shim.py"
+model_env = "OLLAMA_MODEL"
+routable  = false                                    # локальный baseline; никогда не роутится
+
+# =====================================================================
+#  ПЛОСКОСТЬ 3: ENROLLMENT — жизненный цикл пары (harness, model)
+#  agent_id = f"{harness}@{model}"  (байт-в-байт ключ join'а в benchmark_runs)
+#  tested   = true → попадает в ATP sweep (AGENT_MODELS)
+#  routable = true → arbiter agents.toml scaffold (ручной гейт-флип; тестирование ≠ роутинг)
+#
+#  Асимметрия (ADR-003 §Decision): зачисление в тестирование — автомат;
+#  промоушн в роутинг — ручной флаг после доказательства кроссовера
+#  (сейчас оба канонических агента ~0.8/0.8 на code-review → re-rank no-op,
+#  status/2026-06-21-r07-benchmark2-request-to-atp.md).
+# =====================================================================
+
+[[agents]]
+harness  = "claude_code"
+model    = "claude-sonnet-4-6"
+tested   = true
+routable = true                                      # канонический routable-ключ arbiter
+
+[[agents]]
+harness  = "codex_cli"
+model    = "gpt-5.5"
+tested   = true
+routable = true                                      # канонический routable-ключ arbiter
+
+[[agents]]
+harness  = "anthropic_api"
+model    = "claude-sonnet-4-6"
+tested   = true
+routable = false                                     # baseline (raw API vs harness)
+
+[[agents]]
+harness  = "deepseek"
+model    = "deepseek-chat"
+tested   = true
+routable = false
+
+[[agents]]
+harness  = "mimo"
+model    = "mimo-v2.5-pro"
+tested   = true
+routable = false
+
+[[agents]]
+harness  = "qwen"
+model    = "qwen3.6-plus"
+tested   = true
+routable = false
+
+[[agents]]
+harness  = "ollama"
+model    = "llama3.2:1b"
+tested   = true
+routable = false
+
+[[agents]]
+harness  = "ollama"
+model    = "llama3.2:3b"
+tested   = true
+routable = false
+
+[[agents]]
+harness  = "ollama"
+model    = "qwen2.5:3b"
+tested   = true
+routable = false
+
+[[agents]]
+harness  = "ollama"
+model    = "qwen2.5:7b"
+tested   = true
+routable = false
+
+[[agents]]
+harness  = "ollama"
+model    = "qwen2.5:14b"
+tested   = true
+routable = false
+
+[[agents]]
+harness  = "pi"
+model    = "gpt-5"
+tested   = true
+routable = false
+
+[[agents]]
+harness  = "opencode"
+model    = "glm-5.1"
+tested   = true
+routable = false
+
+# ---------------------------------------------------------------------
+#  ЗАМЕТКИ ПО РАССИНХРОНУ (as-is на 2026-07-01), для авторов codegen/conformance:
+#
+#  1. arbiter/config/agents.toml несёт легаси-секцию `[aider]` (bare-id, НЕ
+#     fused `harness@model`). aider НЕ тестируется в ATP и не имеет пары здесь.
+#     Это до-конвенционный остаток; conformance должен трактовать bare-id как
+#     вне SSOT (не routable-ключ), либо aider закрепляют парой позже.
+#
+#  2. contracts/2026-06-19-agent-id-convention-atp-confirm.md уже amended
+#     (2026-07-01): мёртвые ключи claude_code@claude-opus-4-8 /
+#     codex_cli@gpt-5-codex зачёркнуты, live source-of-truth = sonnet-4-6 /
+#     gpt-5.5 (строки 17-22). Этот каталог согласован с той amendment'ой.
+#     Drift, помеченный P0 в opinion 2026-06-28 §5, закрыт.
+# ---------------------------------------------------------------------
