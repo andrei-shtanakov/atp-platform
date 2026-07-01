@@ -105,7 +105,7 @@ tests:
 - **PerformanceEvaluator** - Latency, throughput, regression detection
 - **CompositeEvaluator** - Boolean logic (AND/OR/NOT) over nested assertions
 - **FindingsMatchEvaluator** - Deterministic code-review findings matching (anchor + rule_id)
-- **Deterministic checkers** (`atp/evaluators/checkers/`) - Named checks selected via `grader: {type: programmatic, checker: <name>}`: `findings_match`, `json_path`
+- **Deterministic checkers** (`atp/evaluators/checkers/`) - Named checks selected via `grader: {type: programmatic, checker: <name>}`: `citation_grounding`, `findings_match`, `json_path`
 
 > Container-isolated code execution (Docker/Podman, resource limits) is provided by the container runtime (`atp/evaluators/container.py`), wired in by the `code_exec` evaluator (optional `ContainerRuntime`) rather than being a standalone registered evaluator.
 
@@ -170,7 +170,7 @@ atp-platform/
 │   ├── scoring/              # Score aggregation
 │   ├── statistics/           # Statistical analysis
 │   ├── baseline/             # Baseline management, regression detection
-│   ├── reporters/            # Output formatting (console, JSON, HTML, JUnit, game)
+│   ├── reporters/            # Output formatting (console, JSON, HTML, JUnit, summary, report_benchmark)
 │   ├── streaming/            # Event streaming support
 │   ├── mock_tools/           # Mock tool server for testing
 │   ├── performance/          # Profiling, caching, optimization

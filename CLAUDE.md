@@ -91,8 +91,8 @@ uv run atp sync                    # Sync local YAML suites with remote server
 1. **Protocol** (`atp/protocol/`) - ATP Request/Response/Event models defining the contract
 2. **Adapters** (`atp/adapters/`) - Translate between ATP Protocol and agent types (HTTP, Container, CLI, LangGraph, CrewAI, AutoGen, MCP, Bedrock, Vertex, Azure OpenAI, SDK)
 3. **Runner** (`atp/runner/`) - Orchestrates test execution, manages sandboxes
-4. **Evaluators** (`atp/evaluators/`) - Assess agent results. Registered pipeline evaluators (`atp/evaluators/registry.py`): artifact, behavior, llm_judge, code_exec, security, factuality, performance, style, filesystem, composite, findings_match. Deterministic **checkers** are a separate registry (`atp/evaluators/checkers/`) selected via `grader: {type: programmatic, checker: <name>}` — currently `findings_match` and `json_path`. (`git_commit.py`, `guardrails.py`, `container.py` exist as modules but are not registered pipeline evaluators; container is the isolation runtime — see component 20.)
-5. **Reporters** (`atp/reporters/`) - Format output (console, JSON, JUnit, HTML, game)
+4. **Evaluators** (`atp/evaluators/`) - Assess agent results. Registered pipeline evaluators (`atp/evaluators/registry.py`): artifact, behavior, llm_judge, code_exec, security, factuality, performance, style, filesystem, composite, findings_match. Deterministic **checkers** are a separate registry (`atp/evaluators/checkers/`) selected via `grader: {type: programmatic, checker: <name>}` — currently `citation_grounding`, `findings_match`, and `json_path`. (`git_commit.py`, `guardrails.py`, `container.py` exist as modules but are not registered pipeline evaluators; container is the isolation runtime — see component 20.)
+5. **Reporters** (`atp/reporters/`) - Format output; registry (`atp/reporters/registry.py`): `console`, `html`, `json`, `junit`, `summary`, `report_benchmark`. (`GameReporter` exists in `atp/reporters/game_reporter.py` but is used directly by the `game` command, not registered in the reporter registry; the CLI `--output` option accepts `console`/`json`/`junit`/`summary`.)
 6. **Benchmark API** (`atp/dashboard/benchmark/`) - REST API for pull-model benchmarks with leaderboard (`/api/v1/benchmarks`, `/api/v1/runs`)
 7. **Tournament API** (`atp/dashboard/tournament/`) - REST API for game-theoretic tournaments (`/api/v1/tournaments`)
 8. **SDK** (`packages/atp-sdk/`) - Python SDK v2.0.0 for benchmark participants (`AsyncATPClient` + sync `ATPClient` wrapper, `BenchmarkRun` async/sync iteration, `next_batch(n)`, sync methods `submit_sync()`/`status_sync()`/`cancel_sync()`/`leaderboard_sync()`/`next_batch_sync()`/`emit_sync()`, `emit()` for event streaming, exponential-backoff retry). PyPI package name: `atp-platform-sdk`
@@ -100,7 +100,7 @@ uv run atp sync                    # Sync local YAML suites with remote server
 10. **RBAC** (`atp/dashboard/rbac/`) - Role-based access control with auto-admin for first user
 11. **Dashboard UI** (`atp/dashboard/v2/routes/ui.py`) - HTMX + Pico CSS frontend served at `/ui/` (home activity feed, login, register, about, agents, tokens, invites, admin, tournaments, benchmarks, games, runs + run detail `/ui/runs/{id}`, leaderboard, suites, analytics)
 12. **Token Self-Service** (`atp/dashboard/tokens.py`, `atp/dashboard/v2/routes/token_api.py`) - APIToken and Invite ORM models; API endpoints `POST/GET/DELETE /api/v1/tokens`, invite-gated registration; agent-scoped tokens (prefix `atp_a_`) and user-level tokens (prefix `atp_u_`)
-13. **Agent Ownership** (`atp/dashboard/v2/routes/agent_management_api.py`) - Agent CRUD with ownership checks; `POST/GET/DELETE /api/v1/agents`; per-user agent quota enforced via `ATP_MAX_AGENTS_PER_USER`
+13. **Agent Ownership** (`atp/dashboard/v2/routes/agent_management_api.py`) - Agent CRUD with ownership checks; `POST/GET/DELETE /api/v1/agents`; per-user benchmark-agent quota enforced via `ATP_MAX_BENCHMARK_AGENTS_PER_USER` (the older `ATP_MAX_AGENTS_PER_USER` is deprecated)
 14. **Invite System** (`atp/dashboard/v2/routes/invite_api.py`) - Admin-only invite code management; `POST/GET/DELETE /api/v1/invites`; controls registration when `ATP_REGISTRATION_MODE=invite`
 15. **YAML Upload** (`POST /api/suite-definitions/upload`) - Upload YAML test suites to the server; used by `atp push`
 16. **Trend Analysis** (`atp/analytics/trend.py`) - Cross-run trend analysis detecting gradual success_rate drift via OLS slope
@@ -112,7 +112,7 @@ uv run atp sync                    # Sync local YAML suites with remote server
 22. **Post-Auth Pipeline** (`atp/dashboard/auth/post_auth.py`) - Shared `complete_auth()` pipeline for user provisioning, role assignment, and token issuance
 23. **Shared Result Models** (`atp/core/results.py`) - EvalCheck, EvalResult, TestResult etc. shared across evaluators, runner, reporters, and dashboard storage
 24. **MCP Tournament Server** (`atp/dashboard/mcp/`) - FastMCP server mounted at `/mcp` exposing tournament tools (`join_tournament`, `make_move`, `get_current_state`, `list_tournaments`, `get_tournament`, `get_history`, `leave_tournament`) via SSE. Auth via `MCPAuthMiddleware` (rejects 401 without `user_id` in request state)
-25. **Agent-Eval-Case Methodology** (`packages/atp-method/`, `method/`) - Plugin for structured agent-eval-case tests. `AgentEvalCase` schema (`output_contract`, `run_mode`, `grader.checker`) → `AgentEvalCaseEvaluator` (deterministic critical-check gate + non-gating rubric). Shared output envelopes (`atp_method/envelopes.py`) + deterministic checkers (`findings_match`, `json_path`). Cases in `method/cases/` (code-review, req-extraction), CLI-adapter spawner shims in `method/spawners/` (`claude_code`, `anthropic_api`, `ollama`, `codex_cli`, `deepseek`), batch harness `method/run_pipe_check.py` emitting `report_benchmark-v1` for arbiter. See `docs/adr/006-unified-capability-test-types.md` + `docs/adr/007-test-taxonomy-axes.md`.
+25. **Agent-Eval-Case Methodology** (`packages/atp-method/`, `method/`) - Plugin for structured agent-eval-case tests. `AgentEvalCase` schema (`output_contract`, `run_mode`, `grader.checker`) → `AgentEvalCaseEvaluator` (deterministic critical-check gate + non-gating rubric). Shared output envelopes (`atp_method/envelopes.py`) + deterministic checkers (`citation_grounding`, `findings_match`, `json_path`). Cases in `method/cases/` (code-review, req-extraction), CLI-adapter spawner shims in `method/spawners/` (`claude_code`, `anthropic_api`, `ollama`, `codex_cli`, `deepseek`), batch harness `method/run_pipe_check.py` emitting `report_benchmark-v1` for arbiter. The harness loads its agent roster from `method/agents-catalog.toml` — a vendored pin of the ecosystem SSOT (ADR-ECO-003), re-vendored from `_cowork_output/contracts/agents-catalog.toml` when agents change; it also emits a `rank_score`/`bp_ordinal` tiebreaker in `score_components` for arbiter re-rank. See `docs/adr/006-unified-capability-test-types.md` + `docs/adr/007-test-taxonomy-axes.md`.
 
 ### Data Flow
 
@@ -142,7 +142,7 @@ atp/                         # Namespace package (symlinks to packages/ + local 
 ├── cli/           # CLI entry point (atp test, validate, baseline, dashboard, etc.)
 ├── runner/        # Test orchestration, sandbox, progress
 ├── evaluators/    # Result evaluation (artifact, behavior, LLM-judge, code-exec, security, etc.)
-├── reporters/     # Output formatting (console, JSON, HTML, JUnit, game)
+├── reporters/     # Output formatting (console, JSON, HTML, JUnit, summary, report_benchmark; GameReporter used directly by the game command)
 ├── baseline/      # Baseline storage, regression detection (Welch's t-test)
 ├── mock_tools/    # Mock tool server for deterministic testing
 ├── performance/   # Profiling, caching, memory tracking
@@ -201,7 +201,10 @@ Key environment variables for the dashboard and SDK:
 - `ATP_BATCH_MAX_SIZE` - Max batch size for next-task endpoint (default: 10)
 - `ATP_UPLOAD_MAX_SIZE_MB` - Max YAML upload file size in MB (default: 1)
 - `ATP_REGISTRATION_MODE` - Registration mode: `invite` (invite code required) or `open` (default: "invite")
-- `ATP_MAX_AGENTS_PER_USER` - Maximum agents per user (default: 10)
+- `ATP_MAX_AGENTS_PER_USER` - **Deprecated** (LABS-TSA PR-2); retained for backward compatibility so existing config keeps loading. Use the two vars below instead.
+- `ATP_MAX_BENCHMARK_AGENTS_PER_USER` - Maximum benchmark agents per user (default: 10)
+- `ATP_MAX_TOURNAMENT_AGENTS_PER_USER` - Maximum tournament agents per user (default: 5)
+- `ATP_MAX_CONCURRENT_PRIVATE_TOURNAMENTS_PER_USER` - Maximum pending+active private tournaments per user (default: 1)
 - `ATP_MAX_TOKENS_PER_AGENT` - Maximum active API tokens per agent (default: 3)
 - `ATP_MAX_USER_TOKENS` - Maximum user-level API tokens (default: 5)
 - `ATP_DEFAULT_TOKEN_DAYS` - Default token expiry in days (default: 30)
