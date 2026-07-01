@@ -103,6 +103,14 @@ def _assertions(case: AgentEvalCase) -> list[Assertion]:
                 },
             )
         )
+    assertions.extend(
+        Assertion(
+            type=assertion.type,
+            critical=assertion.critical,
+            config=assertion.config,
+        )
+        for assertion in case.behavior_assertions
+    )
     return assertions
 
 

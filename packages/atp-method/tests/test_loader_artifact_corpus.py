@@ -99,6 +99,7 @@ def test_loader_loads_corpus_backed_req_extraction_fixture() -> None:
     td = load_case(CORPUS_CASE_PATH)
 
     assert td.id == "case-req-extraction-fabricated-deadline-corpus-clean-001"
+    assert "version_2" in td.tags
     assert td.task.input_data["case_path"] == str(CORPUS_CASE_PATH)
     assert td.task.input_data["run_mode"] == "read_only_corpus"
     assert td.task.input_data["request_preparer"] == "corpus"
@@ -137,6 +138,33 @@ def test_loader_loads_corpus_backed_req_extraction_fixture() -> None:
         in td.task.input_data["output_contract"]["format_instruction"]
     )
     assert "within 30 days of onboarding" not in yaml.safe_dump(td.task.input_data)
+    behavior = [
+        assertion for assertion in td.assertions if assertion.type == "behavior"
+    ]
+    assert len(behavior) == 1
+    assert behavior[0].config == {
+        "expected_tool_calls": [
+            {
+                "tool": "file_read",
+                "status": "success",
+                "input_matches": [{"path": "$.path", "equals": "policy-current.md"}],
+            }
+        ],
+        "forbidden_tool_calls": [
+            {
+                "tool": "file_read",
+                "input_matches": [
+                    {"path": "$.path", "equals": "archive/policy-2023.md"}
+                ],
+            },
+            {
+                "tool": "file_read",
+                "input_matches": [
+                    {"path": "$.path", "equals": r"archive\policy-2023.md"}
+                ],
+            },
+        ],
+    }
 
 
 @pytest.mark.anyio

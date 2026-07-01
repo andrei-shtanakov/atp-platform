@@ -14,6 +14,7 @@ from .registry import (
     create_reporter,
     get_registry,
 )
+from .summary_reporter import SummaryReporter
 
 __all__ = [
     "Reporter",
@@ -23,6 +24,7 @@ __all__ = [
     "HTMLReporter",
     "JSONReporter",
     "JUnitReporter",
+    "SummaryReporter",
     "ReporterRegistry",
     "ReporterNotFoundError",
     "create_reporter",

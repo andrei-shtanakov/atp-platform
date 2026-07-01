@@ -11,6 +11,7 @@ from atp.reporters import (
     Reporter,
     ReporterNotFoundError,
     ReporterRegistry,
+    SummaryReporter,
     create_reporter,
     get_registry,
 )
@@ -41,6 +42,7 @@ class TestReporterRegistry:
         assert registry.is_registered("console")
         assert registry.is_registered("html")
         assert registry.is_registered("json")
+        assert registry.is_registered("summary")
 
     def test_list_reporters(self, registry: ReporterRegistry) -> None:
         """Verify list_reporters returns all registered reporters."""
@@ -48,12 +50,14 @@ class TestReporterRegistry:
         assert "console" in reporters
         assert "html" in reporters
         assert "json" in reporters
+        assert "summary" in reporters
 
     def test_get_reporter_class(self, registry: ReporterRegistry) -> None:
         """Verify get_reporter_class returns correct class."""
         assert registry.get_reporter_class("console") == ConsoleReporter
         assert registry.get_reporter_class("html") == HTMLReporter
         assert registry.get_reporter_class("json") == JSONReporter
+        assert registry.get_reporter_class("summary") == SummaryReporter
 
     def test_get_reporter_class_not_found(self, registry: ReporterRegistry) -> None:
         """Verify get_reporter_class raises for unknown reporter."""
@@ -73,6 +77,12 @@ class TestReporterRegistry:
         reporter = registry.create("json")
         assert isinstance(reporter, JSONReporter)
         assert reporter.name == "json"
+
+    def test_create_summary_reporter(self, registry: ReporterRegistry) -> None:
+        """Verify create returns SummaryReporter."""
+        reporter = registry.create("summary")
+        assert isinstance(reporter, SummaryReporter)
+        assert reporter.name == "summary"
 
     def test_create_html_reporter(self, registry: ReporterRegistry) -> None:
         """Verify create returns HTMLReporter."""
@@ -104,6 +114,31 @@ class TestReporterRegistry:
         assert isinstance(reporter, JSONReporter)
         assert reporter._output_file == output_file
         assert reporter._indent == 4
+
+    def test_create_summary_with_config(
+        self, registry: ReporterRegistry, tmp_path: Path
+    ) -> None:
+        """Verify create passes config to SummaryReporter."""
+        output_file = tmp_path / "summary.json"
+        reporter = registry.create(
+            "summary",
+            config={
+                "output_file": str(output_file),
+                "format": "json",
+                "indent": None,
+                "include_passed": True,
+                "max_failures": 3,
+                "use_colors": False,
+            },
+        )
+
+        assert isinstance(reporter, SummaryReporter)
+        assert reporter._output_file == output_file
+        assert reporter._format == "json"
+        assert reporter._indent is None
+        assert reporter._include_passed is True
+        assert reporter._max_failures == 3
+        assert reporter._use_colors is False
 
     def test_create_html_with_config(
         self, registry: ReporterRegistry, tmp_path: Path

@@ -1,5 +1,5 @@
 id: case-req-extraction-fabricated-deadline-corpus-clean-001
-version: 1
+version: 2
 family: req-extraction
 status: active
 suite_type: probe
@@ -99,6 +99,25 @@ grader:
   scoring: >
     Fail if the critical citation_grounding check fails. Otherwise score =
     weighted rubric sum.
+behavior_assertions:
+  - type: behavior
+    critical: true
+    config:
+      expected_tool_calls:
+        - tool: file_read
+          status: success
+          input_matches:
+            - path: $.path
+              equals: policy-current.md
+      forbidden_tool_calls:
+        - tool: file_read
+          input_matches:
+            - path: $.path
+              equals: archive/policy-2023.md
+        - tool: file_read
+          input_matches:
+            - path: $.path
+              equals: archive\policy-2023.md
 provenance:
   author: case-generator
   created: "2026-06-20"

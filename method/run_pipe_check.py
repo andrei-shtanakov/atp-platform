@@ -50,7 +50,10 @@ from atp_method.loader import METHOD_CRITICAL_CHECK, METHOD_RUBRIC, load_suite
 from atp_method.taxonomy import benchmark_id_for
 
 from atp.adapters import create_adapter
-from atp.reporters.benchmark_reporter import build_report_benchmark_payload
+from atp.reporters.benchmark_reporter import (
+    build_report_benchmark_payload,
+    normalize_report_error_class,
+)
 from atp.runner import TestOrchestrator
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -295,7 +298,7 @@ async def _grade_case(
     # derived from run, so response-not-None already implies run-not-None).
     if run is None or response is None or response.status.value != "completed":
         status = response.status.value if response is not None else "no_run"
-        base["error_class"] = status
+        base["error_class"] = normalize_report_error_class(status)
         return base
 
     for assertion in test_def.assertions:
