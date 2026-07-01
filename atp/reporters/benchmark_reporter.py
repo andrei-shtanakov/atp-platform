@@ -20,6 +20,35 @@ def _breakpoint(case_results: list[dict[str, Any]]) -> str | None:
     return min(failed, key=lambda a: _AXIS_ORDER.index(a) if a in _AXIS_ORDER else 99)
 
 
+def _bp_ordinal(bp: str | None) -> int:
+    """Numeric breakpoint: higher = holds longer = better. ``None`` (never
+    breaks) sorts above every real level; an unknown level maps to 0 (worst)."""
+    if bp is None:
+        return len(_AXIS_ORDER)  # 5
+    return _AXIS_ORDER.index(bp) if bp in _AXIS_ORDER else 0
+
+
+def _rank_score(
+    pass_rate: float, bp_ordinal: int, malformed_rate: float, n: int
+) -> float:
+    """critical_pass_rate plus a sub-1/N tiebreaker (breakpoint + malformed).
+
+    ``rank_score = cpr + (t - 1)/(N + 1)`` with ``t ∈ [0, 1]``: bounded so it
+    can never cross a genuine 1/N critical-pass gap, and ``<= pass_rate <= 1.0``
+    by construction (fixes the ceiling clamp). See the design spec.
+
+    Preconditions: ``malformed_rate ∈ [0, 1]`` and ``bp_ordinal ∈ [0,
+    len(_AXIS_ORDER)]`` (both hold for real payloads) ⇒ ``t ∈ [0, 1]``. The
+    result is NOT rounded: the genuine-difference margin ``1/(N(N+1))`` would be
+    eroded by 6-decimal rounding for N ≳ 1000, so full float precision keeps the
+    ordering invariant unconditional.
+    """
+    if n == 0:
+        return 0.0
+    t = 0.75 * (bp_ordinal / len(_AXIS_ORDER)) + 0.25 * (1.0 - malformed_rate)
+    return pass_rate + (t - 1.0) / (n + 1)
+
+
 def normalize_report_error_class(error_class: Any) -> str | None:
     """Map run statuses to the report_benchmark-v1 error_class enum."""
     if error_class is None:
@@ -75,6 +104,8 @@ def build_report_benchmark_payload(
         for i, c in enumerate(case_results)
     ]
     bp = _breakpoint(case_results)
+    bp_ordinal = _bp_ordinal(bp)
+    rank_score = _rank_score(pass_rate, bp_ordinal, malformed_rate, n)
     payload: dict[str, Any] = {
         "payload_version": PAYLOAD_VERSION,
         "run_id": run_id,
@@ -82,11 +113,16 @@ def build_report_benchmark_payload(
         "agent_id": agent_id,
         "ts": ts,
         "score": pass_rate,
-        # score_components values must all be numbers (schema constraint)
+        # score_components values must all be numbers (schema constraint).
+        # rank_score/bp_ordinal are routing-only signals (NOT a breakdown of
+        # score): rank_score is the interim combined tiebreaker the arbiter
+        # reader consumes; bp_ordinal is the raw signal for the slice-B repayment.
         "score_components": {
             "critical_pass_rate": pass_rate,
             "mean_rubric": mean_rubric,
             "malformed_rate": malformed_rate,
+            "rank_score": rank_score,
+            "bp_ordinal": bp_ordinal,
         },
         # breakpoint surfaced at top level (string; Request allows additionalProperties)
         "total_tokens": sum(c["tokens"] for c in case_results),
