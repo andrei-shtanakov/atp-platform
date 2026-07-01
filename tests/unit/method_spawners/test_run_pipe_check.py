@@ -276,3 +276,51 @@ def test_preflight_skips_pi_opencode_without_binary(
     monkeypatch.setenv("OPENCODE_BIN", "definitely-not-a-real-bin-xyz")
     assert "pi binary not found" in (_preflight("pi@gpt-5") or "")
     assert "opencode binary not found" in (_preflight("opencode@glm-5.1") or "")
+
+
+def test_vendored_catalog_is_the_roster_source() -> None:
+    # ADR-ECO-003: HARNESSES + AGENT_MODELS are projected from the vendored SSOT
+    # catalog, not literals. The vendored file must exist and drive the sweep.
+    from method.run_pipe_check import CATALOG_PATH, _load_agent_catalog
+
+    assert CATALOG_PATH.exists(), "vendored agents-catalog.toml missing from repo"
+    harnesses, agent_models = _load_agent_catalog()
+    # Both arbiter routable join keys must be present in the tested sweep set.
+    assert ("claude_code", "claude-sonnet-4-6") in agent_models
+    assert ("codex_cli", "gpt-5.5") in agent_models
+    # Harness map carries (shim, model_env) tuples used to build AGENTS.
+    assert harnesses["claude_code"] == (
+        "method/spawners/claude_code_shim.py",
+        "CLAUDE_MODEL",
+    )
+    # No retired/opus model leaks into the roster.
+    assert not any("opus" in model for _, model in agent_models)
+
+
+def test_load_agent_catalog_only_includes_tested(tmp_path: object) -> None:
+    # An [[agents]] row with tested = false is excluded from the sweep set;
+    # its harness is still registered (so AGENTS can reference it if promoted).
+    from pathlib import Path
+
+    from method.run_pipe_check import _load_agent_catalog
+
+    catalog = (
+        "[harnesses.foo]\n"
+        'shim = "method/spawners/foo_shim.py"\n'
+        'model_env = "FOO_MODEL"\n'
+        "routable = false\n"
+        "[[agents]]\n"
+        'harness = "foo"\n'
+        'model = "foo-1"\n'
+        "tested = true\n"
+        "[[agents]]\n"
+        'harness = "foo"\n'
+        'model = "foo-2"\n'
+        "tested = false\n"
+    )
+    assert isinstance(tmp_path, Path)
+    path = tmp_path / "cat.toml"
+    path.write_text(catalog)
+    harnesses, agent_models = _load_agent_catalog(path)
+    assert harnesses == {"foo": ("method/spawners/foo_shim.py", "FOO_MODEL")}
+    assert agent_models == [("foo", "foo-1")]

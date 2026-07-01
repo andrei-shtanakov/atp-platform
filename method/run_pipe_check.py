@@ -55,39 +55,46 @@ from atp.runner import TestOrchestrator
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# harness -> (shim path relative to repo root, env var that pins the model).
-HARNESSES: dict[str, tuple[str, str]] = {
-    "claude_code": ("method/spawners/claude_code_shim.py", "CLAUDE_MODEL"),
-    "codex_cli": ("method/spawners/codex_cli_shim.py", "CODEX_MODEL"),
-    "anthropic_api": ("method/spawners/anthropic_api_shim.py", "CLAUDE_MODEL"),
-    "deepseek": ("method/spawners/deepseek_shim.py", "DEEPSEEK_MODEL"),
-    "mimo": ("method/spawners/mimo_shim.py", "MIMO_MODEL"),
-    "qwen": ("method/spawners/qwen_shim.py", "QWEN_MODEL"),
-    "ollama": ("method/spawners/ollama_shim.py", "OLLAMA_MODEL"),
-    "pi": ("method/spawners/pi_shim.py", "PI_MODEL"),
-    "opencode": ("method/spawners/opencode_shim.py", "OPENCODE_MODEL"),
-}
+# Vendored pinned copy of the ecosystem SSOT agents-catalog (ADR-ECO-003). The
+# canonical file lives in `_cowork_output/contracts/agents-catalog.toml`; this
+# in-repo copy keeps atp-platform self-contained. devtools CI-conformance checks
+# the two stay byte-for-byte in sync. The catalog is the single source for the
+# <harness>@<model> roster — edit it there, not the literals below (there are
+# none anymore). claude_code@claude-sonnet-4-6 and codex_cli@gpt-5.5 carry
+# routable=true (arbiter's join keys); a mismatch there = silent re-rank no-op.
+CATALOG_PATH = REPO_ROOT / "method" / "agents-catalog.toml"
 
-# Default (harness, model) matrix. agent_id = f"{harness}@{model}". The model is
-# the faithful provider id. claude_code@claude-sonnet-4-6 and codex_cli@gpt-5.5
-# are arbiter's routable keys — they MUST be emitted here, or arbiter's re-rank
-# join returns None (silent no-op). (codex: gpt-5-codex is unavailable on a
-# ChatGPT account → use gpt-5.5, codex's configured default.)
-AGENT_MODELS: list[tuple[str, str]] = [
-    ("claude_code", "claude-sonnet-4-6"),
-    ("codex_cli", "gpt-5.5"),
-    ("anthropic_api", "claude-sonnet-4-6"),
-    ("deepseek", "deepseek-chat"),
-    ("mimo", "mimo-v2.5-pro"),
-    ("qwen", "qwen3.6-plus"),
-    ("ollama", "llama3.2:1b"),
-    ("ollama", "llama3.2:3b"),
-    ("ollama", "qwen2.5:3b"),
-    ("ollama", "qwen2.5:7b"),
-    ("ollama", "qwen2.5:14b"),
-    ("pi", "gpt-5"),
-    ("opencode", "glm-5.1"),
-]
+
+def _load_agent_catalog(
+    path: Path = CATALOG_PATH,
+) -> tuple[dict[str, tuple[str, str]], list[tuple[str, str]]]:
+    """Load HARNESSES + AGENT_MODELS from the vendored SSOT catalog.
+
+    Returns ``(harnesses, agent_models)`` where ``harnesses`` maps a harness
+    name to ``(shim_path, model_env)`` and ``agent_models`` is the ordered list
+    of ``(harness, model)`` pairs with ``tested = true`` — the ATP sweep set.
+    """
+    import tomllib
+
+    with path.open("rb") as fh:
+        catalog = tomllib.load(fh)
+
+    harnesses: dict[str, tuple[str, str]] = {
+        name: (spec["shim"], spec["model_env"])
+        for name, spec in catalog["harnesses"].items()
+    }
+    agent_models: list[tuple[str, str]] = [
+        (entry["harness"], entry["model"])
+        for entry in catalog["agents"]
+        if entry.get("tested", False)
+    ]
+    return harnesses, agent_models
+
+
+# harness -> (shim path relative to repo root, env var that pins the model);
+# and the default (harness, model) sweep matrix. agent_id = f"{harness}@{model}"
+# (the faithful provider id). Both are projected from the vendored catalog.
+HARNESSES, AGENT_MODELS = _load_agent_catalog()
 
 # agent_id -> resolved spec. The id is the routing key (faithful, with '@').
 AGENTS: dict[str, dict[str, str]] = {
@@ -283,8 +290,10 @@ async def _grade_case(
     }
 
     # Agent-level failure (timeout / shim error / no output) is NOT "malformed
-    # findings" — it's an infra error. Record it and stop.
-    if response is None or response.status.value != "completed":
+    # findings" — it's an infra error. Record it and stop. Guarding on ``run`` too
+    # narrows it to non-None for the ``run.events`` access below (response is
+    # derived from run, so response-not-None already implies run-not-None).
+    if run is None or response is None or response.status.value != "completed":
         status = response.status.value if response is not None else "no_run"
         base["error_class"] = status
         return base
