@@ -337,11 +337,9 @@ def test_vendored_catalog_is_the_roster_source() -> None:
     assert not any("opus" in model for _, model in agent_models)
 
 
-def test_load_agent_catalog_only_includes_tested(tmp_path: object) -> None:
+def test_load_agent_catalog_only_includes_tested(tmp_path: Path) -> None:
     # An [[agents]] row with tested = false is excluded from the sweep set;
     # its harness is still registered (so AGENTS can reference it if promoted).
-    from pathlib import Path
-
     from method.run_pipe_check import _load_agent_catalog
 
     catalog = (
@@ -358,9 +356,28 @@ def test_load_agent_catalog_only_includes_tested(tmp_path: object) -> None:
         'model = "foo-2"\n'
         "tested = false\n"
     )
-    assert isinstance(tmp_path, Path)
     path = tmp_path / "cat.toml"
     path.write_text(catalog)
     harnesses, agent_models = _load_agent_catalog(path)
     assert harnesses == {"foo": ("method/spawners/foo_shim.py", "FOO_MODEL")}
     assert agent_models == [("foo", "foo-1")]
+
+
+def test_load_agent_catalog_undeclared_harness_fails_loudly(tmp_path: Path) -> None:
+    # A tested agent referencing a harness with no [harnesses.*] block must raise
+    # a path-qualified error at load time, not a cryptic KeyError building AGENTS.
+    from method.run_pipe_check import _load_agent_catalog
+
+    catalog = (
+        "[harnesses.foo]\n"
+        'shim = "method/spawners/foo_shim.py"\n'
+        'model_env = "FOO_MODEL"\n'
+        "[[agents]]\n"
+        'harness = "bar"\n'  # bar is never declared under [harnesses]
+        'model = "bar-1"\n'
+        "tested = true\n"
+    )
+    path = tmp_path / "cat.toml"
+    path.write_text(catalog)
+    with pytest.raises(ValueError, match="undeclared"):
+        _load_agent_catalog(path)

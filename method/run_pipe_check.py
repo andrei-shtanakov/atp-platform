@@ -79,18 +79,42 @@ def _load_agent_catalog(
     """
     import tomllib
 
-    with path.open("rb") as fh:
-        catalog = tomllib.load(fh)
+    try:
+        with path.open("rb") as fh:
+            catalog = tomllib.load(fh)
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(
+            f"vendored agents-catalog not found at {path} — re-vendor from "
+            "_cowork_output/contracts/agents-catalog.toml"
+        ) from exc
+    except tomllib.TOMLDecodeError as exc:
+        raise ValueError(f"agents-catalog {path} is not valid TOML: {exc}") from exc
 
-    harnesses: dict[str, tuple[str, str]] = {
-        name: (spec["shim"], spec["model_env"])
-        for name, spec in catalog["harnesses"].items()
-    }
-    agent_models: list[tuple[str, str]] = [
-        (entry["harness"], entry["model"])
-        for entry in catalog["agents"]
-        if entry.get("tested", False)
-    ]
+    try:
+        harnesses: dict[str, tuple[str, str]] = {
+            name: (spec["shim"], spec["model_env"])
+            for name, spec in catalog["harnesses"].items()
+        }
+        agent_models: list[tuple[str, str]] = [
+            (entry["harness"], entry["model"])
+            for entry in catalog["agents"]
+            if entry.get("tested", False)
+        ]
+    except KeyError as exc:
+        raise KeyError(
+            f"agents-catalog {path} missing required key {exc} (expected "
+            "[harnesses.*].shim/model_env and [[agents]].harness/model)"
+        ) from exc
+
+    # A tested agent whose harness is undeclared would KeyError far from the
+    # cause when AGENTS is built below — fail loudly here instead.
+    undeclared = sorted({h for h, _ in agent_models if h not in harnesses})
+    if undeclared:
+        raise ValueError(
+            f"agents-catalog {path}: tested agents reference undeclared "
+            f"harness(es) {undeclared}"
+        )
+
     return harnesses, agent_models
 
 
