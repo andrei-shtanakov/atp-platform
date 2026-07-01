@@ -2,10 +2,38 @@
 
 from typing import Any
 
+from pydantic import BaseModel, Field
+
 from atp.loader.models import Assertion, TestDefinition
 from atp.protocol import ATPEvent, ATPResponse, EventType
 
 from .base import EvalCheck, EvalResult, Evaluator
+from .json_path.resolver import InvalidPath, resolve
+
+
+class PayloadMatch(BaseModel):
+    """A single partial payload match rule."""
+
+    path: str
+    operator: str
+    expected: Any = None
+
+
+class ToolCallExpectation(BaseModel):
+    """A tool-call pattern matched against trace events."""
+
+    tool: str
+    status: str | None = None
+    input_matches: list[PayloadMatch] = Field(default_factory=list)
+    output_matches: list[PayloadMatch] = Field(default_factory=list)
+
+
+class ToolCallMatchResult(BaseModel):
+    """Result for matching one tool-call expectation."""
+
+    matched: bool
+    reason: str | None = None
+    event_sequence: int | None = None
 
 
 class BehaviorEvaluator(Evaluator):
@@ -104,6 +132,12 @@ class BehaviorEvaluator(Evaluator):
             checks.append(
                 self._check_forbidden_tools(trace, {"tools": config["forbidden_tools"]})
             )
+
+        if "expected_tool_calls" in config or "tool_call_order" in config:
+            checks.append(self._check_expected_tool_calls(trace, config))
+
+        if "forbidden_tool_calls" in config:
+            checks.append(self._check_forbidden_tool_calls(trace, config))
 
         if config.get("no_errors", False):
             checks.append(self._check_no_errors(trace, response))
@@ -298,6 +332,444 @@ class BehaviorEvaluator(Evaluator):
                 "violations": violations,
             },
         )
+
+    def _check_expected_tool_calls(
+        self, trace: list[ATPEvent], config: dict[str, Any]
+    ) -> EvalCheck:
+        """Check that configured tool-call patterns appear in the trace."""
+        order = config.get("tool_call_order", "any")
+        if order not in {"any", "expected"}:
+            return self._create_check(
+                name="expected_tool_calls",
+                passed=False,
+                message=(
+                    "Configuration error: tool_call_order must be 'any' "
+                    f"or 'expected', got {order!r}"
+                ),
+            )
+
+        expectations, error = self._parse_tool_call_expectations(
+            config.get("expected_tool_calls", []),
+            "expected_tool_calls",
+        )
+        if error:
+            return self._create_check(
+                name="expected_tool_calls",
+                passed=False,
+                message=error,
+            )
+
+        if not expectations:
+            return self._create_check(
+                name="expected_tool_calls",
+                passed=True,
+                message="No expected tool calls specified",
+            )
+
+        events = self._iter_tool_call_events(trace)
+        if order == "expected":
+            return self._check_expected_tool_calls_ordered(events, expectations)
+
+        return self._check_expected_tool_calls_unordered(events, expectations)
+
+    def _check_expected_tool_calls_unordered(
+        self, events: list[ATPEvent], expectations: list[ToolCallExpectation]
+    ) -> EvalCheck:
+        """Check expected tool calls without ordering constraints."""
+        matches: list[dict[str, Any]] = []
+        missing: list[dict[str, Any]] = []
+
+        for expectation in expectations:
+            result = self._find_matching_tool_call(events, expectation)
+            if result.matched:
+                matches.append(
+                    {
+                        "tool": expectation.tool,
+                        "event_sequence": result.event_sequence,
+                    }
+                )
+            else:
+                missing.append(
+                    {
+                        "tool": expectation.tool,
+                        "reason": result.reason,
+                    }
+                )
+
+        if not missing:
+            return self._create_check(
+                name="expected_tool_calls",
+                passed=True,
+                message="All expected tool calls matched",
+                details={
+                    "expected": len(expectations),
+                    "matched": len(matches),
+                    "matches": matches,
+                },
+            )
+
+        first_missing = missing[0]
+        reason = first_missing.get("reason")
+        message = f"Missing expected tool call: {first_missing['tool']}"
+        if reason:
+            message = f"{message} ({reason})"
+        return self._create_check(
+            name="expected_tool_calls",
+            passed=False,
+            message=message,
+            details={
+                "missing": missing,
+                "observed_tools": self._observed_tool_names(events),
+            },
+        )
+
+    def _check_expected_tool_calls_ordered(
+        self, events: list[ATPEvent], expectations: list[ToolCallExpectation]
+    ) -> EvalCheck:
+        """Check expected tool calls in listed order by event sequence."""
+        matches: list[dict[str, Any]] = []
+        last_sequence = -1
+        start_index = 0
+
+        for expectation in expectations:
+            found = False
+            last_reason: str | None = None
+
+            for index, event in enumerate(events[start_index:], start=start_index):
+                if event.sequence <= last_sequence:
+                    continue
+
+                result = self._match_tool_call_event(event, expectation)
+                if result.matched:
+                    matches.append(
+                        {
+                            "tool": expectation.tool,
+                            "event_sequence": event.sequence,
+                        }
+                    )
+                    last_sequence = event.sequence
+                    start_index = index + 1
+                    found = True
+                    break
+
+                last_reason = result.reason
+
+            if not found:
+                message = (
+                    "Missing expected tool call in configured order: "
+                    f"{expectation.tool}"
+                )
+                if last_reason:
+                    message = f"{message} ({last_reason})"
+                return self._create_check(
+                    name="expected_tool_calls",
+                    passed=False,
+                    message=message,
+                    details={
+                        "missing": [
+                            {
+                                "tool": expectation.tool,
+                                "reason": last_reason,
+                            }
+                        ],
+                        "matches": matches,
+                        "observed_tools": self._observed_tool_names(events),
+                    },
+                )
+
+        return self._create_check(
+            name="expected_tool_calls",
+            passed=True,
+            message="All expected tool calls matched in order",
+            details={
+                "expected": len(expectations),
+                "matched": len(matches),
+                "matches": matches,
+            },
+        )
+
+    def _check_forbidden_tool_calls(
+        self, trace: list[ATPEvent], config: dict[str, Any]
+    ) -> EvalCheck:
+        """Check that configured forbidden tool-call patterns do not appear."""
+        expectations, error = self._parse_tool_call_expectations(
+            config.get("forbidden_tool_calls", []),
+            "forbidden_tool_calls",
+        )
+        if error:
+            return self._create_check(
+                name="forbidden_tool_calls",
+                passed=False,
+                message=error,
+            )
+
+        if not expectations:
+            return self._create_check(
+                name="forbidden_tool_calls",
+                passed=True,
+                message="No forbidden tool calls specified",
+            )
+
+        violations: list[dict[str, Any]] = []
+        for event in self._iter_tool_call_events(trace):
+            for expectation in expectations:
+                result = self._match_tool_call_event(event, expectation)
+                if result.matched:
+                    violations.append(
+                        {
+                            "tool": expectation.tool,
+                            "event_sequence": event.sequence,
+                        }
+                    )
+
+        if not violations:
+            return self._create_check(
+                name="forbidden_tool_calls",
+                passed=True,
+                message="No forbidden tool call patterns matched",
+                details={"violations": []},
+            )
+
+        first_violation = violations[0]
+        return self._create_check(
+            name="forbidden_tool_calls",
+            passed=False,
+            message=f"Forbidden tool call matched: {first_violation['tool']}",
+            details={"violations": violations},
+        )
+
+    def _parse_tool_call_expectations(
+        self, raw_expectations: Any, config_key: str
+    ) -> tuple[list[ToolCallExpectation], str | None]:
+        """Parse raw tool-call expectation config into internal matchers."""
+        if not isinstance(raw_expectations, list):
+            return [], f"Configuration error: {config_key} must be a list"
+
+        expectations: list[ToolCallExpectation] = []
+        for index, raw_expectation in enumerate(raw_expectations):
+            if not isinstance(raw_expectation, dict):
+                return (
+                    [],
+                    f"Configuration error: {config_key}[{index}] must be a mapping",
+                )
+
+            tool = raw_expectation.get("tool")
+            if not isinstance(tool, str) or not tool:
+                return (
+                    [],
+                    f"Configuration error: {config_key}[{index}].tool is required",
+                )
+
+            input_matches, error = self._parse_payload_matches(
+                raw_expectation.get("input_matches", []),
+                f"{config_key}[{index}].input_matches",
+            )
+            if error:
+                return [], error
+
+            output_matches, error = self._parse_payload_matches(
+                raw_expectation.get("output_matches", []),
+                f"{config_key}[{index}].output_matches",
+            )
+            if error:
+                return [], error
+
+            status = raw_expectation.get("status")
+            if status is not None and not isinstance(status, str):
+                return (
+                    [],
+                    "Configuration error: "
+                    f"{config_key}[{index}].status must be a string",
+                )
+
+            expectations.append(
+                ToolCallExpectation(
+                    tool=tool,
+                    status=status,
+                    input_matches=input_matches,
+                    output_matches=output_matches,
+                )
+            )
+
+        return expectations, None
+
+    def _parse_payload_matches(
+        self, raw_matches: Any, config_key: str
+    ) -> tuple[list[PayloadMatch], str | None]:
+        """Parse payload match rules from raw config."""
+        if not isinstance(raw_matches, list):
+            return [], f"Configuration error: {config_key} must be a list"
+
+        matches: list[PayloadMatch] = []
+        for index, raw_match in enumerate(raw_matches):
+            if not isinstance(raw_match, dict):
+                return (
+                    [],
+                    f"Configuration error: {config_key}[{index}] must be a mapping",
+                )
+
+            path = raw_match.get("path")
+            if not isinstance(path, str):
+                return (
+                    [],
+                    f"Configuration error: {config_key}[{index}].path is required",
+                )
+            try:
+                resolve({}, path)
+            except InvalidPath:
+                return (
+                    [],
+                    f"Configuration error: invalid JSONPath {path!r} "
+                    f"in {config_key}[{index}]",
+                )
+
+            operators = [
+                operator
+                for operator in ("equals", "exists", "absent")
+                if operator in raw_match
+            ]
+            if len(operators) != 1:
+                return (
+                    [],
+                    "Configuration error: "
+                    f"{config_key}[{index}] must specify exactly one of "
+                    "equals, exists, or absent",
+                )
+
+            operator = operators[0]
+            if operator in {"exists", "absent"} and raw_match[operator] is not True:
+                return (
+                    [],
+                    "Configuration error: "
+                    f"{config_key}[{index}].{operator} must be true",
+                )
+
+            matches.append(
+                PayloadMatch(
+                    path=path,
+                    operator=operator,
+                    expected=raw_match.get(operator),
+                )
+            )
+
+        return matches, None
+
+    def _find_matching_tool_call(
+        self, events: list[ATPEvent], expectation: ToolCallExpectation
+    ) -> ToolCallMatchResult:
+        """Find the first event matching an expectation."""
+        last_reason: str | None = None
+        for event in events:
+            result = self._match_tool_call_event(event, expectation)
+            if result.matched:
+                return result
+            last_reason = result.reason
+
+        return ToolCallMatchResult(matched=False, reason=last_reason)
+
+    def _match_tool_call_event(
+        self, event: ATPEvent, expectation: ToolCallExpectation
+    ) -> ToolCallMatchResult:
+        """Match a single tool-call event against one expectation."""
+        payload = event.payload
+        tool = payload.get("tool")
+        if tool != expectation.tool:
+            return ToolCallMatchResult(
+                matched=False,
+                reason=f"tool expected {expectation.tool!r}, got {tool!r}",
+            )
+
+        if (
+            expectation.status is not None
+            and payload.get("status") != expectation.status
+        ):
+            return ToolCallMatchResult(
+                matched=False,
+                reason=(
+                    f"status expected {expectation.status!r}, "
+                    f"got {payload.get('status')!r}"
+                ),
+            )
+
+        input_result = self._match_payload(
+            self._tool_call_input(payload), expectation.input_matches
+        )
+        if not input_result.matched:
+            return input_result
+
+        output_result = self._match_payload(
+            self._tool_call_output(payload), expectation.output_matches
+        )
+        if not output_result.matched:
+            return output_result
+
+        return ToolCallMatchResult(matched=True, event_sequence=event.sequence)
+
+    def _match_payload(
+        self, data: Any, matches: list[PayloadMatch]
+    ) -> ToolCallMatchResult:
+        """Match all payload rules against input or output data."""
+        for rule in matches:
+            result = self._match_payload_rule(data, rule)
+            if not result.matched:
+                return result
+        return ToolCallMatchResult(matched=True)
+
+    def _match_payload_rule(self, data: Any, rule: PayloadMatch) -> ToolCallMatchResult:
+        """Match one payload rule against input or output data."""
+        try:
+            found, value = resolve(data, rule.path)
+        except InvalidPath:
+            return ToolCallMatchResult(
+                matched=False,
+                reason=f"Configuration error: invalid JSONPath {rule.path!r}",
+            )
+
+        if rule.operator == "equals":
+            if found and value == rule.expected:
+                return ToolCallMatchResult(matched=True)
+            return ToolCallMatchResult(
+                matched=False,
+                reason=f"{rule.path} expected {rule.expected!r}, got {value!r}",
+            )
+
+        if rule.operator == "exists":
+            if found:
+                return ToolCallMatchResult(matched=True)
+            return ToolCallMatchResult(
+                matched=False,
+                reason=f"{rule.path} expected to exist",
+            )
+
+        if not found:
+            return ToolCallMatchResult(matched=True)
+        return ToolCallMatchResult(
+            matched=False,
+            reason=f"{rule.path} expected to be absent",
+        )
+
+    def _iter_tool_call_events(self, trace: list[ATPEvent]) -> list[ATPEvent]:
+        """Extract tool-call events from a trace."""
+        return [event for event in trace if event.event_type == EventType.TOOL_CALL]
+
+    def _tool_call_input(self, payload: dict[str, Any]) -> Any:
+        """Return canonical tool input, falling back to legacy args."""
+        if "input" in payload:
+            return payload["input"]
+        return payload.get("args")
+
+    def _tool_call_output(self, payload: dict[str, Any]) -> Any:
+        """Return tool output payload."""
+        return payload.get("output")
+
+    def _observed_tool_names(self, events: list[ATPEvent]) -> list[str]:
+        """Return unique observed tool names in trace order."""
+        tools: list[str] = []
+        for event in events:
+            tool = event.payload.get("tool")
+            if isinstance(tool, str) and tool not in tools:
+                tools.append(tool)
+        return tools
 
     def _extract_used_tools(self, trace: list[ATPEvent]) -> set[str]:
         """Extract set of tool names used from trace."""

@@ -1,8 +1,10 @@
 """Tests for CLI main module."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from importlib.metadata import version
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,6 +15,7 @@ from atp.cli.main import (
     EXIT_FAILURE,
     EXIT_SUCCESS,
     ConfigContext,
+    _run_suite,
     cli,
 )
 
@@ -208,6 +211,7 @@ class TestTestCommand:
         assert "--fail-fast" in result.output
         assert "--sandbox" in result.output
         assert "--verbose" in result.output
+        assert "--summary-format" in result.output
         assert "Exit Codes:" in result.output
 
     def test_test_list_only(
@@ -267,6 +271,270 @@ class TestTestCommand:
         result = runner.invoke(cli, ["test", "nonexistent.yaml"])
         assert result.exit_code == 2
         assert "does not exist" in result.output or "Error" in result.output
+
+    def test_test_passes_summary_format_to_run_suite(
+        self, runner: CliRunner, sample_suite_content: str, tmp_path: Path
+    ) -> None:
+        """Test test command passes summary JSON format to suite runner."""
+        suite_file = tmp_path / "suite.yaml"
+        suite_file.write_text(sample_suite_content)
+
+        with patch(
+            "atp.cli.main._run_suite",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as mock_run_suite:
+            result = runner.invoke(
+                cli,
+                [
+                    "test",
+                    str(suite_file),
+                    "--output",
+                    "summary",
+                    "--summary-format",
+                    "json",
+                    "--no-save",
+                ],
+            )
+
+        assert result.exit_code == EXIT_SUCCESS
+        mock_run_suite.assert_awaited_once()
+        assert mock_run_suite.await_args.kwargs["output_format"] == "summary"
+        assert mock_run_suite.await_args.kwargs["summary_format"] == "json"
+
+
+class TestRunSuiteReporterConfig:
+    """Tests for suite runner reporter configuration."""
+
+    @pytest.mark.parametrize(
+        ("output_format", "expects_summary_format"),
+        [("summary", True), ("console", False)],
+    )
+    def test_run_suite_adds_summary_format_only_for_summary_output(
+        self, output_format: str, expects_summary_format: bool
+    ) -> None:
+        """Test summary format is passed only to SummaryReporter config."""
+
+        class FakeOrchestrator:
+            def __init__(self, *args: object, **kwargs: object) -> None:
+                pass
+
+            async def __aenter__(self) -> "FakeOrchestrator":
+                return self
+
+            async def __aexit__(self, *args: object) -> None:
+                pass
+
+            async def run_suite(self, *args: object, **kwargs: object) -> object:
+                return SimpleNamespace(tests=[], success=True)
+
+        suite = SimpleNamespace(test_suite="test-suite")
+        reporter = MagicMock()
+        report = MagicMock()
+
+        with (
+            patch("atp.adapters.create_adapter", return_value=MagicMock()),
+            patch("atp.runner.TestOrchestrator", FakeOrchestrator),
+            patch("atp.runner.create_progress_callback", return_value=MagicMock()),
+            patch(
+                "atp.reporters.create_reporter", return_value=reporter
+            ) as mock_create,
+            patch("atp.reporters.SuiteReport.from_suite_result", return_value=report),
+            patch("atp.evaluators.registry.get_registry", return_value=MagicMock()),
+        ):
+            result = asyncio.run(
+                _run_suite(
+                    suite=suite,
+                    adapter_type="http",
+                    adapter_config={},
+                    agent_name="test-agent",
+                    model=None,
+                    parallel=1,
+                    runs_per_test=1,
+                    fail_fast=False,
+                    sandbox_enabled=False,
+                    verbose=False,
+                    output_format=output_format,
+                    output_file=None,
+                    save_to_db=False,
+                    summary_format="json",
+                )
+            )
+
+        assert result is True
+        mock_create.assert_called_once()
+        assert mock_create.call_args.args[0] == output_format
+        reporter_config = mock_create.call_args.args[1]
+        if expects_summary_format:
+            assert reporter_config["format"] == "json"
+        else:
+            assert "format" not in reporter_config
+        reporter.report.assert_called_once_with(report)
+
+    def test_run_suite_forwards_scored_failure_progress_events(self) -> None:
+        """Test progress reflects evaluation failure after successful execution."""
+        from atp.core.results import (
+            EvalCheck,
+            EvalResult,
+            ProgressEvent,
+            ProgressEventType,
+            RunResult,
+            SuiteResult,
+            TestResult,
+        )
+        from atp.loader.models import Assertion, TaskDefinition, TestDefinition
+        from atp.protocol import ATPResponse, ResponseStatus
+        from atp.scoring.models import (
+            ComponentScore,
+            ScoreBreakdown,
+            ScoredTestResult,
+        )
+
+        progress_events: list[ProgressEvent] = []
+
+        class FakeOrchestrator:
+            def __init__(self, *args: object, **kwargs: object) -> None:
+                self.progress_callback = kwargs["progress_callback"]
+
+            async def __aenter__(self) -> "FakeOrchestrator":
+                return self
+
+            async def __aexit__(self, *args: object) -> None:
+                pass
+
+            async def run_suite(self, *args: object, **kwargs: object) -> SuiteResult:
+                test = TestDefinition(
+                    id="critical-eval",
+                    name="Critical Eval",
+                    task=TaskDefinition(description="complete task"),
+                    assertions=[Assertion(type="agent_eval_case", critical=True)],
+                )
+                run = RunResult(
+                    test_id=test.id,
+                    run_number=1,
+                    response=ATPResponse(
+                        task_id=test.id,
+                        status=ResponseStatus.COMPLETED,
+                    ),
+                )
+                test_result = TestResult(test=test, runs=[run])
+
+                self.progress_callback(
+                    ProgressEvent(
+                        event_type=ProgressEventType.TEST_COMPLETED,
+                        test_id=test.id,
+                        test_name=test.name,
+                        success=True,
+                    )
+                )
+                self.progress_callback(
+                    ProgressEvent(
+                        event_type=ProgressEventType.SUITE_COMPLETED,
+                        suite_name="test-suite",
+                        success=True,
+                        details={
+                            "passed_tests": 1,
+                            "failed_tests": 0,
+                            "success_rate": 1.0,
+                        },
+                    )
+                )
+
+                return SuiteResult(
+                    suite_name="test-suite",
+                    agent_name="test-agent",
+                    tests=[test_result],
+                )
+
+        eval_result = EvalResult(
+            evaluator="agent_eval_case",
+            critical=True,
+            checks=[
+                EvalCheck(
+                    name="critical_check",
+                    passed=False,
+                    score=0.0,
+                    message="failed",
+                )
+            ],
+        )
+        evaluator = MagicMock()
+        evaluator.evaluate = AsyncMock(return_value=eval_result)
+        evaluator_registry = MagicMock()
+        evaluator_registry.create_for_assertion.return_value = evaluator
+        zero_component = ComponentScore(
+            name="zero",
+            normalized_value=0.0,
+            weight=0.0,
+            weighted_value=0.0,
+        )
+        scored_failure = ScoredTestResult(
+            test_id="critical-eval",
+            score=0.0,
+            breakdown=ScoreBreakdown(
+                quality=zero_component,
+                completeness=zero_component,
+                efficiency=zero_component,
+                cost=zero_component,
+            ),
+            passed=False,
+        )
+        suite = SimpleNamespace(test_suite="test-suite")
+        reporter = MagicMock()
+        report = MagicMock()
+
+        with (
+            patch("atp.adapters.create_adapter", return_value=MagicMock()),
+            patch("atp.runner.TestOrchestrator", FakeOrchestrator),
+            patch(
+                "atp.runner.create_progress_callback",
+                return_value=progress_events.append,
+            ),
+            patch(
+                "atp.evaluators.registry.get_registry",
+                return_value=evaluator_registry,
+            ),
+            patch(
+                "atp.scoring.aggregator.ScoreAggregator.score_test_result",
+                return_value=scored_failure,
+            ),
+            patch("atp.reporters.create_reporter", return_value=reporter),
+            patch("atp.reporters.SuiteReport.from_suite_result", return_value=report),
+        ):
+            result = asyncio.run(
+                _run_suite(
+                    suite=suite,
+                    adapter_type="http",
+                    adapter_config={},
+                    agent_name="test-agent",
+                    model=None,
+                    parallel=1,
+                    runs_per_test=1,
+                    fail_fast=False,
+                    sandbox_enabled=False,
+                    verbose=False,
+                    output_format="console",
+                    output_file=None,
+                    save_to_db=False,
+                )
+            )
+
+        test_events = [
+            event for event in progress_events if event.test_id == "critical-eval"
+        ]
+        suite_events = [
+            event
+            for event in progress_events
+            if event.event_type == ProgressEventType.SUITE_COMPLETED
+        ]
+
+        assert result is False
+        assert test_events[-1].event_type == ProgressEventType.TEST_FAILED
+        assert test_events[-1].success is False
+        assert suite_events[-1].success is False
+        assert suite_events[-1].details["passed_tests"] == 0
+        assert suite_events[-1].details["failed_tests"] == 1
+        assert suite_events[-1].details["success_rate"] == 0.0
 
 
 class TestRunCommand:

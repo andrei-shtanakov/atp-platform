@@ -220,6 +220,11 @@
         "format_instruction": { "type": "string" }
       }
     },
+    "behavior_assertions": {
+      "type": "array",
+      "description": "Native ATP behavior assertions evaluated against the run trace.",
+      "items": { "$ref": "#/$defs/behavior_assertion" }
+    },
 
     "turns": {
       "type": "array",
@@ -341,6 +346,19 @@
       "properties": {
         "criterion": { "type": "string", "minLength": 1 },
         "weight": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "behavior_assertion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "config"],
+      "properties": {
+        "type": { "type": "string", "const": "behavior" },
+        "critical": { "type": "boolean", "default": false },
+        "config": {
+          "type": "object",
+          "description": "BehaviorEvaluator configuration."
+        }
       }
     },
     "turn": {

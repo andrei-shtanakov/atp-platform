@@ -9,6 +9,7 @@ from .console import ConsoleReporter
 from .html_reporter import HTMLReporter
 from .json_reporter import JSONReporter
 from .junit_reporter import JUnitReporter
+from .summary_reporter import SummaryReporter
 
 
 class ReporterNotFoundError(Exception):
@@ -33,6 +34,7 @@ class ReporterRegistry:
         self.register("html", HTMLReporter)
         self.register("json", JSONReporter)
         self.register("junit", JUnitReporter)
+        self.register("summary", SummaryReporter)
         self.register("report_benchmark", BenchmarkReporter)
 
     def register(
@@ -128,6 +130,19 @@ class ReporterRegistry:
                 output_file=output_file,
                 include_properties=config.get("include_properties", True),
                 include_system_out=config.get("include_system_out", True),
+            )
+        elif reporter_type == "summary":
+            output_file = config.get("output_file")
+            if output_file:
+                output_file = Path(output_file)
+            return SummaryReporter(
+                output_file=output_file,
+                output=config.get("output"),
+                format=config.get("format", "console"),
+                indent=config.get("indent", 2),
+                include_passed=config.get("include_passed", False),
+                max_failures=config.get("max_failures"),
+                use_colors=config.get("use_colors", True),
             )
         else:
             return reporter_class()

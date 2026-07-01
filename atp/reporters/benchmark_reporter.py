@@ -7,6 +7,8 @@ from atp.reporters.base import Reporter, SuiteReport
 
 _AXIS_ORDER = ["clean", "mild", "moderate", "severe", "very_severe"]
 PAYLOAD_VERSION = "1.0.0"
+_REPORT_ERROR_CLASSES = {"timeout", "crash", "test_failure", "other"}
+_TEST_FAILURE_STATUSES = {"failed", "no_run"}
 
 
 def _breakpoint(case_results: list[dict[str, Any]]) -> str | None:
@@ -37,13 +39,26 @@ def _rank_score(
 
     Preconditions: ``malformed_rate ∈ [0, 1]`` and ``bp_ordinal ∈ [0,
     len(_AXIS_ORDER)]`` (both hold for real payloads) ⇒ ``t ∈ [0, 1]``. The
-    ``round(..., 6)`` assumes N ≪ 1000 (the genuine-difference margin
-    ``1/(N(N+1))`` stays above 1e-6 there).
+    result is NOT rounded: the genuine-difference margin ``1/(N(N+1))`` would be
+    eroded by 6-decimal rounding for N ≳ 1000, so full float precision keeps the
+    ordering invariant unconditional.
     """
     if n == 0:
         return 0.0
     t = 0.75 * (bp_ordinal / len(_AXIS_ORDER)) + 0.25 * (1.0 - malformed_rate)
-    return round(pass_rate + (t - 1.0) / (n + 1), 6)
+    return pass_rate + (t - 1.0) / (n + 1)
+
+
+def normalize_report_error_class(error_class: Any) -> str | None:
+    """Map run statuses to the report_benchmark-v1 error_class enum."""
+    if error_class is None:
+        return None
+    value = str(error_class)
+    if value in _REPORT_ERROR_CLASSES:
+        return value
+    if value in _TEST_FAILURE_STATUSES:
+        return "test_failure"
+    return "other"
 
 
 def build_report_benchmark_payload(
@@ -84,7 +99,7 @@ def build_report_benchmark_payload(
             "score": round(c["rubric_score"] if c["critical_pass"] else 0.0, 6),
             "tokens_used": c["tokens"],
             "duration_seconds": c["duration_seconds"],
-            "error_class": c["error_class"],
+            "error_class": normalize_report_error_class(c["error_class"]),
         }
         for i, c in enumerate(case_results)
     ]

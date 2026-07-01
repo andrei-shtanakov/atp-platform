@@ -26,7 +26,8 @@ def test_rank_score_equals_cpr_at_max_tiebreaker() -> None:
 
 def test_rank_score_penalizes_below_cpr_at_min_tiebreaker() -> None:
     # t == 0 → cpr - 1/(N+1)
-    assert _rank_score(0.8, 0, 1.0, 5) == round(0.8 - 1 / 6, 6)
+    # rank_score is unrounded (full float precision keeps the invariant for all N)
+    assert _rank_score(0.8, 0, 1.0, 5) == pytest.approx(0.8 - 1 / 6)
 
 
 def test_rank_score_monotonic_in_breakpoint() -> None:

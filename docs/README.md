@@ -509,9 +509,11 @@ uv run atp test --agent=my-agent --runs=5 suite.yaml
 uv run atp test --agent=my-agent --tags=smoke suite.yaml
 uv run atp test --agent=my-agent --parallel=4 suite.yaml
 
-# Output formats (console, json, junit)
+# Output formats (console, json, junit, summary)
 uv run atp test --agent=my-agent --output=json --output-file=results.json suite.yaml
 uv run atp test --agent=my-agent --output=junit --output-file=results.xml suite.yaml
+uv run atp test --agent=my-agent --output=summary suite.yaml
+uv run atp test --agent=my-agent --output=summary --summary-format=json --output-file=summary.json suite.yaml
 
 # Validate test definitions
 uv run atp validate --suite=suite.yaml
