@@ -5,18 +5,11 @@ or future model A/B runs on a byte-identical suite. run_pipe_check verifies the
 live dir against the lock and fails loud on drift.
 """
 
-import importlib.util
-import sys
 from pathlib import Path
 
-_SPEC = importlib.util.spec_from_file_location(
-    "run_pipe_check",
-    Path(__file__).resolve().parents[3] / "method" / "run_pipe_check.py",
-)
-assert _SPEC and _SPEC.loader
-rpc = importlib.util.module_from_spec(_SPEC)
-sys.modules["run_pipe_check"] = rpc
-_SPEC.loader.exec_module(rpc)
+import pytest
+
+from method import run_pipe_check as rpc
 
 
 def _case(case_dir: Path, cid: str, version: int = 1, body: str = "x") -> None:
@@ -77,6 +70,25 @@ def test_removed_case_is_drift(tmp_path: Path) -> None:
     (case_dir / "case-b-001.yaml").unlink()
     drift = rpc._diff_against_lock(case_dir, lock)
     assert any("missing case" in d and "case-b-001" in d for d in drift)
+
+
+def test_malformed_toml_raises_suite_lock_error(tmp_path: Path) -> None:
+    case_dir = _mk_suite(tmp_path)
+    (case_dir / rpc.SUITE_LOCK_NAME).write_text(
+        "this is <<<< not toml", encoding="utf-8"
+    )
+    with pytest.raises(rpc.SuiteLockError):
+        rpc._load_lock(case_dir)
+
+
+def test_missing_required_key_raises_suite_lock_error(tmp_path: Path) -> None:
+    case_dir = _mk_suite(tmp_path)
+    # Valid TOML, but no `cases` / `suite_hash` (e.g. a truncated/partial write).
+    (case_dir / rpc.SUITE_LOCK_NAME).write_text(
+        'schema_version = 1\nbenchmark_id = "code-review"\n', encoding="utf-8"
+    )
+    with pytest.raises(rpc.SuiteLockError):
+        rpc._load_lock(case_dir)
 
 
 def test_fingerprint_is_order_independent(tmp_path: Path) -> None:

@@ -216,6 +216,14 @@ CREATE TABLE IF NOT EXISTS benchmark_runs (
 SUITE_LOCK_NAME = "SUITE.lock.toml"
 
 
+class SuiteLockError(Exception):
+    """The golden-suite lock exists but is unreadable/malformed.
+
+    A corrupt lock (merge conflict, hand edit, partial write) must refuse the
+    run — not silently proceed (that defeats the guard) and not traceback.
+    """
+
+
 def _case_entries(case_dir: Path) -> list[dict[str, Any]]:
     """One entry per case yaml: {id, version, sha256}, sorted by id.
 
@@ -281,11 +289,29 @@ def _write_suite_lock(case_dir: Path, benchmark_id: str) -> Path:
 
 
 def _load_lock(case_dir: Path) -> dict[str, Any] | None:
-    """Parse the lock file, or None when the dir has no golden-suite pin."""
+    """Parse+validate the lock, or None when the dir has no golden-suite pin.
+
+    Raises SuiteLockError on a present-but-malformed lock so the caller fails
+    fast with a one-line message instead of a traceback.
+    """
     path = case_dir / SUITE_LOCK_NAME
     if not path.is_file():
         return None
-    return tomllib.loads(path.read_text(encoding="utf-8"))
+    try:
+        lock = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (tomllib.TOMLDecodeError, OSError, UnicodeDecodeError) as exc:
+        raise SuiteLockError(f"malformed {SUITE_LOCK_NAME}: {exc}") from exc
+    for key in ("schema_version", "benchmark_id", "suite_hash", "cases"):
+        if key not in lock:
+            raise SuiteLockError(f"{SUITE_LOCK_NAME} missing required key: {key!r}")
+    if not isinstance(lock["cases"], list):
+        raise SuiteLockError(f"{SUITE_LOCK_NAME}: 'cases' must be a list")
+    for i, case in enumerate(lock["cases"]):
+        if not isinstance(case, dict) or "id" not in case or "sha256" not in case:
+            raise SuiteLockError(
+                f"{SUITE_LOCK_NAME}: case #{i} needs 'id' and 'sha256'"
+            )
+    return lock
 
 
 def _diff_against_lock(case_dir: Path, lock: dict[str, Any]) -> list[str]:
@@ -613,8 +639,13 @@ async def _main_async(args: argparse.Namespace) -> int:
         return 0
 
     # Golden-suite guard (ADR-ECO-003a D3): refuse a paid sweep on a case set
-    # that has drifted from the pinned lock. Absent lock => notice, proceed.
-    lock = _load_lock(case_dir)
+    # that has drifted from the pinned lock. Absent lock => notice, proceed;
+    # malformed lock => refuse (can't verify the suite).
+    try:
+        lock = _load_lock(case_dir)
+    except SuiteLockError as exc:
+        print(f"{exc}. Re-lock with --write-suite-lock.", file=sys.stderr)
+        return 2
     if lock is None:
         print(f"  [suite-lock] no {SUITE_LOCK_NAME} in {case_dir} — skipping pin check")
     else:
@@ -634,7 +665,7 @@ async def _main_async(args: argparse.Namespace) -> int:
             )
             return 2
         print(
-            f"  [suite-lock] OK — {lock['case_count']} cases match {lock['suite_hash']}"
+            f"  [suite-lock] OK — {len(lock['cases'])} cases match {lock['suite_hash']}"
         )
 
     n_cases = len(axis_by_id)
