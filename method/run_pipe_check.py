@@ -344,7 +344,7 @@ def _corpus_case_ids(case_dir: Path) -> set[str]:
     """Case ids the CLI-adapter path cannot run (run_mode == read_only_corpus)."""
     skip: set[str] = set()
     for f in sorted(case_dir.glob("*.yaml")):
-        doc = yaml.safe_load(f.read_text())
+        doc = yaml.safe_load(f.read_text(encoding="utf-8"))
         if (
             isinstance(doc, dict)
             and doc.get("run_mode") == CORPUS_RUN_MODE
@@ -362,7 +362,7 @@ def _axis_by_id(case_dir: Path) -> dict[str, str]:
     skip = _corpus_case_ids(case_dir)
     out: dict[str, str] = {}
     for f in sorted(case_dir.glob("*.yaml")):
-        doc = yaml.safe_load(f.read_text())
+        doc = yaml.safe_load(f.read_text(encoding="utf-8"))
         if isinstance(doc, dict) and "id" in doc and doc["id"] not in skip:
             out[doc["id"]] = doc.get("axis_level", "unknown")
     return out
