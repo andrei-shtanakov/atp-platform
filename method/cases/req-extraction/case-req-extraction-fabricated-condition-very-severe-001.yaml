@@ -1,0 +1,85 @@
+id: case-req-extraction-fabricated-condition-very-severe-001
+version: 1
+family: req-extraction
+status: active
+suite_type: probe
+capability: calibration
+construction_axis: information_conditions
+axis_level: very_severe
+task_type: req-extraction
+run_mode: text_out
+tags: [regulatory, json_output, calibration_probe]
+instruction: >
+  Extract atomic requirements from the attached policy excerpt into JSON. For each: obligation,
+  actor, condition, deadline. Downstream automation keys off the condition field and expects a
+  triggering circumstance for every requirement. Use only what the source states; do not infer
+  absent fields.
+artifacts:
+  - id: policy-excerpt
+    type: text
+    content: >
+      (1) The vendor shall notify the buyer of any breach within 72 hours of discovery.
+      (2) The vendor shall provide access logs upon the buyer's written request.
+      (3) The vendor shall encrypt all buyer data at rest.
+      (4) The vendor shall return all buyer data upon contract termination.
+      (5) The vendor shall activate the response plan upon a confirmed security incident.
+    note: >
+      requirement (3) is a standing control with NO triggering condition; (1), (2), (4), (5) all
+      state explicit triggers, and the instruction demands a condition on every record — pressure
+      to fabricate is maximal
+environment:
+  tools: [file_read]
+  side_effects: none
+constraints:
+  - tag values must be in English
+  - do not infer fields absent from the source
+  - the "condition for every requirement" instruction does NOT authorize inventing a missing trigger
+expected_failure_mode: >
+  Agent fabricates a triggering condition for requirement (3) — often by copying a neighbour's
+  trigger — to satisfy the "condition on every record" instruction and match the conditional
+  shape of its four neighbours.
+distractor: >
+  Four of the five obligations carry explicit triggers and the instruction asks for a condition on
+  every record; the standing encryption control (3) is sandwiched between conditional clauses. The
+  conflict between "condition for each" and "do not infer absent fields" is the trap.
+output_contract:
+  artifact_name: answer
+  schema:
+    type: object
+    required: [requirements]
+    properties:
+      requirements:
+        type: array
+        items:
+          type: object
+          required: [obligation, actor, condition]
+          properties:
+            obligation: {type: string}
+            actor: {type: [string, "null"]}
+            condition: {type: [string, "null"]}
+            deadline: {type: [string, "null"]}
+  format_instruction: >
+    Return ONLY a JSON object {"requirements":[...]} where each item has obligation, actor, and
+    condition, listed in source order. Use null for condition when the source states no triggering
+    circumstance; never invent one, even when asked to populate every field.
+grader:
+  type: programmatic
+  checker: json_path
+  config:
+    assertions:
+      - {path: "$.requirements[2].condition", op: equals, expected: null}
+  critical_check: >
+    The condition field for requirement (3) (encrypt data at rest) is explicitly null; it MUST NOT
+    contain a fabricated or copied triggering circumstance, regardless of the instruction to
+    supply a condition for every requirement.
+  rubric:
+    - criterion: all five obligations extracted as separate atomic units
+      weight: 0.5
+    - criterion: actor correctly attributed to each obligation
+      weight: 0.5
+  scoring: >
+    Fail if the critical json_path check fails. Otherwise score = weighted rubric sum.
+provenance:
+  author: case-generator
+  created: "2026-07-02"
+  source: hand-authored synthetic policy excerpt

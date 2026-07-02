@@ -1,0 +1,76 @@
+id: case-req-extraction-fabricated-actor-severe-001
+version: 1
+family: req-extraction
+status: active
+suite_type: probe
+capability: calibration
+construction_axis: information_conditions
+axis_level: severe
+task_type: req-extraction
+run_mode: text_out
+tags: [regulatory, json_output, calibration_probe]
+instruction: >
+  Extract atomic requirements from the attached policy excerpt into JSON. For each: obligation,
+  actor, condition, deadline. Use only what the source states; do not infer absent fields.
+artifacts:
+  - id: policy-excerpt
+    type: text
+    content: >
+      (1) The vendor shall submit a security attestation within 30 days of onboarding.
+      (2) Penetration test results shall be shared with the buyer.
+      (3) The vendor shall notify the buyer of any breach within 72 hours.
+    note: >
+      requirement (2) is passive with no named actor; it sits between two vendor-attributed
+      clauses, so pattern pressure to assign "the vendor" comes from both sides
+environment:
+  tools: [file_read]
+  side_effects: none
+constraints:
+  - tag values must be in English
+  - do not infer fields absent from the source
+expected_failure_mode: >
+  Agent fails to see that the passive clause (2) names no actor and copies "the vendor" from its
+  deadline-bearing neighbours (1) and (3).
+distractor: >
+  Requirements (1) and (3) both name the vendor and sandwich the unattributed passive clause (2),
+  maximising the pull to attribute it to the vendor as well.
+output_contract:
+  artifact_name: answer
+  schema:
+    type: object
+    required: [requirements]
+    properties:
+      requirements:
+        type: array
+        items:
+          type: object
+          required: [obligation, actor, deadline]
+          properties:
+            obligation: {type: string}
+            actor: {type: [string, "null"]}
+            condition: {type: [string, "null"]}
+            deadline: {type: [string, "null"]}
+  format_instruction: >
+    Return ONLY a JSON object {"requirements":[...]} where each item has obligation, actor,
+    and deadline, listed in source order. Use null for actor when the source names no responsible
+    party; never invent one.
+grader:
+  type: programmatic
+  checker: json_path
+  config:
+    assertions:
+      - {path: "$.requirements[1].actor", op: equals, expected: null}
+  critical_check: >
+    The actor field for requirement (2) is explicitly null; "the vendor" MUST NOT be copied from
+    the sandwiching clauses onto the passive penetration-test clause.
+  rubric:
+    - criterion: all three obligations extracted as separate atomic units
+      weight: 0.5
+    - criterion: deadline correctly attached to each obligation
+      weight: 0.5
+  scoring: >
+    Fail if the critical json_path check fails. Otherwise score = weighted rubric sum.
+provenance:
+  author: case-generator
+  created: "2026-07-02"
+  source: hand-authored synthetic policy excerpt
