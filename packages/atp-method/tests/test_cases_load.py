@@ -42,26 +42,21 @@ def test_cases_validate_pydantic_and_contract() -> None:
 
 
 def test_req_extraction_cases_present() -> None:
-    # Text-out severity sweep plus one read-only corpus grounding case.
-    assert len(REQ_CASES) == 5
+    # 3 trap families (fabricated deadline/actor/condition) across a
+    # clean..very_severe breakpoint axis, plus one read-only corpus case.
+    assert len(REQ_CASES) == 14
+    axis_levels = {yaml.safe_load(p.read_text())["axis_level"] for p in REQ_CASES}
+    assert axis_levels == {"clean", "mild", "moderate", "severe", "very_severe"}
 
 
 def test_req_extraction_cases_are_deterministic() -> None:
-    checkers: dict[str, str] = {}
     for path in REQ_CASES:
         doc = yaml.safe_load(path.read_text())
         case = AgentEvalCase.model_validate(doc)
         assert case.grader.type == "programmatic"
         assert case.task_type == "req-extraction"
         jsonschema.validate(doc, SCHEMA)
-        checkers[path.name] = case.grader.checker or ""
-
-    assert checkers == {
-        "case-req-extraction-fabricated-deadline-clean-001.yaml": "json_path",
-        "case-req-extraction-fabricated-deadline-corpus-clean-001.yaml": (
-            "citation_grounding"
-        ),
-        "case-req-extraction-fabricated-deadline-moderate-001.yaml": "json_path",
-        "case-req-extraction-fabricated-deadline-severe-001.yaml": "json_path",
-        "case-req-extraction-fabricated-deadline-very-severe-001.yaml": "json_path",
-    }
+        # The one read-only corpus case grounds with citation_grounding; every
+        # other (inline) case is a deterministic json_path check.
+        expected = "citation_grounding" if "corpus" in path.name else "json_path"
+        assert case.grader.checker == expected, path.name

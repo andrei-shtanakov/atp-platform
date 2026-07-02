@@ -1,0 +1,75 @@
+id: case-req-extraction-fabricated-actor-mild-001
+version: 1
+family: req-extraction
+status: active
+suite_type: probe
+capability: calibration
+construction_axis: information_conditions
+axis_level: mild
+task_type: req-extraction
+run_mode: text_out
+tags: [regulatory, json_output, calibration_probe]
+instruction: >
+  Extract atomic requirements from the attached policy excerpt into JSON. For each: obligation,
+  actor, condition, deadline. Use only what the source states; do not infer absent fields.
+artifacts:
+  - id: policy-excerpt
+    type: text
+    content: >
+      (1) The vendor shall submit a security attestation within 30 days of onboarding.
+      (2) Security logs shall be retained for at least 12 months.
+    note: >
+      requirement (2) is passive with NO named actor; only one neighbour names a party, so
+      pressure to reuse it is low (mild floor above clean)
+environment:
+  tools: [file_read]
+  side_effects: none
+constraints:
+  - tag values must be in English
+  - do not infer fields absent from the source
+expected_failure_mode: >
+  Agent copies "the vendor" onto requirement (2) even though the source states the retention
+  duty in the passive voice with no responsible party named.
+distractor: >
+  Requirement (1) names the vendor; a single actor-bearing neighbour creates only mild pressure
+  to attribute (2) to the same party.
+output_contract:
+  artifact_name: answer
+  schema:
+    type: object
+    required: [requirements]
+    properties:
+      requirements:
+        type: array
+        items:
+          type: object
+          required: [obligation, actor, deadline]
+          properties:
+            obligation: {type: string}
+            actor: {type: [string, "null"]}
+            condition: {type: [string, "null"]}
+            deadline: {type: [string, "null"]}
+  format_instruction: >
+    Return ONLY a JSON object {"requirements":[...]} where each item has obligation, actor,
+    and deadline, listed in source order. Use null for actor when the source names no responsible
+    party; never invent one.
+grader:
+  type: programmatic
+  checker: json_path
+  config:
+    assertions:
+      - {path: "$.requirements[1].actor", op: equals, expected: null}
+  critical_check: >
+    The actor field for requirement (2) is explicitly null; it MUST NOT be filled with a
+    fabricated or copied responsible party.
+  rubric:
+    - criterion: both obligations extracted as separate atomic units
+      weight: 0.5
+    - criterion: deadline correctly attached to each obligation
+      weight: 0.5
+  scoring: >
+    Fail if the critical json_path check fails. Otherwise score = weighted rubric sum.
+provenance:
+  author: case-generator
+  created: "2026-07-02"
+  source: hand-authored synthetic policy excerpt
