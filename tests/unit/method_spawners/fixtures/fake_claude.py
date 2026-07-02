@@ -25,7 +25,12 @@ print(
             "subtype": "success",
             "result": _FINDINGS,
             "total_cost_usd": 0.0123,
-            "usage": {"input_tokens": 800, "output_tokens": 120},
+            "usage": {
+                "input_tokens": 800,
+                "cache_creation_input_tokens": 1000,
+                "cache_read_input_tokens": 5000,
+                "output_tokens": 120,
+            },
             "num_turns": 1,
         }
     )
