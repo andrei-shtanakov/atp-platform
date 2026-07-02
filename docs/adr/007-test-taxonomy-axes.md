@@ -112,8 +112,8 @@ is the very validity problem this section exists to prevent. Tier support:
 - **`read_only_corpus`** — agent discovers and reads files via tools (`file_read`),
   ignores distractors, cites sources. Loader-wired; runs on a tool-capable adapter
   (the `anthropic_api` shim does the `file_read` loop). The CLI-adapter pipe-check
-  (`run_pipe_check.py`) has no corpus/tool wiring, so it **skips** `read_only_corpus`
-  cases with a logged notice rather than failing them uniformly.
+  (`run_pipe_check.py`) has no corpus/tool wiring, so `read_only_corpus` cases are
+  **not runnable there** — use a tool-capable adapter.
 - **`workspace`** — agent writes files / executes code. Container + exec. *Unwired
   (eval-results architecture SP-6).*
 

@@ -125,7 +125,7 @@ Task execution result.
     }
   ],
   "metrics": {
-    "total_tokens": 45000,
+    "total_tokens": 62000,
     "input_tokens": 15000,
     "output_tokens": 30000,
     "cache_creation_tokens": 5000,
