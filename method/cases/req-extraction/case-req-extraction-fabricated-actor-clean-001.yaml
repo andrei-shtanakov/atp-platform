@@ -50,8 +50,9 @@ output_contract:
             deadline: {type: [string, "null"]}
   format_instruction: >
     Return ONLY a JSON object {"requirements":[...]} where each item has obligation, actor,
-    and deadline, listed in source order. Use null for actor when the source names no responsible
-    party; never invent one.
+    and deadline, listed in source order. Write actor as a lowercase canonical token
+    ("vendor" or "buyer"). Use null for actor when the source names no responsible party;
+    never invent one.
 grader:
   type: programmatic
   checker: json_path

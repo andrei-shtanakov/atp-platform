@@ -6,12 +6,12 @@
 schema_version = 1
 benchmark_id   = "req-extraction"
 case_count     = 14
-suite_hash     = "sha256:391eba58abc5caa61b134a21f2b0b1dda8b625d49dc3329a5617ee06dfd08958"
+suite_hash     = "sha256:ebc07b5772cb80a792cb94a84151da529315e41f190372780b9f25e5d4ed5111"
 
 [[cases]]
 id      = "case-req-extraction-fabricated-actor-clean-001"
 version = 1
-sha256  = "4026b96c8dbf7a691b60cc2f011c4f1f5bf3b477da902158c8a8be99548c55e8"
+sha256  = "810e14d0813aaa7da3693bbaec64969579b59db151380f1f494da5c9b415005d"
 
 [[cases]]
 id      = "case-req-extraction-fabricated-actor-mild-001"

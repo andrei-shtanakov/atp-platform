@@ -159,8 +159,9 @@ def test_load_suite_file_and_sweep(
 ) -> None:
     """A single file loads one test; a directory loads the whole sweep."""
     assert len(load_suite(clean_case_path).tests) == 1
-    # The req-extraction sweep: four text-out severity cases plus one corpus case.
-    assert len(load_suite(example_cases_dir).tests) == 5
+    # The req-extraction sweep: 13 inline text-out cases (deadline/actor/condition
+    # trap families across a clean..very_severe axis) plus one corpus case.
+    assert len(load_suite(example_cases_dir).tests) == 14
 
 
 @pytest.mark.anyio
