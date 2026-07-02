@@ -381,3 +381,20 @@ def test_load_agent_catalog_undeclared_harness_fails_loudly(tmp_path: Path) -> N
     path.write_text(catalog)
     with pytest.raises(ValueError, match="undeclared"):
         _load_agent_catalog(path)
+
+
+def test_axis_by_id_skips_read_only_corpus_cases(tmp_path: Path) -> None:
+    # The CLI-adapter path can't run read_only_corpus cases (no file_read/corpus
+    # wiring); _axis_by_id must exclude them and _corpus_case_ids must find them.
+    from method.run_pipe_check import _axis_by_id, _corpus_case_ids
+
+    (tmp_path / "inline.yaml").write_text(
+        "id: case-inline-001\naxis_level: severe\ntask_type: req-extraction\n"
+    )
+    (tmp_path / "corpus.yaml").write_text(
+        "id: case-corpus-001\naxis_level: clean\nrun_mode: read_only_corpus\n"
+        "task_type: req-extraction\n"
+    )
+    assert _corpus_case_ids(tmp_path) == {"case-corpus-001"}
+    axis = _axis_by_id(tmp_path)
+    assert axis == {"case-inline-001": "severe"}

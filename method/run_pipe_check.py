@@ -333,12 +333,37 @@ def _diff_against_lock(case_dir: Path, lock: dict[str, Any]) -> list[str]:
     return msgs
 
 
+# The CLI-adapter path (prompt shims) provides no file_read tool + mounted
+# corpus, so `read_only_corpus` cases can't run here — they would fail uniformly
+# for every agent (a harness artifact, not a capability signal). Skip them,
+# loudly; run corpus/tool-use cases via a tool-capable adapter instead.
+CORPUS_RUN_MODE = "read_only_corpus"
+
+
+def _corpus_case_ids(case_dir: Path) -> set[str]:
+    """Case ids the CLI-adapter path cannot run (run_mode == read_only_corpus)."""
+    skip: set[str] = set()
+    for f in sorted(case_dir.glob("*.yaml")):
+        doc = yaml.safe_load(f.read_text(encoding="utf-8"))
+        if (
+            isinstance(doc, dict)
+            and doc.get("run_mode") == CORPUS_RUN_MODE
+            and "id" in doc
+        ):
+            skip.add(doc["id"])
+    return skip
+
+
 def _axis_by_id(case_dir: Path) -> dict[str, str]:
-    """Map each case id to its axis_level (read straight from the YAML)."""
+    """Map each RUNNABLE case id to its axis_level (read straight from the YAML).
+
+    read_only_corpus cases are excluded — the CLI-adapter path can't run them.
+    """
+    skip = _corpus_case_ids(case_dir)
     out: dict[str, str] = {}
     for f in sorted(case_dir.glob("*.yaml")):
-        doc = yaml.safe_load(f.read_text())
-        if isinstance(doc, dict) and "id" in doc:
+        doc = yaml.safe_load(f.read_text(encoding="utf-8"))
+        if isinstance(doc, dict) and "id" in doc and doc["id"] not in skip:
             out[doc["id"]] = doc.get("axis_level", "unknown")
     return out
 
@@ -485,6 +510,9 @@ async def _run_agent(
     continuous recall/precision/fp_count a downstream filter reads).
     """
     suite = load_suite(str(case_dir))
+    # Run only the CLI-adapter-runnable set; axis_by_id already excludes
+    # read_only_corpus cases (which need a file_read tool + mounted corpus).
+    suite.tests = [t for t in suite.tests if t.id in axis_by_id]
     spec = AGENTS[agent_id]
     adapter_env: dict[str, str] = {spec["model_env"]: spec["model"]}
     adapter = create_adapter(
@@ -615,6 +643,13 @@ def _summary_line(payload: dict[str, Any]) -> str:
 async def _main_async(args: argparse.Namespace) -> int:
     case_dir = (REPO_ROOT / args.case_dir).resolve()
     axis_by_id = _axis_by_id(case_dir)
+    skipped_corpus = _corpus_case_ids(case_dir)
+    if skipped_corpus:
+        print(
+            f"  [skip] {len(skipped_corpus)} read_only_corpus case(s) — the "
+            "CLI-adapter path has no file_read/corpus wiring; run these via a "
+            f"tool-capable adapter. Skipped: {sorted(skipped_corpus)}"
+        )
     agents = [a.strip() for a in args.agents.split(",") if a.strip()]
     unknown = [a for a in agents if a not in AGENTS]
     if unknown:
