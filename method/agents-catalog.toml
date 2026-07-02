@@ -75,6 +75,19 @@ status  = "active"
 vendor  = "alibaba"
 status  = "active"
 
+# --- retired (ADR-ECO-003a, 2026-07-02): мёртвые routable-ключи держим
+#     ОБЪЯВЛЕННЫМИ со status="retired", а не удалёнными — тогда conformance
+#     Check 5 фейлит при ЛЮБОЙ живой [[agents]]-ссылке (регрессия-гард).
+#     retired здесь = «не зачислять пару в экосистему» (enrollment-статус),
+#     не «модель снята с API у вендора».
+[models."claude-opus-4-8"]
+vendor  = "anthropic"
+status  = "retired"        # был claude_code@claude-opus-4-8 → заменён claude-sonnet-4-6
+
+[models."gpt-5-codex"]
+vendor  = "openai"
+status  = "retired"        # был codex_cli@gpt-5-codex → заменён gpt-5.5
+
 # =====================================================================
 #  ПЛОСКОСТЬ 2: HARNESS — launch-механика (= D3-descriptor из ADR-002)
 #  kind: cli | api-baseline | local
@@ -244,4 +257,7 @@ routable = false
 #     codex_cli@gpt-5-codex зачёркнуты, live source-of-truth = sonnet-4-6 /
 #     gpt-5.5 (строки 17-22). Этот каталог согласован с той amendment'ой.
 #     Drift, помеченный P0 в opinion 2026-06-28 §5, закрыт.
+#     Формализовано (2026-07-02, ADR-ECO-003a): обе модели объявлены
+#     status="retired" в Плоскости 1 → Check 5 conformance фейлит при живой
+#     [[agents]]-ссылке. Зачёркивание в прозе заменено машинным гардом.
 # ---------------------------------------------------------------------
