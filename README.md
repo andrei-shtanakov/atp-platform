@@ -114,7 +114,10 @@ tests:
 - **JSON** - Structured results for automation
 - **HTML** - Self-contained visual reports with charts
 - **JUnit XML** - CI/CD integration (Jenkins, GitHub, GitLab)
-- **GameReporter / GameHTMLReporter** - Game-theoretic evaluation results
+- **Summary** - Compact pass/fail rollup
+- **report_benchmark** - `report_benchmark-v1` payloads for the benchmark/arbiter pipeline
+
+> Game-theoretic results are rendered by `GameReporter` / `GameHTMLReporter` directly via the `game` command; they are not registered `--output` formats in the reporter registry.
 
 ### Advanced Features
 

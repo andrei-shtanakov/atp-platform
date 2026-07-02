@@ -62,9 +62,9 @@ synonyms for it. Reusing "capability" for the task axis would recreate exactly t
 
 The closed `GraderType` vocab (`exact | regex | programmatic | rubric |
 model_graded | human`) stays closed. Deterministic, machine-readable checks
-(`findings_match`, `json_path`, …) are **named checkers from a registry, selected
-under `type: programmatic`** via `grader.checker`, each reading its own
-`grader.config`:
+(`citation_grounding`, `findings_match`, `json_path`, …) are **named checkers from
+a registry, selected under `type: programmatic`** via `grader.checker`, each reading
+its own `grader.config`:
 
 ```yaml
 grader:
@@ -102,16 +102,18 @@ ADR.
 
 `run_mode` is a case field now, defaulting to `text_out`. The `Literal` type
 admits all three values, but the loader **rejects any tier that is not yet wired**
-(currently the wired set is `{text_out}`) with an explicit load-time error. A case
-must not be able to *declare* a fidelity tier the harness cannot actually deliver
-— that silent gap is the very validity problem this section exists to prevent. The
-richer tiers are **declared but unimplemented**; their adapters gate them:
+(the wired set is `{text_out, read_only_corpus}` — `WIRED_RUN_MODES` in
+`atp_method/schema.py`) with an explicit load-time error. A case must not be able
+to *declare* a fidelity tier the harness cannot actually deliver — that silent gap
+is the very validity problem this section exists to prevent. Tier support:
 
 - **`text_out`** — agent gets a text blob, returns text/JSON. CLI-adapter + shim
-  (stdin/stdout). The only wired tier.
+  (stdin/stdout). Runs on every adapter.
 - **`read_only_corpus`** — agent discovers and reads files via tools (`file_read`),
-  ignores distractors, cites sources. Needs read-only workspace materialization +
-  tool-serving. *Unwired.*
+  ignores distractors, cites sources. Loader-wired; runs on a tool-capable adapter
+  (the `anthropic_api` shim does the `file_read` loop). The CLI-adapter pipe-check
+  (`run_pipe_check.py`) has no corpus/tool wiring, so `read_only_corpus` cases are
+  **not runnable there** — use a tool-capable adapter.
 - **`workspace`** — agent writes files / executes code. Container + exec. *Unwired
   (eval-results architecture SP-6).*
 
