@@ -219,6 +219,12 @@ class Metrics(BaseModel):
     total_tokens: int | None = Field(None, description="Total tokens used", ge=0)
     input_tokens: int | None = Field(None, description="Input tokens", ge=0)
     output_tokens: int | None = Field(None, description="Output tokens", ge=0)
+    cache_creation_tokens: int | None = Field(
+        None, description="Prompt-cache write (input-side) tokens", ge=0
+    )
+    cache_read_tokens: int | None = Field(
+        None, description="Prompt-cache read (input-side) tokens", ge=0
+    )
     total_steps: int | None = Field(None, description="Total execution steps", ge=0)
     tool_calls: int | None = Field(None, description="Number of tool calls", ge=0)
     llm_calls: int | None = Field(None, description="Number of LLM calls", ge=0)

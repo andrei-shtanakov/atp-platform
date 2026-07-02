@@ -42,5 +42,23 @@ def test_shim_emits_valid_atp_response_with_review_artifact() -> None:
     findings = _json.loads(arts[0]["content"])
     assert findings[0]["rule_id"] == "sql-injection"
     assert "SELECT" in findings[0]["anchor"]
-    assert resp["metrics"]["total_tokens"] == 920
-    assert resp["metrics"]["cost_usd"] == 0.0123
+    # total_tokens MUST include cache classes — Claude Code caches the system
+    # prompt/tools/context, so raw input_tokens is only the non-cached delta.
+    # 800 (input) + 1000 (cache_creation) + 5000 (cache_read) + 120 (output).
+    metrics = resp["metrics"]
+    assert metrics["total_tokens"] == 6920
+    assert metrics["input_tokens"] == 800
+    assert metrics["output_tokens"] == 120
+    assert metrics["cache_creation_tokens"] == 1000
+    assert metrics["cache_read_tokens"] == 5000
+    assert metrics["cost_usd"] == 0.0123
+
+    # The cache fields must survive the protocol boundary (Metrics has no
+    # extra="forbid", but it also drops unknown keys — so they must be real
+    # fields, not silently discarded when the adapter parses the response).
+    from atp.protocol.models import Metrics
+
+    parsed = Metrics.model_validate(metrics)
+    assert parsed.total_tokens == 6920
+    assert parsed.cache_creation_tokens == 1000
+    assert parsed.cache_read_tokens == 5000

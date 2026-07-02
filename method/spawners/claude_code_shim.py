@@ -54,10 +54,19 @@ def main() -> int:
         return 0
     out = json.loads(proc.stdout.decode())
     usage = out.get("usage") or {}
+    # Claude Code caches the system prompt/tools/context, so raw input_tokens is
+    # only the non-cached delta; the bulk lands in the cache_* classes. Summing
+    # only input+output undercounts total_tokens badly (cost stays correct since
+    # total_cost_usd bills all classes). Include every class in the total.
     in_tok: int | None = usage.get("input_tokens")
     out_tok: int | None = usage.get("output_tokens")
-    has_tokens = in_tok is not None or out_tok is not None
-    total: int | None = (in_tok or 0) + (out_tok or 0) if has_tokens else None
+    cache_create_tok: int | None = usage.get("cache_creation_input_tokens")
+    cache_read_tok: int | None = usage.get("cache_read_input_tokens")
+    token_classes = (in_tok, out_tok, cache_create_tok, cache_read_tok)
+    has_tokens = any(v is not None for v in token_classes)
+    total: int | None = (
+        sum(v for v in token_classes if v is not None) if has_tokens else None
+    )
     response = {
         "version": "1.0",
         "task_id": request.get("task_id", ""),
@@ -74,6 +83,8 @@ def main() -> int:
             "total_tokens": total,
             "input_tokens": in_tok,
             "output_tokens": out_tok,
+            "cache_creation_tokens": cache_create_tok,
+            "cache_read_tokens": cache_read_tok,
             "cost_usd": out.get("total_cost_usd"),
         },
     }
