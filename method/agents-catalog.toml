@@ -47,6 +47,10 @@ status  = "active"
 vendor  = "xiaomi"
 status  = "active"
 
+[models."mimo-v2.5-free"]
+vendor  = "xiaomi"
+status  = "active"        # opencode-served variant (agentic); Path B enrollment
+
 [models."qwen3.6-plus"]
 vendor  = "alibaba"
 status  = "active"
@@ -95,7 +99,8 @@ status  = "retired"        # был codex_cli@gpt-5-codex → заменён gpt
 #  model_env  — env, которым ATP-shim пинит модель
 #  model_flag — CLI-флаг модели на стороне Maestro-спаунера (только там, где он есть)
 #  routable   — может ли harness роутиться в принципе (arbiter). Требует
-#               Maestro-спаунера. Сейчас true только у claude_code / codex_cli.
+#               Maestro-спаунера. true у claude_code / codex_cli / opencode
+#               (opencode — pilot ADR-ECO-003c: первый агентный OPEN-харнесс).
 # =====================================================================
 
 [harnesses.claude_code]
@@ -143,10 +148,11 @@ model_env = "PI_MODEL"
 routable  = false
 
 [harnesses.opencode]
-kind      = "cli"
-shim      = "method/spawners/opencode_shim.py"
-model_env = "OPENCODE_MODEL"
-routable  = false
+kind       = "cli"
+shim       = "method/spawners/opencode_shim.py"
+model_env  = "OPENCODE_MODEL"
+model_flag = "-m"                                    # Maestro: `opencode run -m <model>` (spawners/opencode.py)
+routable   = true                                    # pilot ADR-003c: агентный OPEN-харнесс; Maestro-спаунер есть
 
 [harnesses.ollama]
 kind      = "local"
@@ -242,7 +248,22 @@ routable = false
 harness  = "opencode"
 model    = "glm-5.1"
 tested   = true
-routable = false
+routable = false                                     # pilot ADR-003c: флип в true ТОЛЬКО после кроссовера
+                                                     # runs≥3 (gate 003a D4). До флипа Maestro резолвит
+                                                     # через MAESTRO_OPENCODE_MODEL. Пара — первый OPEN
+                                                     # кандидат в routable.
+
+[[agents]]
+harness  = "opencode"
+model    = "qwen3.6-plus"
+tested   = true
+routable = false                                     # Path B (ADR-003c): agentic open-model n=3 A/B vs incumbents
+
+[[agents]]
+harness  = "opencode"
+model    = "mimo-v2.5-free"
+tested   = true
+routable = false                                     # Path B: mimo agentic via opencode (free variant; pro unavailable)
 
 # ---------------------------------------------------------------------
 #  ЗАМЕТКИ ПО РАССИНХРОНУ (as-is на 2026-07-01), для авторов codegen/conformance:
