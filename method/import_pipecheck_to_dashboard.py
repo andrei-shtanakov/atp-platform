@@ -18,7 +18,7 @@ Usage::
     uv run python method/import_pipecheck_to_dashboard.py --dry-run
     uv run python method/import_pipecheck_to_dashboard.py
     uv run python method/import_pipecheck_to_dashboard.py \
-        --results-dir _cowork_output/r07-pipecheck
+        --results-dir _bench_output/r07-pipecheck
 
 Then open ``atp dashboard`` → http://localhost:8080/ui/eval-leaderboard .
 """
@@ -35,7 +35,7 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_RESULTS_DIR = REPO_ROOT / "_cowork_output" / "r07-pipecheck"
+DEFAULT_RESULTS_DIR = REPO_ROOT / "_bench_output" / "r07-pipecheck"
 
 # benchmark_id (suite) → task_type, used only when a report carries no per_task rows.
 _TASK_TYPE_BY_BENCHMARK = {

@@ -63,8 +63,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # The CANONICAL ecosystem SSOT agents-catalog (ADR-ECO-003; canon = this file
 # since 2026-07-03 — the SSOT must live in a distributable repo, and the
 # sibling `../_cowork_output/` workspace is dev-only coordination that
-# installed users don't have; not to be confused with this repo's gitignored
-# `./_cowork_output/` output dir). arbiter vendors a byte-identical copy
+# installed users don't have; this repo's local sweep outputs live in the
+# gitignored `_bench_output/` directory). arbiter vendors a byte-identical copy
 # (config/agents-catalog.toml) and `../_cowork_output/contracts/` keeps a
 # communication mirror; devtools CI-conformance checks all copies stay
 # byte-for-byte in sync. The catalog is the single source for the
@@ -807,7 +807,7 @@ def main() -> int:
     p.add_argument(
         "--with-rubric", action="store_true", help="grade the LLM rubric too"
     )
-    p.add_argument("--out-dir", default="_cowork_output/r07-pipecheck")
+    p.add_argument("--out-dir", default="_bench_output/r07-pipecheck")
     p.add_argument("--db", default=None, help="optional sqlite path for benchmark_runs")
     p.add_argument(
         "--timeout", type=float, default=700.0, help="per-case adapter timeout"

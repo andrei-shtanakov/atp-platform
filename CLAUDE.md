@@ -13,7 +13,7 @@ ATP's role in the ecosystem: task validation for Maestro (`validation_cmd` — s
 
 ## `../_cowork_output/` is dev-only — never a code/runtime resource
 
-`../_cowork_output/` (the polyrepo **sibling** workspace — not to be confused with this repo's own gitignored `./_cowork_output/` output directory where sweeps write reports) is the development-time coordination area (cross-team ADRs, status notes, contract drafts, PM/dev tooling). Users and teams installing or cloning this project do NOT have it. Rules:
+`../_cowork_output/` (the polyrepo **sibling** workspace; this repo's local sweep outputs live in the separately-named, gitignored `_bench_output/` directory) is the development-time coordination area (cross-team ADRs, status notes, contract drafts, PM/dev tooling). Users and teams installing or cloning this project do NOT have it. Rules:
 
 - Shipped/runtime code must never read, import, or resolve paths under `../_cowork_output/`.
 - Canonical shippable facts live inside the owning repo: the ecosystem agents-catalog SSOT is **`method/agents-catalog.toml` in this repo** (ADR-ECO-003, canon confirmed 2026-07-03); arbiter vendors a byte-identical copy (`config/agents-catalog.toml`), and `../_cowork_output/contracts/` holds a communication mirror only.
