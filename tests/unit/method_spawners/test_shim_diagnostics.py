@@ -11,6 +11,7 @@ reaped hang (timeout) is separable from capability failure (test_failure).
 import importlib.util
 import io
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -176,6 +177,26 @@ def test_opencode_isolation_tolerates_missing_auth(monkeypatch, tmp_path) -> Non
         import shutil
 
         shutil.rmtree(iso, ignore_errors=True)
+
+
+def test_opencode_main_restores_env_and_cleans_tmp(monkeypatch, tmp_path) -> None:
+    """Copilot review (#222): main() must restore the prior XDG_DATA_HOME and
+    remove the temp data home — the mutation must not outlive the run."""
+    oc = _load("opencode_shim")
+    real = tmp_path / "home"
+    (real / "opencode").mkdir(parents=True)
+    monkeypatch.setenv("XDG_DATA_HOME", str(real))
+    seen: dict[str, str] = {}
+
+    def fake_run(**kwargs) -> int:
+        seen["data_home"] = os.environ["XDG_DATA_HOME"]
+        return 0
+
+    monkeypatch.setattr(oc, "run", fake_run)
+    assert oc.main() == 0
+    assert seen["data_home"] != str(real)  # ran isolated
+    assert os.environ["XDG_DATA_HOME"] == str(real)  # prior value restored
+    assert not Path(seen["data_home"]).exists()  # temp dir cleaned
 
 
 def test_timeout_persists_partial_streams(monkeypatch, tmp_path) -> None:

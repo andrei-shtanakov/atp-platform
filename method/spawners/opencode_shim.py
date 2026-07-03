@@ -65,15 +65,25 @@ def _isolated_data_home() -> str:
         / "auth.json"
     )
     tmp = tempfile.mkdtemp(prefix="atp-opencode-")
-    dst = Path(tmp) / "opencode"
-    dst.mkdir(parents=True, exist_ok=True)
-    if src.is_file():
-        shutil.copy2(src, dst / "auth.json")
+    try:
+        dst = Path(tmp) / "opencode"
+        dst.mkdir(parents=True, exist_ok=True)
+        if src.is_file():
+            shutil.copy2(src, dst / "auth.json")
+    except OSError:
+        # Don't leak the temp dir if seeding fails.
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
     return tmp
 
 
 def main() -> int:
-    """Run one opencode invocation inside an isolated data home."""
+    """Run one opencode invocation inside an isolated data home.
+
+    The prior ``XDG_DATA_HOME`` is restored afterwards so the mutation
+    cannot outlive the run (matters for in-process reuse/tests).
+    """
+    prior = os.environ.get("XDG_DATA_HOME")
     data_home = _isolated_data_home()
     os.environ["XDG_DATA_HOME"] = data_home
     try:
@@ -86,6 +96,10 @@ def main() -> int:
             parse_output=_parse,
         )
     finally:
+        if prior is None:
+            os.environ.pop("XDG_DATA_HOME", None)
+        else:
+            os.environ["XDG_DATA_HOME"] = prior
         shutil.rmtree(data_home, ignore_errors=True)
 
 
