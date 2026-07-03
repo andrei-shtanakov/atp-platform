@@ -137,6 +137,47 @@ def test_raw_streams_not_written_without_dir(monkeypatch, tmp_path) -> None:
     assert list(tmp_path.iterdir()) == []
 
 
+# --------------------------------------------------------------------------- #
+#  opencode state isolation (SQLite "database is locked" contention fix)
+# --------------------------------------------------------------------------- #
+
+
+def test_opencode_isolated_data_home_seeds_auth(monkeypatch, tmp_path) -> None:
+    """Each invocation gets a fresh XDG_DATA_HOME with only auth.json copied
+    from the operator's real data dir — concurrent runs must not share
+    opencode's SQLite state ("database is locked" killed 20-40% of runs)."""
+    oc = _load("opencode_shim")
+    real = tmp_path / "real-data-home"
+    (real / "opencode").mkdir(parents=True)
+    (real / "opencode" / "auth.json").write_text('{"zen": "cred"}')
+    (real / "opencode" / "sessions.db").write_text("shared state")
+    monkeypatch.setenv("XDG_DATA_HOME", str(real))
+
+    iso = Path(oc._isolated_data_home())
+    try:
+        assert iso != real
+        assert (iso / "opencode" / "auth.json").read_text() == '{"zen": "cred"}'
+        # Session/DB state must NOT leak into the isolated dir.
+        assert not (iso / "opencode" / "sessions.db").exists()
+    finally:
+        import shutil
+
+        shutil.rmtree(iso, ignore_errors=True)
+
+
+def test_opencode_isolation_tolerates_missing_auth(monkeypatch, tmp_path) -> None:
+    oc = _load("opencode_shim")
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "empty"))
+    iso = Path(oc._isolated_data_home())
+    try:
+        assert (iso / "opencode").is_dir()
+        assert not (iso / "opencode" / "auth.json").exists()
+    finally:
+        import shutil
+
+        shutil.rmtree(iso, ignore_errors=True)
+
+
 def test_timeout_persists_partial_streams(monkeypatch, tmp_path) -> None:
     """A reaped hang must leave its partial streams behind — that is the
     only evidence distinguishing a provider stall from a silent agent."""

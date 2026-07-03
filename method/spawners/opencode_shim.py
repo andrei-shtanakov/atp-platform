@@ -4,9 +4,20 @@
 Non-routable API/CLI baseline row. Reads OPENCODE_MODEL (e.g. glm-5.1; the
 shim prefixes the `opencode/` provider) and OPENCODE_BIN (default "opencode").
 Auth is opencode's own (operator's OPENCODE_GLM_API_KEY / `opencode auth`).
+
+Each invocation gets an ISOLATED opencode data dir (XDG_DATA_HOME → temp,
+with auth.json seeded from the operator's real one): concurrent harness runs
+otherwise contend on the shared SQLite state in ~/.local/share/opencode/ —
+"Error: Unexpected error database is locked" killed/hung 20-40% of case-runs
+in the 2026-07-02/03 sweeps and masqueraded first as model weakness, then as
+a provider stall. The temp dir is removed after the run.
 """
 
 import json
+import os
+import shutil
+import tempfile
+from pathlib import Path
 
 from _cli_common import run  # pyrefly: ignore[missing-import]
 
@@ -39,9 +50,34 @@ def _parse(stdout: str) -> tuple[str, int | None, int | None]:
     return text, in_tok, out_tok
 
 
-if __name__ == "__main__":
-    raise SystemExit(
-        run(
+def _isolated_data_home() -> str:
+    """Create a temp XDG_DATA_HOME seeded with opencode's auth.json.
+
+    opencode resolves its state dir as ``$XDG_DATA_HOME/opencode`` (verified
+    on 1.17.5, incl. darwin). A fresh dir per invocation means each subprocess
+    gets its own SQLite files — no cross-run lock contention. Credentials live
+    in the same dir, so the operator's auth.json is copied in; everything else
+    (session DBs, caches) starts empty on purpose.
+    """
+    src = (
+        Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share")
+        / "opencode"
+        / "auth.json"
+    )
+    tmp = tempfile.mkdtemp(prefix="atp-opencode-")
+    dst = Path(tmp) / "opencode"
+    dst.mkdir(parents=True, exist_ok=True)
+    if src.is_file():
+        shutil.copy2(src, dst / "auth.json")
+    return tmp
+
+
+def main() -> int:
+    """Run one opencode invocation inside an isolated data home."""
+    data_home = _isolated_data_home()
+    os.environ["XDG_DATA_HOME"] = data_home
+    try:
+        return run(
             bin_env="OPENCODE_BIN",
             default_bin="opencode",
             model_env="OPENCODE_MODEL",
@@ -49,4 +85,9 @@ if __name__ == "__main__":
             argv=_argv,
             parse_output=_parse,
         )
-    )
+    finally:
+        shutil.rmtree(data_home, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
