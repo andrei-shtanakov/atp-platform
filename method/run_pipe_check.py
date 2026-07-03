@@ -60,11 +60,15 @@ from atp.runner import TestOrchestrator
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# Vendored pinned copy of the ecosystem SSOT agents-catalog (ADR-ECO-003). The
-# canonical file lives in `_cowork_output/contracts/agents-catalog.toml`; this
-# in-repo copy keeps atp-platform self-contained. devtools CI-conformance checks
-# the two stay byte-for-byte in sync. The catalog is the single source for the
-# <harness>@<model> roster — edit it there, not the literals below (there are
+# The CANONICAL ecosystem SSOT agents-catalog (ADR-ECO-003; canon = this file
+# since 2026-07-03 — the SSOT must live in a distributable repo, and the
+# sibling `../_cowork_output/` workspace is dev-only coordination that
+# installed users don't have; not to be confused with this repo's gitignored
+# `./_cowork_output/` output dir). arbiter vendors a byte-identical copy
+# (config/agents-catalog.toml) and `../_cowork_output/contracts/` keeps a
+# communication mirror; devtools CI-conformance checks all copies stay
+# byte-for-byte in sync. The catalog is the single source for the
+# <harness>@<model> roster — edit it HERE, not literals below (there are
 # none anymore). claude_code@claude-sonnet-4-6 and codex_cli@gpt-5.5 carry
 # routable=true (arbiter's join keys); a mismatch there = silent re-rank no-op.
 CATALOG_PATH = REPO_ROOT / "method" / "agents-catalog.toml"
@@ -86,8 +90,9 @@ def _load_agent_catalog(
             catalog = tomllib.load(fh)
     except FileNotFoundError as exc:
         raise FileNotFoundError(
-            f"vendored agents-catalog not found at {path} — re-vendor from "
-            "_cowork_output/contracts/agents-catalog.toml"
+            f"canonical agents-catalog missing at {path} — this file IS the "
+            "ecosystem SSOT (ADR-ECO-003); restore it from git history. "
+            "(../_cowork_output/contracts/ holds only a dev mirror.)"
         ) from exc
     except tomllib.TOMLDecodeError as exc:
         raise ValueError(f"agents-catalog {path} is not valid TOML: {exc}") from exc
