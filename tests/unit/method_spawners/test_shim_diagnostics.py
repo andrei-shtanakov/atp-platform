@@ -11,6 +11,7 @@ reaped hang (timeout) is separable from capability failure (test_failure).
 import importlib.util
 import io
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -135,6 +136,67 @@ def test_raw_streams_not_written_without_dir(monkeypatch, tmp_path) -> None:
     )
     assert out["status"] == "completed"
     assert list(tmp_path.iterdir()) == []
+
+
+# --------------------------------------------------------------------------- #
+#  opencode state isolation (SQLite "database is locked" contention fix)
+# --------------------------------------------------------------------------- #
+
+
+def test_opencode_isolated_data_home_seeds_auth(monkeypatch, tmp_path) -> None:
+    """Each invocation gets a fresh XDG_DATA_HOME with only auth.json copied
+    from the operator's real data dir — concurrent runs must not share
+    opencode's SQLite state ("database is locked" killed 20-40% of runs)."""
+    oc = _load("opencode_shim")
+    real = tmp_path / "real-data-home"
+    (real / "opencode").mkdir(parents=True)
+    (real / "opencode" / "auth.json").write_text('{"zen": "cred"}')
+    (real / "opencode" / "sessions.db").write_text("shared state")
+    monkeypatch.setenv("XDG_DATA_HOME", str(real))
+
+    iso = Path(oc._isolated_data_home())
+    try:
+        assert iso != real
+        assert (iso / "opencode" / "auth.json").read_text() == '{"zen": "cred"}'
+        # Session/DB state must NOT leak into the isolated dir.
+        assert not (iso / "opencode" / "sessions.db").exists()
+    finally:
+        import shutil
+
+        shutil.rmtree(iso, ignore_errors=True)
+
+
+def test_opencode_isolation_tolerates_missing_auth(monkeypatch, tmp_path) -> None:
+    oc = _load("opencode_shim")
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "empty"))
+    iso = Path(oc._isolated_data_home())
+    try:
+        assert (iso / "opencode").is_dir()
+        assert not (iso / "opencode" / "auth.json").exists()
+    finally:
+        import shutil
+
+        shutil.rmtree(iso, ignore_errors=True)
+
+
+def test_opencode_main_restores_env_and_cleans_tmp(monkeypatch, tmp_path) -> None:
+    """Copilot review (#222): main() must restore the prior XDG_DATA_HOME and
+    remove the temp data home — the mutation must not outlive the run."""
+    oc = _load("opencode_shim")
+    real = tmp_path / "home"
+    (real / "opencode").mkdir(parents=True)
+    monkeypatch.setenv("XDG_DATA_HOME", str(real))
+    seen: dict[str, str] = {}
+
+    def fake_run(**kwargs) -> int:
+        seen["data_home"] = os.environ["XDG_DATA_HOME"]
+        return 0
+
+    monkeypatch.setattr(oc, "run", fake_run)
+    assert oc.main() == 0
+    assert seen["data_home"] != str(real)  # ran isolated
+    assert os.environ["XDG_DATA_HOME"] == str(real)  # prior value restored
+    assert not Path(seen["data_home"]).exists()  # temp dir cleaned
 
 
 def test_timeout_persists_partial_streams(monkeypatch, tmp_path) -> None:
