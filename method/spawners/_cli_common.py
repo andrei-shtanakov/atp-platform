@@ -10,14 +10,38 @@ Mirrors codex_cli_shim.py; stdlib + ``atp_method`` (workspace), no new dependenc
 
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
 from collections.abc import Callable
+from pathlib import Path
 
 from atp_method.envelopes import build_prompt, get_envelope
 
 REQUEST_TIMEOUT_S = 600.0
+
+
+def _dump_raw(task_id: str, stdout: bytes | None, stderr: bytes | None) -> None:
+    """Persist raw subprocess streams for post-hoc diagnosis.
+
+    Paid runs are expensive; the streams are the only evidence when a run
+    comes back empty (e.g. the provider stalls and the hard timeout reaps
+    the process). No-op unless ``ATP_SHIM_RAW_DIR`` is set (the harness
+    points it at ``<out-dir>/raw/<agent>``). Diagnostics must never break
+    the run, so any OSError is swallowed.
+    """
+    raw_dir = os.environ.get("ATP_SHIM_RAW_DIR")
+    if not raw_dir:
+        return
+    try:
+        out = Path(raw_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        stem = re.sub(r"[^A-Za-z0-9._-]", "_", task_id or "unknown")
+        (out / f"{stem}.stdout").write_bytes(stdout or b"")
+        (out / f"{stem}.stderr").write_bytes(stderr or b"")
+    except OSError:
+        pass
 
 
 def fail(task_id: str, error: str) -> int:
@@ -99,11 +123,14 @@ def run(
         return fail(task_id, f"{binary[0]} command build error: {exc}")
     try:
         proc = subprocess.run(cmd, capture_output=True, timeout=REQUEST_TIMEOUT_S)
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as exc:
+        # Partial streams are the only evidence of a hung provider request.
+        _dump_raw(task_id, exc.stdout, exc.stderr)
         return fail(task_id, f"{binary[0]} timed out after {REQUEST_TIMEOUT_S}s")
     except (OSError, subprocess.SubprocessError) as exc:
         return fail(task_id, f"{binary[0]} invocation error: {exc}")
 
+    _dump_raw(task_id, proc.stdout, proc.stderr)
     if proc.returncode != 0:
         return fail(
             task_id,
@@ -113,9 +140,18 @@ def run(
     try:
         text, in_tok, out_tok = parse_output(proc.stdout.decode(errors="replace"))
     except Exception as exc:  # noqa: BLE001 — contract: any error → failed
-        return fail(task_id, f"{binary[0]} output parse error: {exc}")
+        return fail(
+            task_id,
+            f"{binary[0]} output parse error: {exc} (stdout {len(proc.stdout)} bytes)",
+        )
     if not text.strip():
-        return fail(task_id, f"{binary[0]} produced no output text")
+        # Keep the stderr tail: without it an empty run is undiagnosable
+        # (rate-limit vs stall vs tool-loop break all look identical).
+        stderr_tail = proc.stderr.decode(errors="replace")[-500:]
+        return fail(
+            task_id,
+            f"{binary[0]} produced no output text; stderr tail: {stderr_tail!r}",
+        )
 
     sys.stdout.write(json.dumps(build_response(task_id, text, in_tok, out_tok)))
     return 0

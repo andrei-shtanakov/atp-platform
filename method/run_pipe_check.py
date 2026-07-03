@@ -437,6 +437,40 @@ def _preflight_ollama(model: str) -> str | None:
     return None
 
 
+def _classify_shim_error(error: str | None) -> str | None:
+    """Map a shim failure message onto the report_benchmark-v1 error_class enum.
+
+    More specific than the blanket status→test_failure mapping: the shims emit
+    stable failure prefixes (``method/spawners/_cli_common.py``), so a reaped
+    hang classifies as ``timeout`` and any shim-side infra failure — broken
+    launch, unbuildable command, missing model env, unparseable provider
+    output, bad stdin request — as ``crash`` (the v1 enum has no finer infra
+    class; splitting these is report_benchmark-v2 territory). That keeps every
+    infra failure inside ``infra_error_rate`` and out of the capability
+    buckets. An empty output (agent ran, produced nothing) stays test_failure.
+    Returns None when no specific class applies (caller falls back to status
+    normalization).
+    """
+    if not error:
+        return None
+    # Check the empty-output prefix first: its message embeds a raw stderr
+    # tail that may itself contain "timed out"/"rc=" from provider logs.
+    if "produced no output text" in error:
+        return None
+    if "timed out" in error:
+        return "timeout"
+    if "invocation error" in error or "failed (rc=" in error:
+        return "crash"
+    if (
+        "command build error:" in error
+        or "output parse error:" in error
+        or "invalid ATPRequest JSON on stdin" in error
+        or error.endswith(" not set")
+    ):
+        return "crash"
+    return None
+
+
 async def _grade_case(
     evaluator: AgentEvalCaseEvaluator,
     test_result: Any,
@@ -480,7 +514,10 @@ async def _grade_case(
     # derived from run, so response-not-None already implies run-not-None).
     if run is None or response is None or response.status.value != "completed":
         status = response.status.value if response is not None else "no_run"
-        base["error_class"] = normalize_report_error_class(status)
+        # Prefer the shim's failure text (timeout/crash are actionable infra
+        # classes); fall back to the coarse status mapping.
+        shim_class = _classify_shim_error(getattr(response, "error", None))
+        base["error_class"] = shim_class or normalize_report_error_class(status)
         return base
 
     for assertion in test_def.assertions:
@@ -508,11 +545,14 @@ async def _run_agent(
     with_rubric: bool,
     timeout_s: float,
     benchmark_id: str,
+    raw_dir: Path | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Run the family against one agent and build its report_benchmark payload.
 
     Returns the payload plus the per-case grading dicts (which carry the
     continuous recall/precision/fp_count a downstream filter reads).
+    ``raw_dir`` (when given) makes the shim persist raw subprocess streams
+    per case — the only post-hoc evidence for empty/hung runs.
     """
     suite = load_suite(str(case_dir))
     # Run only the CLI-adapter-runnable set; axis_by_id already excludes
@@ -520,6 +560,8 @@ async def _run_agent(
     suite.tests = [t for t in suite.tests if t.id in axis_by_id]
     spec = AGENTS[agent_id]
     adapter_env: dict[str, str] = {spec["model_env"]: spec["model"]}
+    if raw_dir is not None:
+        adapter_env["ATP_SHIM_RAW_DIR"] = str(raw_dir)
     adapter = create_adapter(
         "cli",
         {
@@ -556,6 +598,14 @@ async def _run_agent(
     # null) rather than a misleading 0.0/partial sum.
     if any(not c["cost_known"] for c in case_results):
         payload["total_cost_usd"] = None
+    # Reliability axis (additive; score_components allows extra numeric keys):
+    # share of case-runs lost to infra (hang reaped by timeout / broken launch),
+    # NOT to capability. Keeps "how well it reviews" and "how often it answers"
+    # separable — a promotion gate must read both.
+    infra = sum(1 for c in case_results if c["error_class"] in ("timeout", "crash"))
+    payload["score_components"]["infra_error_rate"] = (
+        round(infra / len(case_results), 6) if case_results else 0.0
+    )
     return payload, case_results
 
 
@@ -749,6 +799,7 @@ async def _main_async(args: argparse.Namespace) -> int:
     payloads: list[dict[str, Any]] = []
     for agent_id in runnable:
         print(f"Running {agent_id} ...")
+        safe = safe_agent_id(agent_id)
         payload, case_results = await _run_agent(
             agent_id,
             case_dir,
@@ -757,8 +808,8 @@ async def _main_async(args: argparse.Namespace) -> int:
             args.with_rubric,
             args.timeout,
             benchmark_id,
+            raw_dir=out_dir / "raw" / safe,
         )
-        safe = safe_agent_id(agent_id)
         out_file = out_dir / f"report_benchmark_{safe}.json"
         out_file.write_text(json.dumps(payload, indent=2))
         _write_case_details(out_dir / f"case_details_{safe}.jsonl", case_results)
