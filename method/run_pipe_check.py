@@ -442,9 +442,14 @@ def _classify_shim_error(error: str | None) -> str | None:
 
     More specific than the blanket status→test_failure mapping: the shims emit
     stable failure prefixes (``method/spawners/_cli_common.py``), so a reaped
-    hang classifies as ``timeout`` and a broken launch as ``crash``. An empty
-    output (agent ran, produced nothing) stays test_failure. Returns None when
-    no specific class applies (caller falls back to status normalization).
+    hang classifies as ``timeout`` and any shim-side infra failure — broken
+    launch, unbuildable command, missing model env, unparseable provider
+    output, bad stdin request — as ``crash`` (the v1 enum has no finer infra
+    class; splitting these is report_benchmark-v2 territory). That keeps every
+    infra failure inside ``infra_error_rate`` and out of the capability
+    buckets. An empty output (agent ran, produced nothing) stays test_failure.
+    Returns None when no specific class applies (caller falls back to status
+    normalization).
     """
     if not error:
         return None
@@ -455,6 +460,13 @@ def _classify_shim_error(error: str | None) -> str | None:
     if "timed out" in error:
         return "timeout"
     if "invocation error" in error or "failed (rc=" in error:
+        return "crash"
+    if (
+        "command build error:" in error
+        or "output parse error:" in error
+        or "invalid ATPRequest JSON on stdin" in error
+        or error.endswith(" not set")
+    ):
         return "crash"
     return None
 
@@ -592,7 +604,7 @@ async def _run_agent(
     # separable — a promotion gate must read both.
     infra = sum(1 for c in case_results if c["error_class"] in ("timeout", "crash"))
     payload["score_components"]["infra_error_rate"] = (
-        infra / len(case_results) if case_results else 0.0
+        round(infra / len(case_results), 6) if case_results else 0.0
     )
     return payload, case_results
 

@@ -62,6 +62,14 @@ def test_classify_shim_error_taxonomy() -> None:
     assert _classify_shim_error("opencode timed out after 600.0s") == "timeout"
     assert _classify_shim_error("opencode invocation error: boom") == "crash"
     assert _classify_shim_error("opencode failed (rc=2): stderr text") == "crash"
+    # Every remaining stable _cli_common infra prefix is crash too — shim bugs
+    # must not masquerade as capability failures (v1 has no finer infra class).
+    assert _classify_shim_error("opencode command build error: bad arg") == "crash"
+    assert (
+        _classify_shim_error("opencode output parse error: Expecting value") == "crash"
+    )
+    assert _classify_shim_error("invalid ATPRequest JSON on stdin: boom") == "crash"
+    assert _classify_shim_error("OPENCODE_MODEL not set") == "crash"
     # Empty output is a capability signal, not infra — stays test_failure
     # via the status fallback (classifier returns None).
     assert _classify_shim_error("opencode produced no output text") is None
