@@ -248,10 +248,11 @@ routable = false
 harness  = "opencode"
 model    = "glm-5.1"
 tested   = true
-routable = false                                     # pilot ADR-003c: флип в true ТОЛЬКО после кроссовера
-                                                     # runs≥3 (gate 003a D4). До флипа Maestro резолвит
-                                                     # через MAESTRO_OPENCODE_MODEL. Пара — первый OPEN
-                                                     # кандидат в routable.
+routable = true                                      # PROMOTED 2026-07-03 (gate 003a D4 passed): rank 0.915
+                                                     # vs codex 0.777 / claude 0.705 on golden 071f25d, runs=3,
+                                                     # infra_error_rate=0.0 (после state-isolation fix #222).
+                                                     # Первая открытая модель в роутинге. Evidence:
+                                                     # _bench_output/r07-pipecheck/resweep-isolated-2026-07-03-runs3
 
 [[agents]]
 harness  = "opencode"
