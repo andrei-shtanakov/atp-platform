@@ -72,7 +72,7 @@ log*.txt
 
 # Cross-project ecosystem analysis (kept in parent dir, not this repo)
 COWORK_CONTEXT.md
-_cowork_output/
+_bench_output/
 
 # Agent tooling caches / local state
 .codemie/
