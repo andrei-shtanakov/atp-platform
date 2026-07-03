@@ -60,13 +60,16 @@ from atp.runner import TestOrchestrator
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# Vendored pinned copy of the ecosystem SSOT agents-catalog (ADR-ECO-003). The
-# canonical file lives in `_cowork_output/contracts/agents-catalog.toml`; this
-# in-repo copy keeps atp-platform self-contained. devtools CI-conformance checks
-# the two stay byte-for-byte in sync. The catalog is the single source for the
-# <harness>@<model> roster — edit it there, not the literals below (there are
-# none anymore). claude_code@claude-sonnet-4-6 and codex_cli@gpt-5.5 carry
-# routable=true (arbiter's join keys); a mismatch there = silent re-rank no-op.
+# The CANONICAL ecosystem SSOT agents-catalog (ADR-ECO-003; canon = this file
+# since 2026-07-03 — the SSOT must live in a distributable repo, and
+# `_cowork_output` is dev-only coordination that installed users don't have).
+# arbiter vendors a byte-identical copy (config/agents-catalog.toml) and
+# `_cowork_output/contracts/` keeps a communication mirror; devtools
+# CI-conformance checks all copies stay byte-for-byte in sync. The catalog is
+# the single source for the <harness>@<model> roster — edit it HERE, not
+# literals below (there are none anymore). claude_code@claude-sonnet-4-6 and
+# codex_cli@gpt-5.5 carry routable=true (arbiter's join keys); a mismatch
+# there = silent re-rank no-op.
 CATALOG_PATH = REPO_ROOT / "method" / "agents-catalog.toml"
 
 
