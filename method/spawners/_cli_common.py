@@ -131,9 +131,17 @@ def run(
     default_provider: str,
     argv: Callable[[list[str], str, str], list[str]],
     parse_output: Callable[[str], tuple[str, int | None, int | None]],
+    corpus_args: list[str] | None = None,
 ) -> int:
     """Drive one CLI tool. ``argv(binary_tokens, model, prompt) -> list[str]``;
-    ``parse_output(stdout) -> (text, input_tokens, output_tokens)``."""
+    ``parse_output(stdout) -> (text, input_tokens, output_tokens)``.
+
+    Path A corpus mode: on a ``read_only_corpus`` run the subprocess cwd is
+    the materialized corpus root and ``corpus_args`` (the CLI's read-only
+    confinement flags) are inserted just before the prompt — argv callbacks
+    MUST place the prompt as the final element. Citation paths in the parsed
+    output are rewritten to corpus-relative.
+    """
     raw_in = sys.stdin.read()
     try:
         request = json.loads(raw_in)
@@ -146,13 +154,21 @@ def run(
         return fail(task_id, f"{model_env} not set")
     binary = shlex.split(os.environ.get(bin_env, default_bin)) or [default_bin]
 
+    workspace = corpus_workspace(request)
     try:
         prompt = build_prompt(request, get_envelope("review"))
         cmd = argv(binary, model_arg(model, default_provider), prompt)
+        if workspace and corpus_args:
+            cmd = [*cmd[:-1], *corpus_args, cmd[-1]]
     except Exception as exc:  # noqa: BLE001 — contract: any error → failed
         return fail(task_id, f"{binary[0]} command build error: {exc}")
     try:
-        proc = subprocess.run(cmd, capture_output=True, timeout=REQUEST_TIMEOUT_S)
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            timeout=REQUEST_TIMEOUT_S,
+            cwd=workspace or None,
+        )
     except subprocess.TimeoutExpired as exc:
         # Partial streams are the only evidence of a hung provider request.
         _dump_raw(task_id, exc.stdout, exc.stderr)
@@ -182,6 +198,10 @@ def run(
             task_id,
             f"{binary[0]} produced no output text; stderr tail: {stderr_tail!r}",
         )
+    if workspace:
+        # The CLI reads files under cwd and may cite absolute paths; the
+        # citation_grounding grader keys on corpus-relative ones.
+        text = normalize_citation_paths(text, workspace)
 
     sys.stdout.write(json.dumps(build_response(task_id, text, in_tok, out_tok)))
     return 0
