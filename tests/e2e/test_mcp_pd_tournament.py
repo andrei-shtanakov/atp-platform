@@ -104,20 +104,24 @@ async def test_two_bots_play_pd_tournament_end_to_end(
     # FastMCP mounted at /mcp exposes the SSE handshake at /mcp/sse.
     sse_url = f"{base_url}/mcp/sse"
 
-    def _make_adapter(agent_id: str, jwt_token: str) -> MCPAdapter:
+    def _make_adapter(client_name: str, token: str) -> MCPAdapter:
+        # Agent-scoped tournament token, not a JWT: MCPAuthMiddleware
+        # rejects plain user JWTs with 403 since LABS-TSA PR-3.
+        # client_name (not agent_id, which MCPAdapterConfig doesn't
+        # define) identifies the client in the MCP handshake.
         return MCPAdapter(
             MCPAdapterConfig(
-                agent_id=agent_id,
+                client_name=client_name,
                 transport="sse",
                 url=sse_url,
-                headers={"Authorization": f"Bearer {jwt_token}"},
+                headers={"Authorization": f"Bearer {token}"},
                 timeout_seconds=20.0,
                 startup_timeout=10.0,
             )
         )
 
-    alice_bot = _make_adapter("alice-bot", mcp_seeded_users["alice"]["jwt"])
-    bob_bot = _make_adapter("bob-bot", mcp_seeded_users["bob"]["jwt"])
+    alice_bot = _make_adapter("alice-bot", mcp_seeded_users["alice"]["agent_token"])
+    bob_bot = _make_adapter("bob-bot", mcp_seeded_users["bob"]["agent_token"])
 
     alice_received: list[dict] = []
     bob_received: list[dict] = []

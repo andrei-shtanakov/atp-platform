@@ -233,6 +233,17 @@ async def tournament_uvicorn(tmp_path, monkeypatch):
     free_port = sock.getsockname()[1]
     sock.close()
 
+    # Reset sse_starlette's process-global shutdown latch. A prior test's
+    # uvicorn teardown (server.should_exit = True) gets synced into
+    # AppStatus.should_exit by sse_starlette's shutdown watcher, and the
+    # flag is sticky — every EventSourceResponse in later servers of the
+    # SAME pytest process would then terminate instantly (SSE probe dies
+    # before the endpoint frame). Production is one-server-per-process,
+    # so the latch is only a test-harness concern.
+    from sse_starlette.sse import AppStatus
+
+    AppStatus.should_exit = False
+
     config = uvicorn.Config(
         app,
         host="127.0.0.1",
@@ -262,6 +273,37 @@ async def tournament_uvicorn(tmp_path, monkeypatch):
         await server_task
         raise RuntimeError(f"uvicorn did not come up on port {free_port}")
 
+    # Seed users BEFORE the SSE probe: the probe needs an agent-scoped
+    # token (LABS-TSA PR-3), which requires a real owner in the database.
+    seed_engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}")
+    try:
+        async with seed_engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "INSERT OR IGNORE INTO users "
+                    "(id, tenant_id, username, email, hashed_password, "
+                    "is_active, is_admin, created_at, updated_at) "
+                    "VALUES "
+                    "(1, 'default', 'admin', 'admin@e2e.test', 'x', "
+                    "1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP), "
+                    "(2, 'default', 'bob', 'bob@e2e.test', 'x', "
+                    "1, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+                )
+            )
+    finally:
+        await seed_engine.dispose()
+
+    admin_jwt = _mint_jwt(1, "admin")
+    bob_jwt = _mint_jwt(2, "bob")
+
+    # /mcp only admits agent-scoped tournament tokens since LABS-TSA
+    # PR-3 — a plain user JWT gets 403 before FastMCP is even reached.
+    from tests.e2e.mcp_auth import mint_tournament_agent_token
+
+    probe_token = await mint_tournament_agent_token(
+        f"http://127.0.0.1:{free_port}", admin_jwt, agent_name="probe-agent"
+    )
+
     # Do a FULL authenticated SSE handshake as the readiness probe —
     # waiting for ``event: endpoint`` ensures FastMCP's session manager
     # is fully warmed before the first test adapter connects. Without
@@ -270,7 +312,6 @@ async def tournament_uvicorn(tmp_path, monkeypatch):
     # endpoint frame" (LABS-20 / LABS-74).
     import httpx as _httpx_probe
 
-    probe_jwt = _mint_jwt(0, "probe")
     # Deadline bumped 15s → 60s (LABS-20/74). CI runners can take 20-40s
     # to warm up uvicorn + FastMCP session manager; with 15s the readiness
     # probe failed consistently on merged PRs (#42 CI etc.). 60s leaves a
@@ -286,7 +327,7 @@ async def tournament_uvicorn(tmp_path, monkeypatch):
                     f"http://127.0.0.1:{free_port}/mcp/sse",
                     headers={
                         "Accept": "text/event-stream",
-                        "Authorization": f"Bearer {probe_jwt}",
+                        "Authorization": f"Bearer {probe_token}",
                     },
                 ) as resp:
                     if resp.status_code != 200:
@@ -310,28 +351,6 @@ async def tournament_uvicorn(tmp_path, monkeypatch):
             f"MCP /mcp/sse never emitted endpoint frame on port {free_port}"
             + (f": {last_err}" if last_err else "")
         )
-
-    # Seed two users so both MCP sessions and the DISABLE_AUTH fallback work.
-    seed_engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}")
-    try:
-        async with seed_engine.begin() as conn:
-            await conn.execute(
-                text(
-                    "INSERT OR IGNORE INTO users "
-                    "(id, tenant_id, username, email, hashed_password, "
-                    "is_active, is_admin, created_at, updated_at) "
-                    "VALUES "
-                    "(1, 'default', 'admin', 'admin@e2e.test', 'x', "
-                    "1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP), "
-                    "(2, 'default', 'bob', 'bob@e2e.test', 'x', "
-                    "1, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
-                )
-            )
-    finally:
-        await seed_engine.dispose()
-
-    admin_jwt = _mint_jwt(1, "admin")
-    bob_jwt = _mint_jwt(2, "bob")
 
     try:
         yield f"http://127.0.0.1:{free_port}", admin_jwt, bob_jwt
@@ -377,10 +396,20 @@ async def test_thirty_round_pd_with_reconnect_sc1(
         tournament_id = response.json()["id"]
 
     # ----------------------------------------------------------------
-    # 2. Two bot sessions — each authenticated with its own JWT.
+    # 2. Two bot sessions — each authenticated with its own agent-scoped
+    #    tournament token (plain JWTs are rejected by MCPAuthMiddleware
+    #    since LABS-TSA PR-3).
     # ----------------------------------------------------------------
-    bot_a = _BotSession(sse_url, admin_jwt)
-    bot_b = _BotSession(sse_url, bob_jwt)
+    from tests.e2e.mcp_auth import mint_tournament_agent_token
+
+    admin_agent_token = await mint_tournament_agent_token(
+        base_url, admin_jwt, agent_name="admin-bot"
+    )
+    bob_agent_token = await mint_tournament_agent_token(
+        base_url, bob_jwt, agent_name="bob-bot"
+    )
+    bot_a = _BotSession(sse_url, admin_agent_token)
+    bot_b = _BotSession(sse_url, bob_agent_token)
 
     await bot_a.connect()
     await bot_b.connect()
