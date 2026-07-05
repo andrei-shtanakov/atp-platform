@@ -18,8 +18,12 @@ import os
 import shlex
 import subprocess
 import sys
+from pathlib import Path
 
 from atp_method.envelopes import DEFAULT_MODEL, build_prompt, get_envelope
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _cli_common import corpus_workspace, normalize_citation_paths  # noqa: E402
 
 MODEL = os.environ.get("CLAUDE_MODEL", DEFAULT_MODEL)
 CLAUDE_BIN = os.environ.get("CLAUDE_BIN", "claude")
@@ -29,6 +33,7 @@ def main() -> int:
     """Read ATPRequest from stdin, invoke claude, emit ATPResponse to stdout."""
     request = json.loads(sys.stdin.read())
     prompt = build_prompt(request, get_envelope("review"))
+    workspace = corpus_workspace(request)
     cmd = shlex.split(CLAUDE_BIN) + [
         "-p",
         prompt,
@@ -37,7 +42,12 @@ def main() -> int:
         "--output-format",
         "json",
     ]
-    proc = subprocess.run(cmd, capture_output=True, timeout=600)
+    if workspace:
+        # Path A corpus confinement: run inside the materialized corpus with
+        # read-only native tools. Whitelisting Read/Glob/Grep means every
+        # other tool (Write/Edit/Bash/Web*) is denied in -p mode.
+        cmd += ["--allowed-tools", "Read,Glob,Grep"]
+    proc = subprocess.run(cmd, capture_output=True, timeout=600, cwd=workspace or None)
     if proc.returncode != 0:
         sys.stdout.write(
             json.dumps(
@@ -67,6 +77,11 @@ def main() -> int:
     total: int | None = (
         sum(v for v in token_classes if v is not None) if has_tokens else None
     )
+    result_text = out.get("result", "")
+    if workspace:
+        # The CLI reads files under cwd and may cite absolute paths; the
+        # citation_grounding grader keys on corpus-relative ones.
+        result_text = normalize_citation_paths(result_text, workspace)
     response = {
         "version": "1.0",
         "task_id": request.get("task_id", ""),
@@ -75,7 +90,7 @@ def main() -> int:
             {
                 "type": "file",
                 "path": "review.md",
-                "content": out.get("result", ""),
+                "content": result_text,
                 "content_type": "text/markdown",
             }
         ],
