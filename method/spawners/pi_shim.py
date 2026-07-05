@@ -12,6 +12,12 @@ import json
 
 from _cli_common import run  # pyrefly: ignore[missing-import]
 
+# Path A corpus confinement: pi's built-ins are read/bash/edit/write; the
+# `--tools` allowlist keeps only `read`, so the agent cannot write, execute,
+# or leave the corpus surface by shelling out. cwd (set by the shared
+# runner) is the materialized corpus root.
+CORPUS_ARGS = ["--tools", "read"]
+
 
 def _argv(binary: list[str], model: str, prompt: str) -> list[str]:
     return [
@@ -69,5 +75,6 @@ if __name__ == "__main__":
             default_provider="openai",
             argv=_argv,
             parse_output=_parse,
+            corpus_args=CORPUS_ARGS,
         )
     )

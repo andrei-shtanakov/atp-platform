@@ -433,9 +433,10 @@ def test_corpus_capable_harnesses_lists_wired_clis_only() -> None:
 
     assert "claude_code" in CORPUS_CAPABLE_HARNESSES
     assert "codex_cli" in CORPUS_CAPABLE_HARNESSES
-    # Not yet wired (spec §8: one CLI per slice) — must stay out until their
-    # confinement flags are implemented and smoke-gated.
-    assert "pi" not in CORPUS_CAPABLE_HARNESSES
+    assert "pi" in CORPUS_CAPABLE_HARNESSES
+    # Not yet wired (spec §8: one CLI per slice) — opencode has no
+    # per-invocation confinement flag (config-injection slice pending);
+    # deepseek/mimo/qwen/ollama/anthropic_api are not native-fs CLIs.
     assert "opencode" not in CORPUS_CAPABLE_HARNESSES
     assert "deepseek" not in CORPUS_CAPABLE_HARNESSES
 

@@ -346,7 +346,7 @@ def _diff_against_lock(case_dir: Path, lock: dict[str, Any]) -> list[str]:
 # docs/superpowers/specs/2026-06-21-cli-corpus-grounding-design.md.
 # For everyone else the cases are still skipped, loudly (#217 behavior).
 CORPUS_RUN_MODE = "read_only_corpus"
-CORPUS_CAPABLE_HARNESSES: frozenset[str] = frozenset({"claude_code", "codex_cli"})
+CORPUS_CAPABLE_HARNESSES: frozenset[str] = frozenset({"claude_code", "codex_cli", "pi"})
 
 
 def _corpus_case_ids(case_dir: Path) -> set[str]:

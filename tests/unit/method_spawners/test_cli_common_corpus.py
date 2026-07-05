@@ -75,3 +75,95 @@ def test_normalize_handles_trailing_slash_workspace() -> None:
 def test_normalize_leaves_relative_paths_alone() -> None:
     text = '{"path": "policy-current.md"}'
     assert normalize_citation_paths(text, "/ws/root") == text
+
+
+def _corpus_request(workspace: str) -> dict:
+    return {
+        "version": "1.0",
+        "task_id": "corpus-1",
+        "task": {
+            "description": "Extract requirements with citations.",
+            "input_data": {
+                "run_mode": "read_only_corpus",
+                "artifact_corpus": {
+                    "id": "c1",
+                    "files": ["policy-current.md", "archive/policy-2023.md"],
+                },
+            },
+        },
+        "context": {"workspace_path": workspace},
+        "constraints": {},
+    }
+
+
+def _run_pi_shim(request: dict, extra_env: dict) -> dict:
+    import json
+    import os
+    import subprocess
+    import sys
+
+    shim = _SPAWNERS / "pi_shim.py"
+    fake = Path(__file__).resolve().parent / "fixtures" / "fake_pi.py"
+    env = {
+        **os.environ,
+        "PI_BIN": f"{sys.executable} {fake}",
+        "PI_MODEL": "gpt-5",
+        **extra_env,
+    }
+    proc = subprocess.run(
+        [sys.executable, str(shim)],
+        input=json.dumps(request).encode(),
+        capture_output=True,
+        env=env,
+        timeout=30,
+    )
+    assert proc.returncode == 0, proc.stderr.decode()
+    return json.loads(proc.stdout.decode())
+
+
+def test_pi_corpus_run_confine_flags_before_prompt_and_cwd(tmp_path) -> None:
+    import json
+
+    workspace = tmp_path / "corpus"
+    workspace.mkdir()
+    (workspace / "policy-current.md").write_text("deadline: 2026-08-01\n")
+    log_path = tmp_path / "invocation.json"
+
+    resp = _run_pi_shim(
+        _corpus_request(str(workspace)),
+        extra_env={"ATP_FAKE_PI_LOG": str(log_path)},
+    )
+
+    invocation = json.loads(log_path.read_text())
+    assert invocation["cwd"] == str(workspace)
+    argv = invocation["argv"]
+    # Read-only confinement: only the `read` tool stays enabled.
+    assert "--tools" in argv
+    assert argv[argv.index("--tools") + 1] == "read"
+    # The argv contract puts the prompt LAST; confinement flags precede it.
+    assert argv.index("--tools") < len(argv) - 1
+    assert "Read-only corpus" in argv[-1]
+    assert resp["status"] == "completed"
+    # Absolute citation path normalized to corpus-relative.
+    content = resp["artifacts"][0]["content"]
+    assert str(workspace) not in content
+    assert "policy-current.md" in content
+
+
+def test_pi_non_corpus_run_has_no_tools_flag(tmp_path) -> None:
+    import json
+
+    log_path = tmp_path / "invocation.json"
+    request = {
+        "version": "1.0",
+        "task_id": "t1",
+        "task": {"description": "Review the diff.", "input_data": {}},
+        "constraints": {},
+    }
+    resp = _run_pi_shim(request, extra_env={"ATP_FAKE_PI_LOG": str(log_path)})
+    invocation = json.loads(log_path.read_text())
+    assert "--tools" not in invocation["argv"]
+    import os
+
+    assert invocation["cwd"] == os.getcwd()
+    assert resp["status"] == "completed"
