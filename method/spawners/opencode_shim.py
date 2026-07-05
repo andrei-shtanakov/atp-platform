@@ -123,9 +123,12 @@ def main() -> int:
     """
     prior = os.environ.get("XDG_DATA_HOME")
     data_home = _isolated_data_home()
-    config_home = _readonly_config_home()
+    # Created inside the try so a failure here can't leak data_home; the
+    # dir itself is cheap (one small json) and only USED on corpus runs.
+    config_home: str | None = None
     os.environ["XDG_DATA_HOME"] = data_home
     try:
+        config_home = _readonly_config_home()
         return run(
             bin_env="OPENCODE_BIN",
             default_bin="opencode",
@@ -143,7 +146,8 @@ def main() -> int:
         else:
             os.environ["XDG_DATA_HOME"] = prior
         shutil.rmtree(data_home, ignore_errors=True)
-        shutil.rmtree(config_home, ignore_errors=True)
+        if config_home is not None:
+            shutil.rmtree(config_home, ignore_errors=True)
 
 
 if __name__ == "__main__":
