@@ -19,13 +19,22 @@ def _run(args: list[str]) -> subprocess.CompletedProcess[bytes]:
     )
 
 
+def _any_valid_agent_id() -> str:
+    # Error-path tests need a VALID --agents value but must not pin a specific
+    # model string: catalog lifecycle (a model going retired) would break them
+    # in the wrong place. Pick any id from the catalog-projected registry.
+    from method.run_pipe_check import AGENTS
+
+    return next(iter(AGENTS))
+
+
 def test_unknown_task_type_exits_2_with_stderr() -> None:
     # Fail fast on an unknown --task-type: one-line stderr + exit 2 (not a
     # traceback), before any agent runs.
     proc = _run(
         [
             "--agents",
-            "claude_code@claude-sonnet-4-6",
+            _any_valid_agent_id(),
             "--task-type",
             "bogus",
             "--dry-run",
