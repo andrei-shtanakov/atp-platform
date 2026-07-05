@@ -167,3 +167,85 @@ def test_pi_non_corpus_run_has_no_tools_flag(tmp_path) -> None:
 
     assert invocation["cwd"] == os.getcwd()
     assert resp["status"] == "completed"
+
+
+def _run_opencode_shim(request: dict, extra_env: dict) -> dict:
+    import json
+    import os
+    import subprocess
+    import sys
+
+    shim = _SPAWNERS / "opencode_shim.py"
+    fake = Path(__file__).resolve().parent / "fixtures" / "fake_opencode.py"
+    env = {
+        **os.environ,
+        "OPENCODE_BIN": f"{sys.executable} {fake}",
+        "OPENCODE_MODEL": "glm-5.1",
+        **extra_env,
+    }
+    proc = subprocess.run(
+        [sys.executable, str(shim)],
+        input=json.dumps(request).encode(),
+        capture_output=True,
+        env=env,
+        timeout=30,
+    )
+    assert proc.returncode == 0, proc.stderr.decode()
+    return json.loads(proc.stdout.decode())
+
+
+def test_opencode_corpus_run_injects_readonly_config_and_cwd(tmp_path) -> None:
+    import json
+
+    workspace = tmp_path / "corpus"
+    workspace.mkdir()
+    (workspace / "policy-current.md").write_text("deadline: 2026-08-01\n")
+    log_path = tmp_path / "invocation.json"
+
+    resp = _run_opencode_shim(
+        _corpus_request(str(workspace)),
+        extra_env={"ATP_FAKE_OPENCODE_LOG": str(log_path)},
+    )
+
+    invocation = json.loads(log_path.read_text())
+    assert invocation["cwd"] == str(workspace)
+    # Confinement is config-based: the subprocess must see an INJECTED
+    # XDG_CONFIG_HOME whose opencode.json is the read-only profile.
+    cfg_home = invocation["xdg_config_home"]
+    assert cfg_home, "corpus run must inject an isolated XDG_CONFIG_HOME"
+    # The shim removes its temp config home after the run; fake_opencode
+    # snapshots the config content into the log at invocation time.
+    config = invocation["config"]
+    assert config is not None, "injected opencode.json missing at invocation"
+    assert config["permission"]["edit"] == "deny"
+    assert config["permission"]["write"] == "deny"
+    assert config["permission"]["bash"] == "deny"
+    assert config["permission"]["webfetch"] == "deny"
+    assert config["permission"]["read"] == "allow"
+    assert resp["status"] == "completed"
+    # Absolute citation path normalized to corpus-relative.
+    content = resp["artifacts"][0]["content"]
+    assert str(workspace) not in content
+    assert "policy-current.md" in content
+
+
+def test_opencode_non_corpus_run_keeps_user_config_surface(tmp_path) -> None:
+    import json
+    import os
+
+    log_path = tmp_path / "invocation.json"
+    request = {
+        "version": "1.0",
+        "task_id": "t1",
+        "task": {"description": "Review the diff.", "input_data": {}},
+        "constraints": {},
+    }
+    resp = _run_opencode_shim(
+        request, extra_env={"ATP_FAKE_OPENCODE_LOG": str(log_path)}
+    )
+    invocation = json.loads(log_path.read_text())
+    # Non-corpus runs must NOT swap the config home (inline behavior and
+    # provider config untouched); cwd inherited from the caller.
+    assert invocation["xdg_config_home"] == os.environ.get("XDG_CONFIG_HOME")
+    assert invocation["cwd"] == os.getcwd()
+    assert resp["status"] == "completed"

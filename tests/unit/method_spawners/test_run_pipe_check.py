@@ -434,11 +434,11 @@ def test_corpus_capable_harnesses_lists_wired_clis_only() -> None:
     assert "claude_code" in CORPUS_CAPABLE_HARNESSES
     assert "codex_cli" in CORPUS_CAPABLE_HARNESSES
     assert "pi" in CORPUS_CAPABLE_HARNESSES
-    # Not yet wired (spec §8: one CLI per slice) — opencode has no
-    # per-invocation confinement flag (config-injection slice pending);
-    # deepseek/mimo/qwen/ollama/anthropic_api are not native-fs CLIs.
-    assert "opencode" not in CORPUS_CAPABLE_HARNESSES
+    assert "opencode" in CORPUS_CAPABLE_HARNESSES
+    # deepseek/mimo/qwen/ollama/anthropic_api are not native-fs CLIs —
+    # they stay out by design (anthropic_api uses the HTTP tool loop).
     assert "deepseek" not in CORPUS_CAPABLE_HARNESSES
+    assert "anthropic_api" not in CORPUS_CAPABLE_HARNESSES
 
 
 def test_register_corpus_preparer_is_idempotent() -> None:

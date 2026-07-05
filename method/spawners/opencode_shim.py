@@ -50,6 +50,44 @@ def _parse(stdout: str) -> tuple[str, int | None, int | None]:
     return text, in_tok, out_tok
 
 
+# Path A corpus confinement (opencode has NO per-invocation flag; permissions
+# resolve from config): corpus runs get an ISOLATED XDG_CONFIG_HOME carrying
+# exactly this read-only profile — deny rules land last in opencode's resolved
+# permission list and override the defaults. The operator's real config is
+# NOT loaded on corpus runs (auth lives in auth.json under the data home, so
+# the opencode-gateway provider still resolves — verified by the live smoke).
+_READONLY_PERMISSION = {
+    "read": "allow",
+    "grep": "allow",
+    "glob": "allow",
+    "list": "allow",
+    "edit": "deny",
+    "write": "deny",
+    "bash": "deny",
+    "webfetch": "deny",
+}
+
+
+def _readonly_config_home() -> str:
+    """Create a temp XDG_CONFIG_HOME with a read-only opencode.json."""
+    tmp = tempfile.mkdtemp(prefix="atp-opencode-cfg-")
+    try:
+        cfg_dir = Path(tmp) / "opencode"
+        cfg_dir.mkdir(parents=True, exist_ok=True)
+        (cfg_dir / "opencode.json").write_text(
+            json.dumps(
+                {
+                    "$schema": "https://opencode.ai/config.json",
+                    "permission": _READONLY_PERMISSION,
+                }
+            )
+        )
+    except OSError:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
+    return tmp
+
+
 def _isolated_data_home() -> str:
     """Create a temp XDG_DATA_HOME seeded with opencode's auth.json.
 
@@ -85,8 +123,12 @@ def main() -> int:
     """
     prior = os.environ.get("XDG_DATA_HOME")
     data_home = _isolated_data_home()
+    # Created inside the try so a failure here can't leak data_home; the
+    # dir itself is cheap (one small json) and only USED on corpus runs.
+    config_home: str | None = None
     os.environ["XDG_DATA_HOME"] = data_home
     try:
+        config_home = _readonly_config_home()
         return run(
             bin_env="OPENCODE_BIN",
             default_bin="opencode",
@@ -94,6 +136,9 @@ def main() -> int:
             default_provider="opencode",
             argv=_argv,
             parse_output=_parse,
+            # Applied by the shared runner ONLY on read_only_corpus runs;
+            # inline runs keep the operator's real config surface.
+            corpus_env={"XDG_CONFIG_HOME": config_home},
         )
     finally:
         if prior is None:
@@ -101,6 +146,8 @@ def main() -> int:
         else:
             os.environ["XDG_DATA_HOME"] = prior
         shutil.rmtree(data_home, ignore_errors=True)
+        if config_home is not None:
+            shutil.rmtree(config_home, ignore_errors=True)
 
 
 if __name__ == "__main__":
