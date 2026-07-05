@@ -148,5 +148,7 @@ def test_non_corpus_run_keeps_default_cwd(tmp_path) -> None:
     }
     resp = _run_shim(request, extra_env={"ATP_FAKE_CODEX_LOG": str(log_path)})
     invocation = json.loads(log_path.read_text())
-    assert invocation["cwd"] != ""
+    # No cwd override on non-corpus runs: the fake must inherit the test
+    # process's working directory (any other value = corpus branch leaked).
+    assert invocation["cwd"] == os.getcwd()
     assert resp["status"] == "completed"
