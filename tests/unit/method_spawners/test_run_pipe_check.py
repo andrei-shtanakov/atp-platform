@@ -441,10 +441,14 @@ def test_corpus_capable_harnesses_lists_claude_code_only() -> None:
 def test_register_corpus_preparer_is_idempotent() -> None:
     from atp.runner.preparation import (
         get_request_preparer,
+        register_request_preparer,
         unregister_request_preparer,
     )
     from method.run_pipe_check import _register_corpus_preparer
 
+    # Restore whatever was registered before (e.g. by the atp-method plugin
+    # in another test) so this test can't create order-dependent failures.
+    previous = get_request_preparer("corpus")
     try:
         _register_corpus_preparer()
         first = get_request_preparer("corpus")
@@ -452,4 +456,7 @@ def test_register_corpus_preparer_is_idempotent() -> None:
         _register_corpus_preparer()
         assert get_request_preparer("corpus") is not None
     finally:
-        unregister_request_preparer("corpus")
+        if previous is not None:
+            register_request_preparer("corpus", previous)
+        else:
+            unregister_request_preparer("corpus")

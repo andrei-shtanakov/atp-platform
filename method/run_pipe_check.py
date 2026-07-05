@@ -386,9 +386,19 @@ def _register_corpus_preparer() -> None:
     this harness drives TestOrchestrator directly, so it must register the
     preparer itself. Idempotent (re-registration replaces the same class).
     """
-    from atp_method.runtime import CorpusRunPreparer
-
     from atp.runner.preparation import register_request_preparer
+
+    try:
+        from atp_method.runtime import CorpusRunPreparer
+    except ModuleNotFoundError as exc:
+        # Mirror the plugin entry point's actionable error (plugin.py
+        # _LazyCorpusRunPreparer) instead of a raw import traceback.
+        if exc.name not in {"fastapi", "uvicorn"}:
+            raise
+        raise RuntimeError(
+            "corpus-backed method cases require mock tool server dependencies "
+            "fastapi and uvicorn (install with: uv sync --group dev)"
+        ) from exc
 
     register_request_preparer("corpus", CorpusRunPreparer())
 
@@ -790,9 +800,19 @@ async def _main_async(args: argparse.Namespace) -> int:
             f"  [suite-lock] OK — {len(lock['cases'])} cases match {lock['suite_hash']}"
         )
 
+    # Base count excludes corpus cases; corpus-capable agents run extras
+    # (spell that out so the count matches each executed set and the lock).
     n_cases = len(axis_by_id)
+    corpus_note = (
+        f" (+{len(corpus_cases)} corpus for {sorted(corpus_agents)})"
+        if corpus_cases and corpus_agents
+        else ""
+    )
     rubric = "on" if args.with_rubric else "off"
-    print(f"Pipe-check: {n_cases} case(s) in {case_dir} | task_type={args.task_type}")
+    print(
+        f"Pipe-check: {n_cases} case(s){corpus_note} in {case_dir} "
+        f"| task_type={args.task_type}"
+    )
     print(f"Agents: {agents} | runs={args.runs} | rubric={rubric}")
 
     collision = _safe_id_collision(agents)
