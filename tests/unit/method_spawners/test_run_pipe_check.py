@@ -408,3 +408,48 @@ def test_axis_by_id_skips_read_only_corpus_cases(tmp_path: Path) -> None:
     assert _corpus_case_ids(tmp_path) == {"case-corpus-001"}
     axis = _axis_by_id(tmp_path)
     assert axis == {"case-inline-001": "severe"}
+
+
+def test_axis_by_id_includes_corpus_when_requested(tmp_path: Path) -> None:
+    # Path A: corpus-capable harnesses run read_only_corpus cases; the
+    # exclusion is now caller-controlled instead of unconditional.
+    from method.run_pipe_check import _axis_by_id
+
+    (tmp_path / "inline.yaml").write_text(
+        "id: case-inline-001\naxis_level: severe\ntask_type: req-extraction\n"
+    )
+    (tmp_path / "corpus.yaml").write_text(
+        "id: case-corpus-001\naxis_level: clean\nrun_mode: read_only_corpus\n"
+        "task_type: req-extraction\n"
+    )
+    axis = _axis_by_id(tmp_path, include_corpus=True)
+    assert axis == {"case-inline-001": "severe", "case-corpus-001": "clean"}
+    # default stays corpus-free (existing behavior, #217)
+    assert _axis_by_id(tmp_path) == {"case-inline-001": "severe"}
+
+
+def test_corpus_capable_harnesses_lists_claude_code_only() -> None:
+    from method.run_pipe_check import CORPUS_CAPABLE_HARNESSES
+
+    assert "claude_code" in CORPUS_CAPABLE_HARNESSES
+    # Not yet wired (spec §8: one CLI per slice) — must stay out until their
+    # confinement flags are implemented and smoke-gated.
+    assert "codex_cli" not in CORPUS_CAPABLE_HARNESSES
+    assert "deepseek" not in CORPUS_CAPABLE_HARNESSES
+
+
+def test_register_corpus_preparer_is_idempotent() -> None:
+    from atp.runner.preparation import (
+        get_request_preparer,
+        unregister_request_preparer,
+    )
+    from method.run_pipe_check import _register_corpus_preparer
+
+    try:
+        _register_corpus_preparer()
+        first = get_request_preparer("corpus")
+        assert first is not None
+        _register_corpus_preparer()
+        assert get_request_preparer("corpus") is not None
+    finally:
+        unregister_request_preparer("corpus")

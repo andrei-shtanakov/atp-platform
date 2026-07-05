@@ -338,15 +338,19 @@ def _diff_against_lock(case_dir: Path, lock: dict[str, Any]) -> list[str]:
     return msgs
 
 
-# The CLI-adapter path (prompt shims) provides no file_read tool + mounted
-# corpus, so `read_only_corpus` cases can't run here — they would fail uniformly
-# for every agent (a harness artifact, not a capability signal). Skip them,
-# loudly; run corpus/tool-use cases via a tool-capable adapter instead.
+# `read_only_corpus` cases need a file surface. Path A (2026-07-05) gives
+# corpus-CAPABLE harnesses one: the corpus preparer materializes the verified
+# corpus and the shim confines the CLI's native read tools to that directory
+# (cwd + read-only whitelist). Harnesses enter this set only after their
+# confinement flags are implemented AND a live smoke passes (spec §7 gate):
+# docs/superpowers/specs/2026-06-21-cli-corpus-grounding-design.md.
+# For everyone else the cases are still skipped, loudly (#217 behavior).
 CORPUS_RUN_MODE = "read_only_corpus"
+CORPUS_CAPABLE_HARNESSES: frozenset[str] = frozenset({"claude_code"})
 
 
 def _corpus_case_ids(case_dir: Path) -> set[str]:
-    """Case ids the CLI-adapter path cannot run (run_mode == read_only_corpus)."""
+    """Case ids only corpus-capable harnesses can run (read_only_corpus)."""
     skip: set[str] = set()
     for f in sorted(case_dir.glob("*.yaml")):
         doc = yaml.safe_load(f.read_text(encoding="utf-8"))
@@ -359,18 +363,34 @@ def _corpus_case_ids(case_dir: Path) -> set[str]:
     return skip
 
 
-def _axis_by_id(case_dir: Path) -> dict[str, str]:
-    """Map each RUNNABLE case id to its axis_level (read straight from the YAML).
+def _axis_by_id(case_dir: Path, include_corpus: bool = False) -> dict[str, str]:
+    """Map each runnable case id to its axis_level (read straight from the YAML).
 
-    read_only_corpus cases are excluded — the CLI-adapter path can't run them.
+    read_only_corpus cases are excluded unless ``include_corpus`` — only
+    corpus-capable harnesses (Path A) can run them.
     """
-    skip = _corpus_case_ids(case_dir)
+    skip = set() if include_corpus else _corpus_case_ids(case_dir)
     out: dict[str, str] = {}
     for f in sorted(case_dir.glob("*.yaml")):
         doc = yaml.safe_load(f.read_text(encoding="utf-8"))
         if isinstance(doc, dict) and "id" in doc and doc["id"] not in skip:
             out[doc["id"]] = doc.get("axis_level", "unknown")
     return out
+
+
+def _register_corpus_preparer() -> None:
+    """Register the corpus request preparer for TestOrchestrator runs.
+
+    Corpus cases carry ``input_data["request_preparer"] == "corpus"``; under
+    `atp test` the atp-method plugin entry point registers the preparer, but
+    this harness drives TestOrchestrator directly, so it must register the
+    preparer itself. Idempotent (re-registration replaces the same class).
+    """
+    from atp_method.runtime import CorpusRunPreparer
+
+    from atp.runner.preparation import register_request_preparer
+
+    register_request_preparer("corpus", CorpusRunPreparer())
 
 
 def _preflight(agent_id: str) -> str | None:
@@ -555,8 +575,8 @@ async def _run_agent(
     per case — the only post-hoc evidence for empty/hung runs.
     """
     suite = load_suite(str(case_dir))
-    # Run only the CLI-adapter-runnable set; axis_by_id already excludes
-    # read_only_corpus cases (which need a file_read tool + mounted corpus).
+    # Run only the set the caller deemed runnable for this agent: the axis map
+    # includes read_only_corpus cases only for corpus-capable harnesses.
     suite.tests = [t for t in suite.tests if t.id in axis_by_id]
     spec = AGENTS[agent_id]
     adapter_env: dict[str, str] = {spec["model_env"]: spec["model"]}
@@ -698,18 +718,30 @@ def _summary_line(payload: dict[str, Any]) -> str:
 async def _main_async(args: argparse.Namespace) -> int:
     case_dir = (REPO_ROOT / args.case_dir).resolve()
     axis_by_id = _axis_by_id(case_dir)
-    skipped_corpus = _corpus_case_ids(case_dir)
-    if skipped_corpus:
-        print(
-            f"  [skip] {len(skipped_corpus)} read_only_corpus case(s) — the "
-            "CLI-adapter path has no file_read/corpus wiring; run these via a "
-            f"tool-capable adapter. Skipped: {sorted(skipped_corpus)}"
-        )
     agents = [a.strip() for a in args.agents.split(",") if a.strip()]
     unknown = [a for a in agents if a not in AGENTS]
     if unknown:
         print(f"Unknown agent(s): {unknown}. Known: {list(AGENTS)}", file=sys.stderr)
         return 2
+
+    corpus_cases = _corpus_case_ids(case_dir)
+    corpus_agents = [
+        a for a in agents if a.split("@", 1)[0] in CORPUS_CAPABLE_HARNESSES
+    ]
+    if corpus_cases:
+        if corpus_agents:
+            print(
+                f"  [corpus] {len(corpus_cases)} read_only_corpus case(s) run "
+                f"for corpus-capable agent(s) {sorted(corpus_agents)}; "
+                "skipped for the rest (Path A)."
+            )
+            _register_corpus_preparer()
+        else:
+            print(
+                f"  [skip] {len(corpus_cases)} read_only_corpus case(s) — no "
+                "corpus-capable agent in this sweep; run them with a "
+                f"corpus-capable harness. Skipped: {sorted(corpus_cases)}"
+            )
 
     try:
         benchmark_id = benchmark_id_for(args.task_type)
@@ -800,10 +832,15 @@ async def _main_async(args: argparse.Namespace) -> int:
     for agent_id in runnable:
         print(f"Running {agent_id} ...")
         safe = safe_agent_id(agent_id)
+        # Corpus-capable harnesses also run read_only_corpus cases (Path A).
+        agent_axis = _axis_by_id(
+            case_dir,
+            include_corpus=agent_id.split("@", 1)[0] in CORPUS_CAPABLE_HARNESSES,
+        )
         payload, case_results = await _run_agent(
             agent_id,
             case_dir,
-            axis_by_id,
+            agent_axis,
             args.runs,
             args.with_rubric,
             args.timeout,
