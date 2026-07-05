@@ -87,6 +87,36 @@ def build_response(
     }
 
 
+def corpus_workspace(request: dict) -> str | None:
+    """Materialized corpus root for a read_only_corpus run, else None.
+
+    Path A (CLI corpus grounding): the corpus preparer materializes the
+    verified corpus and sets ``context.workspace_path``. A native-tools CLI
+    runs with cwd at that root instead of ATP's HTTP file_read endpoint.
+    Both markers must be present — workspace_path alone may mean any future
+    workspace-carrying run mode.
+    """
+    task = request.get("task") or {}
+    input_data = task.get("input_data") or {}
+    if input_data.get("run_mode") != "read_only_corpus":
+        return None
+    context = request.get("context") or {}
+    workspace = context.get("workspace_path")
+    return str(workspace) if workspace else None
+
+
+def normalize_citation_paths(text: str, workspace: str) -> str:
+    """Rewrite absolute corpus paths in model output to corpus-relative.
+
+    The citation_grounding grader keys on corpus-relative paths
+    (``policy-current.md``); a CLI reading files under cwd may cite the
+    absolute path instead. String-level replace keeps this format-agnostic
+    (works inside JSON strings without parsing the whole artifact).
+    """
+    prefix = workspace.rstrip("/") + "/"
+    return text.replace(prefix, "")
+
+
 def model_arg(model: str, default_provider: str) -> str:
     """A bare model id gets the tool's provider prefix; an already
     provider-qualified id (contains '/') passes through unchanged."""
