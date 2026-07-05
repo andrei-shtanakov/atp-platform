@@ -402,14 +402,14 @@ async def test_thirty_round_pd_with_reconnect_sc1(
     # ----------------------------------------------------------------
     from tests.e2e.mcp_auth import mint_tournament_agent_token
 
-    admin_token = await mint_tournament_agent_token(
+    admin_agent_token = await mint_tournament_agent_token(
         base_url, admin_jwt, agent_name="admin-bot"
     )
-    bob_token = await mint_tournament_agent_token(
+    bob_agent_token = await mint_tournament_agent_token(
         base_url, bob_jwt, agent_name="bob-bot"
     )
-    bot_a = _BotSession(sse_url, admin_token)
-    bot_b = _BotSession(sse_url, bob_token)
+    bot_a = _BotSession(sse_url, admin_agent_token)
+    bot_b = _BotSession(sse_url, bob_agent_token)
 
     await bot_a.connect()
     await bot_b.connect()
