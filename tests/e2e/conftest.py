@@ -399,6 +399,14 @@ async def e2e_mcp_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     port = sock.getsockname()[1]
     sock.close()
 
+    # Reset sse_starlette's process-global shutdown latch: a prior test's
+    # uvicorn teardown syncs into the sticky AppStatus.should_exit flag,
+    # which would kill every SSE stream on this (new) server instantly.
+    # One-server-per-process production never hits this.
+    from sse_starlette.sse import AppStatus
+
+    AppStatus.should_exit = False
+
     config = uvicorn.Config(
         app, host="127.0.0.1", port=port, log_level="warning", lifespan="on"
     )
@@ -422,6 +430,33 @@ async def e2e_mcp_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         await server_task
         raise RuntimeError(f"uvicorn did not come up on port {port}")
 
+    # The probe (and any MCP client) needs an agent-scoped tournament
+    # token — MCPAuthMiddleware rejects plain user JWTs with 403 since
+    # LABS-TSA PR-3. Seed a probe user first, then mint the token over
+    # the real HTTP API.
+    from atp.dashboard.database import get_database
+    from atp.dashboard.models import User
+    from tests.e2e.mcp_auth import mint_tournament_agent_token
+
+    db = get_database()
+    async with db.session() as session:
+        probe_user = User(
+            username="mcp-probe",
+            email="probe@e2e",
+            hashed_password="x",
+            is_admin=True,
+            is_active=True,
+        )
+        session.add(probe_user)
+        await session.commit()
+        await session.refresh(probe_user)
+
+    probe_token = await mint_tournament_agent_token(
+        f"http://127.0.0.1:{port}",
+        _make_e2e_jwt(probe_user.id, "mcp-probe"),
+        agent_name="mcp-probe-agent",
+    )
+
     # TCP-accept readiness is necessary but not sufficient: FastMCP's SSE
     # session manager mounts during the inner lifespan_context which can
     # race the first SSE GET in CI. Do a FULL authenticated SSE handshake
@@ -430,7 +465,6 @@ async def e2e_mcp_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     # until a complete endpoint frame is observed OR the deadline passes.
     import httpx as _httpx
 
-    probe_jwt = _make_e2e_jwt(0, "probe")
     mcp_deadline = loop.time() + 15.0
     mcp_ready = False
     last_err: Exception | None = None
@@ -442,7 +476,7 @@ async def e2e_mcp_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
                     f"http://127.0.0.1:{port}/mcp/sse",
                     headers={
                         "Accept": "text/event-stream",
-                        "Authorization": f"Bearer {probe_jwt}",
+                        "Authorization": f"Bearer {probe_token}",
                     },
                 ) as resp:
                     if resp.status_code != 200:
@@ -530,20 +564,20 @@ async def mcp_seeded_users(e2e_mcp_server) -> dict[str, dict]:
         await session.refresh(alice)
         await session.refresh(bob)
 
-        return {
-            "admin": {
-                "id": admin.id,
-                "username": "admin",
-                "jwt": _make_e2e_jwt(admin.id, "admin"),
-            },
-            "alice": {
-                "id": alice.id,
-                "username": "alice",
-                "jwt": _make_e2e_jwt(alice.id, "alice"),
-            },
-            "bob": {
-                "id": bob.id,
-                "username": "bob",
-                "jwt": _make_e2e_jwt(bob.id, "bob"),
-            },
+    from tests.e2e.mcp_auth import mint_tournament_agent_token
+
+    base_url, _port = e2e_mcp_server
+    users: dict[str, dict] = {}
+    for user, name in ((admin, "admin"), (alice, "alice"), (bob, "bob")):
+        user_jwt = _make_e2e_jwt(user.id, name)
+        users[name] = {
+            "id": user.id,
+            "username": name,
+            "jwt": user_jwt,
+            # Agent-scoped tournament token: the only credential /mcp
+            # accepts since LABS-TSA PR-3 (JWTs are for REST calls).
+            "agent_token": await mint_tournament_agent_token(
+                base_url, user_jwt, agent_name=f"{name}-bot"
+            ),
         }
+    return users

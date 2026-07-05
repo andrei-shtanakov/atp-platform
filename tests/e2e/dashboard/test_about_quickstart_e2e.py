@@ -229,11 +229,13 @@ async def test_about_mcp_walkthrough(tournament_uvicorn) -> None:
         assert resp.status_code in (200, 201), resp.text
         tournament_id = int(resp.json()["id"])
 
-    async def _mcp_adapter(jwt_token: str) -> MCPAdapter:
+    async def _mcp_adapter(token: str) -> MCPAdapter:
+        # Agent-scoped tournament token — /mcp rejects plain user JWTs
+        # with 403 since LABS-TSA PR-3.
         cfg = MCPAdapterConfig(
             transport="sse",
             url=sse_url,
-            headers={"Authorization": f"Bearer {jwt_token}"},
+            headers={"Authorization": f"Bearer {token}"},
             verify_ssl=False,
             startup_timeout=15.0,
             timeout_seconds=15.0,
@@ -242,8 +244,16 @@ async def test_about_mcp_walkthrough(tournament_uvicorn) -> None:
         await adapter.initialize()
         return adapter
 
-    admin_adapter = await _mcp_adapter(admin_jwt)
-    bob_adapter = await _mcp_adapter(bob_jwt)
+    from tests.e2e.mcp_auth import mint_tournament_agent_token
+
+    admin_token = await mint_tournament_agent_token(
+        base_url, admin_jwt, agent_name="about-admin-bot"
+    )
+    bob_token = await mint_tournament_agent_token(
+        base_url, bob_jwt, agent_name="about-bob-bot"
+    )
+    admin_adapter = await _mcp_adapter(admin_token)
+    bob_adapter = await _mcp_adapter(bob_token)
     try:
         # Every tool the About page promises must actually be
         # registered by the FastMCP server. If a tool is renamed
