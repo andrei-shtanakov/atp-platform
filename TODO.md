@@ -297,6 +297,20 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
     pi@gpt-5 `critical_pass_rate=1.000 malformed=0.000` (pi не завис — гейт зелёный, обе строки остаются).
     Спека+план: `docs/superpowers/{specs,plans}/2026-06-20-agent-roster-tier2*`. Следующее: включить в
     платный прогон (свежий `--out-dir` + `--dashboard-replace`) вместе с остальным ростером.
+  - [x] **Платный прогон полного ростера** (2026-06-21): 13 агентов × 15 code-review кейсов, rubric off,
+    `--to-dashboard --dashboard-replace`. **0 infra-fail** (в отличие от прошлого раза). Данные:
+    `_cowork_output/r07-pipecheck/sweep-2026-06-21/` (+ `sweep.db`), дашборд обновлён (13 @-id агентов).
+    `critical_pass_rate`: верхний ярус **слип на 0.800** — claude_code/codex_cli/mimo/pi/opencode (фронтир
+    code-review **не разделяет**, как в R-07 P2); тай-брейкер `breakpoint_axis_level` — codex/mimo/pi
+    держатся до **severe**, claude_code/opencode ломаются на moderate. Дальше: qwen2.5:7b 0.733,
+    anthropic_api 0.667, deepseek/qwen 0.600, qwen2.5:14b 0.533, qwen2.5:3b 0.267, llama3.2:3b 0.200,
+    llama3.2:1b 0.000. Здоровый `malformed`-градиент на ollama (1b 0.93 → 7b 0.00). Tier-2 (pi/opencode)
+    подтверждены на реальном прогоне (0.800, 0 malformed). **Оговорки:** cost пойман только у claude_code
+    ($1.31), остальные `unknown`; `claude_code` tokens=1336 — квирк токен-аккаунтинга шима (грейд честный).
+  - [x] **Фикс токен-аккаунтинга `claude_code`-шима** ✅ 2026-07-02 (PR #213): шим суммировал только
+    input+output, теряя `cache_creation`/`cache_read` (Claude Code кэширует контекст → tokens=1336 на
+    прогоне 06-21). Теперь суммируются все 4 класса usage + оба cache-поля проброшены в `Metrics`.
+    Валидировано ре-свипом 07-02: 575k токенов вместо 1336.
   - [ ] **ИССЛЕДОВАТЬ (перспектива): полное слияние путей оценки** — дописать `BenchmarkReporter`
     (сейчас `NotImplementedError`; маппинг `SuiteReport→report_benchmark` помечен Phase-1b), тогда
     `atp test method/cases/X -o report_benchmark` сам даёт arbiter-payload, а `run_pipe_check`
