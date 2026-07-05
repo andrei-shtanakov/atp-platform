@@ -132,14 +132,17 @@ def run(
     argv: Callable[[list[str], str, str], list[str]],
     parse_output: Callable[[str], tuple[str, int | None, int | None]],
     corpus_args: list[str] | None = None,
+    corpus_env: dict[str, str] | None = None,
 ) -> int:
     """Drive one CLI tool. ``argv(binary_tokens, model, prompt) -> list[str]``;
     ``parse_output(stdout) -> (text, input_tokens, output_tokens)``.
 
     Path A corpus mode: on a ``read_only_corpus`` run the subprocess cwd is
-    the materialized corpus root and ``corpus_args`` (the CLI's read-only
+    the materialized corpus root, ``corpus_args`` (the CLI's read-only
     confinement flags) are inserted just before the prompt — argv callbacks
-    MUST place the prompt as the final element. Citation paths in the parsed
+    MUST place the prompt as the final element — and ``corpus_env`` entries
+    override the subprocess environment (for CLIs whose confinement is
+    config-based rather than flag-based). Citation paths in the parsed
     output are rewritten to corpus-relative.
     """
     raw_in = sys.stdin.read()
@@ -162,12 +165,14 @@ def run(
             cmd = [*cmd[:-1], *corpus_args, cmd[-1]]
     except Exception as exc:  # noqa: BLE001 — contract: any error → failed
         return fail(task_id, f"{binary[0]} command build error: {exc}")
+    sub_env = {**os.environ, **corpus_env} if workspace and corpus_env else None
     try:
         proc = subprocess.run(
             cmd,
             capture_output=True,
             timeout=REQUEST_TIMEOUT_S,
             cwd=workspace or None,
+            env=sub_env,
         )
     except subprocess.TimeoutExpired as exc:
         # Partial streams are the only evidence of a hung provider request.
