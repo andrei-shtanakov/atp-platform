@@ -79,3 +79,76 @@ def test_shim_failure_path_emits_failed() -> None:
     assert resp["status"] == "failed"
     assert resp["artifacts"] == []
     assert "codex exec failed" in resp["error"]
+
+
+def _corpus_request(workspace: str) -> dict:
+    return {
+        "version": "1.0",
+        "task_id": "corpus-1",
+        "task": {
+            "description": "Extract requirements with citations.",
+            "input_data": {
+                "run_mode": "read_only_corpus",
+                "artifact_corpus": {
+                    "id": "c1",
+                    "files": ["policy-current.md", "archive/policy-2023.md"],
+                },
+            },
+        },
+        "context": {"workspace_path": workspace},
+        "constraints": {},
+    }
+
+
+def test_corpus_run_sets_cwd_to_workspace(tmp_path) -> None:
+    workspace = tmp_path / "corpus"
+    workspace.mkdir()
+    (workspace / "policy-current.md").write_text("deadline: 2026-08-01\n")
+    log_path = tmp_path / "invocation.json"
+
+    resp = _run_shim(
+        _corpus_request(str(workspace)),
+        extra_env={"ATP_FAKE_CODEX_LOG": str(log_path)},
+    )
+
+    invocation = json.loads(log_path.read_text())
+    assert invocation["cwd"] == str(workspace)
+    # The read-only sandbox (already passed on every run) is the
+    # write/exec confinement; cwd is the directory surface.
+    assert "--sandbox" in invocation["argv"]
+    sandbox_mode = invocation["argv"][invocation["argv"].index("--sandbox") + 1]
+    assert sandbox_mode == "read-only"
+    assert resp["status"] == "completed"
+
+
+def test_corpus_run_normalizes_absolute_citation_paths(tmp_path) -> None:
+    workspace = tmp_path / "corpus"
+    workspace.mkdir()
+    log_path = tmp_path / "invocation.json"
+
+    resp = _run_shim(
+        _corpus_request(str(workspace)),
+        extra_env={"ATP_FAKE_CODEX_LOG": str(log_path)},
+    )
+
+    content = resp["artifacts"][0]["content"]
+    # fake_codex cites <workspace>/policy-current.md absolutely; the shim
+    # must strip the prefix so the grader sees a corpus-relative path.
+    assert str(workspace) not in content
+    assert "policy-current.md" in content
+
+
+def test_non_corpus_run_keeps_default_cwd(tmp_path) -> None:
+    log_path = tmp_path / "invocation.json"
+    request = {
+        "version": "1.0",
+        "task_id": "t9",
+        "task": {"description": "Review the diff against the rules."},
+        "constraints": {},
+    }
+    resp = _run_shim(request, extra_env={"ATP_FAKE_CODEX_LOG": str(log_path)})
+    invocation = json.loads(log_path.read_text())
+    # No cwd override on non-corpus runs: the fake must inherit the test
+    # process's working directory (any other value = corpus branch leaked).
+    assert invocation["cwd"] == os.getcwd()
+    assert resp["status"] == "completed"

@@ -428,13 +428,15 @@ def test_axis_by_id_includes_corpus_when_requested(tmp_path: Path) -> None:
     assert _axis_by_id(tmp_path) == {"case-inline-001": "severe"}
 
 
-def test_corpus_capable_harnesses_lists_claude_code_only() -> None:
+def test_corpus_capable_harnesses_lists_wired_clis_only() -> None:
     from method.run_pipe_check import CORPUS_CAPABLE_HARNESSES
 
     assert "claude_code" in CORPUS_CAPABLE_HARNESSES
+    assert "codex_cli" in CORPUS_CAPABLE_HARNESSES
     # Not yet wired (spec §8: one CLI per slice) — must stay out until their
     # confinement flags are implemented and smoke-gated.
-    assert "codex_cli" not in CORPUS_CAPABLE_HARNESSES
+    assert "pi" not in CORPUS_CAPABLE_HARNESSES
+    assert "opencode" not in CORPUS_CAPABLE_HARNESSES
     assert "deepseek" not in CORPUS_CAPABLE_HARNESSES
 
 

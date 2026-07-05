@@ -43,6 +43,9 @@ from pathlib import Path
 
 from atp_method.envelopes import build_prompt, get_envelope
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _cli_common import corpus_workspace, normalize_citation_paths  # noqa: E402
+
 CODEX_BIN = os.environ.get("CODEX_BIN", "codex")
 CODEX_MODEL = os.environ.get("CODEX_MODEL")
 REQUEST_TIMEOUT_S = 600.0
@@ -115,6 +118,10 @@ def main() -> int:
     task_id = request.get("task_id", "")
 
     prompt = build_prompt(request, get_envelope("review"))
+    # Path A corpus mode: run inside the materialized corpus so codex's
+    # native read tools see the verified files at relative paths. The
+    # always-on `--sandbox read-only` is the write/exec confinement.
+    workspace = corpus_workspace(request)
 
     # codex writes the final assistant message to this file; we read it back.
     fd, tmp_path = tempfile.mkstemp(prefix="codex_msg_", suffix=".txt")
@@ -137,7 +144,12 @@ def main() -> int:
         argv.append(prompt)
 
         try:
-            proc = subprocess.run(argv, capture_output=True, timeout=REQUEST_TIMEOUT_S)
+            proc = subprocess.run(
+                argv,
+                capture_output=True,
+                timeout=REQUEST_TIMEOUT_S,
+                cwd=workspace or None,
+            )
         except (OSError, subprocess.SubprocessError) as exc:
             return _fail(task_id, f"codex invocation error: {exc}")
 
@@ -155,6 +167,11 @@ def main() -> int:
                 task_id,
                 f"codex exec failed (rc={proc.returncode}): {err}",
             )
+
+        if workspace:
+            # The CLI reads files under cwd and may cite absolute paths; the
+            # citation_grounding grader keys on corpus-relative ones.
+            message = normalize_citation_paths(message, workspace)
 
         in_tok, out_tok, cached_in, reasoning_out = _parse_usage(
             proc.stdout.decode(errors="replace")

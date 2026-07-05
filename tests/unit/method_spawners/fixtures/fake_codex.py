@@ -30,6 +30,12 @@ def _output_path(argv: list[str]) -> str | None:
 
 def main() -> int:
     argv = sys.argv[1:]
+    # Record the invocation (argv + cwd) so shim tests can assert corpus
+    # confinement (cwd = materialized corpus root) without a real CLI.
+    log = os.environ.get("ATP_FAKE_CODEX_LOG")
+    if log:
+        with open(log, "w", encoding="utf-8") as fh:
+            json.dump({"argv": argv, "cwd": os.getcwd()}, fh)
     if os.environ.get("FAKE_CODEX_FAIL") == "1":
         sys.stderr.write("fake codex: simulated failure\n")
         return 3
@@ -48,10 +54,20 @@ def main() -> int:
                 }
             )
         )
+    # Corpus-mode prompts carry the envelope's corpus block; emit a citation
+    # with an ABSOLUTE path (as a native-tools CLI would) so the shim's
+    # corpus-relative normalization is observable in tests.
+    prompt = " ".join(argv)
+    if "Read-only corpus" in prompt:
+        message = json.dumps(
+            {"citations": [{"path": os.path.join(os.getcwd(), "policy-current.md")}]}
+        )
+    else:
+        message = _FINDINGS
     out_path = _output_path(argv)
     if out_path is not None:
         with open(out_path, "w", encoding="utf-8") as fh:
-            fh.write(_FINDINGS)
+            fh.write(message)
     return 0
 
 
