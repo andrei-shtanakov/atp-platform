@@ -65,8 +65,10 @@ def build_prompt(request: dict[str, Any], envelope: str) -> str:
         if paths:
             path_list = "\n".join(f"- {path}" for path in paths)
             body += (
-                "\n\nRead-only corpus available through file_read. "
-                f"Corpus id: {corpus_id}. Available paths:\n{path_list}"
+                "\n\nRead-only corpus files are available to your "
+                "file-reading tool. Cite source paths relative to the "
+                f"corpus root. Corpus id: {corpus_id}. Available paths:\n"
+                f"{path_list}"
             )
     contract = input_data.get("output_contract") or {}
     instruction = contract.get("format_instruction")

@@ -172,6 +172,12 @@ def test_build_prompt_includes_corpus_id_and_paths_without_file_contents() -> No
     assert "policy-current.md" in prompt
     assert "archive/policy-2023.md" in prompt
     assert "within 30 days of onboarding" not in prompt
+    # Path A: the corpus block is tool-agnostic — native-fs CLIs have no
+    # "file_read" tool, so the shared envelope must not name one. It must
+    # also pin citations to corpus-relative paths (the grader keys on them).
+    assert "file_read" not in prompt
+    assert "Read-only corpus files are available to your file-reading tool" in prompt
+    assert "Cite source paths relative to the corpus root" in prompt
 
 
 def test_build_prompt_lists_fixture_corpus_paths_without_inlining_fixture_text() -> (
