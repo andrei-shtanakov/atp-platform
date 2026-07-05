@@ -25,6 +25,7 @@ def _any_valid_agent_id() -> str:
     # in the wrong place. Pick any id from the catalog-projected registry.
     from method.run_pipe_check import AGENTS
 
+    assert AGENTS, "catalog-projected AGENTS registry is empty"
     return next(iter(AGENTS))
 
 
