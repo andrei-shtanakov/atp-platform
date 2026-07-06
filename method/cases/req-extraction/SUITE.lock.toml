@@ -4,7 +4,7 @@
 # run_pipe_check verifies the live case dir against this lock and FAILS
 # LOUD on drift; re-lock intentionally with --write-suite-lock.
 schema_version = 1
-benchmark_id   = "code-review"
+benchmark_id   = "req-extraction"
 case_count     = 17
 suite_hash     = "sha256:b2b8a055ba13d4e17c38b7771c22177bc3065958f462baf3cc20ed5a9a36ac6a"
 
