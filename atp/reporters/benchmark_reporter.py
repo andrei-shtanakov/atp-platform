@@ -66,13 +66,14 @@ def _case_runs(c: dict[str, Any]) -> tuple[int, int]:
 
     runs=N grades a case over N runs (``runs_graded``) and counts the passes
     (``run_pass_count``) — the reliability signal that separates a solid
-    1.000 from a "1.000 with a 2/3 flake". A legacy case dict (runs=1 or a
-    pre-#232 producer) carries neither, so it degrades to a binary 1/1 or
-    0/1 from ``critical_pass``.
+    1.000 from a "1.000 with a 2/3 flake". Key-presence (not truthiness) picks
+    the branch: an all-infra case legitimately carries ``runs_graded == 0``
+    and must be preserved as ``(0, 0)``, not conflated with a legacy dict that
+    has no key at all (which degrades to a binary 1/1 or 0/1 from
+    ``critical_pass``).
     """
-    graded = c.get("runs_graded")
-    if graded:
-        return int(c.get("run_pass_count", 0)), int(graded)
+    if "runs_graded" in c:
+        return int(c.get("run_pass_count", 0)), int(c["runs_graded"])
     return (1 if c.get("critical_pass") else 0), 1
 
 
@@ -111,7 +112,12 @@ def build_report_benchmark_payload(
     # allows extra numbers): mean per-case pass FRACTION across runs. Unlike the
     # binary critical_pass_rate, this separates a rock-solid 1.000 from a "1.000
     # with a flaky 2/3 case" — the real discriminator on ceiling-effect verticals.
-    run_fracs = [(rp / rg) for rp, rg in (_case_runs(c) for c in case_results) if rg]
+    # An all-infra case (runs_graded == 0) counts as a 0.0 fraction, matching how
+    # critical_pass_rate treats it as a failure — excluding it would inflate the
+    # metric above the true per-case success rate.
+    run_fracs = [
+        (rp / rg if rg else 0.0) for rp, rg in (_case_runs(c) for c in case_results)
+    ]
     mean_run_pass_rate = round(sum(run_fracs) / len(run_fracs), 6) if run_fracs else 0.0
     per_task = [
         {
