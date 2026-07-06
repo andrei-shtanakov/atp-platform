@@ -620,7 +620,10 @@ async def _grade_case(
     base["malformed"] = malformed_count * 2 > graded
     base["recall"] = _mean_or_none(recalls)
     base["precision"] = _mean_or_none(precisions)
-    base["fp_count"] = _mean_or_none(fps)
+    # recall/precision are ratios (float); fp_count is a COUNT and lands in an
+    # Integer dashboard column (test_executions.fp_count) — round the mean.
+    fp_mean = _mean_or_none(fps)
+    base["fp_count"] = round(fp_mean) if fp_mean is not None else None
     if rubric_scores:
         base["rubric_score"] = sum(rubric_scores) / len(rubric_scores)
     return base
