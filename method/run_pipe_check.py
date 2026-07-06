@@ -267,8 +267,14 @@ def _suite_task_type(case_dir: Path) -> str | None:
             doc = yaml.safe_load(f.read_text(encoding="utf-8"))
         except (yaml.YAMLError, UnicodeDecodeError) as exc:
             raise ValueError(f"case {f} is not valid YAML: {exc}") from exc
-        if isinstance(doc, dict) and doc.get("task_type"):
-            types.add(str(doc["task_type"]))
+        if not isinstance(doc, dict) or "task_type" not in doc:
+            continue
+        # Key present: surface an empty/null task_type as a misconfiguration
+        # rather than silently skipping it (a falsy `.get` would hide it).
+        tt = doc["task_type"]
+        if tt is None or str(tt).strip() == "":
+            raise ValueError(f"case {f} has an empty task_type")
+        types.add(str(tt))
     if not types:
         return None
     if len(types) > 1:

@@ -117,6 +117,16 @@ def test_suite_task_type_malformed_yaml_raises_valueerror(tmp_path: Path) -> Non
         _suite_task_type(tmp_path)
 
 
+def test_suite_task_type_empty_value_raises(tmp_path: Path) -> None:
+    # An empty task_type is a misconfiguration, not "no task_type" — a falsy
+    # .get would have hidden it; the key-presence check surfaces it.
+    from method.run_pipe_check import _suite_task_type
+
+    (tmp_path / "a.yaml").write_text('id: a\ntask_type: ""\n')
+    with pytest.raises(ValueError, match="empty task_type"):
+        _suite_task_type(tmp_path)
+
+
 def _completed_test_result() -> object:
     """Build a minimal completed TestResult for a real code-review case."""
     from datetime import UTC, datetime
