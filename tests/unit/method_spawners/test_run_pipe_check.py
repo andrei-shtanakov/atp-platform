@@ -297,6 +297,51 @@ def test_grade_case_sums_per_class_usage_and_sets_source() -> None:
     assert base["usage_source"] == "measured"
 
 
+def test_grade_case_usage_source_measured_for_reported_zero_usage() -> None:
+    # A provider that reports usage fields with a legitimate 0 (empty output,
+    # cached-only accounting) is "measured" — presence, not truthiness. A
+    # `if tokens or ...` check would misclassify it as None.
+    from datetime import UTC, datetime
+
+    import anyio
+    from atp_method.loader import load_case
+
+    from atp.core.results import RunResult, TestResult
+    from atp.protocol import ArtifactFile, ATPResponse, Metrics, ResponseStatus
+    from method.run_pipe_check import _grade_case
+
+    case_path = (
+        Path(__file__).resolve().parents[3]
+        / "method"
+        / "cases"
+        / "code-review"
+        / "case-code-review-sqli-moderate-001.yaml"
+    )
+    test_def = load_case(case_path)
+    response = ATPResponse(
+        task_id=test_def.id,
+        status=ResponseStatus.COMPLETED,
+        artifacts=[ArtifactFile(path="review.md", content="[]")],
+        metrics=Metrics(total_tokens=0, input_tokens=0, output_tokens=0),
+    )
+    tr = TestResult(
+        test=test_def,
+        runs=[
+            RunResult(
+                test_id=test_def.id,
+                run_number=1,
+                response=response,
+                events=[],
+                end_time=datetime.now(tz=UTC),
+            )
+        ],
+    )
+    ev = _QueueEval([(True, False)])
+    base = anyio.run(_grade_case, ev, tr, "clean", False)
+    assert base["usage_source"] == "measured"
+    assert base["input_tokens"] == 0
+
+
 def test_grade_case_usage_source_none_when_all_infra() -> None:
     # An all-infra case produced no usage → usage_source is None, per-class 0.
     import anyio

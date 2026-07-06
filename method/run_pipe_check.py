@@ -582,17 +582,23 @@ async def _grade_case(
     duration = 0.0
     for r in runs:
         m = getattr(r.response, "metrics", None) if r.response else None
-        tt = int(getattr(m, "total_tokens", None) or 0)
-        it = int(getattr(m, "input_tokens", None) or 0)
-        ot = int(getattr(m, "output_tokens", None) or 0)
-        cc = int(getattr(m, "cache_creation_tokens", None) or 0)
-        cr = int(getattr(m, "cache_read_tokens", None) or 0)
-        tokens += tt
-        input_tok += it
-        output_tok += ot
-        cache_creation += cc
-        cache_read += cr
-        if tt or it or ot or cc or cr:
+        raw = (
+            getattr(m, "total_tokens", None),
+            getattr(m, "input_tokens", None),
+            getattr(m, "output_tokens", None),
+            getattr(m, "cache_creation_tokens", None),
+            getattr(m, "cache_read_tokens", None),
+        )
+        rt, ri, ro, rcc, rcr = raw
+        tokens += int(rt or 0)
+        input_tok += int(ri or 0)
+        output_tok += int(ro or 0)
+        cache_creation += int(rcc or 0)
+        cache_read += int(rcr or 0)
+        # "measured" = the provider REPORTED a usage field (non-None), even if
+        # its value is a legitimate 0 (empty output, cached-only). Truthiness
+        # would misclassify a real zero-usage report as "no usage".
+        if any(v is not None for v in raw):
             any_usage = True
         raw_cost = getattr(m, "cost_usd", None)
         if raw_cost is None:
