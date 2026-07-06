@@ -252,6 +252,30 @@ def _case_entries(case_dir: Path) -> list[dict[str, Any]]:
     return entries
 
 
+def _suite_task_type(case_dir: Path) -> str | None:
+    """The single ``task_type`` shared by every case in the dir, or None.
+
+    Returns None when no case declares ``task_type`` (guard skipped). Raises
+    ValueError when cases disagree — a mixed suite has no single benchmark_id,
+    so a golden lock can't name one. Used to guard against a --task-type that
+    contradicts the cases (which would stamp the wrong benchmark_id into the
+    lock and mislabel the arbiter export).
+    """
+    types: set[str] = set()
+    for f in sorted(case_dir.glob("*.yaml")):
+        doc = yaml.safe_load(f.read_text(encoding="utf-8"))
+        if isinstance(doc, dict) and doc.get("task_type"):
+            types.add(str(doc["task_type"]))
+    if not types:
+        return None
+    if len(types) > 1:
+        raise ValueError(
+            f"suite {case_dir} mixes task_types {sorted(types)} — a golden "
+            "lock needs one benchmark_id; split the suite or align task_type"
+        )
+    return next(iter(types))
+
+
 def _suite_fingerprint(entries: list[dict[str, Any]]) -> str:
     """Order-independent hash over all per-case (id, sha256) pairs."""
     h = hashlib.sha256()
@@ -821,6 +845,25 @@ async def _main_async(args: argparse.Namespace) -> int:
         # Surface a single-line CLI error, not a traceback (matches the
         # unknown-agent path above).
         print(str(exc), file=sys.stderr)
+        return 2
+
+    # Guard: benchmark_id is derived from --task-type, but the cases carry
+    # their own task_type. A mismatch (e.g. relocking / sweeping the
+    # req-extraction dir without --task-type, defaulting to review) would
+    # stamp the wrong benchmark_id into the lock and mislabel the arbiter
+    # export — the exact defect caught on PR #231.
+    try:
+        suite_tt = _suite_task_type(case_dir)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    if suite_tt is not None and suite_tt != args.task_type:
+        print(
+            f"--task-type {args.task_type!r} disagrees with the suite: its "
+            f"cases declare task_type={suite_tt!r} in {case_dir}. Re-run with "
+            f"--task-type {suite_tt} so benchmark_id matches the cases.",
+            file=sys.stderr,
+        )
         return 2
 
     if args.write_suite_lock:

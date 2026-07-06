@@ -63,6 +63,50 @@ def test_dashboard_replace_without_to_dashboard_exits_2() -> None:
     assert "Traceback" not in err
 
 
+def test_task_type_disagreeing_with_suite_exits_2() -> None:
+    # Running the req-extraction suite without --task-type (defaults to
+    # 'review') would stamp benchmark_id=code-review into the lock and
+    # mislabel the arbiter export. Guard fails fast (exit 2).
+    proc = _run(
+        [
+            "--case-dir",
+            "method/cases/req-extraction",
+            "--agents",
+            _any_valid_agent_id(),
+            "--dry-run",
+        ]
+    )
+    assert proc.returncode == 2
+    err = proc.stderr.decode()
+    assert "disagrees with the suite" in err
+    assert "req-extraction" in err
+    assert "Traceback" not in err
+
+
+def test_suite_task_type_reads_homogeneous_cases(tmp_path: Path) -> None:
+    from method.run_pipe_check import _suite_task_type
+
+    (tmp_path / "a.yaml").write_text("id: a\ntask_type: req-extraction\n")
+    (tmp_path / "b.yaml").write_text("id: b\ntask_type: req-extraction\n")
+    assert _suite_task_type(tmp_path) == "req-extraction"
+
+
+def test_suite_task_type_none_when_absent(tmp_path: Path) -> None:
+    from method.run_pipe_check import _suite_task_type
+
+    (tmp_path / "a.yaml").write_text("id: a\n")
+    assert _suite_task_type(tmp_path) is None
+
+
+def test_suite_task_type_mixed_raises(tmp_path: Path) -> None:
+    from method.run_pipe_check import _suite_task_type
+
+    (tmp_path / "a.yaml").write_text("id: a\ntask_type: review\n")
+    (tmp_path / "b.yaml").write_text("id: b\ntask_type: req-extraction\n")
+    with pytest.raises(ValueError, match="mixes task_types"):
+        _suite_task_type(tmp_path)
+
+
 def _completed_test_result() -> object:
     """Build a minimal completed TestResult for a real code-review case."""
     from datetime import UTC, datetime
