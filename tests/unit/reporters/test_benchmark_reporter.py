@@ -31,6 +31,78 @@ def _case_result(
     }
 
 
+def test_mean_run_pass_rate_surfaces_flake_and_per_task_runs() -> None:
+    # Two cases both "pass" (majority), but one is a flaky 2/3. critical_pass_rate
+    # is 1.0 (binary); mean_run_pass_rate exposes the flake as (1.0 + 2/3)/2.
+    solid = _case_result("clean-001", "clean", True, 0.0)
+    solid["runs_graded"] = 3
+    solid["run_pass_count"] = 3
+    flaky = _case_result("severe-001", "severe", True, 0.0)
+    flaky["runs_graded"] = 3
+    flaky["run_pass_count"] = 2
+    payload = build_report_benchmark_payload(
+        run_id="r",
+        benchmark_id="req-extraction",
+        agent_id="pi@gpt-5",
+        ts="2026-07-06T10:00:00Z",
+        case_results=[solid, flaky],
+    )
+    jsonschema.validate(payload, SCHEMA)
+    assert payload["score_components"]["critical_pass_rate"] == 1.0
+    assert payload["score_components"]["mean_run_pass_rate"] == round(
+        (1.0 + 2 / 3) / 2, 6
+    )
+    by_id = {t["task_index"]: t for t in payload["per_task"]}
+    assert by_id[1]["run_pass_count"] == 2
+    assert by_id[1]["runs_graded"] == 3
+
+
+def test_mean_run_pass_rate_legacy_dict_equals_binary() -> None:
+    # A case dict without runs_graded (runs=1 / pre-#232) degrades to binary:
+    # mean_run_pass_rate == critical_pass_rate, and per_task runs are 1/1 or 0/1.
+    payload = build_report_benchmark_payload(
+        run_id="r",
+        benchmark_id="code-review",
+        agent_id="a",
+        ts="2026-06-13T10:00:00Z",
+        case_results=[
+            _case_result("a", "clean", True, 0.0),
+            _case_result("b", "moderate", False, 0.0),
+        ],
+    )
+    assert payload["score_components"]["mean_run_pass_rate"] == 0.5
+    assert payload["score_components"]["critical_pass_rate"] == 0.5
+    by_id = {t["task_index"]: t for t in payload["per_task"]}
+    assert (by_id[0]["run_pass_count"], by_id[0]["runs_graded"]) == (1, 1)
+    assert (by_id[1]["run_pass_count"], by_id[1]["runs_graded"]) == (0, 1)
+
+
+def test_mean_run_pass_rate_counts_all_infra_case_as_zero() -> None:
+    # An all-infra case emits runs_graded=0 (from _grade_case). It must be
+    # PRESERVED as (0, 0) in per_task — not degraded to legacy (0, 1) — and
+    # count as a 0.0 fraction in mean_run_pass_rate (matching how
+    # critical_pass_rate treats it as a fail), never dividing by zero.
+    good = _case_result("clean-001", "clean", True, 0.0)
+    good["runs_graded"] = 3
+    good["run_pass_count"] = 3
+    infra = _case_result("severe-001", "severe", False, 0.0)
+    infra["runs_graded"] = 0
+    infra["run_pass_count"] = 0
+    infra["error_class"] = "timeout"
+    payload = build_report_benchmark_payload(
+        run_id="r",
+        benchmark_id="req-extraction",
+        agent_id="a",
+        ts="2026-07-06T10:00:00Z",
+        case_results=[good, infra],
+    )
+    jsonschema.validate(payload, SCHEMA)
+    # (1.0 + 0.0) / 2 — the infra case drags it down, not excluded.
+    assert payload["score_components"]["mean_run_pass_rate"] == 0.5
+    by_id = {t["task_index"]: t for t in payload["per_task"]}
+    assert (by_id[1]["run_pass_count"], by_id[1]["runs_graded"]) == (0, 0)
+
+
 def test_payload_conforms_to_contract_and_aggregates() -> None:
     results = [
         _case_result("clean-001", "clean", True, 0.9),

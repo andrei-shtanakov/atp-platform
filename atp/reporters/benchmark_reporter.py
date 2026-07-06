@@ -61,6 +61,22 @@ def normalize_report_error_class(error_class: Any) -> str | None:
     return "other"
 
 
+def _case_runs(c: dict[str, Any]) -> tuple[int, int]:
+    """(run_pass_count, runs_graded) for a case, with a legacy fallback.
+
+    runs=N grades a case over N runs (``runs_graded``) and counts the passes
+    (``run_pass_count``) — the reliability signal that separates a solid
+    1.000 from a "1.000 with a 2/3 flake". Key-presence (not truthiness) picks
+    the branch: an all-infra case legitimately carries ``runs_graded == 0``
+    and must be preserved as ``(0, 0)``, not conflated with a legacy dict that
+    has no key at all (which degrades to a binary 1/1 or 0/1 from
+    ``critical_pass``).
+    """
+    if "runs_graded" in c:
+        return int(c.get("run_pass_count", 0)), int(c["runs_graded"])
+    return (1 if c.get("critical_pass") else 0), 1
+
+
 def build_report_benchmark_payload(
     *,
     run_id: str,
@@ -92,6 +108,17 @@ def build_report_benchmark_payload(
     mean_rubric = (
         round(sum(c["rubric_score"] for c in case_results) / n, 6) if n else 0.0
     )
+    # Reliability signal (additive; per_task allows extra props, score_components
+    # allows extra numbers): mean per-case pass FRACTION across runs. Unlike the
+    # binary critical_pass_rate, this separates a rock-solid 1.000 from a "1.000
+    # with a flaky 2/3 case" — the real discriminator on ceiling-effect verticals.
+    # An all-infra case (runs_graded == 0) counts as a 0.0 fraction, matching how
+    # critical_pass_rate treats it as a failure — excluding it would inflate the
+    # metric above the true per-case success rate.
+    run_fracs = [
+        (rp / rg if rg else 0.0) for rp, rg in (_case_runs(c) for c in case_results)
+    ]
+    mean_run_pass_rate = round(sum(run_fracs) / len(run_fracs), 6) if run_fracs else 0.0
     per_task = [
         {
             "task_index": i,
@@ -100,6 +127,8 @@ def build_report_benchmark_payload(
             "tokens_used": c["tokens"],
             "duration_seconds": c["duration_seconds"],
             "error_class": normalize_report_error_class(c["error_class"]),
+            "run_pass_count": _case_runs(c)[0],
+            "runs_graded": _case_runs(c)[1],
         }
         for i, c in enumerate(case_results)
     ]
@@ -121,6 +150,7 @@ def build_report_benchmark_payload(
             "critical_pass_rate": pass_rate,
             "mean_rubric": mean_rubric,
             "malformed_rate": malformed_rate,
+            "mean_run_pass_rate": mean_run_pass_rate,
             "rank_score": rank_score,
             "bp_ordinal": bp_ordinal,
         },
