@@ -107,6 +107,16 @@ def test_suite_task_type_mixed_raises(tmp_path: Path) -> None:
         _suite_task_type(tmp_path)
 
 
+def test_suite_task_type_malformed_yaml_raises_valueerror(tmp_path: Path) -> None:
+    # A malformed case must surface as a ValueError (→ one-line CLI error +
+    # exit 2 upstream), never a raw YAMLError traceback.
+    from method.run_pipe_check import _suite_task_type
+
+    (tmp_path / "bad.yaml").write_text("id: a\n  bad: : indent\n:::\n")
+    with pytest.raises(ValueError, match="not valid YAML"):
+        _suite_task_type(tmp_path)
+
+
 def _completed_test_result() -> object:
     """Build a minimal completed TestResult for a real code-review case."""
     from datetime import UTC, datetime

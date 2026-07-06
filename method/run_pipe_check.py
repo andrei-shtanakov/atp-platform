@@ -263,7 +263,10 @@ def _suite_task_type(case_dir: Path) -> str | None:
     """
     types: set[str] = set()
     for f in sorted(case_dir.glob("*.yaml")):
-        doc = yaml.safe_load(f.read_text(encoding="utf-8"))
+        try:
+            doc = yaml.safe_load(f.read_text(encoding="utf-8"))
+        except (yaml.YAMLError, UnicodeDecodeError) as exc:
+            raise ValueError(f"case {f} is not valid YAML: {exc}") from exc
         if isinstance(doc, dict) and doc.get("task_type"):
             types.add(str(doc["task_type"]))
     if not types:
@@ -858,10 +861,23 @@ async def _main_async(args: argparse.Namespace) -> int:
         print(str(exc), file=sys.stderr)
         return 2
     if suite_tt is not None and suite_tt != args.task_type:
+        # Only suggest --task-type suite_tt when the cases' task_type is itself
+        # a known taxonomy entry; a typo'd case task_type gets its own error
+        # rather than an actionable-but-wrong hint.
+        try:
+            suite_bid = benchmark_id_for(suite_tt)
+        except ValueError:
+            print(
+                f"the suite's cases declare an unknown task_type {suite_tt!r} "
+                f"in {case_dir}; fix the case YAML's task_type.",
+                file=sys.stderr,
+            )
+            return 2
         print(
             f"--task-type {args.task_type!r} disagrees with the suite: its "
-            f"cases declare task_type={suite_tt!r} in {case_dir}. Re-run with "
-            f"--task-type {suite_tt} so benchmark_id matches the cases.",
+            f"cases declare task_type={suite_tt!r} (benchmark_id={suite_bid}) "
+            f"in {case_dir}. Re-run with --task-type {suite_tt} so benchmark_id "
+            "matches the cases.",
             file=sys.stderr,
         )
         return 2
