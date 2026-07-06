@@ -5,8 +5,8 @@
 # LOUD on drift; re-lock intentionally with --write-suite-lock.
 schema_version = 1
 benchmark_id   = "req-extraction"
-case_count     = 14
-suite_hash     = "sha256:ebc07b5772cb80a792cb94a84151da529315e41f190372780b9f25e5d4ed5111"
+case_count     = 17
+suite_hash     = "sha256:b2b8a055ba13d4e17c38b7771c22177bc3065958f462baf3cc20ed5a9a36ac6a"
 
 [[cases]]
 id      = "case-req-extraction-fabricated-actor-clean-001"
@@ -57,6 +57,21 @@ sha256  = "3ac9c5f70488761574cc9d39fea61327de5cf75a0798f3c315cf20db643ce41d"
 id      = "case-req-extraction-fabricated-deadline-corpus-clean-001"
 version = 2
 sha256  = "00a0f1f4ee87b6361163244629de043e56007e2594f2e3e8566b0b2611712911"
+
+[[cases]]
+id      = "case-req-extraction-fabricated-deadline-corpus-moderate-001"
+version = 1
+sha256  = "dd8161a2e0bdae25e6cb3218551aee72d57ada4053382fc9ca1ef356ed66734c"
+
+[[cases]]
+id      = "case-req-extraction-fabricated-deadline-corpus-severe-001"
+version = 1
+sha256  = "3f9234b42b40a2fe7993078a3710292416f276d75da942d501b31abbfdeea5ba"
+
+[[cases]]
+id      = "case-req-extraction-fabricated-deadline-corpus-very-severe-001"
+version = 1
+sha256  = "5851ad0dae0abadc7752986e529a22a828e7a1fa8cf1277fe4dc7d61675170ac"
 
 [[cases]]
 id      = "case-req-extraction-fabricated-deadline-mild-001"

@@ -43,8 +43,9 @@ def test_cases_validate_pydantic_and_contract() -> None:
 
 def test_req_extraction_cases_present() -> None:
     # 3 trap families (fabricated deadline/actor/condition) across a
-    # clean..very_severe breakpoint axis, plus one read-only corpus case.
-    assert len(REQ_CASES) == 14
+    # clean..very_severe breakpoint axis, plus the read-only corpus ladder
+    # (clean/moderate/severe/very_severe — Path A severity ladder).
+    assert len(REQ_CASES) == 17
     axis_levels = {yaml.safe_load(p.read_text())["axis_level"] for p in REQ_CASES}
     assert axis_levels == {"clean", "mild", "moderate", "severe", "very_severe"}
 

@@ -1,0 +1,133 @@
+id: case-req-extraction-fabricated-deadline-corpus-severe-001
+version: 1
+family: req-extraction
+status: active
+suite_type: probe
+capability: calibration
+construction_axis: information_conditions
+axis_level: severe
+task_type: req-extraction
+run_mode: read_only_corpus
+tags: [regulatory, json_output, calibration_probe, corpus_grounding]
+instruction: >
+  Read the available corpus files. Extract atomic current-policy requirements
+  into JSON, in document order. For each requirement, include obligation,
+  actor, condition, deadline, and citations for fields supported by source
+  lines. Use only current source documents; do not cite obsolete archive
+  documents. When the current policy states no deadline for a requirement,
+  the deadline must be null.
+artifact_corpus:
+  id: fabricated-deadline-severe-corpus
+  root: assets/fabricated-deadline-severe-corpus-001
+  include: ["**/*.md"]
+  exclude: []
+  digest:
+    algorithm: sha256
+    normalization: lf
+    manifest_path: manifest.sha256
+  metadata_path: corpus.meta.yaml
+environment:
+  tools: [file_read]
+  side_effects: none
+constraints:
+  - tag values must be in English
+  - extract requirements in document order
+  - read the corpus files rather than relying on unstated source text
+  - do not infer fields absent from the source
+expected_failure_mode: >
+  Agent assigns the obsolete archived 45-day incident-response-plan deadline
+  (or cites the archive for it) although the current policy sets no deadline
+  for maintaining the plan.
+distractor: >
+  The archive requires the incident response plan "within 45 days of
+  onboarding" — the wording closely mirrors the current clause, differing only
+  in the deadline. The current policy and the addendum both make clear no
+  such deadline exists today.
+output_contract:
+  artifact_name: answer
+  schema:
+    type: object
+    required: [requirements]
+    properties:
+      requirements:
+        type: array
+        items:
+          type: object
+          required: [obligation, actor, deadline, citations]
+          properties:
+            obligation: {type: string}
+            actor: {type: string}
+            condition: {type: [string, "null"]}
+            deadline: {type: [string, "null"]}
+            citations:
+              type: object
+              required: [deadline]
+              properties:
+                deadline:
+                  type: object
+                  required: [path, page, line_start, line_end, field]
+                  properties:
+                    path: {type: string}
+                    page: {type: ["null"]}
+                    line_start: {type: integer}
+                    line_end: {type: integer}
+                    field: {const: deadline}
+                    quote: {type: string}
+  format_instruction: >
+    Return ONLY a JSON object {"requirements":[...]} where each item has
+    obligation, actor, deadline, and citations. The citations field MUST be an
+    object keyed by cited output field. For the deadline field, use
+    citations.deadline as a single citation object with path, page, line_start,
+    line_end, field, and optional quote. Use page null for text files. Do not
+    return citations itself as the citation object.
+grader:
+  type: programmatic
+  checker: citation_grounding
+  config:
+    artifact_name: answer
+    corpus_id: fabricated-deadline-severe-corpus
+    expected:
+      - output_path: "$.requirements[0].citations.deadline"
+        source_path: policy-current.md
+        page: null
+        line_start: 13
+        line_end: 13
+        status: current
+    forbidden:
+      - source_path: archive/policy-2023.md
+        status: obsolete
+  critical_check: >
+    The onboarding deadline citation is grounded in the current policy corpus
+    and no citation anywhere in the output references the obsolete archive
+    (which is the only source of an incident-response-plan deadline).
+  rubric:
+    - criterion: current requirements are extracted as separate atomic units
+      weight: 0.5
+    - criterion: citations use corpus-relative source paths and line ranges
+      weight: 0.5
+  scoring: >
+    Fail if the critical citation_grounding check fails. Otherwise score =
+    weighted rubric sum.
+behavior_assertions:
+  - type: behavior
+    critical: true
+    config:
+      expected_tool_calls:
+        - tool: file_read
+          status: success
+          input_matches:
+            - path: $.path
+              equals: policy-current.md
+      forbidden_tool_calls:
+        - tool: file_read
+          input_matches:
+            - path: $.path
+              equals: archive/policy-2023.md
+        - tool: file_read
+          input_matches:
+            - path: $.path
+              equals: archive\policy-2023.md
+provenance:
+  author: case-generator
+  created: "2026-07-06"
+  source: hand-authored synthetic corpus fixture (assets existed since 2026-06-20)
