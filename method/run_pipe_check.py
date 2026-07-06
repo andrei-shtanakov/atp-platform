@@ -503,26 +503,51 @@ def _classify_shim_error(error: str | None) -> str | None:
     return None
 
 
+def _mean_or_none(values: list[float]) -> float | None:
+    """Mean of the observed values, or None when none were observed."""
+    return sum(values) / len(values) if values else None
+
+
 async def _grade_case(
     evaluator: AgentEvalCaseEvaluator,
     test_result: Any,
     axis_level: str,
     with_rubric: bool,
 ) -> dict[str, Any]:
-    """Evaluate one case's run into a reporter case_result dict."""
-    test_def = test_result.test
-    run = test_result.runs[0] if test_result.runs else None
-    response = run.response if run else None
+    """Evaluate a case ACROSS ALL its runs into a reporter case_result dict.
 
-    metrics = getattr(response, "metrics", None)
-    tokens = int(getattr(metrics, "total_tokens", None) or 0)
-    # Track whether cost is actually known: the raw-API baseline reports
-    # cost_usd=null, which must NOT be flattened to 0.0 ("free" ≠ "unknown").
-    # We still feed 0.0 to the reporter (which sums), then null the aggregate in
-    # _run_agent when any case's cost is unknown.
-    raw_cost = getattr(metrics, "cost_usd", None)
-    cost_known = raw_cost is not None
-    duration = float(getattr(run, "duration_seconds", None) or 0.0)
+    ``runs=N`` executes the agent N times per case (N× the API spend), so
+    the grade must consider all N runs, not just the first — grading run[0]
+    alone made runs=3 a 3× cost with a single-draw signal. Aggregation:
+
+    - ``critical_pass``: majority vote over COMPLETED runs (more than half
+      pass). Odd N (the runs=3 default) never ties; even N needs a strict
+      majority — a 1-of-2 split is not a trustworthy routing signal.
+    - ``malformed`` / continuous ``recall``/``precision``/``fp_count``:
+      majority / mean over completed runs.
+    - ``tokens``/``cost_usd``/``duration_seconds``: SUMMED over ALL executed
+      runs (the honest N× spend, incl. runs later reaped by timeout).
+    - ``error_class``: set only when NO run produced a gradeable output
+      (all runs infra-failed); a partial infra failure still grades on the
+      completed runs and is not counted as a case-level infra error.
+    """
+    test_def = test_result.test
+    runs = list(test_result.runs or [])
+
+    # Spend is summed across every executed run — runs=N really cost N×.
+    tokens = 0
+    cost = 0.0
+    cost_known = True
+    duration = 0.0
+    for r in runs:
+        m = getattr(r.response, "metrics", None) if r.response else None
+        tokens += int(getattr(m, "total_tokens", None) or 0)
+        raw_cost = getattr(m, "cost_usd", None)
+        if raw_cost is None:
+            cost_known = False
+        else:
+            cost += float(raw_cost)
+        duration += float(getattr(r, "duration_seconds", None) or 0.0)
 
     base: dict[str, Any] = {
         "case_id": test_def.id,
@@ -534,38 +559,70 @@ async def _grade_case(
         "fp_count": None,
         "rubric_score": 0.0,
         "tokens": tokens,
-        "cost_usd": float(raw_cost) if cost_known else 0.0,
+        "cost_usd": cost if cost_known else 0.0,
         "cost_known": cost_known,
         "duration_seconds": duration,
         "error_class": None,
+        "runs_total": len(runs),
+        "runs_graded": 0,
+        "run_pass_count": 0,
     }
 
-    # Agent-level failure (timeout / shim error / no output) is NOT "malformed
-    # findings" — it's an infra error. Record it and stop. Guarding on ``run`` too
-    # narrows it to non-None for the ``run.events`` access below (response is
-    # derived from run, so response-not-None already implies run-not-None).
-    if run is None or response is None or response.status.value != "completed":
-        status = response.status.value if response is not None else "no_run"
-        # Prefer the shim's failure text (timeout/crash are actionable infra
-        # classes); fall back to the coarse status mapping.
-        shim_class = _classify_shim_error(getattr(response, "error", None))
+    completed = [
+        r
+        for r in runs
+        if r.response is not None and r.response.status.value == "completed"
+    ]
+    if not completed:
+        # No gradeable output in ANY run — a case-level infra failure.
+        first = runs[0] if runs else None
+        first_resp = first.response if first else None
+        status = first_resp.status.value if first_resp is not None else "no_run"
+        shim_class = _classify_shim_error(getattr(first_resp, "error", None))
         base["error_class"] = shim_class or normalize_report_error_class(status)
         return base
 
-    for assertion in test_def.assertions:
-        if assertion.type == METHOD_CRITICAL_CHECK:
-            res = await evaluator.evaluate(test_def, response, run.events, assertion)
-            check = res.checks[0]
-            base["critical_pass"] = bool(check.passed)
-            d = check.details or {}
-            base["malformed"] = bool(d.get("malformed", False))
-            base["recall"] = d.get("recall")
-            base["precision"] = d.get("precision")
-            base["fp_count"] = d.get("fp_count")
-        elif assertion.type == METHOD_RUBRIC and with_rubric:
-            res = await evaluator.evaluate(test_def, response, run.events, assertion)
-            base["rubric_score"] = float(res.checks[0].score)
+    pass_count = 0
+    malformed_count = 0
+    recalls: list[float] = []
+    precisions: list[float] = []
+    fps: list[float] = []
+    rubric_scores: list[float] = []
+    for r in completed:
+        for assertion in test_def.assertions:
+            if assertion.type == METHOD_CRITICAL_CHECK:
+                res = await evaluator.evaluate(
+                    test_def, r.response, r.events, assertion
+                )
+                check = res.checks[0]
+                if check.passed:
+                    pass_count += 1
+                d = check.details or {}
+                if d.get("malformed", False):
+                    malformed_count += 1
+                if d.get("recall") is not None:
+                    recalls.append(float(d["recall"]))
+                if d.get("precision") is not None:
+                    precisions.append(float(d["precision"]))
+                if d.get("fp_count") is not None:
+                    fps.append(float(d["fp_count"]))
+            elif assertion.type == METHOD_RUBRIC and with_rubric:
+                res = await evaluator.evaluate(
+                    test_def, r.response, r.events, assertion
+                )
+                rubric_scores.append(float(res.checks[0].score))
 
+    graded = len(completed)
+    base["runs_graded"] = graded
+    base["run_pass_count"] = pass_count
+    # Majority over completed runs (strict: more than half).
+    base["critical_pass"] = pass_count * 2 > graded
+    base["malformed"] = malformed_count * 2 > graded
+    base["recall"] = _mean_or_none(recalls)
+    base["precision"] = _mean_or_none(precisions)
+    base["fp_count"] = _mean_or_none(fps)
+    if rubric_scores:
+        base["rubric_score"] = sum(rubric_scores) / len(rubric_scores)
     return base
 
 

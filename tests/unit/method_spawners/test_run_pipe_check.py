@@ -95,6 +95,70 @@ def _completed_test_result() -> object:
     return TestResult(test=test_def, runs=[run])
 
 
+def _multi_run_test_result(n: int, status: str = "completed") -> object:
+    """A TestResult with ``n`` runs of the given response status.
+
+    Each run carries a Metrics with 100 tokens + $0.01 so aggregation of
+    spend across runs is assertable.
+    """
+    from datetime import UTC, datetime
+
+    from atp_method.loader import load_case
+
+    from atp.core.results import RunResult, TestResult
+    from atp.protocol import ArtifactFile, ATPResponse, Metrics, ResponseStatus
+
+    case_path = (
+        Path(__file__).resolve().parents[3]
+        / "method"
+        / "cases"
+        / "code-review"
+        / "case-code-review-sqli-moderate-001.yaml"
+    )
+    test_def = load_case(case_path)
+    runs = []
+    for i in range(n):
+        response = ATPResponse(
+            task_id=test_def.id,
+            status=ResponseStatus(status),
+            artifacts=[ArtifactFile(path="review.md", content="[]")],
+            metrics=Metrics(total_tokens=100, cost_usd=0.01),
+        )
+        runs.append(
+            RunResult(
+                test_id=test_def.id,
+                run_number=i + 1,
+                response=response,
+                events=[],
+                end_time=datetime.now(tz=UTC),
+            )
+        )
+    return TestResult(test=test_def, runs=runs)
+
+
+class _QueueEval:
+    """Stub evaluator returning a scripted (passed, malformed) per call."""
+
+    def __init__(self, verdicts: list[tuple[bool, bool]]) -> None:
+        self._verdicts = list(verdicts)
+
+    async def evaluate(self, test_def, response, events, assertion):  # type: ignore[no-untyped-def]
+        from atp.evaluators.base import EvalCheck, EvalResult
+
+        passed, malformed = self._verdicts.pop(0)
+        return EvalResult(
+            evaluator="stub",
+            checks=[
+                EvalCheck(
+                    name="critical_check",
+                    passed=passed,
+                    score=1.0 if passed else 0.0,
+                    details={"malformed": malformed},
+                )
+            ],
+        )
+
+
 def test_grade_case_surfaces_continuous_metrics() -> None:
     import anyio
 
@@ -125,6 +189,79 @@ def test_grade_case_surfaces_continuous_metrics() -> None:
     assert base["recall"] == 0.5
     assert base["precision"] == 0.75
     assert base["fp_count"] == 1
+
+
+def test_grade_case_majority_pass_across_runs() -> None:
+    # 2 of 3 runs pass → the case passes (majority vote), and spend is
+    # summed across all 3 runs (runs=3 costs 3x — the bug this fixes).
+    import anyio
+
+    from method.run_pipe_check import _grade_case
+
+    tr = _multi_run_test_result(3)
+    ev = _QueueEval([(True, False), (False, False), (True, False)])
+    base = anyio.run(_grade_case, ev, tr, "severe", False)
+    assert base["critical_pass"] is True
+    assert base["runs_graded"] == 3
+    assert base["run_pass_count"] == 2
+    assert base["tokens"] == 300
+    assert base["cost_usd"] == pytest.approx(0.03)
+
+
+def test_grade_case_minority_pass_fails() -> None:
+    # 1 of 3 runs passes → the case fails (not a trustworthy routing signal).
+    import anyio
+
+    from method.run_pipe_check import _grade_case
+
+    tr = _multi_run_test_result(3)
+    ev = _QueueEval([(True, False), (False, False), (False, False)])
+    base = anyio.run(_grade_case, ev, tr, "severe", False)
+    assert base["critical_pass"] is False
+    assert base["run_pass_count"] == 1
+
+
+def test_grade_case_majority_malformed_flags_malformed() -> None:
+    import anyio
+
+    from method.run_pipe_check import _grade_case
+
+    tr = _multi_run_test_result(3)
+    ev = _QueueEval([(False, True), (False, True), (True, False)])
+    base = anyio.run(_grade_case, ev, tr, "severe", False)
+    assert base["critical_pass"] is False
+    assert base["malformed"] is True
+
+
+def test_grade_case_partial_infra_grades_completed_runs() -> None:
+    # 1 run infra-failed (timeout), 2 completed and passed → graded on the
+    # 2 good runs; the case is NOT marked infra (some output was gradeable).
+    import anyio
+
+    from atp.protocol import ResponseStatus
+    from method.run_pipe_check import _grade_case
+
+    tr = _multi_run_test_result(3)
+    tr.runs[0].response.status = ResponseStatus("timeout")
+    ev = _QueueEval([(True, False), (True, False)])  # only completed runs graded
+    base = anyio.run(_grade_case, ev, tr, "severe", False)
+    assert base["critical_pass"] is True
+    assert base["runs_graded"] == 2
+    assert base["error_class"] is None
+    # Spend still summed across ALL executed runs (the timeout burned tokens too).
+    assert base["tokens"] == 300
+
+
+def test_grade_case_all_runs_infra_fail_sets_error_class() -> None:
+    import anyio
+
+    from method.run_pipe_check import _grade_case
+
+    tr = _multi_run_test_result(3, status="timeout")
+    base = anyio.run(_grade_case, object(), tr, "severe", False)
+    assert base["critical_pass"] is False
+    assert base["runs_graded"] == 0
+    assert base["error_class"] == "timeout"
 
 
 @pytest.mark.parametrize(
