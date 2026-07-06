@@ -77,6 +77,47 @@ def test_mean_run_pass_rate_legacy_dict_equals_binary() -> None:
     assert (by_id[1]["run_pass_count"], by_id[1]["runs_graded"]) == (0, 1)
 
 
+def test_per_task_carries_per_class_usage_and_source() -> None:
+    # 003d #1(a): per-class usage + usage_source ride additively on per_task
+    # (WireTaskResult.additionalProperties=true), so the pricing view can
+    # apply cache-split tariffs and the leaderboard can flag estimated usage.
+    case = _case_result("clean-001", "clean", True, 0.0)
+    case["input_tokens"] = 10
+    case["output_tokens"] = 20
+    case["cache_creation_tokens"] = 30
+    case["cache_read_tokens"] = 40
+    case["usage_source"] = "measured"
+    payload = build_report_benchmark_payload(
+        run_id="r",
+        benchmark_id="code-review",
+        agent_id="claude_code",
+        ts="2026-07-06T10:00:00Z",
+        case_results=[case],
+    )
+    jsonschema.validate(payload, SCHEMA)  # additive fields must stay contract-valid
+    t = payload["per_task"][0]
+    assert t["input_tokens"] == 10
+    assert t["output_tokens"] == 20
+    assert t["cache_creation_tokens"] == 30
+    assert t["cache_read_tokens"] == 40
+    assert t["usage_source"] == "measured"
+
+
+def test_per_task_per_class_defaults_none_for_legacy_dict() -> None:
+    # A legacy case dict (pre-#1(a)) carries no per-class keys → per_task
+    # surfaces None, not a crash.
+    payload = build_report_benchmark_payload(
+        run_id="r",
+        benchmark_id="code-review",
+        agent_id="a",
+        ts="2026-06-13T10:00:00Z",
+        case_results=[_case_result("a", "clean", True, 0.0)],
+    )
+    t = payload["per_task"][0]
+    assert t["input_tokens"] is None
+    assert t["usage_source"] is None
+
+
 def test_mean_run_pass_rate_counts_all_infra_case_as_zero() -> None:
     # An all-infra case emits runs_graded=0 (from _grade_case). It must be
     # PRESERVED as (0, 0) in per_task — not degraded to legacy (0, 1) — and

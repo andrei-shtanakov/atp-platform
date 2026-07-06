@@ -186,7 +186,14 @@ def _multi_run_test_result(n: int, status: str = "completed") -> object:
             task_id=test_def.id,
             status=ResponseStatus(status),
             artifacts=[ArtifactFile(path="review.md", content="[]")],
-            metrics=Metrics(total_tokens=100, cost_usd=0.01),
+            metrics=Metrics(
+                total_tokens=100,
+                input_tokens=10,
+                output_tokens=20,
+                cache_creation_tokens=30,
+                cache_read_tokens=40,
+                cost_usd=0.01,
+            ),
         )
         runs.append(
             RunResult(
@@ -270,6 +277,85 @@ def test_grade_case_majority_pass_across_runs() -> None:
     assert base["run_pass_count"] == 2
     assert base["tokens"] == 300
     assert base["cost_usd"] == pytest.approx(0.03)
+
+
+def test_grade_case_sums_per_class_usage_and_sets_source() -> None:
+    # 003d #1(a): per-class usage (input/output/cache_creation/cache_read) is
+    # summed across runs alongside total_tokens; usage_source="measured" when
+    # the provider returned usage. Each run: 10/20/30/40 → 3 runs → 30/60/90/120.
+    import anyio
+
+    from method.run_pipe_check import _grade_case
+
+    tr = _multi_run_test_result(3)
+    ev = _QueueEval([(True, False), (True, False), (True, False)])
+    base = anyio.run(_grade_case, ev, tr, "clean", False)
+    assert base["input_tokens"] == 30
+    assert base["output_tokens"] == 60
+    assert base["cache_creation_tokens"] == 90
+    assert base["cache_read_tokens"] == 120
+    assert base["usage_source"] == "measured"
+
+
+def test_grade_case_usage_source_measured_for_reported_zero_usage() -> None:
+    # A provider that reports usage fields with a legitimate 0 (empty output,
+    # cached-only accounting) is "measured" — presence, not truthiness. A
+    # `if tokens or ...` check would misclassify it as None.
+    from datetime import UTC, datetime
+
+    import anyio
+    from atp_method.loader import load_case
+
+    from atp.core.results import RunResult, TestResult
+    from atp.protocol import ArtifactFile, ATPResponse, Metrics, ResponseStatus
+    from method.run_pipe_check import _grade_case
+
+    case_path = (
+        Path(__file__).resolve().parents[3]
+        / "method"
+        / "cases"
+        / "code-review"
+        / "case-code-review-sqli-moderate-001.yaml"
+    )
+    test_def = load_case(case_path)
+    response = ATPResponse(
+        task_id=test_def.id,
+        status=ResponseStatus.COMPLETED,
+        artifacts=[ArtifactFile(path="review.md", content="[]")],
+        metrics=Metrics(total_tokens=0, input_tokens=0, output_tokens=0),
+    )
+    tr = TestResult(
+        test=test_def,
+        runs=[
+            RunResult(
+                test_id=test_def.id,
+                run_number=1,
+                response=response,
+                events=[],
+                end_time=datetime.now(tz=UTC),
+            )
+        ],
+    )
+    ev = _QueueEval([(True, False)])
+    base = anyio.run(_grade_case, ev, tr, "clean", False)
+    assert base["usage_source"] == "measured"
+    assert base["input_tokens"] == 0
+
+
+def test_grade_case_usage_source_none_when_all_infra() -> None:
+    # An all-infra case produced no usage → usage_source is None, per-class 0.
+    import anyio
+
+    from method.run_pipe_check import _grade_case
+
+    tr = _multi_run_test_result(3, status="timeout")
+    # A timeout still burned tokens (metrics present), but no completed run —
+    # usage_source reflects that measured usage was captured for the attempts.
+    for r in tr.runs:
+        r.response.metrics = None
+    base = anyio.run(_grade_case, object(), tr, "severe", False)
+    assert base["usage_source"] is None
+    assert base["input_tokens"] == 0
 
 
 def test_grade_case_minority_pass_fails() -> None:

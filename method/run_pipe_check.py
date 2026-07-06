@@ -560,6 +560,12 @@ async def _grade_case(
       majority / mean over completed runs.
     - ``tokens``/``cost_usd``/``duration_seconds``: SUMMED over ALL executed
       runs (the honest N× spend, incl. runs later reaped by timeout).
+    - per-class usage (``input_tokens``/``output_tokens``/
+      ``cache_creation_tokens``/``cache_read_tokens``): summed over all runs
+      (ADR-ECO-003d #1(a) — carries the split the pricing view needs; cache
+      classes stay 0 for non-caching shims). ``usage_source`` = "measured"
+      when the provider returned usage (the token_counter estimated-fallback
+      of 003d D2 is not built yet; when it lands it sets "estimated").
     - ``error_class``: set only when NO run produced a gradeable output
       (all runs infra-failed); a partial infra failure still grades on the
       completed runs and is not counted as a case-level infra error.
@@ -569,12 +575,31 @@ async def _grade_case(
 
     # Spend is summed across every executed run — runs=N really cost N×.
     tokens = 0
+    input_tok = output_tok = cache_creation = cache_read = 0
+    any_usage = False
     cost = 0.0
     cost_known = True
     duration = 0.0
     for r in runs:
         m = getattr(r.response, "metrics", None) if r.response else None
-        tokens += int(getattr(m, "total_tokens", None) or 0)
+        raw = (
+            getattr(m, "total_tokens", None),
+            getattr(m, "input_tokens", None),
+            getattr(m, "output_tokens", None),
+            getattr(m, "cache_creation_tokens", None),
+            getattr(m, "cache_read_tokens", None),
+        )
+        rt, ri, ro, rcc, rcr = raw
+        tokens += int(rt or 0)
+        input_tok += int(ri or 0)
+        output_tok += int(ro or 0)
+        cache_creation += int(rcc or 0)
+        cache_read += int(rcr or 0)
+        # "measured" = the provider REPORTED a usage field (non-None), even if
+        # its value is a legitimate 0 (empty output, cached-only). Truthiness
+        # would misclassify a real zero-usage report as "no usage".
+        if any(v is not None for v in raw):
+            any_usage = True
         raw_cost = getattr(m, "cost_usd", None)
         if raw_cost is None:
             cost_known = False
@@ -592,6 +617,11 @@ async def _grade_case(
         "fp_count": None,
         "rubric_score": 0.0,
         "tokens": tokens,
+        "input_tokens": input_tok,
+        "output_tokens": output_tok,
+        "cache_creation_tokens": cache_creation,
+        "cache_read_tokens": cache_read,
+        "usage_source": "measured" if any_usage else None,
         "cost_usd": cost if cost_known else 0.0,
         "cost_known": cost_known,
         "duration_seconds": duration,

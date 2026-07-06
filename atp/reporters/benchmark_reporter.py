@@ -129,6 +129,15 @@ def build_report_benchmark_payload(
             "error_class": normalize_report_error_class(c["error_class"]),
             "run_pass_count": _case_runs(c)[0],
             "runs_graded": _case_runs(c)[1],
+            # Per-class usage + provenance (ADR-ECO-003d #1(a); additive —
+            # WireTaskResult.additionalProperties=true). Lets the (later,
+            # gated) pricing view apply cache-split tariffs and the leaderboard
+            # flag estimated usage. None on legacy dicts without the keys.
+            "input_tokens": c.get("input_tokens"),
+            "output_tokens": c.get("output_tokens"),
+            "cache_creation_tokens": c.get("cache_creation_tokens"),
+            "cache_read_tokens": c.get("cache_read_tokens"),
+            "usage_source": c.get("usage_source"),
         }
         for i, c in enumerate(case_results)
     ]
