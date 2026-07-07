@@ -1,0 +1,38 @@
+{
+  "payload_version": "report_benchmark-v1",
+  "run_id": "run-fixture-ollama-0001",
+  "benchmark_id": "code-review",
+  "agent_id": "ollama@llama3.2:3b",
+  "ts": "2026-07-01T00:00:00Z",
+  "score": 0.8,
+  "score_components": {
+    "critical_pass_rate": 0.8,
+    "mean_rubric": 0.7,
+    "malformed_rate": 0.0,
+    "mean_run_pass_rate": 0.8,
+    "rank_score": 0.75,
+    "bp_ordinal": 1
+  },
+  "total_tokens": 110,
+  "usage_contract": "cloud_pricing_usage_v1",
+  "total_cost_usd": 0.0,
+  "duration_seconds": 9.0,
+  "per_task": [
+    {
+      "task_index": 0,
+      "task_type": "review",
+      "score": 0.8,
+      "tokens_used": 110,
+      "duration_seconds": 9.0,
+      "error_class": null,
+      "run_pass_count": 1,
+      "runs_graded": 1,
+      "input_tokens": 100,
+      "output_tokens": 10,
+      "cache_creation_tokens": 0,
+      "cache_read_tokens": 0,
+      "usage_source": "measured"
+    }
+  ],
+  "per_task_total_count": 1
+}
