@@ -109,3 +109,49 @@ def test_referential_noop_when_one_plane_absent() -> None:
     # agents present, harnesses None -> validator no-op, so an "undeclared"
     # harness does NOT raise here (it would only raise if harnesses were also present).
     assert agents_only.harnesses is None
+
+
+def test_catalog_defaults_default_none() -> None:
+    from atp.model_catalog.schema import CatalogDefaults
+
+    assert CatalogDefaults().default_model is None
+
+
+def test_default_model_matching_key_ok() -> None:
+    c = ModelCatalog(
+        models={"m": {"vendor": "v", "status": "active"}},
+        defaults={"default_model": "m"},
+    )
+    assert c.defaults.default_model == "m"
+
+
+def test_default_model_matching_alias_ok() -> None:
+    c = ModelCatalog(
+        models={"m": {"vendor": "v", "status": "active", "aliases": ["m-latest"]}},
+        defaults={"default_model": "m-latest"},
+    )
+    assert c.defaults.default_model == "m-latest"
+
+
+def test_default_model_unknown_rejected() -> None:
+    with pytest.raises(ValidationError, match="not a known model"):
+        ModelCatalog(
+            models={"m": {"vendor": "v", "status": "active"}},
+            defaults={"default_model": "nope"},
+        )
+
+
+def test_default_model_none_is_noop() -> None:
+    c = ModelCatalog(models={"m": {"vendor": "v", "status": "active"}}, defaults={})
+    assert c.defaults.default_model is None
+
+
+def test_default_model_with_empty_models_is_noop() -> None:
+    # No validation when models is empty (nothing to check against).
+    c = ModelCatalog(models={}, defaults={"default_model": "anything"})
+    assert c.defaults.default_model == "anything"
+
+
+def test_no_defaults_plane_is_noop() -> None:
+    c = ModelCatalog(models={"m": {"vendor": "v", "status": "active"}})
+    assert c.defaults is None

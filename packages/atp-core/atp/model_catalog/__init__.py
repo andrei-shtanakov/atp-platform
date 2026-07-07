@@ -9,10 +9,17 @@ from atp.model_catalog.errors import (
     CatalogTOMLError,
 )
 from atp.model_catalog.loader import load_catalog, read_template, resolve_catalog_path
-from atp.model_catalog.schema import AgentEntry, HarnessEntry, ModelCatalog, ModelEntry
+from atp.model_catalog.schema import (
+    AgentEntry,
+    CatalogDefaults,
+    HarnessEntry,
+    ModelCatalog,
+    ModelEntry,
+)
 
 __all__ = [
     "AgentEntry",
+    "CatalogDefaults",
     "CatalogError",
     "CatalogNotConfiguredError",
     "CatalogSchemaError",
