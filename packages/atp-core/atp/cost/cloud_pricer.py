@@ -69,6 +69,22 @@ def _import_litellm() -> _LitellmLike:
     return cast(_LitellmLike, litellm)
 
 
+def _installed_litellm_version() -> str:
+    """Return the installed litellm distribution version, or "unknown".
+
+    Real litellm (>=1.91) exposes ``__version__`` via a lazy module-level
+    ``__getattr__`` that *raises* ``AttributeError`` instead of returning a
+    value, so ``getattr(litellm, "__version__", None)`` yields ``None`` and
+    we must fall back to package metadata instead.
+    """
+    try:
+        from importlib.metadata import version  # noqa: PLC0415
+
+        return version("litellm")
+    except Exception:
+        return "unknown"
+
+
 @dataclass(frozen=True)
 class PriceOverrides:
     """Interim open-tail prices + provenance, folded into the catalog contour later."""
@@ -155,7 +171,10 @@ class CloudPricer:
     @property
     def price_map_version(self) -> str:
         """Return a version string identifying the litellm + overrides state."""
-        return f"litellm-{self._litellm.__version__}+overrides-{self._overrides_sha}"
+        litellm_version = (
+            getattr(self._litellm, "__version__", None) or _installed_litellm_version()
+        )
+        return f"litellm-{litellm_version}+overrides-{self._overrides_sha}"
 
     def _total_prompt_tokens(self, usage: PerClassUsage) -> int:
         # litellm expects prompt_tokens inclusive of cache classes (Task 1 pin).

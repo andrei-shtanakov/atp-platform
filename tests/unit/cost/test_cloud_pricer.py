@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -94,6 +95,44 @@ def test_silent_zero_is_price_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
     assert price.usd is None
     assert price.price_unknown is True
     assert price.cost_unknown is False
+
+
+class _RaisingVersionLitellm:
+    """Stand-in for real litellm (>=1.91): __version__ access raises
+    AttributeError via a lazy module-level __getattr__, instead of returning
+    a value like the _FakeLitellm class-attribute fake above."""
+
+    def __getattr__(self, name: str) -> Any:
+        raise AttributeError(name)
+
+    def cost_per_token(
+        self,
+        *,
+        model: str,
+        prompt_tokens: int,
+        completion_tokens: int,
+        cache_read_input_tokens: int = 0,
+        cache_creation_input_tokens: int = 0,
+    ) -> tuple[float, float]:
+        return 1.0, 1.0
+
+
+def test_price_map_version_survives_raising_version_attr(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Regression: real litellm's lazy __getattr__ raises AttributeError for
+    # __version__ instead of returning a value; price_map_version must not
+    # crash and must fall back to the installed-package version (or
+    # "unknown"), not the fake-1 class-attribute value from _FakeLitellm.
+    monkeypatch.setattr(
+        "atp.cost.cloud_pricer._import_litellm", lambda: _RaisingVersionLitellm()
+    )
+    pricer = CloudPricer()
+    pmv = pricer.price_map_version
+    assert pmv.startswith("litellm-")
+    version_part = pmv.removeprefix("litellm-").split("+overrides-", 1)[0]
+    assert version_part != ""
+    assert "+overrides-" in pmv
 
 
 def test_missing_litellm_raises(monkeypatch: pytest.MonkeyPatch) -> None:
