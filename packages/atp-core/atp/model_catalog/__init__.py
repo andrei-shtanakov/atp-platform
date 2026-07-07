@@ -8,6 +8,7 @@ from atp.model_catalog.errors import (
     CatalogSchemaError,
     CatalogTOMLError,
 )
+from atp.model_catalog.loader import load_catalog, resolve_catalog_path
 from atp.model_catalog.schema import ModelCatalog, ModelEntry
 
 __all__ = [
@@ -17,4 +18,6 @@ __all__ = [
     "CatalogTOMLError",
     "ModelCatalog",
     "ModelEntry",
+    "load_catalog",
+    "resolve_catalog_path",
 ]
