@@ -86,7 +86,7 @@ def resolve_default_model(explicit: str | None = None) -> str | None:
     than crashing the evaluator. This is NOT load_catalog()'s fail-loud contract.
     """
     if explicit and explicit.strip():   # empty/whitespace env → treated as unset
-        return explicit
+        return explicit.strip()         # return trimmed, not the raw "  model  "
     try:
         catalog = load_catalog()        # D2 resolution
     except CatalogNotConfiguredError:
@@ -157,11 +157,14 @@ preserved, catalog optional and tolerant).
   `defaults.default_model` = a models key → OK; = an **alias** of a model → OK; = an unknown id
   with non-empty models → `ValidationError`; `[defaults]` present but `default_model=None` →
   no-op; `default_model` set with **empty** `models` → no-op; no `[defaults]` → no-op.
-- **Resolver** (`tests/unit/model_catalog/test_loader.py`): explicit non-empty → returned as-is
-  (catalog never consulted); explicit empty/`"  "` → treated as unset; catalog `[defaults]`
-  used when explicit is None; no catalog (`CatalogNotConfiguredError`) → None silently; a broken
-  catalog (bad TOML / bad schema, via a temp `$ATP_CATALOG`) → None **and** a warning logged
-  (`caplog`). Never touches the real `~/.config`.
+- **Resolver** (`tests/unit/model_catalog/test_loader.py`): explicit non-empty → returned
+  **stripped** (`"  m  "` → `"m"`; catalog never consulted); explicit empty/`"  "` → treated as
+  unset; catalog `[defaults]` used when explicit is None; a catalog `[defaults].default_model`
+  set to an **alias** → the resolver returns that alias string **verbatim** (it does NOT
+  canonicalize to the model key — the validator permits the alias, the resolver passes it
+  through); no catalog (`CatalogNotConfiguredError`) → None silently; a broken catalog (bad TOML
+  / bad schema, via a temp `$ATP_CATALOG`) → None **and** a warning logged (`caplog`). Never
+  touches the real `~/.config`.
 - **Evaluator chain** (`tests/unit/evaluators/…` — the existing llm_judge test location):
   - no env / no catalog / anthropic provider → `claude-sonnet-4-20250514` (line-222 fallback);
   - `ATP_DEFAULT_LLM_MODEL=x` wins over a catalog default;
