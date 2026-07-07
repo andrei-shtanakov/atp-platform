@@ -25,9 +25,12 @@
   - Шиппится `atp/model_catalog/` (schema + typed errors + D2-резолюция `$ATP_CATALOG` → XDG →
     fail-loud + inert template) и `atp models init`/`atp models list` CLI. `method/agents-catalog.toml`
     остаётся dev-SSOT, в wheel не попадает.
-  - **Осталось по 003b:** **SP-E** — перевести харнесс `run_pipe_check` на общий loader;
-    **SP-C** — унифицировать `settings.default_llm_model` эвалюатора с общим catalog + field-level
-    env override; **SP-D** — переименовать `atp/catalog/` → test-catalog (снять коллизию имён).
+  - [x] **SP-E: харнесс `run_pipe_check` переведён на общий loader** ✅ 2026-07-07
+    — спека: [`docs/superpowers/specs/2026-07-07-sp-e-harness-catalog-migration-design.md`](docs/superpowers/specs/2026-07-07-sp-e-harness-catalog-migration-design.md);
+    план: [`docs/superpowers/plans/2026-07-07-sp-e-harness-catalog-migration.md`](docs/superpowers/plans/2026-07-07-sp-e-harness-catalog-migration.md).
+  - **Осталось по 003b:** **SP-C** — унифицировать `settings.default_llm_model` эвалюатора с общим
+    catalog + field-level env override; **SP-D** — переименовать `atp/catalog/` → test-catalog
+    (снять коллизию имён).
 
 - [x] **R-06a: Поддержать Maestro CLI quick win** (effort S) ✅ 2026-04-25
   - Документ написан: [`docs/maestro-integration.md`](docs/maestro-integration.md) —

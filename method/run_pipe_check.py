@@ -52,6 +52,7 @@ from atp_method.loader import METHOD_CRITICAL_CHECK, METHOD_RUBRIC, load_suite
 from atp_method.taxonomy import benchmark_id_for
 
 from atp.adapters import create_adapter
+from atp.model_catalog import CatalogError, load_catalog
 from atp.reporters.benchmark_reporter import (
     build_report_benchmark_payload,
     normalize_report_error_class,
@@ -77,51 +78,34 @@ CATALOG_PATH = REPO_ROOT / "method" / "agents-catalog.toml"
 def _load_agent_catalog(
     path: Path = CATALOG_PATH,
 ) -> tuple[dict[str, tuple[str, str]], list[tuple[str, str]]]:
-    """Load HARNESSES + AGENT_MODELS from the vendored SSOT catalog.
+    """Load HARNESSES + AGENT_MODELS from the SSOT catalog via the shared loader.
 
     Returns ``(harnesses, agent_models)`` where ``harnesses`` maps a harness
     name to ``(shim_path, model_env)`` and ``agent_models`` is the ordered list
-    of ``(harness, model)`` pairs with ``tested = true`` — the ATP sweep set.
-    """
-    import tomllib
+    of ``(harness, model)`` pairs with ``tested = true`` — the ATP sweep set,
+    in ``[[agents]]`` declaration order.
 
+    Document shape and referential integrity (every agent references a declared
+    harness) are enforced by ``atp.model_catalog`` (SP-E). The tested filter and
+    the projection to the harness's shapes stay here (ATP sweep usage). Runtime
+    availability (shim binary, API keys) stays in ``_preflight``.
+    """
     try:
-        with path.open("rb") as fh:
-            catalog = tomllib.load(fh)
-    except FileNotFoundError as exc:
-        raise FileNotFoundError(
-            f"canonical agents-catalog missing at {path} — this file IS the "
+        cat = load_catalog(path)
+    except CatalogError as exc:
+        raise RuntimeError(
+            f"canonical agents-catalog problem at {path} — this file IS the "
             "ecosystem SSOT (ADR-ECO-003); restore it from git history. "
             "(../_cowork_output/contracts/ holds only a dev mirror.)"
         ) from exc
-    except tomllib.TOMLDecodeError as exc:
-        raise ValueError(f"agents-catalog {path} is not valid TOML: {exc}") from exc
 
-    try:
-        harnesses: dict[str, tuple[str, str]] = {
-            name: (spec["shim"], spec["model_env"])
-            for name, spec in catalog["harnesses"].items()
-        }
-        agent_models: list[tuple[str, str]] = [
-            (entry["harness"], entry["model"])
-            for entry in catalog["agents"]
-            if entry.get("tested", False)
-        ]
-    except KeyError as exc:
-        raise KeyError(
-            f"agents-catalog {path} missing required key {exc} (expected "
-            "[harnesses.*].shim/model_env and [[agents]].harness/model)"
-        ) from exc
-
-    # A tested agent whose harness is undeclared would KeyError far from the
-    # cause when AGENTS is built below — fail loudly here instead.
-    undeclared = sorted({h for h, _ in agent_models if h not in harnesses})
-    if undeclared:
-        raise ValueError(
-            f"agents-catalog {path}: tested agents reference undeclared "
-            f"harness(es) {undeclared}"
+    if cat.harnesses is None or cat.agents is None:
+        raise RuntimeError(
+            f"agents-catalog {path} has no harnesses/agents plane — not a sweep catalog"
         )
 
+    harnesses = {name: (h.shim, h.model_env) for name, h in cat.harnesses.items()}
+    agent_models = [(a.harness, a.model) for a in cat.agents if a.tested]
     return harnesses, agent_models
 
 
