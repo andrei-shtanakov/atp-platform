@@ -87,3 +87,14 @@ def test_list_no_catalog_fails_loud(monkeypatch, tmp_path: Path) -> None:
     res = CliRunner().invoke(models_command, ["list"])
     assert res.exit_code != 0
     assert "atp models init" in res.output
+
+
+def test_init_rejects_directory_path(tmp_path: Path) -> None:
+    res = CliRunner().invoke(models_command, ["init", "--path", str(tmp_path)])
+    assert res.exit_code != 0
+
+
+def test_init_rejects_relative_path() -> None:
+    res = CliRunner().invoke(models_command, ["init", "--path", "relative.toml"])
+    assert res.exit_code != 0
+    assert "absolute" in res.output

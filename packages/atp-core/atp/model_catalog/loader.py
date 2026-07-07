@@ -49,9 +49,17 @@ def resolve_catalog_path(*, must_exist: bool) -> Path:
     candidates: list[Path] = []
     explicit = _env_path("ATP_CATALOG")
     if explicit is not None:
+        if explicit.exists() and not explicit.is_file():
+            raise CatalogNotConfiguredError(
+                f"$ATP_CATALOG points at a non-file (expected a file path): {explicit}"
+            )
         candidates.append(explicit)
     xdg = _env_path("XDG_CONFIG_HOME")
     if xdg is not None:
+        if xdg.exists() and not xdg.is_dir():
+            raise CatalogNotConfiguredError(
+                f"$XDG_CONFIG_HOME is not a directory: {xdg}"
+            )
         candidates.append(xdg / _XDG_RELATIVE)
     else:
         candidates.append(Path.home() / ".config" / _XDG_RELATIVE)

@@ -84,6 +84,24 @@ def test_init_target_returned_even_when_absent(monkeypatch, tmp_path: Path) -> N
     assert resolve_catalog_path(must_exist=False) == f  # absent, but the target
 
 
+def test_atp_catalog_pointing_at_directory_fails(monkeypatch, tmp_path: Path) -> None:
+    _clear(monkeypatch)
+    monkeypatch.setenv("ATP_CATALOG", str(tmp_path))
+    with pytest.raises(CatalogNotConfiguredError, match="non-file"):
+        resolve_catalog_path(must_exist=True)
+    with pytest.raises(CatalogNotConfiguredError, match="non-file"):
+        resolve_catalog_path(must_exist=False)
+
+
+def test_xdg_config_home_pointing_at_file_fails(monkeypatch, tmp_path: Path) -> None:
+    _clear(monkeypatch)
+    f = tmp_path / "not-a-dir"
+    f.write_text("oops", encoding="utf-8")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(f))
+    with pytest.raises(CatalogNotConfiguredError, match="not a directory"):
+        resolve_catalog_path(must_exist=True)
+
+
 def test_load_explicit_path(tmp_path: Path) -> None:
     f = tmp_path / "c.toml"
     f.write_text(_VALID, encoding="utf-8")

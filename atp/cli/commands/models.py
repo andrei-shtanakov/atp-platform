@@ -24,17 +24,24 @@ def models_command() -> None:
 @click.option(
     "--path",
     "path",
-    type=click.Path(path_type=Path),
+    type=click.Path(dir_okay=False, path_type=Path),
     default=None,
     help="Target file to create (overrides $ATP_CATALOG / XDG).",
 )
 @click.option("--force", is_flag=True, help="Overwrite an existing catalog.")
 def init_cmd(path: Path | None, force: bool) -> None:
     """Write a starter catalog to the resolved user-config path."""
-    try:
-        target = path if path is not None else resolve_catalog_path(must_exist=False)
-    except CatalogError as exc:
-        raise click.ClickException(str(exc)) from exc
+    if path is not None:
+        if not path.is_absolute():
+            raise click.ClickException(
+                f"--path must be an absolute path, got {str(path)!r}"
+            )
+        target = path
+    else:
+        try:
+            target = resolve_catalog_path(must_exist=False)
+        except CatalogError as exc:
+            raise click.ClickException(str(exc)) from exc
     if target.exists() and not force:
         raise click.ClickException(
             f"{target} already exists; pass --force to overwrite"
