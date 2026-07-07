@@ -640,7 +640,14 @@ def test_load_agent_catalog_only_includes_tested(tmp_path: Path) -> None:
     from method.run_pipe_check import _load_agent_catalog
 
     catalog = (
+        '[models."foo-1"]\n'
+        'vendor = "v"\n'
+        'status = "active"\n'
+        '[models."foo-2"]\n'
+        'vendor = "v"\n'
+        'status = "active"\n'
         "[harnesses.foo]\n"
+        'kind = "cli"\n'
         'shim = "method/spawners/foo_shim.py"\n'
         'model_env = "FOO_MODEL"\n'
         "routable = false\n"
@@ -662,11 +669,17 @@ def test_load_agent_catalog_only_includes_tested(tmp_path: Path) -> None:
 
 def test_load_agent_catalog_undeclared_harness_fails_loudly(tmp_path: Path) -> None:
     # A tested agent referencing a harness with no [harnesses.*] block must raise
-    # a path-qualified error at load time, not a cryptic KeyError building AGENTS.
+    # a wrapped, SSOT-hinting error at load time, not a cryptic KeyError building
+    # AGENTS. Referential integrity is now enforced by atp.model_catalog (SP-E).
+    from atp.model_catalog import CatalogError
     from method.run_pipe_check import _load_agent_catalog
 
     catalog = (
+        '[models."m"]\n'
+        'vendor = "v"\n'
+        'status = "active"\n'
         "[harnesses.foo]\n"
+        'kind = "cli"\n'
         'shim = "method/spawners/foo_shim.py"\n'
         'model_env = "FOO_MODEL"\n'
         "[[agents]]\n"
@@ -676,8 +689,74 @@ def test_load_agent_catalog_undeclared_harness_fails_loudly(tmp_path: Path) -> N
     )
     path = tmp_path / "cat.toml"
     path.write_text(catalog)
-    with pytest.raises(ValueError, match="undeclared"):
+    with pytest.raises(RuntimeError, match="ecosystem\\s+SSOT") as ei:
         _load_agent_catalog(path)
+    assert isinstance(ei.value.__cause__, CatalogError)
+
+
+_SWEEP = (
+    '[models."m1"]\nvendor="v"\nstatus="active"\n'
+    '[models."m2"]\nvendor="v"\nstatus="active"\n'
+    '[harnesses.ha]\nkind="cli"\nshim="a.py"\nmodel_env="A_MODEL"\n'
+    '[harnesses.hb]\nkind="cli"\nshim="b.py"\nmodel_env="B_MODEL"\n'
+    '[[agents]]\nharness="ha"\nmodel="m1"\ntested=true\n'
+    '[[agents]]\nharness="hb"\nmodel="m2"\ntested=true\n'
+    '[[agents]]\nharness="ha"\nmodel="m2"\ntested=false\n'  # untested → filtered out
+)
+
+
+def _write(tmp_path: Path, text: str) -> Path:
+    f = tmp_path / "agents-catalog.toml"
+    f.write_text(text, encoding="utf-8")
+    return f
+
+
+def test_projection_builds_harnesses_and_agent_models(tmp_path: Path) -> None:
+    import method.run_pipe_check as rpc
+
+    harnesses, agent_models = rpc._load_agent_catalog(_write(tmp_path, _SWEEP))
+    assert harnesses == {"ha": ("a.py", "A_MODEL"), "hb": ("b.py", "B_MODEL")}
+    # tested filter: the tested=false pair is excluded.
+    assert agent_models == [("ha", "m1"), ("hb", "m2")]
+
+
+def test_agent_models_preserves_declaration_order(tmp_path: Path) -> None:
+    import method.run_pipe_check as rpc
+
+    reordered = (
+        '[models."m1"]\nvendor="v"\nstatus="active"\n'
+        '[models."m2"]\nvendor="v"\nstatus="active"\n'
+        '[harnesses.ha]\nkind="cli"\nshim="a.py"\nmodel_env="A"\n'
+        '[harnesses.hb]\nkind="cli"\nshim="b.py"\nmodel_env="B"\n'
+        '[[agents]]\nharness="hb"\nmodel="m2"\ntested=true\n'
+        '[[agents]]\nharness="ha"\nmodel="m1"\ntested=true\n'
+    )
+    _, agent_models = rpc._load_agent_catalog(_write(tmp_path, reordered))
+    assert agent_models == [("hb", "m2"), ("ha", "m1")]  # order == [[agents]] order
+
+
+def test_missing_planes_is_not_a_sweep_catalog(tmp_path: Path) -> None:
+    import method.run_pipe_check as rpc
+
+    models_only = '[models."m"]\nvendor="v"\nstatus="active"\n'
+    with pytest.raises(RuntimeError, match="not a sweep catalog"):
+        rpc._load_agent_catalog(_write(tmp_path, models_only))
+
+
+def test_bad_catalog_wraps_error_with_ssot_hint_and_preserves_cause(
+    tmp_path: Path,
+) -> None:
+    import method.run_pipe_check as rpc
+    from atp.model_catalog import CatalogError
+
+    bad_ref = (
+        '[models."m"]\nvendor="v"\nstatus="active"\n'
+        '[harnesses.ha]\nkind="cli"\nshim="a.py"\nmodel_env="A"\n'
+        '[[agents]]\nharness="MISSING"\nmodel="m"\n'
+    )
+    with pytest.raises(RuntimeError, match="ecosystem\\s+SSOT") as ei:
+        rpc._load_agent_catalog(_write(tmp_path, bad_ref))
+    assert isinstance(ei.value.__cause__, CatalogError)  # cause not lost
 
 
 def test_axis_by_id_skips_read_only_corpus_cases(tmp_path: Path) -> None:
