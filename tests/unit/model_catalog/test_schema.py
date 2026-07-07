@@ -91,3 +91,21 @@ def test_referential_present_empty_both_ok() -> None:
 def test_referential_present_empty_harnesses_with_agent_fails() -> None:
     with pytest.raises(ValidationError, match="undeclared harness"):
         ModelCatalog(models={}, harnesses={}, agents=[{"harness": "x", "model": "m"}])
+
+
+def test_referential_noop_when_one_plane_absent() -> None:
+    # Validator early-returns when EITHER plane is None — asymmetric cases are
+    # a no-op (the harness's sweep-shape guard, not the schema, requires both).
+    harnesses_only = ModelCatalog(
+        models={},
+        harnesses={"h": {"kind": "cli", "shim": "s", "model_env": "M"}},
+    )
+    assert harnesses_only.agents is None
+
+    agents_only = ModelCatalog(
+        models={},
+        agents=[{"harness": "anything", "model": "m"}],
+    )
+    # agents present, harnesses None -> validator no-op, so an "undeclared"
+    # harness does NOT raise here (it would only raise if harnesses were also present).
+    assert agents_only.harnesses is None
