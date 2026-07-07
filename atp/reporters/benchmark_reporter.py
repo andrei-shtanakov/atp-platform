@@ -3,6 +3,7 @@
 
 from typing import Any
 
+from atp.cost.cloud_pricer import USAGE_CONTRACT
 from atp.reporters.base import Reporter, SuiteReport
 
 _AXIS_ORDER = ["clean", "mild", "moderate", "severe", "very_severe"]
@@ -165,6 +166,10 @@ def build_report_benchmark_payload(
         },
         # breakpoint surfaced at top level (string; Request allows additionalProperties)
         "total_tokens": sum(c["tokens"] for c in case_results),
+        # Data-lineage marker (ADR-003d): declares per-class token usage conforms
+        # to the normalized contract, so the pricing view can tell conforming
+        # reports from legacy ones. Additive field — no payload_version bump.
+        "usage_contract": USAGE_CONTRACT,
         "total_cost_usd": round(sum(c["cost_usd"] for c in case_results), 6),
         "duration_seconds": round(sum(c["duration_seconds"] for c in case_results), 6),
         "per_task": per_task,

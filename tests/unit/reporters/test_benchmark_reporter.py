@@ -6,6 +6,7 @@ from pathlib import Path
 import jsonschema
 import pytest
 
+from atp.cost.cloud_pricer import USAGE_CONTRACT
 from atp.reporters.benchmark_reporter import build_report_benchmark_payload
 
 SCHEMA = json.loads(Path("method/contract/report_benchmark-v1.schema.json").read_text())
@@ -165,6 +166,21 @@ def test_payload_conforms_to_contract_and_aggregates() -> None:
     assert payload["breakpoint_axis_level"] == "moderate"
     assert payload["per_task_total_count"] == 2
     assert payload["total_tokens"] == 1840
+
+
+def test_payload_stamps_usage_contract() -> None:
+    # ADR-003d: a top-level marker declaring the per-class token usage
+    # conforms to the normalized contract, so the pricing view can tell
+    # conforming reports from legacy ones (data lineage).
+    payload = build_report_benchmark_payload(
+        run_id="run-abc",
+        benchmark_id="code-review",
+        agent_id="claude_code",
+        ts="2026-06-13T10:00:00Z",
+        case_results=[_case_result("clean-001", "clean", True, 0.9)],
+    )
+    jsonschema.validate(payload, SCHEMA)  # additive field must stay contract-valid
+    assert payload["usage_contract"] == USAGE_CONTRACT
 
 
 def test_malformed_rate_aggregated_and_contract_conformant() -> None:
