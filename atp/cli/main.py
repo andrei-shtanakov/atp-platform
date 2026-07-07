@@ -22,6 +22,7 @@ from atp.cli.commands.experiment import experiment_command
 from atp.cli.commands.game import game_command
 from atp.cli.commands.generate import generate_command
 from atp.cli.commands.init import init_command
+from atp.cli.commands.models import models_command
 from atp.cli.commands.plugins import plugins_command
 from atp.cli.commands.pull import pull_command
 from atp.cli.commands.push import push_command
@@ -2132,6 +2133,7 @@ cli.add_command(compare_command)
 cli.add_command(estimate_command)
 cli.add_command(experiment_command)
 cli.add_command(init_command)
+cli.add_command(models_command)
 cli.add_command(quickstart_command)
 cli.add_command(generate_command)
 cli.add_command(plugins_command)
