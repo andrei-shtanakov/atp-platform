@@ -8,6 +8,17 @@
 
 ### Активные кросс-проектные задачи
 
+- [x] **ADR-ECO-003d pricing-view: cloud-`$` над per-class usage** (effort M) ✅ 2026-07-07
+  - Спека: [`docs/superpowers/specs/2026-07-07-pricing-view-cost-derivation-design.md`](docs/superpowers/specs/2026-07-07-pricing-view-cost-derivation-design.md);
+    план: [`docs/superpowers/plans/2026-07-07-pricing-view.md`](docs/superpowers/plans/2026-07-07-pricing-view.md).
+  - Cache-aware LiteLLM-прайсер `packages/atp-core/atp/cost/cloud_pricer.py` (extra `[pricing]`) +
+    вью `method/price_reports.py` над сохранёнными `report_benchmark_*.json`; derived-not-stored.
+    codex-usage нормализован к `cloud_pricing_usage_v1` (cache-split, no double-count),
+    `usage_contract` штампуется в payload; estimated-fallback отложен (нужен grade-time текст).
+  - **Осталось (тебе, платно):** re-sweep routable-набора под нормализованным контрактом →
+    re-derive (бесплатно). До re-sweep вью корректно флагит старые отчёты `contract_missing`.
+  - Дальше по плану: **003b эпик** (loader + `atp models` CLI + XDG).
+
 - [x] **R-06a: Поддержать Maestro CLI quick win** (effort S) ✅ 2026-04-25
   - Документ написан: [`docs/maestro-integration.md`](docs/maestro-integration.md) —
     exit codes (0/1/2), `atp run` контракт, рекомендованные `validation_cmd` patterns,

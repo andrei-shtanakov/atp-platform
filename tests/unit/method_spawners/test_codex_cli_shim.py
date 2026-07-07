@@ -42,8 +42,10 @@ def test_shim_emits_valid_atp_response_with_review_artifact() -> None:
     assert findings[0]["rule_id"] == "sql-injection"
     assert "SELECT" in findings[0]["anchor"]
     # Token usage is parsed from codex --json events; cost stays unknown (null).
+    # input_tokens is normalized to cloud_pricing_usage_v1 (uncached billable):
+    # raw input=1100 includes cached=500, so input_tokens == 1100 - 500 == 600.
     assert resp["metrics"]["total_tokens"] == 1500
-    assert resp["metrics"]["input_tokens"] == 1100
+    assert resp["metrics"]["input_tokens"] == 600
     assert resp["metrics"]["output_tokens"] == 400
     assert resp["metrics"]["cost_usd"] is None
 
@@ -51,7 +53,7 @@ def test_shim_emits_valid_atp_response_with_review_artifact() -> None:
 def test_shim_captures_tokens_from_json_events() -> None:
     resp = _run_shim({"task_id": "t1", "task": {"description": "review"}})
     assert resp["status"] == "completed"
-    assert resp["metrics"]["input_tokens"] == 1100
+    assert resp["metrics"]["input_tokens"] == 600
     assert resp["metrics"]["output_tokens"] == 400
     assert resp["metrics"]["total_tokens"] == 1500
 
@@ -59,12 +61,20 @@ def test_shim_captures_tokens_from_json_events() -> None:
 def test_shim_surfaces_token_breakdown_without_inflating_total() -> None:
     resp = _run_shim({"task_id": "t1", "task": {"description": "review"}})
     m = resp["metrics"]
-    # Breakdowns are surfaced for transparency...
-    assert m["cached_input_tokens"] == 500
+    # Breakdowns are surfaced for transparency, normalized to
+    # cloud_pricing_usage_v1: cache_read_tokens is the cached subset split OUT
+    # of input_tokens (no longer a raw "cached_input_tokens" alongside a
+    # still-full input_tokens).
+    assert m["cache_read_tokens"] == 500
+    assert m["cache_creation_tokens"] == 0
     assert m["reasoning_output_tokens"] == 0
-    # ...but total stays input+output (cached is a subset of input;
-    # output already includes reasoning per OpenAI convention).
-    assert m["total_tokens"] == m["input_tokens"] + m["output_tokens"]
+    # ...but total stays full-input+output (cache_read is additive back on top
+    # of the now-uncached input_tokens; output already includes reasoning per
+    # OpenAI convention).
+    assert (
+        m["total_tokens"]
+        == m["input_tokens"] + m["cache_read_tokens"] + m["output_tokens"]
+    )
     assert m["total_tokens"] == 1500
 
 
