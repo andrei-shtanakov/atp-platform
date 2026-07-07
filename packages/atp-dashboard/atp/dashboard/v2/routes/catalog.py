@@ -6,8 +6,8 @@ categories, suites, tests, and submission leaderboards.
 
 import logging
 
-from atp.catalog.repository import CatalogRepository
-from atp.catalog.sync import sync_builtin_catalog
+from atp.test_catalog.repository import CatalogRepository
+from atp.test_catalog.sync import sync_builtin_catalog
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel
 

@@ -1,6 +1,6 @@
-"""Unit tests for atp.catalog.comparison."""
+"""Unit tests for atp.test_catalog.comparison."""
 
-from atp.catalog.comparison import format_comparison_table
+from atp.test_catalog.comparison import format_comparison_table
 
 
 def test_format_comparison_table_basic() -> None:

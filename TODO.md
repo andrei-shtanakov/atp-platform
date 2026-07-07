@@ -34,8 +34,14 @@
     `CatalogDefaults` + referential validator, tolerant `resolve_default_model()`
     (explicit → catalog `[defaults]` → provider fallback; missing/broken optional catalog stays
     silent), `default_llm_model` теперь `str | None = None`, `llm_judge` резолвится через него.
-  - **Осталось по 003b:** **SP-D** — переименовать `atp/catalog/` → test-catalog (снять коллизию
-    имён).
+  - [x] **SP-D: переименовать `atp/catalog/` → `atp/test_catalog/` (снять коллизию имён с
+    `atp/model_catalog/`)** ✅ 2026-07-07
+    — спека: [`docs/superpowers/specs/2026-07-07-sp-d-rename-test-catalog-design.md`](docs/superpowers/specs/2026-07-07-sp-d-rename-test-catalog-design.md);
+    план: [`docs/superpowers/plans/2026-07-07-sp-d-rename-test-catalog.md`](docs/superpowers/plans/2026-07-07-sp-d-rename-test-catalog.md).
+    Чисто механический `git mv` + anchored replace (импорты, `mock.patch` string targets,
+    docstrings, docs); `atp catalog` CLI-команда и имена классов (`CatalogRepository` и т.д.)
+    не изменились.
+  - **ADR-003b эпик завершён** (SP-A/SP-E/SP-C/SP-D все шипнуты) ✅ 2026-07-07.
 
 - [x] **R-06a: Поддержать Maestro CLI quick win** (effort S) ✅ 2026-04-25
   - Документ написан: [`docs/maestro-integration.md`](docs/maestro-integration.md) —

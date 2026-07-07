@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from atp.catalog.models import CatalogCategory, CatalogSuite, CatalogTest
 from atp.dashboard.v2.routes.catalog import (
     CategoryResponse,
     GlobalLeaderboardEntry,
@@ -12,6 +11,7 @@ from atp.dashboard.v2.routes.catalog import (
     get_suite,
     list_categories,
 )
+from atp.test_catalog.models import CatalogCategory, CatalogSuite, CatalogTest
 
 
 @pytest.fixture

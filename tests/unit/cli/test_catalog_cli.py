@@ -141,8 +141,8 @@ class TestCatalogList:
         # Use real in-memory SQLite DB to exercise the full flow
         import asyncio
 
-        from atp.catalog.sync import sync_builtin_catalog
         from atp.dashboard.database import init_database as _real_init
+        from atp.test_catalog.sync import sync_builtin_catalog
 
         async def _setup() -> None:
             from atp.dashboard.database import set_database
@@ -176,7 +176,7 @@ class TestCatalogList:
                 new=AsyncMock(return_value=mock_db),
             ),
             patch(
-                "atp.catalog.sync.sync_builtin_catalog",
+                "atp.test_catalog.sync.sync_builtin_catalog",
                 new=sync_mock,
             ),
         ):
@@ -260,7 +260,7 @@ class TestCatalogInfo:
                 new=AsyncMock(return_value=mock_db),
             ),
             patch(
-                "atp.catalog.repository.CatalogRepository.get_suite_by_path",
+                "atp.test_catalog.repository.CatalogRepository.get_suite_by_path",
                 new=AsyncMock(return_value=mock_suite),
             ),
         ):
@@ -315,7 +315,7 @@ class TestCatalogRun:
                 new=AsyncMock(return_value=mock_db),
             ),
             patch(
-                "atp.catalog.repository.CatalogRepository.get_suite_by_path",
+                "atp.test_catalog.repository.CatalogRepository.get_suite_by_path",
                 new=AsyncMock(return_value=mock_suite),
             ),
             patch(
@@ -368,7 +368,7 @@ class TestCatalogResults:
                 new=AsyncMock(return_value=mock_db),
             ),
             patch(
-                "atp.catalog.repository.CatalogRepository.get_suite_by_path",
+                "atp.test_catalog.repository.CatalogRepository.get_suite_by_path",
                 new=AsyncMock(return_value=mock_suite),
             ),
         ):
