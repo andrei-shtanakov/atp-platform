@@ -51,7 +51,7 @@ loader for now.
 ```
 packages/atp-core/atp/model_catalog/
 ├── __init__.py        exports: ModelCatalog, ModelEntry, load_catalog,
-│                      resolve_catalog_path, the typed errors, TEMPLATE_RESOURCE
+│                      resolve_catalog_path, the typed errors, read_template
 ├── schema.py          pydantic: ModelEntry (strict-on-known), ModelCatalog (passthrough planes)
 ├── errors.py          CatalogError + CatalogNotConfiguredError / CatalogTOMLError / CatalogSchemaError
 ├── loader.py          resolve_catalog_path(must_exist), load_catalog(path|None)
@@ -117,8 +117,8 @@ non-zero exit and future evaluator/harness consumers can catch programmatically:
   **without** a schema error (satisfies "empty `models` is valid" end to end).
 - Commented-out example entries with **placeholder** names/vendors (e.g. `# [models."your-model"]`),
   never real active models (ADR D1).
-- Exposed as `TEMPLATE_RESOURCE` via `importlib.resources.files("atp.model_catalog").joinpath(
-  "data/template.toml")`.
+- Exposed via `read_template() -> str`, which reads it with
+  `importlib.resources.files("atp.model_catalog").joinpath("data/template.toml")`.
 
 ### Component 5 — packaging boundary (`packages/atp-core/pyproject.toml`)
 

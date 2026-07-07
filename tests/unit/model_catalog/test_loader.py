@@ -56,6 +56,20 @@ def test_relative_atp_catalog_is_error(monkeypatch) -> None:
         resolve_catalog_path(must_exist=True)
 
 
+def test_relative_xdg_config_home_is_error(monkeypatch) -> None:
+    _clear(monkeypatch)
+    monkeypatch.setenv("XDG_CONFIG_HOME", "relative/config")
+    with pytest.raises(CatalogNotConfiguredError, match="absolute"):
+        resolve_catalog_path(must_exist=True)
+
+
+def test_empty_xdg_config_home_falls_back_to_home(monkeypatch) -> None:
+    _clear(monkeypatch)
+    monkeypatch.setenv("XDG_CONFIG_HOME", "")  # empty -> unset
+    expected = Path.home() / ".config" / "atp" / "agents-catalog.toml"
+    assert resolve_catalog_path(must_exist=False) == expected
+
+
 def test_nothing_configured_fails_loud(monkeypatch, tmp_path: Path) -> None:
     _clear(monkeypatch)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "empty"))
