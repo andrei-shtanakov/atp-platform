@@ -33,7 +33,7 @@ default_timeout: 300         # Default test timeout in seconds
 # LLM settings (API keys should use environment variables)
 # anthropic_api_key: sk-...  # Better: ATP_ANTHROPIC_API_KEY env var
 # openai_api_key: sk-...     # Better: ATP_OPENAI_API_KEY env var
-default_llm_model: claude-sonnet-4-20250514
+# default_llm_model: claude-sonnet-4-20250514   # optional; unset → model catalog [defaults], then provider fallback (SP-C)
 
 # Dashboard settings
 dashboard_host: 127.0.0.1    # Dashboard bind address
@@ -175,7 +175,7 @@ settings = get_settings(config_file=Path("custom-config.yaml"))
 |---------|------|---------|-------------|
 | `anthropic_api_key` | `SecretStr` | - | Anthropic API key |
 | `openai_api_key` | `SecretStr` | - | OpenAI API key |
-| `default_llm_model` | `str` | `claude-sonnet-4-20250514` | Default model |
+| `default_llm_model` | `str \| None` | `None` | Default model for evaluators; unset → catalog `[defaults]` then provider fallback (SP-C) |
 
 #### Dashboard Settings
 
