@@ -69,6 +69,11 @@ All settings can be overridden via environment variables with the `ATP_` prefix:
 | `sandbox_enabled` | `ATP_SANDBOX_ENABLED` | `false` |
 | `runs_per_test` | `ATP_RUNS_PER_TEST` | `1` |
 
+> **Note:** When `ATP_DEFAULT_LLM_MODEL` is unset (or set to an empty string —
+> `ATP_DEFAULT_LLM_MODEL=""` is treated the same as unset), the evaluator default
+> defers to the model catalog's `[defaults].default_model` (if a catalog is
+> configured), then falls back to a provider default (ADR-003b SP-C).
+
 Nested settings use double underscores (`__`) as delimiter:
 
 ```bash
