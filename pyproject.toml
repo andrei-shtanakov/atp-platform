@@ -102,7 +102,9 @@ llm = [
     # servers via base_url), so the openai client belongs in the llm extra too.
     "openai>=2.15.0",
 ]
-pricing = ["atp-core[pricing]"]
+pricing = [
+    "atp-core[pricing]",
+]
 all = [
     "atp-adapters[cloud]",
     "atp-dashboard>=1.0.0",
@@ -111,6 +113,7 @@ all = [
     "anthropic>=0.76.0",
     "rich>=13.0",
     "textual>=0.47.0",
+    "atp-core[pricing]",
 ]
 
 [build-system]

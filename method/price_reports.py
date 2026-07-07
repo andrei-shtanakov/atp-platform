@@ -9,6 +9,8 @@ cloud_pricing_usage_v1 stamp are flagged, never silently mixed.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import json
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -141,8 +143,15 @@ def derive_cost_view(
         One `AgentCost` per report, in input order.
     """
     overrides = _load_overrides(overrides_path)
-    pricer = CloudPricer(overrides=overrides)
-    return [_price_agent(r, pricer, overrides) for r in reports]
+    # litellm prints "Provider List: ..." noise to stdout — both when
+    # CloudPricer registers open-tail override models (mimo/glm/qwen, not in
+    # its built-in cost map) and when it prices cases for them — so both the
+    # construction and the pricing loop must run under the redirect. Swallow
+    # only that stdout chatter here, not the CLI's own table printed later in
+    # main().
+    with contextlib.redirect_stdout(io.StringIO()):
+        pricer = CloudPricer(overrides=overrides)
+        return [_price_agent(r, pricer, overrides) for r in reports]
 
 
 def _load_reports(reports_dir: Path) -> list[dict[str, Any]]:
@@ -175,9 +184,12 @@ def main(argv: list[str] | None = None) -> int:
             f"{agent.reliability['reliability_status']}"
         )
 
-    price_map_version = CloudPricer(
-        overrides=_load_overrides(overrides_path)
-    ).price_map_version
+    # Same registration noise as above (not the print loop above it, which
+    # must stay on real stdout) — redirect it too.
+    with contextlib.redirect_stdout(io.StringIO()):
+        price_map_version = CloudPricer(
+            overrides=_load_overrides(overrides_path)
+        ).price_map_version
     sidecar = reports_dir / "cost_view.json"
     sidecar.write_text(
         json.dumps(

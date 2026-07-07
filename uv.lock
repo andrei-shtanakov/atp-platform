@@ -351,7 +351,7 @@ pricing = [
 requires-dist = [
     { name = "cryptography", specifier = ">=46.0.7" },
     { name = "jsonschema", specifier = ">=4.26.0" },
-    { name = "litellm", marker = "extra == 'pricing'", specifier = ">=1.81" },
+    { name = "litellm", marker = "extra == 'pricing'", specifier = ">=1.91" },
     { name = "opentelemetry-api", specifier = ">=1.39.1" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.39.1" },
     { name = "opentelemetry-sdk", specifier = ">=1.39.1" },
@@ -545,6 +545,7 @@ dependencies = [
 all = [
     { name = "anthropic" },
     { name = "atp-adapters", extra = ["cloud"] },
+    { name = "atp-core", extra = ["pricing"] },
     { name = "atp-dashboard", extra = ["analytics", "enterprise"] },
     { name = "rich" },
     { name = "textual" },
@@ -631,6 +632,7 @@ requires-dist = [
     { name = "atp-adapters", extras = ["cloud"], marker = "extra == 'cloud'", editable = "packages/atp-adapters" },
     { name = "atp-adapters", extras = ["vertex"], marker = "extra == 'vertex'", editable = "packages/atp-adapters" },
     { name = "atp-core", editable = "packages/atp-core" },
+    { name = "atp-core", extras = ["pricing"], marker = "extra == 'all'", editable = "packages/atp-core" },
     { name = "atp-core", extras = ["pricing"], marker = "extra == 'pricing'", editable = "packages/atp-core" },
     { name = "atp-dashboard", marker = "extra == 'all'", editable = "packages/atp-dashboard" },
     { name = "atp-dashboard", marker = "extra == 'dashboard'", editable = "packages/atp-dashboard" },
