@@ -35,7 +35,9 @@ class TestATPSettings:
             assert settings.default_timeout == 300
             assert settings.anthropic_api_key is None
             assert settings.openai_api_key is None
-            assert settings.default_llm_model == "claude-sonnet-4-20250514"
+            # None by default: resolution now defers to the model catalog's
+            # [defaults], then a provider fallback in llm_judge (ADR-003b SP-C).
+            assert settings.default_llm_model is None
             assert settings.dashboard_host == "127.0.0.1"
             assert settings.dashboard_port == 8080
             assert settings.dashboard_debug is False

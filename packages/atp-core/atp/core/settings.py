@@ -359,9 +359,10 @@ class ATPSettings(BaseSettings):
         default=None,
         description="OpenAI API key for GPT models",
     )
-    default_llm_model: str = Field(
-        default="claude-sonnet-4-20250514",
-        description="Default LLM model for evaluators and agents",
+    default_llm_model: str | None = Field(
+        default=None,
+        description="Default LLM model for evaluators; None defers to the model "
+        "catalog's [defaults], then a provider fallback (ADR-003b SP-C).",
     )
 
     # Dashboard settings
