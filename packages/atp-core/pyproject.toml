@@ -36,6 +36,7 @@ packages = [
     "atp/loader",
     "atp/chaos",
     "atp/cost",
+    "atp/model_catalog",
     "atp/scoring",
     "atp/statistics",
     "atp/streaming",

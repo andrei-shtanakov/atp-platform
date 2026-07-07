@@ -19,6 +19,16 @@
     re-derive (бесплатно). До re-sweep вью корректно флагит старые отчёты `contract_missing`.
   - Дальше по плану: **003b эпик** (loader + `atp models` CLI + XDG).
 
+- [x] **ADR-003b SP-A: model-catalog loader + `atp models` CLI** (effort M) ✅ 2026-07-07
+  - Спека: [`docs/superpowers/specs/2026-07-07-model-catalog-loader-design.md`](docs/superpowers/specs/2026-07-07-model-catalog-loader-design.md);
+    план: [`docs/superpowers/plans/2026-07-07-model-catalog-loader.md`](docs/superpowers/plans/2026-07-07-model-catalog-loader.md).
+  - Шиппится `atp/model_catalog/` (schema + typed errors + D2-резолюция `$ATP_CATALOG` → XDG →
+    fail-loud + inert template) и `atp models init`/`atp models list` CLI. `method/agents-catalog.toml`
+    остаётся dev-SSOT, в wheel не попадает.
+  - **Осталось по 003b:** **SP-E** — перевести харнесс `run_pipe_check` на общий loader;
+    **SP-C** — унифицировать `settings.default_llm_model` эвалюатора с общим catalog + field-level
+    env override; **SP-D** — переименовать `atp/catalog/` → test-catalog (снять коллизию имён).
+
 - [x] **R-06a: Поддержать Maestro CLI quick win** (effort S) ✅ 2026-04-25
   - Документ написан: [`docs/maestro-integration.md`](docs/maestro-integration.md) —
     exit codes (0/1/2), `atp run` контракт, рекомендованные `validation_cmd` patterns,
