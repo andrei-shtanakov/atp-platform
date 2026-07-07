@@ -107,7 +107,7 @@ def resolve_default_model(explicit: str | None = None) -> str | None:
         catalog = load_catalog()
     except CatalogNotConfiguredError:
         return None
-    except (CatalogTOMLError, CatalogSchemaError) as exc:
+    except (CatalogTOMLError, CatalogSchemaError, OSError, UnicodeDecodeError) as exc:
         logger.warning("model catalog present but unusable, ignoring: %s", exc)
         return None
     if catalog.defaults is not None and catalog.defaults.default_model:

@@ -206,3 +206,15 @@ def test_resolve_broken_catalog_warns_and_none(monkeypatch, tmp_path, caplog) ->
     with caplog.at_level(logging.WARNING):
         assert resolve_default_model(None) is None
     assert "unusable" in caplog.text
+
+
+def test_resolve_non_utf8_catalog_warns_and_none(monkeypatch, tmp_path, caplog) -> None:
+    import logging
+
+    _clear(monkeypatch)
+    f = tmp_path / "agents-catalog.toml"
+    f.write_bytes(b"\xff\xfe not utf-8")  # UnicodeDecodeError on read_text(utf-8)
+    monkeypatch.setenv("ATP_CATALOG", str(f))
+    with caplog.at_level(logging.WARNING):
+        assert resolve_default_model(None) is None
+    assert "unusable" in caplog.text

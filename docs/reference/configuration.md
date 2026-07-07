@@ -60,7 +60,7 @@ All settings can be overridden via environment variables with the `ATP_` prefix:
 | `default_timeout` | `ATP_DEFAULT_TIMEOUT` | `300` |
 | `anthropic_api_key` | `ATP_ANTHROPIC_API_KEY` | - |
 | `openai_api_key` | `ATP_OPENAI_API_KEY` | - |
-| `default_llm_model` | `ATP_DEFAULT_LLM_MODEL` | `claude-sonnet-4-20250514` |
+| `default_llm_model` | `ATP_DEFAULT_LLM_MODEL` | `None` (→ catalog `[defaults]` / provider fallback) |
 | `dashboard_host` | `ATP_DASHBOARD_HOST` | `127.0.0.1` |
 | `dashboard_port` | `ATP_DASHBOARD_PORT` | `8080` |
 | `dashboard_debug` | `ATP_DASHBOARD_DEBUG` | `false` |
