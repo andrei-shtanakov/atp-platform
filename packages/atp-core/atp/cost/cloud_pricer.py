@@ -12,8 +12,11 @@ by tests/unit/cost/test_cloud_pricer_contract.py), so we reconstruct the total.
 
 from __future__ import annotations
 
+import hashlib
+import tomllib
 from dataclasses import dataclass
 from decimal import Decimal
+from pathlib import Path
 from typing import Any, Protocol, cast
 
 USAGE_CONTRACT = "cloud_pricing_usage_v1"
@@ -66,12 +69,75 @@ def _import_litellm() -> _LitellmLike:
     return cast(_LitellmLike, litellm)
 
 
+@dataclass(frozen=True)
+class PriceOverrides:
+    """Interim open-tail prices + provenance, folded into the catalog contour later."""
+
+    sha8: str
+    local_models: frozenset[str]
+    _models: dict[str, dict[str, Any]]  # model -> litellm register_model params
+    _cache_known: frozenset[str]  # models whose cache tariff is trustworthy
+
+    @classmethod
+    def from_toml(cls, path: Path) -> PriceOverrides:
+        """Load price overrides + provenance from a TOML file.
+
+        Args:
+            path: Path to the overrides TOML file (see `method/price_overrides.toml`).
+
+        Returns:
+            A `PriceOverrides` instance ready to register against litellm.
+
+        Raises:
+            ValueError: If a model entry is missing required provenance
+                fields (`source`, `effective_date`, `currency`, `unit`).
+        """
+        raw_bytes = path.read_bytes()
+        sha8 = hashlib.sha256(raw_bytes).hexdigest()[:8]
+        data = tomllib.loads(raw_bytes.decode("utf-8"))
+        models: dict[str, dict[str, Any]] = {}
+        cache_known: set[str] = set()
+        for name, entry in (data.get("models") or {}).items():
+            # Provenance is required — refuse silently-sourced prices.
+            for field in ("source", "effective_date", "currency", "unit"):
+                if field not in entry:
+                    raise ValueError(f"price override '{name}' missing '{field}'")
+            params: dict[str, Any] = {
+                "input_cost_per_token": entry["input_cost_per_1m"] / 1_000_000,
+                "output_cost_per_token": entry["output_cost_per_1m"] / 1_000_000,
+                "litellm_provider": entry.get("litellm_provider", "openai"),
+                "mode": "chat",
+            }
+            if entry.get("cache_pricing") == "known":
+                if "cache_read_cost_per_1m" in entry:
+                    params["cache_read_input_token_cost"] = (
+                        entry["cache_read_cost_per_1m"] / 1_000_000
+                    )
+                cache_known.add(name)
+            models[name] = params
+        local = frozenset((data.get("local") or {}).get("models", []))
+        return cls(sha8, local, models, frozenset(cache_known))
+
+    def register(self, litellm: _LitellmLike) -> None:
+        """Register override model prices against the given litellm module."""
+        if self._models:
+            litellm.register_model(self._models)  # type: ignore[attr-defined]
+
+    def cache_pricing_known(self, model: str) -> bool:
+        """Return True when the model's cache tariff is a trusted override."""
+        return model in self._cache_known
+
+    def is_local(self, model: str) -> bool:
+        """Return True when the model is in the local (non-cloud-priced) set."""
+        return model in self.local_models
+
+
 class CloudPricer:
     """Prices normalized per-class usage into cloud-$ via litellm."""
 
     def __init__(
         self,
-        overrides: PriceOverrides | None = None,  # noqa: F821 # pyrefly: ignore[unknown-name]
+        overrides: PriceOverrides | None = None,
     ) -> None:
         """Create a pricer, optionally applying price overrides.
 
@@ -141,7 +207,12 @@ class CloudPricer:
             cache_creation_input_tokens=usage.cache_creation_tokens,
         )
         total = prompt_cost + completion_cost
-        billable = usage.input_tokens + usage.output_tokens + usage.cache_read_tokens
+        billable = (
+            usage.input_tokens
+            + usage.output_tokens
+            + usage.cache_read_tokens
+            + usage.cache_creation_tokens
+        )
         if total == 0.0 and billable > 0:
             return CasePrice(
                 usd=None,
@@ -152,11 +223,20 @@ class CloudPricer:
                 pricing_scope="cloud",
                 price_map_version=pmv,
             )
+        cache_used = usage.cache_read_tokens + usage.cache_creation_tokens
+        cache_unknown = (
+            cache_used > 0
+            and self._overrides is not None
+            and (
+                not self._overrides.cache_pricing_known(model)
+                and model in getattr(self._overrides, "_models", {})
+            )
+        )
         return CasePrice(
             usd=Decimal(str(total)),
             usage_source="measured",
             price_unknown=False,
-            cache_price_unknown=False,
+            cache_price_unknown=cache_unknown,
             cost_unknown=False,
             pricing_scope="cloud",
             price_map_version=pmv,

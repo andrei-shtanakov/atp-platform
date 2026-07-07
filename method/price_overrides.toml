@@ -1,0 +1,57 @@
+# Interim open-tail model prices for the cloud-$ pricing view (ADR-ECO-003d D5).
+# NOT a source of truth — folds into the 003b catalog/discovery contour when it lands.
+# Every model entry MUST carry provenance (source/effective_date/currency/unit).
+#
+# Model keys match the agents-catalog.toml [models.*] table (SSOT for model_id);
+# these are the models absent from litellm's community price map (mimo, glm, qwen3.6).
+# cache_pricing = "unknown" for all four: no vendor doc found citing a distinct
+# cache-read tariff, so cache classes fall back to the full input tariff and the
+# case is flagged via cache_price_unknown rather than presented as exact.
+
+[models."mimo-v2.5-pro"]
+input_cost_per_1m = 1.00
+output_cost_per_1m = 3.00
+cache_pricing = "unknown"
+litellm_provider = "openai"
+source = "https://mimo.mi.com/docs/en-US/pricing"
+effective_date = "2026-05-27"
+currency = "USD"
+unit = "per_1m_tokens"
+notes = "Xiaomi MiMo API official pricing; flat $1/$3 per 1M tokens made permanent 2026-05-27. Verify against provider price page before paid runs."
+
+[models."mimo-v2.5-free"]
+input_cost_per_1m = 0.00
+output_cost_per_1m = 0.00
+cache_pricing = "unknown"
+litellm_provider = "openai"
+source = "https://mimo.mi.com/docs/en-US/price/token-plan"
+effective_date = "2026-05-27"
+currency = "USD"
+unit = "per_1m_tokens"
+notes = "Free-tier token plan variant (opencode-served, agentic Path B). A genuinely $0 price still trips the silent-zero price_unknown guard (fail-safe by design) — treat as expected, not a bug."
+
+[models."glm-5.1"]
+input_cost_per_1m = 1.40
+output_cost_per_1m = 4.40
+cache_pricing = "unknown"
+litellm_provider = "openai"
+source = "https://docs.z.ai/guides/overview/pricing"
+effective_date = "2026-07-01"
+currency = "USD"
+unit = "per_1m_tokens"
+notes = "Z.ai (Zhipu) official GLM-5.1 API pricing. Third-party resellers (e.g. StreamLake) list a lower ~$0.97/$3.04 aggregate rate; official vendor rate used here. Verify before paid runs."
+
+[models."qwen3.6-plus"]
+input_cost_per_1m = 0.325
+output_cost_per_1m = 1.95
+cache_pricing = "unknown"
+litellm_provider = "openai"
+source = "https://www.alibabacloud.com/help/en/model-studio/model-pricing"
+effective_date = "2026-07-01"
+currency = "USD"
+unit = "per_1m_tokens"
+notes = "Alibaba Cloud Model Studio (DashScope) official Qwen3.6-Plus pricing. Verify against provider price page before paid runs."
+
+[local]
+# Local-class models: reported with tokens but excluded from cloud-$ (003c D4).
+models = ["llama3.2:1b", "llama3.2:3b", "qwen2.5:3b", "qwen2.5:7b", "qwen2.5:14b"]
