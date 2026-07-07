@@ -23,6 +23,7 @@ dev = [
     "pytest-anyio>=0.0.0",
     "pytest-cov>=4.0",
 ]
+pricing = ["litellm>=1.81"]
 
 [build-system]
 requires = ["hatchling"]
