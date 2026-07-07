@@ -51,23 +51,41 @@ type-checker and linter cannot see.
    silently fail to patch → a test error or (worse) a test that no longer isolates what it
    claims.
 4. **Docstrings / module headers** referencing `atp.catalog.*` (e.g. test-file docstrings).
-5. **Docs**: `CLAUDE.md`, `README`, `docs/` mentions of `atp/catalog/` (as the test-suite
-   catalog) — clarify it is `atp/test_catalog/` and distinct from `atp/model_catalog/`.
+5. **Docs**: update ONLY **module/path references** (`atp/catalog/`) and **import references**
+   (`atp.catalog.*`) in `CLAUDE.md`, `README`, `docs/`. **Do NOT** rewrite user-facing
+   **`atp catalog` command** mentions or the word "catalog" generally — the CLI command is
+   unchanged; only the package path/import moves. (E.g. "run `atp catalog list`" stays; "the
+   `atp/catalog/` module" becomes "the `atp/test_catalog/` module".)
 
 ## Verification (this replaces feature TDD — the rename is correct iff nothing dangles and the
 suite is green)
 
-- **Zero dangling references:**
-  `grep -rn "atp\.catalog\b\|atp/catalog\b" . --include='*.py' --include='*.md' --include='*.toml'`
-  (excluding `.venv`/`.git`), filtered to drop `model_catalog` — must return **nothing** after
-  the rename.
+- **Discover ALL references repo-wide — do not trust the file list above.** The enumeration in
+  §Scope is a guide, not the source of truth; the implementer runs `rg` over the whole repo for
+  `atp\.catalog` and `atp/catalog` and updates **every** hit (imports and string targets alike),
+  because a new caller may have appeared since this spec was written.
+- **Zero dangling references (scoped to ACTIVE code/tests/docs):**
+  `rg -n 'atp\.catalog\b|atp/catalog\b' --glob '!**/.venv/**' --glob '!docs/superpowers/specs/**'
+  --glob '!docs/superpowers/plans/**'` (then drop any `model_catalog` line) must return
+  **nothing**. Historical **specs/plans are excluded** (this SP-D spec and older 003b plans
+  intentionally reference the old path as history — including "must be nothing" against them
+  would false-fail). If a *non-superpowers* doc mentions the old path as history, update it with a
+  "(renamed to `atp/test_catalog/` in SP-D)" note rather than deleting the context.
+- **Old package is truly gone (not just imports moved):** `test ! -d atp/catalog` (fail if it
+  still exists); clear stale bytecode first (`find . -path '*/atp/catalog/*' -name '*.pyc'` and
+  `__pycache__` must not resurrect the module).
 - **Import smoke:** `uv run python -c "import atp.test_catalog.repository, atp.test_catalog.sync,
-  atp.test_catalog.comparison, atp.test_catalog.models"` succeeds; `import atp.catalog` now
-  **fails** (`ModuleNotFoundError`) — proving the old name is fully gone.
+  atp.test_catalog.comparison, atp.test_catalog.models"` succeeds; `uv run python -c "import
+  atp.catalog"` now **fails** with `ModuleNotFoundError` (run after clearing pycache so a stale
+  cache can't mask a missed move).
 - **CLI smoke:** `uv run atp catalog --help` still works (command unchanged).
 - **Targeted suites green:** `tests/unit/catalog/`, `tests/unit/cli/test_catalog_cli.py`,
   `tests/unit/dashboard/v2/catalog/` — all pass (this is where the string-target breakage would
   surface).
+- **Wheel smoke (the `builtin/` data must ship under the new path):** build the root wheel
+  (`uv build --wheel -o /tmp/sp-d-wheel`) and assert its namelist contains
+  `atp/test_catalog/builtin/…` and **no** `atp/catalog/…` entry — `builtin/` is package data, so
+  a move that the wheel doesn't follow would silently drop the built-in suites.
 - **Full type/lint:** `uv run ruff check . && uv run pyrefly check` clean.
 
 ## Non-goals
