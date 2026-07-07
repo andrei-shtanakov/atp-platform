@@ -51,6 +51,26 @@ CODEX_MODEL = os.environ.get("CODEX_MODEL")
 REQUEST_TIMEOUT_S = 600.0
 
 
+def normalize_usage(
+    *, input_tokens: int | None, output_tokens: int | None, cached_input: int | None
+) -> dict[str, int | None]:
+    """Map codex OpenAI-convention usage onto cloud_pricing_usage_v1.
+
+    Codex `input_tokens` is the FULL prompt and `cached_input_tokens` a subset of
+    it. The pricing contract wants input_tokens = uncached billable and cache_read
+    as an additive, mutually-exclusive class. Subtract cached out of input.
+    """
+    cached = int(cached_input or 0)
+    full_input = input_tokens if input_tokens is not None else None
+    uncached = None if full_input is None else max(full_input - cached, 0)
+    return {
+        "input_tokens": uncached,
+        "output_tokens": output_tokens,
+        "cache_read_tokens": cached if full_input is not None else None,
+        "cache_creation_tokens": 0 if full_input is not None else None,
+    }
+
+
 def _parse_usage(
     stdout: str,
 ) -> tuple[int | None, int | None, int | None, int | None]:
@@ -198,12 +218,17 @@ def main() -> int:
             "metrics": {
                 # Token counts come from codex's --json `turn.completed` usage
                 # event; cost ($) is not exposed by codex, so it stays null.
-                # cached_input/reasoning_output are subset breakdowns (not added
-                # to total), surfaced for future budget calc transparency.
+                # input/cache_read/cache_creation are normalized to the
+                # cloud_pricing_usage_v1 contract (see normalize_usage): codex's
+                # raw input_tokens includes the cached subset, so it must be
+                # split out here or billable input is over-counted.
                 "total_tokens": total,
-                "input_tokens": in_tok,
-                "output_tokens": out_tok,
-                "cached_input_tokens": cached_in,
+                **normalize_usage(
+                    input_tokens=in_tok,
+                    output_tokens=out_tok,
+                    cached_input=cached_in,
+                ),
+                # reasoning_output is a subset breakdown; surfaced, not summed.
                 "reasoning_output_tokens": reasoning_out,
                 "cost_usd": None,
             },
