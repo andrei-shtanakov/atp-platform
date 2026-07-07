@@ -199,6 +199,60 @@ def test_overrides_missing_provenance_raises(tmp_path: Path) -> None:
         PriceOverrides.from_toml(toml)
 
 
+def test_overrides_cache_known_without_price_raises(tmp_path: Path) -> None:
+    toml = tmp_path / "price_overrides.toml"
+    toml.write_text(
+        """
+        [models."untrustworthy-cache-model"]
+        input_cost_per_1m = 0.20
+        output_cost_per_1m = 0.60
+        cache_pricing = "known"
+        litellm_provider = "openai"
+        source = "https://example.com/pricing"
+        effective_date = "2026-07-01"
+        currency = "USD"
+        unit = "per_1m_tokens"
+        """,
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="cache_read_cost_per_1m"):
+        PriceOverrides.from_toml(toml)
+
+
+def test_overrides_cache_known_with_price_registers_cache_cost(
+    tmp_path: Path,
+) -> None:
+    toml = tmp_path / "price_overrides.toml"
+    toml.write_text(
+        """
+        [models."known-cache-model"]
+        input_cost_per_1m = 0.20
+        output_cost_per_1m = 0.60
+        cache_read_cost_per_1m = 0.02
+        cache_pricing = "known"
+        litellm_provider = "openai"
+        source = "https://example.com/known-cache-pricing"
+        effective_date = "2026-07-01"
+        currency = "USD"
+        unit = "per_1m_tokens"
+        """,
+        encoding="utf-8",
+    )
+    ov = PriceOverrides.from_toml(toml)
+    assert ov.cache_pricing_known("known-cache-model") is True
+
+    registered: dict = {}
+    ov.register(
+        type(
+            "L", (), {"register_model": staticmethod(lambda d: registered.update(d))}
+        )()
+    )
+    assert (
+        registered["known-cache-model"]["cache_read_input_token_cost"]
+        == 0.02 / 1_000_000
+    )
+
+
 def test_cache_price_unknown_wired(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

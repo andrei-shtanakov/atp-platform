@@ -115,6 +115,10 @@ def test_missing_contract_is_flagged(tmp_path: Path) -> None:
     agent = derive_cost_view([legacy], overrides)[0]
     assert agent.reliability["reliability_status"] == "unreliable"
     assert agent.reliability["contract_missing"] is True
+    # Lineage guard: cache-split math is untrusted on un-stamped usage, so
+    # the headline price is withheld even though this case would otherwise
+    # price cleanly (measured, cloud, non-zero tokens).
+    assert agent.measured_usd is None
 
 
 def test_estimated_cases_not_double_counted_as_cost_unknown(tmp_path: Path) -> None:

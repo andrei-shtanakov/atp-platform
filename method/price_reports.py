@@ -120,7 +120,11 @@ def _price_agent(
         "contract_missing": contract_missing,
         "reliability_status": _status(counts, cloud_total, contract_missing),
     }
-    return AgentCost(agent_id, model, total if any_priced else None, reliability)
+    # Lineage guard: a report missing the usage_contract stamp has
+    # un-normalized per-class usage, so cache-split math cannot be trusted —
+    # withhold the headline price even if some cases nominally priced.
+    measured_usd = None if contract_missing else (total if any_priced else None)
+    return AgentCost(agent_id, model, measured_usd, reliability)
 
 
 def _load_overrides(overrides_path: Path) -> PriceOverrides:

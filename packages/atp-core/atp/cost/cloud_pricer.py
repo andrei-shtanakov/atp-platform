@@ -106,7 +106,9 @@ class PriceOverrides:
 
         Raises:
             ValueError: If a model entry is missing required provenance
-                fields (`source`, `effective_date`, `currency`, `unit`).
+                fields (`source`, `effective_date`, `currency`, `unit`), or
+                declares `cache_pricing = "known"` without a
+                `cache_read_cost_per_1m` tariff.
         """
         raw_bytes = path.read_bytes()
         sha8 = hashlib.sha256(raw_bytes).hexdigest()[:8]
@@ -125,10 +127,14 @@ class PriceOverrides:
                 "mode": "chat",
             }
             if entry.get("cache_pricing") == "known":
-                if "cache_read_cost_per_1m" in entry:
-                    params["cache_read_input_token_cost"] = (
-                        entry["cache_read_cost_per_1m"] / 1_000_000
+                if "cache_read_cost_per_1m" not in entry:
+                    raise ValueError(
+                        f"price override '{name}' declares cache_pricing='known' "
+                        "but has no 'cache_read_cost_per_1m'"
                     )
+                params["cache_read_input_token_cost"] = (
+                    entry["cache_read_cost_per_1m"] / 1_000_000
+                )
                 cache_known.add(name)
             models[name] = params
         local = frozenset((data.get("local") or {}).get("models", []))
