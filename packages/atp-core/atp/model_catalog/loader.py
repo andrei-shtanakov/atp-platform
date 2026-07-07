@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import tomllib
+from importlib.resources import files
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -76,3 +77,15 @@ def load_catalog(path: Path | None = None) -> ModelCatalog:
         return ModelCatalog(**data)
     except ValidationError as exc:
         raise CatalogSchemaError(f"{target} failed schema validation: {exc}") from exc
+
+
+def read_template() -> str:
+    """Return the inert starter catalog shipped as package data.
+
+    Used by `atp models init`; never loaded as live catalog data.
+    """
+    return (
+        files("atp.model_catalog")
+        .joinpath("data/template.toml")
+        .read_text(encoding="utf-8")
+    )

@@ -1,0 +1,16 @@
+# ATP model catalog — the models your instance uses (ADR-ECO-003b).
+#
+# ATP resolves this file in order:
+#   $ATP_CATALOG  ->  $XDG_CONFIG_HOME/atp/agents-catalog.toml ->
+#   ~/.config/atp/agents-catalog.toml
+#
+# This starter ships intentionally EMPTY — ATP endorses no model by default.
+# Uncomment and adapt an entry below (the names are placeholders, not real
+# models), then run `atp models list` to confirm it loads.
+#
+#   [models."your-model-id"]
+#   vendor  = "your-vendor"
+#   status  = "active"        # active | deprecated | retired
+#   aliases = []
+
+[models]
