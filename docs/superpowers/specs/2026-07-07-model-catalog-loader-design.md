@@ -82,9 +82,13 @@ harness/dev-SSOT consumer); `load_catalog(None)` runs D2 resolution (the install
 
 A base `CatalogError(Exception)` with three subclasses, so the CLI maps to clear messages +
 non-zero exit and future evaluator/harness consumers can catch programmatically:
-- `CatalogNotConfiguredError` — no catalog resolved (nothing found; or a **relative**
-  `$ATP_CATALOG` / `$XDG_CONFIG_HOME`). Message carries the `atp models init` / `$ATP_CATALOG`
-  hint (the ADR fail-loud text).
+- `CatalogNotConfiguredError` — covers two distinct situations; the **message must
+  differentiate** them (a 4th class is avoidable if the text is clear):
+  - *not configured* — nothing resolved/exists → the ADR fail-loud hint ("model catalog not
+    configured: run `atp models init` or set `$ATP_CATALOG`").
+  - *configured but invalid* — a **relative** `$ATP_CATALOG` / `$XDG_CONFIG_HOME` → a distinct
+    message ("$ATP_CATALOG must be an absolute path, got '…'"), **not** the init hint (the user
+    misconfigured, they don't need `init`).
 - `CatalogTOMLError` — file exists but is not valid TOML.
 - `CatalogSchemaError` — parsed, but `models` fails schema validation (wraps pydantic's error).
 
@@ -136,10 +140,14 @@ New `atp models` group (siblings the existing `atp catalog` test-catalog command
   inaccessible → fail-loud `CatalogNotConfiguredError`/OSError message), writes the inert
   template. **Refuses to overwrite** an existing file unless `--force`. Prints the path + a
   next-step hint ("edit it to add your models").
-- `atp models list [--format table|json]` — `load_catalog(None)`, prints models
-  (name/vendor/status/aliases). `--format` default `table`; `json` for scripts (near-free now).
-  On any `CatalogError`: print the mapped message, exit non-zero. Empty `models` → a friendly
-  "no models defined yet — edit <path>" (still exit 0; the catalog is valid).
+- `atp models list [--format table|json]` — resolves the path **first**, then loads, so the CLI
+  has the path for messages: `path = resolve_catalog_path(must_exist=True)` (raises
+  `CatalogNotConfiguredError` with the init hint if none) → `load_catalog(path)`. (`load_catalog`
+  returns only `ModelCatalog`; the CLI owns the path, so the loader needs no `source_path`
+  field.) Prints models (name/vendor/status/aliases). `--format` default `table`; `json` for
+  scripts (near-free now). On any `CatalogError`: print the mapped message, exit non-zero.
+  Empty `models` → a friendly "no models defined yet — edit <path>" using the resolved path
+  (still exit 0; the catalog is valid).
 
 ## Testing
 
