@@ -8,7 +8,12 @@ from atp.model_catalog.errors import (
     CatalogSchemaError,
     CatalogTOMLError,
 )
-from atp.model_catalog.loader import load_catalog, read_template, resolve_catalog_path
+from atp.model_catalog.loader import (
+    load_catalog,
+    read_template,
+    resolve_catalog_path,
+    resolve_default_model,
+)
 from atp.model_catalog.schema import (
     AgentEntry,
     CatalogDefaults,
@@ -30,4 +35,5 @@ __all__ = [
     "load_catalog",
     "read_template",
     "resolve_catalog_path",
+    "resolve_default_model",
 ]

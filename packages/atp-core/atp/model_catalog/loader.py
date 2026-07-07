@@ -6,6 +6,7 @@ fail-loud. Env paths must be absolute; empty string = unset; relative = error.
 
 from __future__ import annotations
 
+import logging
 import os
 import tomllib
 from importlib.resources import files
@@ -25,6 +26,8 @@ _INIT_HINT = (
     "model catalog not configured: run 'atp models init' or set $ATP_CATALOG "
     "to an absolute file path"
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _env_path(var: str) -> Path | None:
@@ -85,6 +88,31 @@ def load_catalog(path: Path | None = None) -> ModelCatalog:
         return ModelCatalog(**data)
     except ValidationError as exc:
         raise CatalogSchemaError(f"{target} failed schema validation: {exc}") from exc
+
+
+def resolve_default_model(explicit: str | None = None) -> str | None:
+    """Resolve the default model: an explicit override, else the catalog's
+    ``[defaults].default_model``, else ``None`` (the caller supplies a fallback).
+
+    Tolerant runtime convenience, NOT ``load_catalog``'s fail-loud contract: a
+    missing catalog is expected (out-of-box eval must not require one), and a
+    present-but-broken *optional* catalog is logged and ignored rather than
+    crashing the evaluator. Whitespace-only ``explicit`` is treated as unset; a
+    non-empty ``explicit`` is returned stripped. The catalog value is returned
+    verbatim (an alias is not canonicalized).
+    """
+    if explicit and explicit.strip():
+        return explicit.strip()
+    try:
+        catalog = load_catalog()
+    except CatalogNotConfiguredError:
+        return None
+    except (CatalogTOMLError, CatalogSchemaError) as exc:
+        logger.warning("model catalog present but unusable, ignoring: %s", exc)
+        return None
+    if catalog.defaults is not None and catalog.defaults.default_model:
+        return catalog.defaults.default_model
+    return None
 
 
 def read_template() -> str:
