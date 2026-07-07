@@ -25,7 +25,22 @@ from pydantic import BaseModel
 
 app = FastAPI(title="El Farol Agent (GPT-4o-mini)")
 
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+_client: OpenAI | None = None
+
+
+def _get_client() -> OpenAI:
+    """Construct the OpenAI client lazily.
+
+    Importing this module (e.g. for the pure ``parse_action`` helper in tests)
+    must not require credentials. openai>=2.44 validates the api_key at
+    construction time, so a module-level client would crash on import when
+    ``OPENAI_API_KEY`` is unset; deferring construction keeps import cheap.
+    """
+    global _client
+    if _client is None:
+        _client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+    return _client
+
 
 MODEL = os.environ.get("MODEL", "gpt-4o-mini")
 
@@ -200,7 +215,7 @@ async def handle_request(request: ATPRequest) -> ATPResponse:
     start = time.monotonic()
 
     try:
-        response = client.chat.completions.create(
+        response = _get_client().chat.completions.create(
             model=MODEL,
             max_tokens=256,
             temperature=0.3,
