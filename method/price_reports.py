@@ -98,18 +98,21 @@ def _price_agent(
             counts["price_unknown_cases"] += 1
             continue
         price = pricer.price_case(usage, model=model, is_local=False)
-        if price.usage_source == "estimated":
-            counts["estimated_cases"] += 1
-        if price.price_unknown:
-            counts["price_unknown_cases"] += 1
-        if price.cache_price_unknown:
-            counts["cache_pricing_unknown_cases"] += 1
-        if price.cost_unknown:
-            counts["cost_unknown_cases"] += 1
         if price.usd is not None:
+            counts["measured_cases"] += 1
+            if price.cache_price_unknown:
+                counts["cache_pricing_unknown_cases"] += 1
             total += price.usd
             any_priced = True
-            counts["measured_cases"] += 1
+        else:
+            # Unpriced — exactly one reason, mutually exclusive so `bad`
+            # (in `_status`) never double-counts a single case.
+            if price.price_unknown:
+                counts["price_unknown_cases"] += 1
+            elif price.usage_source == "estimated":
+                counts["estimated_cases"] += 1
+            else:
+                counts["cost_unknown_cases"] += 1
     reliability = {
         **counts,
         "contract_missing": contract_missing,

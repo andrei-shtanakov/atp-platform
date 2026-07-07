@@ -117,6 +117,33 @@ def test_missing_contract_is_flagged(tmp_path: Path) -> None:
     assert agent.reliability["contract_missing"] is True
 
 
+def test_estimated_cases_not_double_counted_as_cost_unknown(tmp_path: Path) -> None:
+    overrides = tmp_path / "ov.toml"
+    overrides.write_text("", encoding="utf-8")
+    measured_case = {
+        "input_tokens": 100,
+        "output_tokens": 10,
+        "cache_creation_tokens": 0,
+        "cache_read_tokens": 0,
+        "usage_source": "measured",
+    }
+    estimated_case = {
+        "input_tokens": 100,
+        "output_tokens": 10,
+        "cache_creation_tokens": 0,
+        "cache_read_tokens": 0,
+        "usage_source": "estimated",
+    }
+    cases = [estimated_case] * 3 + [measured_case] * 7
+    report = _report("codex_cli@gpt-5.5", cases, contract="cloud_pricing_usage_v1")
+    agent = derive_cost_view([report], overrides)[0]
+    reliability = agent.reliability
+    assert reliability["estimated_cases"] == 3
+    assert reliability["cost_unknown_cases"] == 0
+    assert reliability["measured_cases"] == 7
+    assert reliability["reliability_status"] == "degraded"
+
+
 def test_main_writes_sidecar(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
