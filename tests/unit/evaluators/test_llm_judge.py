@@ -1,5 +1,6 @@
 """Unit tests for LLMJudgeEvaluator."""
 
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -987,3 +988,68 @@ class TestJudgeEnvConfig:
         monkeypatch.setenv("ATP_JUDGE_PROVIDER", "bedrock")
         ev = LLMJudgeEvaluator(LLMJudgeConfig(provider="anthropic", model="x"))
         assert ev._provider == "anthropic"
+
+
+@pytest.fixture
+def clean_model_env(monkeypatch, tmp_path):
+    """Isolate every model-resolution input (env only; get_settings is uncached).
+
+    ``ATPSettings`` auto-discovers ``atp.config.yaml`` by walking up from the
+    current working directory (independent of ``get_settings()``'s
+    ``config_file`` arg) — and this repo's tracked root-level
+    ``atp.config.yaml`` pins ``default_llm_model: gpt-4o-mini``. Chdir into an
+    empty ``tmp_path`` so that discovery finds nothing and the chain tests are
+    driven purely by the env vars they set.
+    """
+    monkeypatch.chdir(tmp_path)
+    for var in (
+        "ATP_JUDGE_MODEL",
+        "ATP_JUDGE_PROVIDER",
+        "ATP_JUDGE_BASE_URL",
+        "ATP_DEFAULT_LLM_MODEL",
+        "ATP_CATALOG",
+        "XDG_CONFIG_HOME",
+    ):
+        monkeypatch.delenv(var, raising=False)
+    return monkeypatch
+
+
+def _catalog(tmp_path: Path, default_model: str) -> str:
+    f = tmp_path / "agents-catalog.toml"
+    f.write_text(
+        f'[models."{default_model}"]\nvendor="v"\nstatus="active"\n'
+        f'[defaults]\ndefault_model="{default_model}"\n',
+        encoding="utf-8",
+    )
+    return str(f)
+
+
+def _model(config: LLMJudgeConfig | None = None) -> str:
+    return LLMJudgeEvaluator(config=config)._model
+
+
+def test_chain_no_env_no_catalog_anthropic_fallback(clean_model_env) -> None:
+    clean_model_env.setenv("ANTHROPIC_API_KEY", "x")
+    assert _model() == "claude-sonnet-4-20250514"
+
+
+def test_chain_env_default_wins_over_catalog(clean_model_env, tmp_path) -> None:
+    clean_model_env.setenv("ATP_DEFAULT_LLM_MODEL", "env-model")
+    clean_model_env.setenv("ATP_CATALOG", _catalog(tmp_path, "catalog-model"))
+    assert _model() == "env-model"
+
+
+def test_chain_catalog_used_when_settings_none(clean_model_env, tmp_path) -> None:
+    clean_model_env.setenv("ATP_CATALOG", _catalog(tmp_path, "catalog-model"))
+    assert _model() == "catalog-model"
+
+
+def test_chain_judge_model_wins_over_all(clean_model_env, tmp_path) -> None:
+    clean_model_env.setenv("ATP_DEFAULT_LLM_MODEL", "env-model")
+    clean_model_env.setenv("ATP_CATALOG", _catalog(tmp_path, "catalog-model"))
+    assert _model(LLMJudgeConfig(model="explicit-judge")) == "explicit-judge"
+
+
+def test_chain_bedrock_skips_catalog_default(clean_model_env, tmp_path) -> None:
+    clean_model_env.setenv("ATP_CATALOG", _catalog(tmp_path, "catalog-model"))
+    assert _model(LLMJudgeConfig(provider="bedrock")) == DEFAULT_BEDROCK_MODEL

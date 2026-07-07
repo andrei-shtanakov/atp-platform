@@ -12,5 +12,10 @@
 #   vendor  = "your-vendor"
 #   status  = "active"        # active | deprecated | retired
 #   aliases = []
+#
+# Optional: a default model for evaluators (must match a [models] id or alias):
+#
+#   [defaults]
+#   default_model = "your-model-id"
 
 [models]

@@ -9,7 +9,11 @@ from atp.model_catalog.errors import (
     CatalogSchemaError,
     CatalogTOMLError,
 )
-from atp.model_catalog.loader import load_catalog, resolve_catalog_path
+from atp.model_catalog.loader import (
+    load_catalog,
+    resolve_catalog_path,
+    resolve_default_model,
+)
 
 _VALID = '[models."m"]\nvendor = "v"\nstatus = "active"\n'
 
@@ -139,3 +143,78 @@ def test_load_referential_error_is_schema_error(tmp_path: Path) -> None:
     )
     with pytest.raises(CatalogSchemaError):
         load_catalog(f)
+
+
+def _dm(tmp_path: Path, body: str) -> Path:
+    f = tmp_path / "agents-catalog.toml"
+    f.write_text(body, encoding="utf-8")
+    return f
+
+
+_MODELS = '[models."m"]\nvendor="v"\nstatus="active"\n'
+
+
+def test_resolve_explicit_stripped(monkeypatch) -> None:
+    _clear(monkeypatch)
+    assert resolve_default_model("  gpt-4o  ") == "gpt-4o"
+
+
+def test_resolve_empty_explicit_is_unset(monkeypatch, tmp_path) -> None:
+    _clear(monkeypatch)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "empty"))
+    assert resolve_default_model("   ") is None
+    assert resolve_default_model("") is None
+
+
+def test_resolve_from_catalog_defaults(monkeypatch, tmp_path) -> None:
+    _clear(monkeypatch)
+    f = _dm(tmp_path, _MODELS + '[defaults]\ndefault_model="m"\n')
+    monkeypatch.setenv("ATP_CATALOG", str(f))
+    assert resolve_default_model(None) == "m"
+
+
+def test_resolve_explicit_wins_over_catalog(monkeypatch, tmp_path) -> None:
+    _clear(monkeypatch)
+    f = _dm(tmp_path, _MODELS + '[defaults]\ndefault_model="m"\n')
+    monkeypatch.setenv("ATP_CATALOG", str(f))
+    assert resolve_default_model("override") == "override"
+
+
+def test_resolve_catalog_alias_returned_verbatim(monkeypatch, tmp_path) -> None:
+    _clear(monkeypatch)
+    body = (
+        '[models."m"]\nvendor="v"\nstatus="active"\naliases=["m-latest"]\n'
+        '[defaults]\ndefault_model="m-latest"\n'
+    )
+    monkeypatch.setenv("ATP_CATALOG", str(_dm(tmp_path, body)))
+    # The alias passes validation; the resolver returns it verbatim (no
+    # canonicalization to the "m" key).
+    assert resolve_default_model(None) == "m-latest"
+
+
+def test_resolve_no_catalog_silent_none(monkeypatch, tmp_path) -> None:
+    _clear(monkeypatch)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "empty"))
+    assert resolve_default_model(None) is None
+
+
+def test_resolve_broken_catalog_warns_and_none(monkeypatch, tmp_path, caplog) -> None:
+    import logging
+
+    _clear(monkeypatch)
+    monkeypatch.setenv("ATP_CATALOG", str(_dm(tmp_path, "this = = not toml")))
+    with caplog.at_level(logging.WARNING):
+        assert resolve_default_model(None) is None
+    assert "unusable" in caplog.text
+
+
+def test_resolve_non_utf8_catalog_warns_and_none(monkeypatch, tmp_path, caplog) -> None:
+    import logging
+
+    _clear(monkeypatch)
+    f = tmp_path / "agents-catalog.toml"
+    f.write_bytes(b"\xff\xfe not utf-8")  # UnicodeDecodeError on read_text(utf-8)
+    monkeypatch.setenv("ATP_CATALOG", str(f))
+    with caplog.at_level(logging.WARNING):
+        assert resolve_default_model(None) is None
+    assert "unusable" in caplog.text

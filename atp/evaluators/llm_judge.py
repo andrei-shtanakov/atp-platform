@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import BaseModel, Field
 
 from atp.loader.models import Assertion, TestDefinition
+from atp.model_catalog import resolve_default_model
 from atp.protocol import ATPEvent, ATPResponse
 
 from .base import EvalCheck, EvalResult, Evaluator
@@ -198,11 +199,12 @@ class LLMJudgeEvaluator(Evaluator):
             try:
                 from atp.core.settings import get_settings
 
-                settings = get_settings()
                 if not self._model:
-                    self._model = settings.default_llm_model
+                    self._model = resolve_default_model(
+                        get_settings().default_llm_model
+                    )
             except Exception as e:
-                logger.debug("Failed to load default model from settings: %s", e)
+                logger.debug("Failed to resolve default model: %s", e)
 
         # Detect provider from available API keys
         if not self._provider:

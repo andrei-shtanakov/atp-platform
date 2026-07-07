@@ -46,6 +46,14 @@ class AgentEntry(BaseModel):
     routable: bool = False
 
 
+class CatalogDefaults(BaseModel):
+    """The catalog's optional [defaults] plane (runtime defaults)."""
+
+    model_config = ConfigDict(extra="allow")
+
+    default_model: str | None = None
+
+
 class ModelCatalog(BaseModel):
     """A parsed model catalog."""
 
@@ -54,6 +62,7 @@ class ModelCatalog(BaseModel):
     models: dict[str, ModelEntry]
     harnesses: dict[str, HarnessEntry] | None = None
     agents: list[AgentEntry] | None = None
+    defaults: CatalogDefaults | None = None
 
     @model_validator(mode="after")
     def _agents_reference_declared_harnesses(self) -> ModelCatalog:
@@ -68,4 +77,21 @@ class ModelCatalog(BaseModel):
         )
         if undeclared:
             raise ValueError(f"agents reference undeclared harness(es): {undeclared}")
+        return self
+
+    @model_validator(mode="after")
+    def _default_model_in_models(self) -> ModelCatalog:
+        # Fires only when a default_model is set AND models is non-empty: the
+        # default must be a models key or a ModelEntry alias (typo-catcher). A
+        # catalog with no [defaults], or with empty models, is a no-op.
+        if self.defaults is None or not self.defaults.default_model or not self.models:
+            return self
+        known = set(self.models) | {
+            alias for entry in self.models.values() for alias in entry.aliases
+        }
+        if self.defaults.default_model not in known:
+            raise ValueError(
+                f"defaults.default_model {self.defaults.default_model!r} is not a "
+                "known model id or alias"
+            )
         return self

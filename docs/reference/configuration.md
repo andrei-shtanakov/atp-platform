@@ -33,7 +33,7 @@ default_timeout: 300         # Default test timeout in seconds
 # LLM settings (API keys should use environment variables)
 # anthropic_api_key: sk-...  # Better: ATP_ANTHROPIC_API_KEY env var
 # openai_api_key: sk-...     # Better: ATP_OPENAI_API_KEY env var
-default_llm_model: claude-sonnet-4-20250514
+# default_llm_model: claude-sonnet-4-20250514   # optional; unset → model catalog [defaults], then provider fallback (SP-C)
 
 # Dashboard settings
 dashboard_host: 127.0.0.1    # Dashboard bind address
@@ -60,7 +60,7 @@ All settings can be overridden via environment variables with the `ATP_` prefix:
 | `default_timeout` | `ATP_DEFAULT_TIMEOUT` | `300` |
 | `anthropic_api_key` | `ATP_ANTHROPIC_API_KEY` | - |
 | `openai_api_key` | `ATP_OPENAI_API_KEY` | - |
-| `default_llm_model` | `ATP_DEFAULT_LLM_MODEL` | `claude-sonnet-4-20250514` |
+| `default_llm_model` | `ATP_DEFAULT_LLM_MODEL` | `None` (→ catalog `[defaults]` / provider fallback) |
 | `dashboard_host` | `ATP_DASHBOARD_HOST` | `127.0.0.1` |
 | `dashboard_port` | `ATP_DASHBOARD_PORT` | `8080` |
 | `dashboard_debug` | `ATP_DASHBOARD_DEBUG` | `false` |
@@ -68,6 +68,11 @@ All settings can be overridden via environment variables with the `ATP_` prefix:
 | `fail_fast` | `ATP_FAIL_FAST` | `false` |
 | `sandbox_enabled` | `ATP_SANDBOX_ENABLED` | `false` |
 | `runs_per_test` | `ATP_RUNS_PER_TEST` | `1` |
+
+> **Note:** When `ATP_DEFAULT_LLM_MODEL` is unset (or set to an empty string —
+> `ATP_DEFAULT_LLM_MODEL=""` is treated the same as unset), the evaluator default
+> defers to the model catalog's `[defaults].default_model` (if a catalog is
+> configured), then falls back to a provider default (ADR-003b SP-C).
 
 Nested settings use double underscores (`__`) as delimiter:
 
@@ -170,7 +175,7 @@ settings = get_settings(config_file=Path("custom-config.yaml"))
 |---------|------|---------|-------------|
 | `anthropic_api_key` | `SecretStr` | - | Anthropic API key |
 | `openai_api_key` | `SecretStr` | - | OpenAI API key |
-| `default_llm_model` | `str` | `claude-sonnet-4-20250514` | Default model |
+| `default_llm_model` | `str \| None` | `None` | Default model for evaluators; unset → catalog `[defaults]` then provider fallback (SP-C) |
 
 #### Dashboard Settings
 

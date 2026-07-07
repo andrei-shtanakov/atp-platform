@@ -359,9 +359,10 @@ class ATPSettings(BaseSettings):
         default=None,
         description="OpenAI API key for GPT models",
     )
-    default_llm_model: str = Field(
-        default="claude-sonnet-4-20250514",
-        description="Default LLM model for evaluators and agents",
+    default_llm_model: str | None = Field(
+        default=None,
+        description="Default LLM model for evaluators; None defers to the model "
+        "catalog's [defaults], then a provider fallback (ADR-003b SP-C).",
     )
 
     # Dashboard settings
@@ -640,7 +641,8 @@ default_timeout: 300         # Default test timeout in seconds
 # LLM settings
 # anthropic_api_key: sk-...  # Set via ATP_ANTHROPIC_API_KEY env var
 # openai_api_key: sk-...     # Set via ATP_OPENAI_API_KEY env var
-default_llm_model: claude-sonnet-4-20250514
+# default_llm_model:         # unset -> model catalog [defaults], then
+#                             # provider fallback (ADR-003b SP-C)
 
 # Dashboard settings
 dashboard_host: 127.0.0.1    # Dashboard bind address

@@ -28,9 +28,14 @@
   - [x] **SP-E: харнесс `run_pipe_check` переведён на общий loader** ✅ 2026-07-07
     — спека: [`docs/superpowers/specs/2026-07-07-sp-e-harness-catalog-migration-design.md`](docs/superpowers/specs/2026-07-07-sp-e-harness-catalog-migration-design.md);
     план: [`docs/superpowers/plans/2026-07-07-sp-e-harness-catalog-migration.md`](docs/superpowers/plans/2026-07-07-sp-e-harness-catalog-migration.md).
-  - **Осталось по 003b:** **SP-C** — унифицировать `settings.default_llm_model` эвалюатора с общим
-    catalog + field-level env override; **SP-D** — переименовать `atp/catalog/` → test-catalog
-    (снять коллизию имён).
+  - [x] **SP-C: `settings.default_llm_model` эвалюатора унифицирован с общим catalog** ✅ 2026-07-07
+    — спека: [`docs/superpowers/specs/2026-07-07-sp-c-evaluator-model-unify-design.md`](docs/superpowers/specs/2026-07-07-sp-c-evaluator-model-unify-design.md);
+    план: [`docs/superpowers/plans/2026-07-07-sp-c-evaluator-model-unify.md`](docs/superpowers/plans/2026-07-07-sp-c-evaluator-model-unify.md).
+    `CatalogDefaults` + referential validator, tolerant `resolve_default_model()`
+    (explicit → catalog `[defaults]` → provider fallback; missing/broken optional catalog stays
+    silent), `default_llm_model` теперь `str | None = None`, `llm_judge` резолвится через него.
+  - **Осталось по 003b:** **SP-D** — переименовать `atp/catalog/` → test-catalog (снять коллизию
+    имён).
 
 - [x] **R-06a: Поддержать Maestro CLI quick win** (effort S) ✅ 2026-04-25
   - Документ написан: [`docs/maestro-integration.md`](docs/maestro-integration.md) —
