@@ -74,14 +74,20 @@ class AgentEntry(BaseModel):
 - `model_config = ConfigDict(extra="allow")` — unchanged.
 
 **Referential-integrity validator** (`@model_validator(mode="after")`):
-- Fires **only when BOTH `harnesses` and `agents` are present** (not None). Then every
-  `agent.harness` must be a key in `harnesses`; otherwise raise `ValueError` listing the
-  undeclared harness(es) — `load_catalog` wraps `ValueError` into `CatalogSchemaError`.
-- When either plane is absent (the **user-runtime catalog** — SP-A fork A), the validator is a
-  **no-op**. This is load-bearing: SP-E must NOT make `load_catalog(path)` reject a valid
-  user-catalog that has only a `models` plane. The harness separately requires the sweep-catalog
-  shape (§Component 2), so the "harness needs both planes" rule lives in the harness, not the
-  shared schema.
+- Fires **only when BOTH `harnesses` and `agents` are present** (not None) — **present-empty
+  counts as present** (an empty `harnesses={}` with a non-empty `agents=[…]` still validates and
+  can fail). Then every `agent.harness` must be a key in `harnesses`; otherwise the validator
+  **raises `ValueError`** listing the undeclared harness(es).
+- **Error chain (be precise for test-writing):** a `model_validator` raising `ValueError` is
+  caught by pydantic and surfaced as a **`pydantic.ValidationError`**; `load_catalog` catches
+  `ValidationError` (already, from SP-A) and wraps **all validation failures** — field-shape and
+  referential alike — into **`CatalogSchemaError`**. So loader-level tests assert
+  `CatalogSchemaError`; direct schema-construction tests assert `ValidationError`.
+- When either plane is **absent (None)** — the **user-runtime catalog** (SP-A fork A) — the
+  validator is a **no-op**. This is load-bearing: SP-E must NOT make `load_catalog(path)` reject
+  a valid user-catalog that has only a `models` plane. The harness separately requires the
+  sweep-catalog shape (§Component 2), so the "harness needs both planes" rule lives in the
+  harness, not the shared schema.
 
 ### Component 2 — migrate the harness (`method/run_pipe_check.py`)
 
@@ -131,11 +137,16 @@ _load_agent_catalog()` and the downstream `AGENTS` dict are unchanged. Internals
 - **Schema** (`tests/unit/model_catalog/test_schema.py`, extend):
   - `HarnessEntry`/`AgentEntry` valid + defaults (`model_flag=None`, `routable=False`,
     `tested=False`); `extra="allow"` tolerates an unknown field.
-  - Referential validator: both planes present + consistent → OK; an agent referencing an
-    undeclared harness → `ValidationError`; **planes absent (models-only catalog) → no error**
-    (the SP-A-preserving case).
+  - Referential validator (direct schema construction → assert `pydantic.ValidationError`):
+    both planes present + consistent → OK; an agent referencing an undeclared harness → error.
+  - **None vs present-empty planes** (pins the trigger boundary):
+    - `models`-only (harnesses/agents **absent/None**) → OK (no-op case, SP-A preserved).
+    - `harnesses={}` **and** `agents=[]` (both present, empty) → OK (nothing to check).
+    - `harnesses={}` **and** `agents=[{harness:"x", model:"m"}]` (present, ref into empty) →
+      error (undeclared harness `x`).
 - **Loader** (`tests/unit/model_catalog/test_loader.py`, extend): a fixture catalog with a bad
-  referential link → `CatalogSchemaError` (validator error wrapped correctly).
+  referential link, loaded via `load_catalog` → `CatalogSchemaError` (the `ValidationError` is
+  wrapped, per the error chain above).
 - **Harness** (`tests/unit/method_spawners/…` — the existing pipe-check test location):
   - projection builds `HARNESSES`/`AGENT_MODELS`/`AGENTS` correctly from a fixture catalog;
   - `AGENT_MODELS` order matches the fixture's `[[agents]]` order (sweep-order invariant);
