@@ -127,3 +127,15 @@ def test_load_bad_status_is_schema_error(tmp_path: Path) -> None:
     f.write_text('[models."m"]\nvendor="v"\nstatus="nope"\n', encoding="utf-8")
     with pytest.raises(CatalogSchemaError):
         load_catalog(f)
+
+
+def test_load_referential_error_is_schema_error(tmp_path: Path) -> None:
+    f = tmp_path / "c.toml"
+    f.write_text(
+        '[models."m"]\nvendor="v"\nstatus="active"\n'
+        '[harnesses.h]\nkind="cli"\nshim="s"\nmodel_env="M"\n'
+        '[[agents]]\nharness="MISSING"\nmodel="m"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(CatalogSchemaError):
+        load_catalog(f)
