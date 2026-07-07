@@ -82,10 +82,15 @@ provider's convention):
   that can't be normalized has its non-conforming classes zeroed + `usage_source` left such
   that the pricer marks `cost_unknown` rather than guessing.
 
-**Data lineage:** existing sweep reports predate this normalization → they price
-non-conforming harnesses without the cache discount. So the plan **re-sweeps the routable
-set** under the normalized contract before the view is authoritative, and the view stamps a
-`token_contract` version; reports without it are flagged, not silently mixed.
+**Data lineage — named, placed contract stamp.** The normalized contract has a concrete
+name and value: **`usage_contract = "cloud_pricing_usage_v1"`** (`input_tokens` = uncached
+billable; `cache_*` additive). It is emitted **top-level in the `report_benchmark` payload**
+by the payload builder (once shims conform) and **echoed in the sidecar** `cost_view.json`.
+The version bumps whenever token semantics change. Existing sweep reports predate this and
+carry **no** `usage_contract` → the view treats a missing/older stamp as **not priceable
+with cache discount** and flags it, never silently mixing it with `v1` rows. So the plan
+**re-sweeps the routable set** under `cloud_pricing_usage_v1` before the view is
+authoritative.
 
 ## Architecture
 
@@ -113,21 +118,30 @@ Pure, path-agnostic, lazy-imports litellm. Reusable by future dashboard surface.
 - `PerClassUsage` — dataclass mirroring payload fields: `input_tokens`, `output_tokens`,
   `cache_creation_tokens`, `cache_read_tokens`, `usage_source: str | None`.
 - `CasePrice` — result: `usd: Decimal | None`, `usage_source: str | None`,
-  `price_unknown: bool`, `cost_unknown: bool`, `price_map_version: str`.
+  `price_unknown: bool`, `cache_price_unknown: bool`, `cost_unknown: bool`,
+  `pricing_scope ∈ {cloud, local_excluded}`, `price_map_version: str`.
 - `PriceOverrides` — parsed open-tail entries; registered once at pricer construction via
   `litellm.register_model(...)`. Core does **not** hardcode a file path — the caller loads
   and passes overrides (clean core, details at the edge).
 - `CloudPricer.price_case(usage, model) -> CasePrice`:
+  - **local model** (`pricing_scope="local_excluded"`, detected by the view — see
+    Component 3): `usd=None`, `cost_unknown=True`, but tagged as *deliberately excluded*,
+    not "missing price". Local `$` is out of scope (003c D4).
   - **measured** (`usage_source == "measured"`): `litellm.cost_per_token(model=model,
     prompt_tokens=input, completion_tokens=output, cache_read_input_tokens=cache_read,
     cache_creation_input_tokens=cache_creation)` → sum of (prompt, completion) cost.
-    Cache-split priced at the reduced tariff.
+    Cache-split priced at the reduced tariff. **litellm API assumption — MUST be verified
+    before implementation** (first plan task): confirm via context7 that the real signature
+    accepts these cache kwargs and applies the OpenAI cache tariff to `cache_read_input_tokens`.
+  - **cache price unknown** (override entry has `cache_pricing="unknown"`, or the map has no
+    cache tariff): input/output priced, cache classes fall back to the full input tariff →
+    `cache_price_unknown=True`. The `$` is **not** presented as exact; the case counts into
+    `cache_pricing_unknown_cases`. This is distinct from `price_unknown` (no price at all).
   - **silent-zero detect**: model unknown to the map (even after `register_model`) and
     `$ == 0` with nonzero tokens → `price_unknown=True`, `usd=None`.
   - **not measured** (`usage_source` is None/other): `cost_unknown=True`, `usd=None` —
     estimation not built (§Scope boundary).
-  - **litellm missing**: raise `PricingDependencyError` with hint
-    `pip install atp-platform[pricing]`.
+  - **litellm missing**: raise `PricingDependencyError` (hint wording in §Files).
 - `price_map_version = f"litellm-{litellm.__version__}+overrides-{sha8}"` where `sha8` is
   the sha256 prefix of the overrides file bytes (or a constant sentinel when no overrides).
 
@@ -163,10 +177,17 @@ file is the interim, ATP-only stand-in that keeps pricing-view unblocked now.
   - a **formal, numeric** reliability block per agent — not a vague "dominance" — with the
     raw counts so the consumer sets its own bar:
     `total_cases`, `measured_cases`, `cost_unknown_cases`, `price_unknown_cases`,
-    `estimated_cases`, and a derived `reliability_status ∈ {ok, degraded, unreliable}`
-    (`ok` = all measured & priced; `unreliable` = any of cost_unknown/price_unknown/estimated
-    is a strict majority; `degraded` = otherwise nonzero). Thresholds defined here, not left
-    to reader intuition.
+    `cache_pricing_unknown_cases`, `estimated_cases`, `local_cases`, and a derived
+    `reliability_status ∈ {ok, degraded, unreliable}`. Status is computed over
+    **cloud** cases only (`local_cases` excluded from the denominator, since local `$` is
+    intentionally out of scope): `ok` = all cloud cases measured & fully priced;
+    `unreliable` = any of cost_unknown/price_unknown/estimated is a strict majority of cloud
+    cases; `degraded` = otherwise nonzero (incl. any `cache_pricing_unknown`). Thresholds
+    defined here, not left to reader intuition.
+  - **local detection.** An agent is `pricing_scope="local_excluded"` when its model is a
+    local class per 003c (interim: a `local` harness/model set in `price_overrides.toml`
+    until the 003b catalog carries the class). Local agents are reported with their tokens
+    and `local_excluded`, never as a missing/zero price.
   - **`price_map_version`** and **`token_contract`** stamps on the view.
 - **`total_cost_usd` is legacy/ignored.** The payload still sums `total_cost_usd` from old
   `metrics.cost_usd` (`atp/reporters/benchmark_reporter.py:168`) — populated only for
@@ -199,8 +220,10 @@ a separate follow-up.
   - litellm absent → `PricingDependencyError` with the install hint.
 - **Unit — view** (`test_price_reports.py`): aggregate over fixture reports → correct
   measured-`$` per agent, model resolution from `agent_id` (incl. bare-id → `price_unknown`),
-  `total_cost_usd` ignored, and the numeric reliability block (`measured_cases`/
-  `cost_unknown_cases`/`price_unknown_cases`/`reliability_status`).
+  a `local_excluded` agent reported with tokens but no `$` (not "missing"), a
+  `cache_pricing="unknown"` override → `cache_price_unknown` (distinct from `price_unknown`),
+  `total_cost_usd` ignored, missing `usage_contract` flagged, and the numeric reliability
+  block with the cloud-only denominator.
 - **Contract test vs real litellm** (`test_cloud_pricer_contract.py`, marked `slow`/opt-in):
   monkeypatch guards our code but not our *assumptions* about the third-party API. One test
   runs against the installed `litellm.cost_per_token` for a known model, asserting the real
@@ -218,7 +241,8 @@ a separate follow-up.
 | `pyproject.toml` (root) | proxy extra → `atp-core[pricing]` |
 | `packages/atp-core/atp/cost/cloud_pricer.py` | new — pure pricer, lazy litellm |
 | `method/spawners/codex_cli_shim.py` | normalize usage to the token invariant (split cached out of input) |
-| `method/price_overrides.toml` | new — open-tail prices + provenance |
+| `atp/reporters/benchmark_reporter.py` | stamp top-level `usage_contract = "cloud_pricing_usage_v1"` in payload |
+| `method/price_overrides.toml` | new — open-tail prices + provenance + `local` set |
 | `method/price_reports.py` | new — view + model resolution + re-derive CLI |
 | `tests/unit/cost/test_cloud_pricer.py` | new — monkeypatched pricer |
 | `tests/unit/cost/test_cloud_pricer_contract.py` | new — opt-in vs real litellm |
