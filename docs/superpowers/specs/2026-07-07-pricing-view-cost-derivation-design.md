@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-07
 **Status:** Approved (brainstorm) — ready for implementation plan
-**ADR:** [ADR-ECO-003d](../../../../_cowork_output/decisions/2026-07-02-adr-eco-003d-cost-pricing-mechanics.md)
+**ADR:** ADR-ECO-003d (cost-pricing mechanics) — `_cowork_output/decisions/2026-07-02-adr-eco-003d-cost-pricing-mechanics.md` in the dev-only sibling workspace (not committed to this repo; pointer, not a link — see CLAUDE.md on `../_cowork_output/`)
 (cost-pricing mechanics), amends 003c/003a/003b
 **Scope:** ATP-only. Surface **A** (costing module + view over sweep reports).
 No arbiter coordination, no dashboard UI, no `benchmark_runs` migration.

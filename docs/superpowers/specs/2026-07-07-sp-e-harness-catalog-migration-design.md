@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-07
 **Status:** Approved (brainstorm) — ready for implementation plan
-**ADR:** [ADR-ECO-003b](../../../../_cowork_output/decisions/2026-07-02-adr-eco-003b-catalog-distribution.md)
+**ADR:** ADR-ECO-003b (catalog distribution) — `_cowork_output/decisions/2026-07-02-adr-eco-003b-catalog-distribution.md` in the dev-only sibling workspace (not committed to this repo; pointer, not a link — see CLAUDE.md on `../_cowork_output/`)
 **Epic:** 003b, increment **SP-E**. Builds on **SP-A** (shipped: `atp.model_catalog`, PR #237).
 
 ---
