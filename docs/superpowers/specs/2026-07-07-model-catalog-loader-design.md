@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-07
 **Status:** Approved (brainstorm) — ready for implementation plan
-**ADR:** [ADR-ECO-003b](../../../../_cowork_output/decisions/2026-07-02-adr-eco-003b-catalog-distribution.md)
+**ADR:** ADR-ECO-003b (catalog distribution) — `../_cowork_output/decisions/2026-07-02-adr-eco-003b-catalog-distribution.md` in the dev-only sibling workspace (not committed to this repo; pointer, not a link — see CLAUDE.md on `../_cowork_output/`)
 (catalog distribution), amends 003a / ADR-ECO-003
 **Epic:** 003b, increment **SP-A** (foundation). Scope profile **(b) internal unification,
 minimal CLI** — not external-facing UX polish.
