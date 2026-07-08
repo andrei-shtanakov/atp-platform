@@ -6,13 +6,13 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from atp.catalog.models import (
+from atp.dashboard.models import Base
+from atp.test_catalog.models import (
     CatalogCategory,
     CatalogSubmission,
     CatalogSuite,
     CatalogTest,
 )
-from atp.dashboard.models import Base
 
 
 @pytest.fixture(scope="module")

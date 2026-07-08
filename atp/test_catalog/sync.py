@@ -5,7 +5,7 @@ from pathlib import Path
 import yaml
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from atp.catalog.repository import CatalogRepository
+from atp.test_catalog.repository import CatalogRepository
 
 BUILTIN_DIR = Path(__file__).parent / "builtin"
 

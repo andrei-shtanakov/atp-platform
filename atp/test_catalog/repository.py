@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from atp.catalog.models import (
+from atp.test_catalog.models import (
     CatalogCategory,
     CatalogSubmission,
     CatalogSuite,

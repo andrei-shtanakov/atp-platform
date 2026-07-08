@@ -10,12 +10,12 @@ from rich.console import Console
 from rich.table import Table
 
 from atp.adapters import create_adapter
-from atp.catalog.comparison import format_comparison_table
-from atp.catalog.repository import CatalogRepository
-from atp.catalog.sync import parse_catalog_yaml, sync_builtin_catalog
 from atp.dashboard.database import init_database
 from atp.loader.loader import TestLoader
 from atp.runner.orchestrator import TestOrchestrator
+from atp.test_catalog.comparison import format_comparison_table
+from atp.test_catalog.repository import CatalogRepository
+from atp.test_catalog.sync import parse_catalog_yaml, sync_builtin_catalog
 
 # Exit codes
 EXIT_SUCCESS = 0

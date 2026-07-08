@@ -1,12 +1,12 @@
-"""Unit tests for atp.catalog.sync."""
+"""Unit tests for atp.test_catalog.sync."""
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-from atp.catalog.repository import CatalogRepository
-from atp.catalog.sync import parse_catalog_yaml, sync_builtin_catalog
 from atp.dashboard.models import Base
+from atp.test_catalog.repository import CatalogRepository
+from atp.test_catalog.sync import parse_catalog_yaml, sync_builtin_catalog
 
 SAMPLE_YAML = """\
 catalog:

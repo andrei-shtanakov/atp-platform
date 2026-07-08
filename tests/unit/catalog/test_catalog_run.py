@@ -92,7 +92,7 @@ async def test_execute_catalog_run_suite_not_found() -> None:
 
     with (
         patch(
-            "atp.catalog.repository.CatalogRepository.get_suite_by_path",
+            "atp.test_catalog.repository.CatalogRepository.get_suite_by_path",
             new=AsyncMock(return_value=None),
         ),
         pytest.raises(SystemExit) as exc_info,
@@ -131,7 +131,7 @@ async def test_execute_catalog_run_calls_orchestrator() -> None:
 
     with (
         patch(
-            "atp.catalog.repository.CatalogRepository.get_suite_by_path",
+            "atp.test_catalog.repository.CatalogRepository.get_suite_by_path",
             new=AsyncMock(return_value=catalog_suite),
         ),
         patch(
@@ -208,7 +208,7 @@ async def test_execute_catalog_run_creates_submissions() -> None:
 
     with (
         patch(
-            "atp.catalog.repository.CatalogRepository.get_suite_by_path",
+            "atp.test_catalog.repository.CatalogRepository.get_suite_by_path",
             new=AsyncMock(return_value=catalog_suite),
         ),
         patch(
@@ -224,15 +224,15 @@ async def test_execute_catalog_run_creates_submissions() -> None:
             return_value=mock_orchestrator,
         ),
         patch(
-            "atp.catalog.repository.CatalogRepository.create_submission",
+            "atp.test_catalog.repository.CatalogRepository.create_submission",
             new=create_submission_mock,
         ),
         patch(
-            "atp.catalog.repository.CatalogRepository.update_test_stats",
+            "atp.test_catalog.repository.CatalogRepository.update_test_stats",
             new=update_stats_mock,
         ),
         patch(
-            "atp.catalog.repository.CatalogRepository.get_top_submissions",
+            "atp.test_catalog.repository.CatalogRepository.get_top_submissions",
             new=get_top_submissions_mock,
         ),
     ):
@@ -311,7 +311,7 @@ async def test_execute_catalog_run_extracts_metrics() -> None:
 
     with (
         patch(
-            "atp.catalog.repository.CatalogRepository.get_suite_by_path",
+            "atp.test_catalog.repository.CatalogRepository.get_suite_by_path",
             new=AsyncMock(return_value=catalog_suite),
         ),
         patch(
@@ -327,15 +327,15 @@ async def test_execute_catalog_run_extracts_metrics() -> None:
             return_value=mock_orchestrator,
         ),
         patch(
-            "atp.catalog.repository.CatalogRepository.create_submission",
+            "atp.test_catalog.repository.CatalogRepository.create_submission",
             new=create_submission_mock,
         ),
         patch(
-            "atp.catalog.repository.CatalogRepository.update_test_stats",
+            "atp.test_catalog.repository.CatalogRepository.update_test_stats",
             new=AsyncMock(),
         ),
         patch(
-            "atp.catalog.repository.CatalogRepository.get_top_submissions",
+            "atp.test_catalog.repository.CatalogRepository.get_top_submissions",
             new=AsyncMock(return_value=[]),
         ),
     ):

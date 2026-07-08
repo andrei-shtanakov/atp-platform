@@ -66,9 +66,9 @@ The test catalog (`atp catalog`) provides curated and community test suites.
 1. Create a YAML file with a `catalog:` metadata section and standard `test_suite:` format
 2. Include: `category`, `slug`, `name`, `description`, `author`, `difficulty`, `tags`
 3. Publish locally: `atp catalog publish your-suite.yaml`
-4. For builtin tests: add YAML to `atp/catalog/builtin/<category>/`
+4. For builtin tests: add YAML to `atp/test_catalog/builtin/<category>/`
 
-See `atp/catalog/builtin/coding/file-operations.yaml` as a reference.
+See `atp/test_catalog/builtin/coding/file-operations.yaml` as a reference.
 
 ## Code Standards
 

@@ -4,8 +4,8 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-from atp.catalog.repository import CatalogRepository
 from atp.dashboard.models import Base
+from atp.test_catalog.repository import CatalogRepository
 
 
 @pytest.fixture
@@ -163,7 +163,7 @@ async def test_create_submission_and_update_stats(repo: CatalogRepository) -> No
     # Use the raw session query to check updated fields
     from sqlalchemy import select as sa_select
 
-    from atp.catalog.models import CatalogTest as CT
+    from atp.test_catalog.models import CatalogTest as CT
 
     result = await repo._session.execute(sa_select(CT).where(CT.id == test.id))
     t = result.scalar_one()
