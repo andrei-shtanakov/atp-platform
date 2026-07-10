@@ -1,0 +1,95 @@
+# ATP Test Suite: Robin regression gate (stage 4 of the self-improvement loop)
+# Purpose: answer failures logged by robin-runtime (var/gaps.jsonl, stage 2) graduate
+#          here as regression cases; the suite gates every change to Robin's prompt,
+#          tools and retrieval (proposal devtools/proposals/2026-07-10-robin-self-improvement.md).
+# Agent: Robin (sibling repo robin-runtime) via method/spawners/robin_shim.py.
+#
+# Case shape: question → expected answer class (tags: temporal|kb) + an assertion on
+# either a source pattern or an honest escalation. Robin's output is plain text with a
+# `Grounding sources (N):` block of `path:line` citations; commits cite `repo@sha`,
+# uncommitted work cites `repo@working-tree`.
+#
+# Runs WITHOUT ANTHROPIC_API_KEY too (retrieve-only): the grounding block still prints,
+# so source-pattern assertions hold; escalation assertions also accept the retrieve-only
+# zero-sources marker `Grounding sources (0)`.
+
+test_suite: "robin_regression"
+version: "1.0"
+description: >
+  Regression gate for Robin (robin-runtime): every graduated failure from the weekly
+  self-review becomes a case here. An improvement to Robin is accepted only if this
+  suite stays green (benchmark-gated pattern, ADR-ECO-003a).
+
+defaults:
+  runs_per_test: 1
+  timeout_seconds: 300
+  constraints:
+    max_steps: 1
+    timeout_seconds: 300
+
+agents:
+  - name: "robin"
+    type: "cli"
+    config:
+      command: "python"
+      args: ["method/spawners/robin_shim.py"]
+      working_dir: "."
+      inherit_environment: true
+
+tests:
+  # Case 1 — THE incident (2026-07-09): a temporal question must ground on git
+  # evidence (repo@sha / repo@working-tree) or escalate honestly — never a confident
+  # "изменений нет" with no evidence. Source: prograph-vault QUESTIONS.md incident log.
+  - id: "robin-001"
+    name: "Temporal question grounds on git evidence"
+    description: >
+      Incident 2026-07-09: "сегодняшние изменения" answered "изменений нет" from an
+      empty KB search. Expected class: temporal; evidence from git history/working
+      tree, or an explicit negative-evidence escalation.
+    tags: ["temporal", "incident-2026-07-09", "negative-evidence"]
+    task:
+      description: "какие сегодняшние изменения в проекте?"
+    assertions:
+      - type: "contains"
+        config:
+          pattern: "@[0-9a-f]{6,}|@working-tree|\\(no-changes-found\\)|not in the KB|not visible|не нашёл|Grounding sources \\(0\\)"
+          regex: true
+
+  # Case 2 — KB authority: the agents-catalog SSOT answer must cite the authoritative
+  # ADR (authored/decisions/, finding #8 ranking), not Robin's own scaffolding.
+  - id: "robin-002"
+    name: "KB question cites the authoritative ADR"
+    tags: ["kb", "authority-ranking"]
+    task:
+      description: "Which repo owns the agents-catalog SSOT?"
+    assertions:
+      - type: "contains"
+        config:
+          pattern: "authored/decisions/.*eco-003|agents-catalog\\.toml"
+          regex: true
+
+  # Case 3 — cross-language retrieval (stage 1): a Russian question must ground on
+  # English sources via query expansion. Before kb._expand this returned zero hits.
+  - id: "robin-003"
+    name: "RU question grounds on EN sources"
+    tags: ["kb", "stage1-query-expansion"]
+    task:
+      description: "какие правила стиля кода приняты в экосистеме?"
+    assertions:
+      - type: "contains"
+        config:
+          pattern: "authored/rules/code-style"
+          regex: false
+
+  # Case 4 — negative evidence: an unknown entity must produce an escalation (or zero
+  # grounding in retrieve-only mode), never an invented owner.
+  - id: "robin-004"
+    name: "Unknown entity escalates instead of inventing"
+    tags: ["kb", "negative-evidence"]
+    task:
+      description: "кто владеет репозиторием quantum-flux-reactor?"
+    assertions:
+      - type: "contains"
+        config:
+          pattern: "not in the KB|not visible|не в KB|не нашёл|нет в базе|Grounding sources \\(0\\)"
+          regex: true
