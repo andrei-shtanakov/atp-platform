@@ -35,6 +35,7 @@ agents:
       args: ["method/spawners/robin_shim.py"]
       working_dir: "."
       inherit_environment: true
+      allowed_env_vars: ["ANTHROPIC_API_KEY"]
 
 tests:
   # Case 1 — THE incident (2026-07-09): a temporal question must ground on git

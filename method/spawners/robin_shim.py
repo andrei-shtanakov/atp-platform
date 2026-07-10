@@ -23,8 +23,9 @@ assertions keep working; answer-text assertions need the key.
 
 Env:
   ROBIN_DIR — robin-runtime checkout (default: sibling of this repo);
-  ROBIN_BIN — interpreter command (default "uv run python", shlex-split; uv
-              resolves robin-runtime's venv from --project).
+  ROBIN_BIN — interpreter command (default "uv run python", shlex-split; run
+              with cwd=ROBIN_DIR, so uv resolves robin-runtime's venv from
+              the working directory — no --project flag is passed).
 """
 
 import json
