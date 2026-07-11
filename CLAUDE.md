@@ -252,3 +252,24 @@ The workflow SSHes into the VPS, pulls latest code, rebuilds the Docker image, a
 Tasks are defined in `spec/tasks.md` with dependencies and checklists. The `task.py` CLI manages task status, and `executor.py` can auto-execute tasks via Claude CLI.
 
 Task status: `todo` → `in_progress` → `done` (or `blocked`)
+
+## Repo scope & boundaries
+
+- **Этот репо:** `atp-platform` — git-корень `all_ai_orchestrators/atp-platform/`, remote `git@github.com:andrei-shtanakov/atp-platform.git`.
+- **Соседи (READ-ONLY reference):** `../arbiter/`, `../deployer/`, `../dispatcher/`, `../Maestro/`, `../open-prose/`, `../proctor/`, `../prograph/`, `../prograph-vault/`, `../robin-runtime/`, `../robin-toolkit/`, `../spec-runner/`, `../spec-runner-vscode/`, `../steward/` — их код не редактировать.
+- Нужна правка у соседа → **стоп**: запиши handoff в `../prograph-vault/authored/notes/`
+  (кросс-проектное) или `../_cowork_output/` (черновик), не трогай его файлы.
+- Кросс-репные контракты — **вендорить пиненой копией внутрь**, не ссылаться наружу.
+- Полное правило (SSOT): `../prograph-vault/authored/rules/repo-boundaries.md`.
+
+## Git workflow (у репо есть remote)
+
+- Ветка `<type>/<slug>` → push → `gh pr create`. **Прямые коммиты в `main` запрещены.**
+- После открытия PR — прочитать ревью **GitHub Copilot**: валидные замечания исправлять
+  новыми коммитами в ту же ветку; невалидные — ответить с обоснованием, **не применять
+  вслепую**; итерировать, пока не останется открытых замечаний.
+- **Не мержить.** Мерж делает пользователь.
+- После мержа пользователем: `git switch main && git pull --ff-only`, затем удалить
+  влитую ветку (`git branch -d <branch>`) и `git fetch --prune`; убрать прочие влитые ветки.
+- Никогда не делать force-push в общие ветки; не трогать другие репо (см. scope выше).
+- Полное правило (SSOT): `../prograph-vault/authored/rules/git-workflow.md`.
