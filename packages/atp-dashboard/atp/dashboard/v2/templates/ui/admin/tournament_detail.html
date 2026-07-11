@@ -25,6 +25,13 @@
     <a href="/ui/admin/tournaments" role="button" class="secondary">Back</a>
     {% if is_live %}
     <button
+      hx-post="/api/v1/tournaments/{{ tournament.id }}/force-advance"
+      hx-confirm="Force-advance the current round? Missing actions are defaulted."
+      hx-swap="none"
+      class="outline">
+      Force-advance round
+    </button>
+    <button
       hx-post="/api/v1/tournaments/{{ tournament.id }}/cancel"
       hx-confirm="Cancel this tournament? This cannot be undone."
       hx-swap="none"

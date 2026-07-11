@@ -109,6 +109,7 @@ class AuditAction(StrEnum):
     BUDGET_CREATE = "budget_create"
     BUDGET_UPDATE = "budget_update"
     BUDGET_DELETE = "budget_delete"
+    TOURNAMENT_FORCE_ADVANCE = "tournament_force_advance"
 
     # Security actions
     SUSPICIOUS_ACTIVITY = "suspicious_activity"

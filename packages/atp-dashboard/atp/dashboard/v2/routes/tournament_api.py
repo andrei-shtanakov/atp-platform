@@ -26,6 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from atp.dashboard.audit import AuditAction, AuditCategory, audit_log
 from atp.dashboard.models import User
 from atp.dashboard.tournament.access import can_view_reasoning
 from atp.dashboard.tournament.errors import (
@@ -39,6 +40,7 @@ from atp.dashboard.tournament.models import (
     Action,
     Participant,
     Round,
+    RoundStatus,
     TournamentStatus,
 )
 from atp.dashboard.tournament.service import TournamentService
@@ -414,3 +416,51 @@ async def kick_participant_endpoint(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         )
+
+
+@router.post("/{tournament_id}/force-advance")
+async def force_advance_round_endpoint(
+    tournament_id: int,
+    request: Request,
+    user: TournamentUser,
+    service: TournamentSvc,
+    session: DBSession,
+) -> dict[str, Any]:
+    """Force-resolve the current open round of a live tournament (admin only).
+
+    Manual equivalent of the deadline worker: resolves the round that is
+    WAITING_FOR_ACTIONS (defaulting any missing actions), which advances the
+    tournament to the next round or completes it. Returns 409 when there is no
+    open round to advance. Writes an ADMIN_ACTION audit entry.
+    """
+    if not user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required",
+        )
+    row = await session.execute(
+        select(Round.id)
+        .where(Round.tournament_id == tournament_id)
+        .where(Round.status == RoundStatus.WAITING_FOR_ACTIONS)
+        .order_by(Round.round_number.desc())
+    )
+    round_id = row.scalars().first()
+    if round_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="no open round to advance",
+        )
+    # Audit before resolving; force_resolve_round commits the shared session,
+    # persisting this entry alongside the round transition.
+    await audit_log(
+        session,
+        AuditCategory.ADMIN_ACTION,
+        AuditAction.TOURNAMENT_FORCE_ADVANCE,
+        user=user,
+        ip_address=request.client.host if request.client else None,
+        resource_type="tournament_round",
+        resource_id=round_id,
+        details={"tournament_id": tournament_id, "action": "force_advance_round"},
+    )
+    await service.force_resolve_round(round_id)
+    return {"advanced": True, "round_id": round_id}

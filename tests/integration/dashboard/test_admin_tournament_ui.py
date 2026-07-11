@@ -874,3 +874,152 @@ async def test_admin_users_list_counts_distinct_tournaments(admin_ui_ctx):
     # would become 2 and this assertion would fail.
     assert ">2<" in row  # agents_owned
     assert row.count(">1<") == 2  # tournaments_created + tournaments_joined
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/tournaments/{id}/force-advance  (admin: force-resolve open round)
+# ---------------------------------------------------------------------------
+
+
+async def _set_latest_round_waiting(ctx: dict, tid: int) -> int:
+    """Flip the highest-numbered round of ``tid`` to WAITING_FOR_ACTIONS.
+
+    The live seed helper leaves the current round IN_PROGRESS; force-advance
+    (like the deadline worker) only acts on WAITING_FOR_ACTIONS rounds, so
+    tests that exercise the happy path put the round into that state first.
+    Returns the round id.
+    """
+    from sqlalchemy import select
+
+    db: Database = ctx["db"]
+    async with db.session() as session:
+        row = await session.execute(
+            select(Round)
+            .where(Round.tournament_id == tid)
+            .order_by(Round.round_number.desc())
+        )
+        rnd = row.scalars().first()
+        assert rnd is not None
+        rnd.status = RoundStatus.WAITING_FOR_ACTIONS.value
+        await session.commit()
+        return rnd.id
+
+
+@pytest.mark.anyio
+async def test_force_advance_rejects_non_admin(admin_ui_ctx):
+    client = admin_ui_ctx["client"]
+    tid = await _seed_live_el_farol_in_ctx(admin_ui_ctx)
+    await _set_latest_round_waiting(admin_ui_ctx, tid)
+    resp = await client.post(
+        f"/api/v1/tournaments/{tid}/force-advance",
+        headers=admin_ui_ctx["regular_headers"],
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.anyio
+async def test_force_advance_resolves_open_round(admin_ui_ctx):
+    client = admin_ui_ctx["client"]
+    tid = await _seed_live_el_farol_in_ctx(admin_ui_ctx)
+    round_id = await _set_latest_round_waiting(admin_ui_ctx, tid)
+
+    resp = await client.post(
+        f"/api/v1/tournaments/{tid}/force-advance",
+        headers=admin_ui_ctx["admin_headers"],
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["advanced"] is True
+    assert body["round_id"] == round_id
+
+    # the round is now resolved (no longer waiting)
+
+    db: Database = admin_ui_ctx["db"]
+    async with db.session() as session:
+        rnd = await session.get(Round, round_id)
+        assert rnd is not None
+        assert rnd.status == RoundStatus.COMPLETED.value
+
+
+@pytest.mark.anyio
+async def test_force_advance_409_when_no_open_round(admin_ui_ctx):
+    """The seeded live tournament's current round is IN_PROGRESS, not
+    WAITING_FOR_ACTIONS — nothing to force-advance → 409."""
+    client = admin_ui_ctx["client"]
+    tid = await _seed_live_el_farol_in_ctx(admin_ui_ctx)
+    resp = await client.post(
+        f"/api/v1/tournaments/{tid}/force-advance",
+        headers=admin_ui_ctx["admin_headers"],
+    )
+    assert resp.status_code == 409
+
+
+@pytest.mark.anyio
+async def test_force_advance_409_on_completed_tournament(admin_ui_ctx):
+    client = admin_ui_ctx["client"]
+    tid = await _seed_completed_el_farol_in_ctx(admin_ui_ctx)
+    resp = await client.post(
+        f"/api/v1/tournaments/{tid}/force-advance",
+        headers=admin_ui_ctx["admin_headers"],
+    )
+    assert resp.status_code == 409
+
+
+@pytest.mark.anyio
+async def test_force_advance_writes_audit_row(admin_ui_ctx):
+    client = admin_ui_ctx["client"]
+    tid = await _seed_live_el_farol_in_ctx(admin_ui_ctx)
+    round_id = await _set_latest_round_waiting(admin_ui_ctx, tid)
+
+    resp = await client.post(
+        f"/api/v1/tournaments/{tid}/force-advance",
+        headers=admin_ui_ctx["admin_headers"],
+    )
+    assert resp.status_code == 200
+
+    from sqlalchemy import select
+
+    from atp.dashboard.audit import AuditAction, AuditLog
+
+    db: Database = admin_ui_ctx["db"]
+    async with db.session() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(AuditLog).where(
+                        AuditLog.action == AuditAction.TOURNAMENT_FORCE_ADVANCE.value
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert len(rows) == 1
+    entry = rows[0]
+    assert entry.user_id == admin_ui_ctx["admin_id"]
+    assert entry.resource_type == "tournament_round"
+    assert str(entry.resource_id) == str(round_id)
+
+
+@pytest.mark.anyio
+async def test_admin_detail_renders_force_advance_button(admin_ui_ctx):
+    client = admin_ui_ctx["client"]
+    tid = await _seed_live_el_farol_in_ctx(admin_ui_ctx)
+    resp = await client.get(
+        f"/ui/admin/tournaments/{tid}",
+        headers=admin_ui_ctx["admin_headers"],
+    )
+    assert resp.status_code == 200
+    assert f"/api/v1/tournaments/{tid}/force-advance" in resp.text
+
+
+@pytest.mark.anyio
+async def test_admin_detail_post_mortem_has_no_force_advance(admin_ui_ctx):
+    client = admin_ui_ctx["client"]
+    tid = await _seed_completed_el_farol_in_ctx(admin_ui_ctx)
+    resp = await client.get(
+        f"/ui/admin/tournaments/{tid}",
+        headers=admin_ui_ctx["admin_headers"],
+    )
+    assert resp.status_code == 200
+    assert "force-advance" not in resp.text
