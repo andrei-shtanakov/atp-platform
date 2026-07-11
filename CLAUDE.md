@@ -5,8 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Active Work & Roadmap
 
 - **Current task list:** `./TODO.md` — read it at the start of every session (ecosystem section at top)
-- **Ecosystem roadmap (strategic):** `../_cowork_output/roadmap/ecosystem-roadmap.md` — R-01…R-16 across Maestro / arbiter / ATP / spec-runner
-- **Latest weekly status:** `../_cowork_output/status/2026-04-10-status.md`
+- **Ecosystem roadmap (strategic):** `../prograph-vault/authored/notes/ecosystem-roadmap.md` — R-01…R-16 across Maestro / arbiter / ATP / spec-runner
+- **Latest weekly status:** `../prograph-vault/authored/notes/status/2026-04-10-status.md`
 - **Sibling projects** (reference only): `../Maestro/`, `../arbiter/`, `../spec-runner/`, `../proctor/`
 
 ATP's role in the ecosystem: task validation for Maestro (`validation_cmd` — see `docs/maestro-integration.md`) and eval-driven learning for arbiter (ATP guardrails relate to arbiter invariants as separate lifecycle phases — see `../arbiter/docs/guardrails-atp-mapping.md`). R-06a and R-13 closed 2026-04-25; deep integration (R-06b, R-07) remains blocked on Maestro R-03.

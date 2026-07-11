@@ -2,8 +2,8 @@
 
 ## Ecosystem Roadmap (план от 2026-04-16)
 
-> Стратегический контекст: `../_cowork_output/roadmap/ecosystem-roadmap.md`
-> Актуальный статус: `../_cowork_output/status/2026-04-10-status.md`
+> Стратегический контекст: `../prograph-vault/authored/notes/ecosystem-roadmap.md`
+> Актуальный статус: `../prograph-vault/authored/notes/status/2026-04-10-status.md`
 > **Роль ATP в экосистеме**: валидация задач Maestro (`validation_cmd`) и eval-driven обучение arbiter
 
 ### Активные кросс-проектные задачи
