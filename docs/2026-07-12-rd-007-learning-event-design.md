@@ -56,7 +56,7 @@ material for a regression case.
 ```json
 {
   "schema_version": "1",
-  "event_id": "01KX9ZD3ULIDLIKE0000000000",
+  "event_id": "01KX9ZD3F8Q2R7T4V6W8X0Y2Z3",
   "producer": "robin-runtime",
   "kind": "gap",
   "ts": "2026-07-12T10:00:00Z",
