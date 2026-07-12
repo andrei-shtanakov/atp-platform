@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **LearningEvent v1 contract (RD-007 M1a):** `method/contract/learning-event-v1.schema.json` —
+  observational learning events (gap / eval-signal / recommendation) with producer provenance,
+  append-only `source` pointers, optional `evidence_refs` (vendored pinned copy of Maestro
+  EvidenceRef v1 incl. `gate-verdict`), and closed graduation-target vocabulary. Events never
+  mutate governed knowledge; graduation happens only via reviewed PR. Plus `.github/CODEOWNERS`
+  declaring the governed paths (v1 acceptance) and contract tests with fixtures.
+
 ## [2.1.0] - 2026-06-12
 
 No breaking changes — additive features and fixes only.
