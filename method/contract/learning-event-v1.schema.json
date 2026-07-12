@@ -1,0 +1,321 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/andrei-shtanakov/atp-platform/method/contract/learning-event-v1.schema.json",
+  "title": "LearningEvent v1",
+  "description": "One observational learning event (contracts roadmap RD-007). LearningEvent never mutates governed knowledge by itself: graduation from event to durable artifact happens only through human-reviewed PR; runtime producers append to their own var/event stores; governed paths are modified only by repository PR workflow. Design: docs/2026-07-12-rd-007-learning-event-design.md.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "event_id",
+    "producer",
+    "kind",
+    "ts",
+    "source",
+    "payload"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "description": "Contract version; unknown versions are rejected fail-closed."
+    },
+    "event_id": {
+      "type": "string",
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "description": "ULID (Crockford base32, uppercase) minted at append time; dedup key is (producer, event_id)."
+    },
+    "producer": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Repo/system that OBSERVED the event (provenance: robin-runtime saw the gap, not the graduation target)."
+    },
+    "kind": {
+      "enum": [
+        "gap",
+        "eval-signal",
+        "recommendation"
+      ],
+      "description": "Observation class (closed v1 vocabulary)."
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$",
+      "description": "Observation timestamp (ISO 8601)."
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "store",
+        "id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "store": {
+          "type": "string",
+          "minLength": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "description": "Producer-local pointer into the append-only origin store — every event is traceable even without cross-repo evidence."
+    },
+    "proposed_target": {
+      "enum": [
+        "eval-case",
+        "catalog",
+        "prompt",
+        "kb",
+        "policy",
+        null
+      ],
+      "description": "Graduation target class (closed v1 vocabulary); optional — filled by clustering/review, not necessarily at observation time."
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/evidence_ref"
+      },
+      "description": "Optional but encouraged: cross-repo evidence pointers (EvidenceRef v1)."
+    },
+    "payload": {
+      "type": "object",
+      "description": "Producer-specific observation detail; never machine-graduated — a human reads it in the graduation PR."
+    }
+  },
+  "definitions": {
+    "evidence_ref": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "trace",
+            "log",
+            "benchmark",
+            "decision",
+            "artifact",
+            "gate-verdict"
+          ],
+          "description": "What the pointer refers to; drives which keys are required (see evidence-ref.md)."
+        },
+        "trace_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{32}$",
+          "description": "W3C trace id (kind=trace: required)."
+        },
+        "span_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{16}$",
+          "description": "W3C span id (kind=trace: optional narrowing)."
+        },
+        "pipeline_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Maestro session ULID = logs/<ULID>/ directory (kind=log: required)."
+        },
+        "run_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "benchmark_runs primary key (kind=benchmark: required)."
+        },
+        "decision_id": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "description": "PolicyDecisionRef decision id (kind=decision: required)."
+        },
+        "project": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Owning project for kind=artifact paths."
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^(?!/)(?!\\.\\.(/|$))(?!.*/\\.\\.(/|$)).+$",
+          "description": "Project-relative path (kind=artifact: required). Absolute paths and `..` segments are rejected by the pattern — dereferencers must never be steered outside the owning repo."
+        },
+        "gate_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Gate identifier the verdict was recorded for (kind=gate-verdict: required)."
+        },
+        "sha": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{40}$",
+          "description": "Full commit SHA the verdict is bound to (kind=gate-verdict: required; WS-006 DESIGN-608 — a new commit invalidates verdicts)."
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Optional free-text hint for humans; never machine-parsed."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "trace"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "kind",
+              "trace_id"
+            ],
+            "properties": {
+              "trace_id": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "log"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "kind",
+              "pipeline_id"
+            ],
+            "properties": {
+              "pipeline_id": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "benchmark"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "kind",
+              "run_id"
+            ],
+            "properties": {
+              "run_id": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "decision"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "kind",
+              "decision_id"
+            ],
+            "properties": {
+              "decision_id": {
+                "type": "integer"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "artifact"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "kind",
+              "project",
+              "path"
+            ],
+            "properties": {
+              "project": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "gate-verdict"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "kind",
+              "pipeline_id",
+              "gate_id",
+              "sha"
+            ],
+            "properties": {
+              "pipeline_id": {
+                "type": "string"
+              },
+              "gate_id": {
+                "type": "string"
+              },
+              "sha": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
+      "description": "VENDORED PINNED COPY of Maestro contracts/observability/evidence-ref.schema.json (EvidenceRef v1 incl. kind=gate-verdict) @ sha256:ce1aa82b8956a7132072321d42fca7b29f140b8a42725f3572341ff23c47cdd5. Cross-repo contracts are vendored in, never referenced out; byte-conformance CI is RD-007 M2."
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "schema_version": "1",
+  "event_id": "01KX9ZF1A2B3C4D5E6F7G8H9J0",
+  "producer": "atp-platform",
+  "kind": "eval-signal",
+  "ts": "2026-07-12T12:00:00Z",
+  "source": {
+    "store": "benchmark_runs",
+    "id": "pipe-check-2026-07-10-claude"
+  },
+  "proposed_target": "catalog",
+  "evidence_refs": [
+    {
+      "kind": "benchmark",
+      "run_id": "pipe-check-2026-07-10-claude"
+    }
+  ],
+  "payload": {
+    "rank_score": 0.915,
+    "note": "crossover candidate"
+  }
+}

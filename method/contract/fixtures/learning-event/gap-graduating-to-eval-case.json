@@ -1,0 +1,23 @@
+{
+  "schema_version": "1",
+  "event_id": "01KX9ZE7M2N4P6Q8R0S2T4V6W8",
+  "producer": "robin-runtime",
+  "kind": "gap",
+  "ts": "2026-07-12T11:30:00Z",
+  "source": {
+    "store": "var/gaps.jsonl",
+    "id": "gap-2026-07-12-0057"
+  },
+  "proposed_target": "eval-case",
+  "evidence_refs": [
+    {
+      "kind": "log",
+      "pipeline_id": "01KX8V7Z9DHBKYWGSN2KTWM8AB"
+    }
+  ],
+  "payload": {
+    "query": "...",
+    "failure": "reformulation",
+    "cluster": "retrieval-synonyms"
+  }
+}
