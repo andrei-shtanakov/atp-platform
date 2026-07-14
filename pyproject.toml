@@ -101,6 +101,7 @@ llm = [
     # The LLM judge supports an openai provider (and OpenAI-compatible local
     # servers via base_url), so the openai client belongs in the llm extra too.
     "openai>=2.15.0",
+    "litellm",
 ]
 pricing = [
     "atp-core[pricing]",
@@ -239,7 +240,7 @@ dev = [
     "pytest-mock>=3.15.1",
     "rich>=14.3.1",
     "ruff>=0.14.14",
-    "spec-runner>=0.1.4",
+    "spec-runner>=2.9,<3",
     "textual>=7.5.0",
     "alembic>=1.18.4",
     "uvicorn>=0.40.0",
