@@ -1,10 +1,2 @@
-# CODEOWNERS — RD-007 v1 acceptance (learning-through-governance).
-# Governed paths: modified only via reviewed PR; runtime never writes them.
-# Design: docs/2026-07-12-rd-007-learning-event-design.md §4.
-# Single-owner ecosystem today (OQ-3): the owner is named directly;
-# role-based teams replace this when they exist.
-
-/method/contract/                            @andrei-shtanakov
-/examples/test_suites/robin_regression.yaml  @andrei-shtanakov
-/method/spawners/robin_shim.py               @andrei-shtanakov
-/method/agents-catalog.toml                  @andrei-shtanakov
+# CODEOWNERS
+* @andrei-shtanakov
