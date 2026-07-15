@@ -687,21 +687,24 @@ class TestOrchestrator:
 
             end_time = datetime.now(tz=UTC)
 
-            self._usage_capture.record_usage(
-                UsageRecord(
-                    call_id=request.task_id,
-                    timestamp=end_time.isoformat(),
-                    adapter_type=self.adapter.adapter_type,
-                    status=response.status.value,
-                    model=None,  # M1 plumbs real model ids per adapter
-                    provider=None,
-                    usage=usage_from_metrics(response.metrics),
-                    reported_cost_usd=(
-                        response.metrics.cost_usd if response.metrics else None
-                    ),
-                    test_id=test.id,
+            try:
+                self._usage_capture.record_usage(
+                    UsageRecord(
+                        call_id=request.task_id,
+                        timestamp=end_time.isoformat(),
+                        adapter_type=self.adapter.adapter_type,
+                        status=response.status.value,
+                        model=None,  # M1 plumbs real model ids per adapter
+                        provider=None,
+                        usage=usage_from_metrics(response.metrics),
+                        reported_cost_usd=(
+                            response.metrics.cost_usd if response.metrics else None
+                        ),
+                        test_id=test.id,
+                    )
                 )
-            )
+            except Exception as e:
+                logger.warning("Usage capture failed: %s", e)
 
             run_result = RunResult(
                 test_id=test.id,

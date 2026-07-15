@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from atp.cost.capture import (
     CAPTURE_PATH_ENV,
     JsonlUsageCapture,
@@ -114,14 +116,14 @@ class TestJsonlUsageCapture:
 
 
 class TestCaptureFromEnv:
-    def test_unset_env_gives_null_capture(self, monkeypatch: object) -> None:
-        monkeypatch.delenv(CAPTURE_PATH_ENV, raising=False)  # type: ignore[attr-defined]
+    def test_unset_env_gives_null_capture(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv(CAPTURE_PATH_ENV, raising=False)
         assert isinstance(capture_from_env(), NullUsageCapture)
 
     def test_set_env_gives_jsonl_capture(
-        self, monkeypatch: object, tmp_path: Path
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        monkeypatch.setenv(  # type: ignore[attr-defined]
-            CAPTURE_PATH_ENV, str(tmp_path / "u.jsonl")
-        )
+        monkeypatch.setenv(CAPTURE_PATH_ENV, str(tmp_path / "u.jsonl"))
         assert isinstance(capture_from_env(), JsonlUsageCapture)
