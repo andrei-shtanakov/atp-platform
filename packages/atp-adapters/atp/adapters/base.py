@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import warnings
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from datetime import datetime
@@ -318,7 +319,9 @@ async def track_response_cost(
     agent_name: str | None = None,
     cost_tracker: CostTracker | None = None,
 ) -> None:
-    """Track cost from an ATPResponse with metrics.
+    """Deprecated: superseded by the ADR-ECO-003e UsageCapture seam.
+
+    Track cost from an ATPResponse with metrics.
 
     This utility function extracts token usage from an ATPResponse's metrics
     and tracks the cost using the CostTracker.
@@ -332,6 +335,13 @@ async def track_response_cost(
         agent_name: Optional agent name for association.
         cost_tracker: Optional CostTracker. Uses global tracker if not provided.
     """
+    warnings.warn(
+        "track_response_cost is deprecated and was never wired into the "
+        "runtime; usage flows through the UsageCapture seam "
+        "(atp.cost.capture, ADR-ECO-003e). Scheduled for removal.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     if response.metrics is None:
         return
 

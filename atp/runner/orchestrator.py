@@ -20,6 +20,12 @@ from atp.core.telemetry import (
     set_span_attributes,
     set_test_result_attributes,
 )
+from atp.cost.capture import (
+    UsageCapture,
+    UsageRecord,
+    capture_from_env,
+    usage_from_metrics,
+)
 from atp.loader.models import TestDefinition, TestSuite
 from atp.protocol import (
     ATPEvent,
@@ -65,6 +71,7 @@ class TestOrchestrator:
         max_parallel: int = 5,
         parallel_tests: bool = False,
         max_parallel_tests: int = 5,
+        usage_capture: UsageCapture | None = None,
     ) -> None:
         """
         Initialize the orchestrator.
@@ -79,6 +86,8 @@ class TestOrchestrator:
             max_parallel: Maximum number of parallel runs (default 5).
             parallel_tests: If True, run multiple tests in parallel.
             max_parallel_tests: Maximum number of parallel tests (default 5).
+            usage_capture: Usage-capture sink (ADR-ECO-003e seam).
+                Defaults to capture_from_env().
         """
         self.adapter = adapter
         self.sandbox_config = sandbox_config or SandboxConfig()
@@ -93,6 +102,7 @@ class TestOrchestrator:
         self._sandbox_manager: SandboxManager | None = None
         self._semaphore = asyncio.Semaphore(max_parallel)
         self._tests_semaphore = asyncio.Semaphore(max_parallel_tests)
+        self._usage_capture = usage_capture or capture_from_env()
 
     def _emit_progress(self, event: ProgressEvent) -> None:
         """Emit a progress event if callback is registered."""
@@ -676,6 +686,25 @@ class TestOrchestrator:
                         logger.warning("Prepared request cleanup failed: %s", e)
 
             end_time = datetime.now(tz=UTC)
+
+            try:
+                self._usage_capture.record_usage(
+                    UsageRecord(
+                        call_id=request.task_id,
+                        timestamp=end_time.isoformat(),
+                        adapter_type=self.adapter.adapter_type,
+                        status=response.status.value,
+                        model=None,  # M1 plumbs real model ids per adapter
+                        provider=None,
+                        usage=usage_from_metrics(response.metrics),
+                        reported_cost_usd=(
+                            response.metrics.cost_usd if response.metrics else None
+                        ),
+                        test_id=test.id,
+                    )
+                )
+            except Exception as e:
+                logger.warning("Usage capture failed: %s", e)
 
             run_result = RunResult(
                 test_id=test.id,
