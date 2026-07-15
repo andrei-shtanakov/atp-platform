@@ -17,6 +17,15 @@ Usage:
     ))
 """
 
+from atp.cost.capture import (
+    CAPTURE_PATH_ENV,
+    JsonlUsageCapture,
+    NullUsageCapture,
+    UsageCapture,
+    UsageRecord,
+    capture_from_env,
+    usage_from_metrics,
+)
 from atp.cost.models import CostEvent, ModelPricing, PricingConfig
 from atp.cost.tracker import (
     CostPersistenceBackend,
@@ -27,12 +36,19 @@ from atp.cost.tracker import (
 )
 
 __all__ = [
+    "CAPTURE_PATH_ENV",
     "CostEvent",
     "CostPersistenceBackend",
     "CostTracker",
+    "JsonlUsageCapture",
     "ModelPricing",
+    "NullUsageCapture",
     "PricingConfig",
+    "UsageCapture",
+    "UsageRecord",
+    "capture_from_env",
     "get_cost_tracker",
     "set_cost_tracker",
     "shutdown_cost_tracker",
+    "usage_from_metrics",
 ]
