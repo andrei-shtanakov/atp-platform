@@ -17,7 +17,7 @@
 # Снято с реального состояния 2026-07-01:
 #   atp-platform/method/run_pipe_check.py:59-89  (HARNESSES + AGENT_MODELS)
 #   arbiter/config/agents.toml                   (routable-секции + policy)
-#   Maestro/maestro/spawners/{claude_code,codex}.py:20  (DEFAULT_<H>_MODEL)
+#   maestro/maestro/spawners/{claude_code,codex}.py:20  (DEFAULT_<H>_MODEL)
 
 # =====================================================================
 #  ПЛОСКОСТЬ 1: МОДЕЛИ — то, что обновляет вендор (Поток 1, частый/дешёвый)

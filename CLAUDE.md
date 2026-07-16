@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Current task list:** `./TODO.md` — read it at the start of every session (ecosystem section at top)
 - **Ecosystem roadmap (strategic):** `../prograph-vault/authored/notes/ecosystem-roadmap.md` — R-01…R-16 across Maestro / arbiter / ATP / spec-runner
 - **Latest weekly status:** `../prograph-vault/authored/notes/status/2026-04-10-status.md`
-- **Sibling projects** (reference only): `../Maestro/`, `../arbiter/`, `../spec-runner/`, `../proctor/`
+- **Sibling projects** (reference only): `../maestro/`, `../arbiter/`, `../spec-runner/`, `../proctor/`
 
 ATP's role in the ecosystem: task validation for Maestro (`validation_cmd` — see `docs/maestro-integration.md`) and eval-driven learning for arbiter (ATP guardrails relate to arbiter invariants as separate lifecycle phases — see `../arbiter/docs/guardrails-atp-mapping.md`). R-06a and R-13 closed 2026-04-25; deep integration (R-06b, R-07) remains blocked on Maestro R-03.
 
@@ -102,7 +102,7 @@ uv run atp sync                    # Sync local YAML suites with remote server
 1. **Protocol** (`atp/protocol/`) - ATP Request/Response/Event models defining the contract
 2. **Adapters** (`atp/adapters/`) - Translate between ATP Protocol and agent types (HTTP, Container, CLI, LangGraph, CrewAI, AutoGen, MCP, Bedrock, Vertex, Azure OpenAI, SDK)
 3. **Runner** (`atp/runner/`) - Orchestrates test execution, manages sandboxes
-4. **Evaluators** (`atp/evaluators/`) - Assess agent results. Registered pipeline evaluators (`atp/evaluators/registry.py`): artifact, behavior, llm_judge, code_exec, security, factuality, performance, style, filesystem, composite, findings_match. Deterministic **checkers** are a separate registry (`atp/evaluators/checkers/`) selected via `grader: {type: programmatic, checker: <name>}` — currently `citation_grounding`, `findings_match`, `json_path`, and `receipt_chain` (verifies open-prose `receipts.jsonl` hash chains — vendored contract in `method/contract/openprose/`). (`git_commit.py`, `guardrails.py`, `container.py` exist as modules but are not registered pipeline evaluators; container is the isolation runtime — see component 20.)
+4. **Evaluators** (`atp/evaluators/`) - Assess agent results. Registered pipeline evaluators (`atp/evaluators/registry.py`): artifact, behavior, llm_judge, code_exec, security, factuality, performance, style, filesystem, composite, findings_match. Deterministic **checkers** are a separate registry (`atp/evaluators/checkers/`) selected via `grader: {type: programmatic, checker: <name>}` — currently `citation_grounding`, `findings_match`, `json_path`, and `receipt_chain` (verifies Libretto `receipts.jsonl` hash chains — vendored compatibility contract in `method/contract/openprose/`). (`git_commit.py`, `guardrails.py`, `container.py` exist as modules but are not registered pipeline evaluators; container is the isolation runtime — see component 20.)
 5. **Reporters** (`atp/reporters/`) - Format output; registry (`atp/reporters/registry.py`): `console`, `html`, `json`, `junit`, `summary`, `report_benchmark`. (`GameReporter` exists in `atp/reporters/game_reporter.py` but is used directly by the `game` command, not registered in the reporter registry; the CLI `--output` option accepts `console`/`json`/`junit`/`summary`.)
 6. **Benchmark API** (`atp/dashboard/benchmark/`) - REST API for pull-model benchmarks with leaderboard (`/api/v1/benchmarks`, `/api/v1/runs`)
 7. **Tournament API** (`atp/dashboard/tournament/`) - REST API for game-theoretic tournaments (`/api/v1/tournaments`)
@@ -256,7 +256,7 @@ Task status: `todo` → `in_progress` → `done` (or `blocked`)
 ## Repo scope & boundaries
 
 - **Этот репо:** `atp-platform` — git-корень `all_ai_orchestrators/atp-platform/`, remote `git@github.com:andrei-shtanakov/atp-platform.git`.
-- **Соседи (READ-ONLY reference):** `../arbiter/`, `../deployer/`, `../dispatcher/`, `../Maestro/`, `../open-prose/`, `../proctor/`, `../prograph/`, `../prograph-vault/`, `../robin-runtime/`, `../robin-toolkit/`, `../spec-runner/`, `../spec-runner-vscode/`, `../steward/` — их код не редактировать.
+- **Соседи (READ-ONLY reference):** `../arbiter/`, `../deployer/`, `../dispatcher/`, `../maestro/`, `../libretto/`, `../proctor/`, `../prograph/`, `../prograph-vault/`, `../robin-runtime/`, `../robin-toolkit/`, `../spec-runner/`, `../spec-runner-vscode/`, `../steward/` — их код не редактировать.
 - Нужна правка у соседа → **стоп**: запиши handoff в `../prograph-vault/authored/notes/`
   (кросс-проектное) или `../_cowork_output/` (черновик), не трогай его файлы.
 - Кросс-репные контракты — **вендорить пиненой копией внутрь**, не ссылаться наружу.

@@ -1,10 +1,14 @@
-# open-prose Receipts as Evaluation Input — Implementation Plan
+# Libretto Receipts as Evaluation Input — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Vendor the `openprose.receipt.v1` / `openprose.compile-ir.v1` contracts + fixtures into atp-platform and ship a stdlib receipts verifier (`canonical form → hash chain → ledger_head anchor`) exposed as the deterministic checker `receipt_chain`.
+**Goal:** Vendor the `libretto.receipt.v1` / `libretto.compile-ir.v1` contracts + fixtures into atp-platform and ship a stdlib receipts verifier (`canonical form → hash chain → ledger_head anchor`) exposed as the deterministic checker `receipt_chain`. Legacy `openprose.*` ledgers remain accepted for historical fixtures.
 
-**Architecture:** New private library `atp/evaluators/openprose_receipts/` (canonical.py / reader.py / checker.py), registered as the 4th checker in the closed registry. Contracts + fixtures vendored under `method/contract/` per the RD-007 pattern. One dispatch-layer change: `AgentEvalCaseEvaluator._evaluate_critical()` injects `_case_dir` into the checker config (confinement root). Spec: `docs/superpowers/specs/2026-07-16-openprose-receipts-evaluation-input-design.md` — read it first; it is the authority on semantics.
+**Architecture:** New private library `atp/evaluators/openprose_receipts/` (canonical.py / reader.py / checker.py), registered as the 4th checker in the closed registry. Contracts + fixtures vendored under `method/contract/` per the RD-007 pattern. One dispatch-layer change: `AgentEvalCaseEvaluator._evaluate_critical()` injects `_case_dir` into the checker config (confinement root). Spec: `docs/superpowers/specs/2026-07-16-libretto-receipts-evaluation-input-design.md` — read it first; it is the authority on semantics.
+
+> Rename note (2026-07-16): the producer repo is now `libretto`; existing
+> `openprose_receipts` names in this plan are the initial ATP compatibility
+> surface and should be renamed/wrapped in downstream Phase 2.
 
 **Tech Stack:** Python 3.12, pydantic (result models), stdlib `json`+`hashlib` (verification logic), pytest. **Zero new dependencies** — no jsonschema in the reader.
 
@@ -12,10 +16,10 @@
 
 - Package management: ONLY `uv` (`uv run pytest`, `uv run ruff`, `uv run pyrefly check`). Never pip.
 - Type hints on all code; line length 88; `uv run ruff format .` + `uv run ruff check .` + `uv run pyrefly check` must pass after every task (pre-commit runs them).
-- Branch: `feat/openprose-receipts-input` (already exists, spec committed). Commit per task; do NOT push or merge to `main` — PR at the end, merge is human-gated.
+- Branch: `feat/libretto-receipts-input`. Commit per task; do NOT push or merge to `main` — PR at the end, merge is human-gated.
 - Issue messages must contain the upstream `expected.json` substrings verbatim: `"prev broken"`, `"content_hash mismatch"`, `"ledger_head"`, `"torn write"`.
 - v1 is receipts-only: the IR contract and IR fixtures are vendored but NO IR reader/validation is implemented or tested.
-- The open-prose sibling (`../open-prose/`) is read-only reference: copy FROM it during Task 1, never reference its paths from code or tests.
+- The Libretto sibling (`../libretto/`) is read-only reference: copy FROM it during Task 1, never reference its paths from code or tests.
 
 ---
 
@@ -37,11 +41,11 @@
 
 ```bash
 cd /Users/Andrei_Shtanakov/labs/all_ai_orchestrators/atp-platform
-OP=../open-prose
+OP=../libretto
 mkdir -p method/contract/openprose method/contract/fixtures/openprose/broken
 cp "$OP/contracts/receipt.md" method/contract/openprose/receipt.md
 cp "$OP/contracts/ir.md" method/contract/openprose/ir.md
-cp -R "$OP/skills/prose/examples/runs" method/contract/fixtures/openprose/runs
+cp -R "$OP/skills/libretto/examples/runs" method/contract/fixtures/openprose/runs
 for f in broken-chain tampered-content torn-write truncated-ledger; do
   cp -R "$OP/tests/fixtures/runs/$f" "method/contract/fixtures/openprose/broken/$f"
 done
@@ -63,18 +67,18 @@ First capture the hashes: `find method/contract/openprose method/contract/fixtur
 Create `method/contract/openprose/PROVENANCE.md` (paste the real hash output into the last section):
 
 ```markdown
-# Vendored open-prose contracts & fixtures — provenance
+# Vendored Libretto contracts & fixtures — provenance
 
-- **Source repo:** open-prose (polyrepo sibling; dev-only reference, never a runtime path)
-- **Source commit:** a0395cdb004fb1782dd45e145f24f948e61043d1
+- **Source repo:** libretto (polyrepo sibling; dev-only reference, never a runtime path)
+- **Source commit:** 0c580d2f1928fb967ee4ed01acecc15163db884a
 - **Vendored:** 2026-07-16
 - **Pattern:** pinned copy inside the consumer (workspace rule; same as the RD-007
   learning-event vendoring in `method/contract/learning-event-v1.schema.json`)
 - **Contents:** `contracts/{receipt.md,ir.md}`; corpus runs from
-  `skills/prose/examples/runs/`; broken run fixtures from `tests/fixtures/runs/`
+  `skills/libretto/examples/runs/`; broken run fixtures from `tests/fixtures/runs/`
   (each with its upstream `expected.json`); IR fixtures from `tests/fixtures/ir/`
   (vendored for the future IR reader — NOT consumed by any v1 test).
-- **Excluded:** fixture `generate.py` scripts (they import `openprose_tools`,
+- **Excluded:** fixture `generate.py` scripts (they import producer-local tools,
   which is not vendored).
 - **Contract policy:** append-frozen — unknown fields are ignored (but hashed as
   received), unknown `v` values are refused.
@@ -91,7 +95,7 @@ Create `method/contract/openprose/PROVENANCE.md` (paste the real hash output int
 
 ```bash
 git add method/contract/openprose method/contract/fixtures/openprose
-git commit -m "feat: vendor open-prose receipt/ir contracts + fixtures (pinned @ a0395cd)"
+git commit -m "feat: vendor libretto receipt/ir contracts + fixtures (pinned @ 0c580d2)"
 ```
 
 ---
@@ -180,7 +184,7 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'atp.evaluators.openpro
 Create `atp/evaluators/openprose_receipts/__init__.py`:
 
 ```python
-"""Verification of open-prose receipts.jsonl ledgers (openprose.receipt.v1).
+"""Verification of Libretto receipts.jsonl ledgers (openprose.receipt.v1).
 
 Vendored contract: method/contract/openprose/receipt.md. v1 is receipts-only;
 the IR contract (ir.md) is vendored but has no reader yet.
@@ -194,7 +198,7 @@ Create `atp/evaluators/openprose_receipts/canonical.py`:
 
 Implements the contract's canonical form (method/contract/openprose/receipt.md):
 object keys sorted, no whitespace, UTF-8 strings not ASCII-escaped, integers
-only. Written against the contract text; open-prose's reference canonical.py
+only. Written against the contract text; Libretto's reference canonical.py
 was consulted, not copied. stdlib-only.
 """
 
@@ -426,7 +430,7 @@ Create `atp/evaluators/openprose_receipts/reader.py`:
 
 Semantics follow the vendored contract (method/contract/openprose/receipt.md)
 and the design spec (docs/superpowers/specs/
-2026-07-16-openprose-receipts-evaluation-input-design.md). ``load_ledger``
+2026-07-16-libretto-receipts-evaluation-input-design.md). ``load_ledger``
 never raises on bad content — it accumulates line-level issues and returns the
 parseable prefix, because a trailing torn line must degrade to a warning while
 the prefix still verifies.
@@ -930,7 +934,7 @@ Create `tests/contract/test_openprose_receipts_contract.py`:
 ```python
 """Contract tests: openprose.receipt.v1 verification over vendored fixtures.
 
-Corpus runs and broken fixtures are pinned copies of upstream open-prose
+Corpus runs and broken fixtures are pinned copies of upstream Libretto
 (method/contract/openprose/PROVENANCE.md). Broken-fixture outcomes are
 asserted through each fixture's own upstream expected.json, so a future
 fixture refresh stays mechanical.
@@ -997,7 +1001,7 @@ Expected: all PASS — 4 corpus runs clean, 4 broken fixtures matching their `ex
 ```bash
 uv run ruff format . && uv run ruff check . && uv run pyrefly check
 git add tests/contract/test_openprose_receipts_contract.py
-git commit -m "test: contract tests — vendored open-prose corpus + broken fixtures"
+git commit -m "test: contract tests — vendored Libretto corpus + broken fixtures"
 ```
 
 ---
@@ -1095,7 +1099,7 @@ Expected: FAIL — `ImportError: cannot import name 'receipt_chain_check'`.
 Create `atp/evaluators/openprose_receipts/checker.py`:
 
 ```python
-"""receipt_chain checker: verify an open-prose run directory's ledger.
+"""receipt_chain checker: verify a Libretto run directory's ledger.
 
 Selected via ``grader: {type: programmatic, checker: receipt_chain,
 config: {run_dir: <relative path>}}``. The agent-output ``text`` is ignored —
@@ -1393,11 +1397,11 @@ git commit -m "feat: dispatch-owned _case_dir injection for checker configs"
 
 - [ ] **Step 1: Update CLAUDE.md checker mentions**
 
-In `CLAUDE.md` component 4, extend the checker list: `currently `citation_grounding`, `findings_match`, and `json_path`` → `currently `citation_grounding`, `findings_match`, `json_path`, and `receipt_chain` (verifies open-prose `receipts.jsonl` hash chains — vendored contract in `method/contract/openprose/`)`. In component 25, extend the deterministic-checkers parenthetical the same way.
+In `CLAUDE.md` component 4, extend the checker list: `currently `citation_grounding`, `findings_match`, and `json_path`` → `currently `citation_grounding`, `findings_match`, `json_path`, and `receipt_chain` (verifies Libretto `receipts.jsonl` hash chains — vendored contract in `method/contract/openprose/`)`. In component 25, extend the deterministic-checkers parenthetical the same way.
 
 - [ ] **Step 2: Note progress in TODO.md**
 
-In the ACTIVE item "open-prose receipts/IR как evaluation-вход", append one line under «Объём»: `  - Реализация: PR (ветка feat/openprose-receipts-input), спека docs/superpowers/specs/2026-07-16-openprose-receipts-evaluation-input-design.md.`
+In the ACTIVE item "Libretto receipts/IR как evaluation-вход", append one line under «Объём»: `  - Реализация: PR (ветка feat/libretto-receipts-input), спека docs/superpowers/specs/2026-07-16-libretto-receipts-evaluation-input-design.md.`
 
 - [ ] **Step 3: Run the full test suite**
 
@@ -1414,15 +1418,15 @@ Expected: clean.
 ```bash
 git add CLAUDE.md TODO.md
 git commit -m "docs: register receipt_chain checker in CLAUDE.md component map"
-git push -u origin feat/openprose-receipts-input
-gh pr create --title "feat: open-prose receipts as evaluation input (receipt_chain checker)" --body "$(cat <<'EOF'
+git push -u origin feat/libretto-receipts-input
+gh pr create --title "feat: Libretto receipts as evaluation input (receipt_chain checker)" --body "$(cat <<'EOF'
 ## Summary
-- Vendor open-prose `openprose.receipt.v1` / `openprose.compile-ir.v1` contracts + corpus/broken fixtures (pinned @ a0395cd, provenance in `method/contract/openprose/PROVENANCE.md`)
+- Vendor Libretto `libretto.receipt.v1` / `libretto.compile-ir.v1` contracts + corpus/broken fixtures (pinned @ 0c580d2, provenance in `method/contract/openprose/PROVENANCE.md`; compatibility path kept for the first ATP integration)
 - New stdlib verifier `atp/evaluators/openprose_receipts/` — canonical form, content-hash recomputation, prev-chain, `ledger_head` anchor, two torn-write cases (warnings)
 - New deterministic checker `receipt_chain` (4th in the registry) with dispatch-injected `_case_dir` confinement; `Grader` schema validation for `config.run_dir`
 - v1 is receipts-only: IR contract/fixtures vendored, no IR reader
 
-Design spec: `docs/superpowers/specs/2026-07-16-openprose-receipts-evaluation-input-design.md`
+Design spec: `docs/superpowers/specs/2026-07-16-libretto-receipts-evaluation-input-design.md`
 
 ## Test plan
 - Unit: canonicalization, loader (torn line / mid-ledger stop), verify_run edge cases, checker verdict mapping + confinement, `_case_dir` injection, Grader validation

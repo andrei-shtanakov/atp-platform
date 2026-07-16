@@ -12,7 +12,7 @@ tells Maestro whether to mark the task `validation_passed` or
 but does not parse them.
 
 Source of truth on the Maestro side:
-[`maestro/validator.py`](https://github.com/andrei-shtanakov/Maestro/blob/main/maestro/validator.py)
+[`maestro/validator.py`](https://github.com/andrei-shtanakov/maestro/blob/main/maestro/validator.py)
 — `validate(command, workdir, timeout) → ValidationResult`. It launches the
 command via `asyncio.create_subprocess_exec`, waits up to `timeout_seconds`,
 captures both streams as UTF-8 (`errors="replace"`), and returns
