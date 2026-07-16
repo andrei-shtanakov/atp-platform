@@ -142,17 +142,24 @@ class VerifyResult(BaseModel):
 A torn write is a crash mid-append, not tampering; the valid prefix stands. Upstream's
 `expected.json` semantics (`ok: true`, `warning_contains: "torn write"`) are preserved.
 
-- **`torn_write_manifest`** — every ledger line is valid, but `run.json` anchors an
-  *earlier* receipt: `ledger_head` equals the `content_hash` of receipt K < N and
-  `receipt_count == K` ("append succeeded, head update did not"). This is the upstream
-  `torn-write` fixture. Warning; the anchored prefix is verified; `receipt_count` in the
-  result is K (the anchored prefix), matching upstream semantics. If `ledger_head` matches
-  *no* receipt in the ledger, it is a plain `ledger_head_mismatch` error.
+- **`torn_write_manifest`** — every ledger line is valid, but the manifest trails the
+  ledger by **exactly one** receipt: `ledger_head` equals the last receipt's `prev`
+  (i.e. receipt N−1's `content_hash`) and `run.json.receipt_count == N − 1` ("append
+  succeeded, head update did not" — one interrupted append is the only crash artifact a
+  torn write can produce). This is the upstream `torn-write` fixture. Warning; the
+  anchored prefix is verified; `receipt_count` in the result is N−1. Anything looser —
+  `ledger_head` matching an earlier receipt K < N−1, matching no receipt, or a
+  `receipt_count` that disagrees with the matched position — is a plain
+  `ledger_head_mismatch` error: a long valid-but-unanchored suffix must not pass as a
+  torn write.
 - **`torn_write_line`** — the **final** physical line is not valid JSON (partial write).
   Warning; the parsed prefix is verified; `receipt_count` counts the prefix. Invalid JSON
   on any *non-final* line is an error `invalid_json` — only a trailing torn line is
-  excusable as a crash artifact. Upstream has no fixture for this case; we cover it with
-  our own unit fixture.
+  excusable as a crash artifact; on a non-final invalid line the loader **stops at the
+  parsed prefix and does not attempt to parse subsequent lines** (the chain identity is
+  broken at that point, so anything after it is unverifiable — implementations must not
+  differ here). Upstream has no fixture for this case; we cover it with our own unit
+  fixture.
 
 `ok` stays `True` when the only findings are warnings.
 
@@ -170,6 +177,16 @@ grader:
 
 Signature is the registry's `Checker = Callable[[dict, str | None], CaseVerdict]`. The
 `text` argument is ignored — the artifact under test is a run *directory*, not agent stdout.
+
+### Schema-level validation (`Grader` model)
+
+The `Grader` validator (`packages/atp-method/atp_method/schema.py`) already carries
+per-checker requirements (`findings_match` → `expected_findings`, `json_path` →
+`config.assertions`, `citation_grounding` → `config.expected`). Symmetrically:
+`checker == "receipt_chain"` requires `grader.config.run_dir` to be a non-empty,
+**relative** path string — absolute paths are rejected at schema load, not just at
+runtime. Confinement itself stays a runtime check via `_case_dir` (the schema cannot see
+the filesystem).
 
 ### `_case_dir` injection (dispatch-layer change)
 
@@ -223,9 +240,13 @@ vendored fixtures only:
   missing `run.json` (warning `no_anchor`), `torn_write_line` (own minimal fixture,
   distinct from the vendored `torn_write_manifest` case), invalid JSON on a non-final
   line (error).
-- Checker: verdict mapping table above; `_case_dir` injection (evaluator overwrites a
-  user-supplied `_case_dir`; missing `case_path` → no injection → relative `run_dir` is
-  malformed); absolute `run_dir` rejected; `../` escape rejected.
+- Checker: verdict mapping table above; absolute `run_dir` rejected; `../` escape
+  rejected; missing `_case_dir` → malformed. Grader schema: `receipt_chain` without
+  `config.run_dir` (or with an absolute one) rejected at load.
+- `_case_dir` injection is **owned by the evaluator**, so its targeted tests live next to
+  it — `packages/atp-method/tests/test_evaluator.py`: evaluator injects `_case_dir` from
+  `case_path`'s parent; overwrites a user-supplied `_case_dir`; missing `case_path` → no
+  injection (checker then reports malformed for a relative `run_dir`).
 
 ## Follow-ups (explicitly out of v1)
 
