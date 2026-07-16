@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from datetime import date
+from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -270,6 +271,18 @@ class Grader(BaseModel):
                 raise ValueError(
                     "checker 'citation_grounding' requires grader.config.expected "
                     "(a non-empty list)"
+                )
+        if self.checker == "receipt_chain":
+            run_dir = (self.config or {}).get("run_dir")
+            if not isinstance(run_dir, str) or not run_dir.strip():
+                raise ValueError(
+                    "checker 'receipt_chain' requires grader.config.run_dir "
+                    "(a non-empty relative path string)"
+                )
+            if Path(run_dir).is_absolute():
+                raise ValueError(
+                    "checker 'receipt_chain' requires a relative run_dir "
+                    "(resolved against the case directory at runtime)"
                 )
         return self
 

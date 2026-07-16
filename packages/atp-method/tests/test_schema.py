@@ -307,3 +307,31 @@ def test_empty_checker_rejected() -> None:
             scoring="y",
             expected_findings=[],
         )
+
+
+def _receipt_chain_grader(config: dict | None) -> None:
+    Grader(
+        type="programmatic",
+        checker="receipt_chain",
+        critical_check="ledger chain verifies",
+        scoring="binary: chain + anchor valid",
+        config=config,
+    )
+
+
+def test_receipt_chain_requires_run_dir() -> None:
+    with pytest.raises(ValidationError, match="receipt_chain"):
+        _receipt_chain_grader({})
+    with pytest.raises(ValidationError, match="receipt_chain"):
+        _receipt_chain_grader(None)
+    with pytest.raises(ValidationError, match="receipt_chain"):
+        _receipt_chain_grader({"run_dir": "   "})
+
+
+def test_receipt_chain_rejects_absolute_run_dir() -> None:
+    with pytest.raises(ValidationError, match="relative"):
+        _receipt_chain_grader({"run_dir": "/etc/anything"})
+
+
+def test_receipt_chain_accepts_relative_run_dir() -> None:
+    _receipt_chain_grader({"run_dir": "runs/r1"})  # must not raise
