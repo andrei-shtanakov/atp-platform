@@ -190,3 +190,118 @@ class TestLoadLedger:
         (run_dir / "receipts.jsonl").write_text("", encoding="utf-8")
         loaded = load_ledger(run_dir / "receipts.jsonl")
         assert loaded.receipts == [] and loaded.errors == [] and loaded.warnings == []
+
+
+class TestVerifyRun:
+    def test_valid_run_is_ok(self, tmp_path: Path) -> None:
+        receipts = _chain(3)
+        run = _write_run(tmp_path / "r", receipts, _manifest(receipts))
+        result = verify_run(run)
+        assert result.ok is True
+        assert result.receipt_count == 3
+        assert result.errors == [] and result.warnings == []
+
+    def test_empty_ledger_is_error(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "r"
+        run_dir.mkdir()
+        (run_dir / "receipts.jsonl").write_text("", encoding="utf-8")
+        result = verify_run(run_dir)
+        assert result.ok is False
+        assert result.errors[0].code == "empty_ledger"
+
+    def test_unknown_version_is_refused(self, tmp_path: Path) -> None:
+        receipts = _chain(1)
+        receipts[0]["v"] = "openprose.receipt.v99"
+        run = _write_run(tmp_path / "r", receipts, None)
+        result = verify_run(run)
+        assert any(e.code == "unknown_version" for e in result.errors)
+
+    def test_tampered_content_fails_hash(self, tmp_path: Path) -> None:
+        receipts = _chain(2)
+        receipts[1]["agent"] = "tampered"  # content changed, hash not recomputed
+        run = _write_run(tmp_path / "r", receipts, _manifest(receipts))
+        result = verify_run(run)
+        assert result.ok is False
+        assert any(
+            e.code == "content_hash_mismatch" and "content_hash mismatch" in e.message
+            for e in result.errors
+        )
+
+    def test_broken_prev_fails_chain(self, tmp_path: Path) -> None:
+        receipts = _chain(2)
+        receipts[1]["prev"] = "sha256:" + "0" * 64
+        receipts[1]["content_hash"] = content_hash(receipts[1])  # rehash honestly
+        run = _write_run(tmp_path / "r", receipts, _manifest(receipts))
+        result = verify_run(run)
+        assert result.ok is False
+        assert any(
+            e.code == "chain_break" and "prev broken" in e.message
+            for e in result.errors
+        )
+
+    def test_float_tokens_rejected(self, tmp_path: Path) -> None:
+        receipts = _chain(1)
+        receipts[0]["usage"]["input_tokens"] = 1.5
+        receipts[0]["content_hash"] = "sha256:" + "0" * 64  # unhashable anyway
+        run = _write_run(tmp_path / "r", receipts, None)
+        result = verify_run(run)
+        assert any(e.code == "invalid_number" for e in result.errors)
+
+    def test_missing_manifest_is_warning(self, tmp_path: Path) -> None:
+        run = _write_run(tmp_path / "r", _chain(2), None)
+        result = verify_run(run)
+        assert result.ok is True
+        assert result.warnings[0].code == "no_anchor"
+
+    def test_receipt_count_mismatch_with_matching_head(self, tmp_path: Path) -> None:
+        receipts = _chain(2)
+        run = _write_run(tmp_path / "r", receipts, _manifest(receipts, count=5))
+        result = verify_run(run)
+        assert result.ok is False
+        assert any(e.code == "receipt_count_mismatch" for e in result.errors)
+
+    def test_torn_manifest_trailing_by_one_is_warning(self, tmp_path: Path) -> None:
+        receipts = _chain(2)
+        manifest = _manifest(
+            receipts, count=1, head=receipts[0]["content_hash"], status="running"
+        )
+        run = _write_run(tmp_path / "r", receipts, manifest)
+        result = verify_run(run)
+        assert result.ok is True
+        assert any(
+            w.code == "torn_write_manifest" and "torn write" in w.message
+            for w in result.warnings
+        )
+        assert result.receipt_count == 1  # the anchored prefix
+
+    def test_manifest_trailing_by_two_is_error(self, tmp_path: Path) -> None:
+        receipts = _chain(3)
+        manifest = _manifest(receipts, count=1, head=receipts[0]["content_hash"])
+        run = _write_run(tmp_path / "r", receipts, manifest)
+        result = verify_run(run)
+        assert result.ok is False
+        assert any(
+            e.code == "ledger_head_mismatch" and "ledger_head" in e.message
+            for e in result.errors
+        )
+
+    def test_head_matching_nothing_is_error(self, tmp_path: Path) -> None:
+        receipts = _chain(2)
+        manifest = _manifest(receipts, head="sha256:" + "f" * 64)
+        run = _write_run(tmp_path / "r", receipts, manifest)
+        result = verify_run(run)
+        assert result.ok is False
+        assert any(e.code == "ledger_head_mismatch" for e in result.errors)
+
+    def test_torn_line_with_anchored_prefix_is_ok(self, tmp_path: Path) -> None:
+        receipts = _chain(2)
+        run = _write_run(
+            tmp_path / "r",
+            receipts,
+            _manifest(receipts),
+            trailing_garbage='{"v": "openprose.rec',
+        )
+        result = verify_run(run)
+        assert result.ok is True
+        assert result.receipt_count == 2
+        assert any(w.code == "torn_write_line" for w in result.warnings)

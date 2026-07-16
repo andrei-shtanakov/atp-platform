@@ -14,6 +14,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from atp.evaluators.openprose_receipts.canonical import content_hash
+
 RECEIPT_VERSION = "openprose.receipt.v1"
 RUN_VERSION = "openprose.run.v1"
 
@@ -114,6 +116,204 @@ def load_ledger(path: Path) -> LoadedLedger:
     return LoadedLedger(receipts=receipts, errors=errors, warnings=warnings)
 
 
+def _receipt_issues(receipt: dict[str, Any], line_no: int) -> list[Issue]:
+    """Structural validation of one receipt (in code — no jsonschema)."""
+    v = receipt.get("v")
+    if v != RECEIPT_VERSION:
+        # Contract: consumers MUST refuse unknown versions; no point checking
+        # a shape we do not know.
+        return [
+            Issue(
+                code="unknown_version",
+                line_no=line_no,
+                message=f"unknown receipt version {v!r} at line {line_no} — refusing",
+            )
+        ]
+    issues: list[Issue] = []
+    for field in _REQUIRED_FIELDS:
+        if field not in receipt:
+            issues.append(
+                Issue(
+                    code="missing_field",
+                    line_no=line_no,
+                    message=f"missing field '{field}' at line {line_no}",
+                )
+            )
+    if "kind" in receipt and receipt["kind"] not in _KINDS:
+        issues.append(
+            Issue(
+                code="invalid_enum",
+                line_no=line_no,
+                message=f"invalid kind {receipt['kind']!r} at line {line_no}",
+            )
+        )
+    if "status" in receipt and receipt["status"] not in _STATUSES:
+        issues.append(
+            Issue(
+                code="invalid_enum",
+                line_no=line_no,
+                message=f"invalid status {receipt['status']!r} at line {line_no}",
+            )
+        )
+    usage = receipt.get("usage")
+    if "usage" in receipt and (
+        not isinstance(usage, dict) or usage.get("basis") not in _USAGE_BASES
+    ):
+        issues.append(
+            Issue(
+                code="invalid_enum",
+                line_no=line_no,
+                message=f"invalid usage.basis at line {line_no}",
+            )
+        )
+    if "hash_algorithm" in receipt and receipt["hash_algorithm"] != "sha256":
+        issues.append(
+            Issue(
+                code="invalid_enum",
+                line_no=line_no,
+                message=f"unsupported hash_algorithm at line {line_no}",
+            )
+        )
+    return issues
+
+
 def verify_run(run_dir: Path) -> VerifyResult:
-    """Verify a run directory: ledger chain consistency + manifest anchor."""
-    raise NotImplementedError
+    """Verify a run directory's ledger: structure → hash → chain → anchor.
+
+    ``ok`` is True iff there are no errors; torn writes (a trailing
+    unparseable line, or a manifest trailing the ledger by exactly one
+    receipt) degrade to warnings — a crash artifact, not tampering.
+    """
+    loaded = load_ledger(run_dir / "receipts.jsonl")
+    errors = list(loaded.errors)
+    warnings = list(loaded.warnings)
+    receipts = loaded.receipts
+    receipt_count = len(receipts)
+
+    if not receipts and not errors:
+        errors.append(
+            Issue(
+                code="empty_ledger",
+                message=(
+                    "empty ledger: a run always opens with a run_start control receipt"
+                ),
+            )
+        )
+
+    prev_expected: str | None = None
+    for line_no, receipt in enumerate(receipts, start=1):
+        line_issues = _receipt_issues(receipt, line_no)
+        errors.extend(line_issues)
+        if not line_issues:
+            try:
+                recomputed = content_hash(receipt)
+            except (TypeError, ValueError):
+                errors.append(
+                    Issue(
+                        code="invalid_number",
+                        line_no=line_no,
+                        message=(
+                            f"non-canonical value at line {line_no} "
+                            "(floats/NaN break hash portability)"
+                        ),
+                    )
+                )
+            else:
+                if recomputed != receipt.get("content_hash"):
+                    errors.append(
+                        Issue(
+                            code="content_hash_mismatch",
+                            line_no=line_no,
+                            message=f"content_hash mismatch at line {line_no}",
+                        )
+                    )
+        if receipt.get("prev") != prev_expected:
+            errors.append(
+                Issue(
+                    code="chain_break",
+                    line_no=line_no,
+                    message=f"prev broken at line {line_no}",
+                )
+            )
+        prev_expected = receipt.get("content_hash")
+
+    manifest_path = run_dir / "run.json"
+    if not manifest_path.is_file():
+        warnings.append(
+            Issue(
+                code="no_anchor",
+                message=(
+                    "run.json missing — chain-only verification, "
+                    "ledger_head not checked"
+                ),
+            )
+        )
+        return VerifyResult(
+            ok=not errors,
+            receipt_count=receipt_count,
+            errors=errors,
+            warnings=warnings,
+        )
+
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except ValueError:
+        manifest = None
+    if not isinstance(manifest, dict):
+        errors.append(
+            Issue(code="invalid_run_json", message="run.json is not a JSON object")
+        )
+    elif manifest.get("v") != RUN_VERSION:
+        errors.append(
+            Issue(
+                code="unknown_version",
+                message=f"unknown run.json version {manifest.get('v')!r} — refusing",
+            )
+        )
+    elif receipts:
+        head = manifest.get("ledger_head")
+        count = manifest.get("receipt_count")
+        last = receipts[-1]
+        if head == last.get("content_hash"):
+            if count != len(receipts):
+                errors.append(
+                    Issue(
+                        code="receipt_count_mismatch",
+                        message=(
+                            f"run.json receipt_count={count!r} but the ledger "
+                            f"has {len(receipts)} receipts"
+                        ),
+                    )
+                )
+        elif (
+            head is not None and head == last.get("prev") and count == len(receipts) - 1
+        ):
+            # Append succeeded, head update did not: the only crash artifact a
+            # torn write can produce is trailing by EXACTLY one receipt.
+            warnings.append(
+                Issue(
+                    code="torn_write_manifest",
+                    message=(
+                        "torn write: manifest trails ledger by exactly one "
+                        "receipt; verifying the anchored prefix"
+                    ),
+                )
+            )
+            receipt_count = len(receipts) - 1
+        else:
+            errors.append(
+                Issue(
+                    code="ledger_head_mismatch",
+                    message=(
+                        "ledger_head does not match the ledger (a valid but "
+                        "unanchored suffix is not a torn write)"
+                    ),
+                )
+            )
+
+    return VerifyResult(
+        ok=not errors,
+        receipt_count=receipt_count,
+        errors=errors,
+        warnings=warnings,
+    )
