@@ -3,8 +3,12 @@
 The underlying LLM judge is faked, so no real model calls are made.
 """
 
+from pathlib import Path
+
 import pytest
+from atp.core.results import CaseVerdict
 from atp.evaluators.base import EvalCheck, EvalResult, Evaluator
+from atp.evaluators.checkers import register_checker
 from atp.loader.models import Assertion, TaskDefinition, TestDefinition
 from atp.protocol import ATPResponse, ResponseStatus
 from atp.protocol.models import ArtifactFile
@@ -336,3 +340,57 @@ async def test_unknown_checker_fails_closed() -> None:
     result = await ev.evaluate(_task(), response, [], assertion)
     assert result.checks[0].passed is False
     assert "unknown checker" in (result.checks[0].message or "")
+
+
+def _spy_checker(captured: dict):
+    def check(config: dict, text: str | None) -> CaseVerdict:
+        captured.clear()
+        captured.update(config)
+        return CaseVerdict(critical_pass=True)
+
+    return check
+
+
+# Registered once at module import: the registry has no unregister and raises
+# on duplicate names, so per-test registration would break under repetition.
+_CAPTURED_A: dict = {}
+_CAPTURED_B: dict = {}
+register_checker("_test_spy_case_dir", _spy_checker(_CAPTURED_A))
+register_checker("_test_spy_no_case_path", _spy_checker(_CAPTURED_B))
+
+
+@pytest.mark.anyio
+async def test_evaluator_injects_case_dir_and_overrides_user_value(
+    tmp_path: Path,
+) -> None:
+    """_case_dir is dispatch-owned: derived from case_path, never user config."""
+    case_path = tmp_path / "cases" / "case-x-001.yaml"
+    task = TestDefinition(
+        id="case-x-001",
+        name="x",
+        task=TaskDefinition(
+            description="do x",
+            input_data={"case_path": str(case_path)},
+        ),
+    )
+    assertion = Assertion(
+        type=METHOD_CRITICAL_CHECK,
+        critical=True,
+        config={"checker": "_test_spy_case_dir", "_case_dir": "/evil/injected"},
+    )
+    ev = AgentEvalCaseEvaluator(judge=FakeJudge(1.0))
+    await ev.evaluate(task, _response(), [], assertion)
+    assert _CAPTURED_A["_case_dir"] == str(case_path.parent)
+
+
+@pytest.mark.anyio
+async def test_evaluator_without_case_path_injects_nothing() -> None:
+    """No case_path in input_data → no _case_dir key (user value still stripped)."""
+    assertion = Assertion(
+        type=METHOD_CRITICAL_CHECK,
+        critical=True,
+        config={"checker": "_test_spy_no_case_path", "_case_dir": "/evil"},
+    )
+    ev = AgentEvalCaseEvaluator(judge=FakeJudge(1.0))
+    await ev.evaluate(_task(), _response(), [], assertion)
+    assert "_case_dir" not in _CAPTURED_B
