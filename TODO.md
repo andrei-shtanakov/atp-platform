@@ -154,6 +154,33 @@
       (гейт). Per-CLI работа, начинать с `claude_code`. Дизайн:
       [`docs/superpowers/specs/2026-06-21-cli-corpus-grounding-design.md`](docs/superpowers/specs/2026-06-21-cli-corpus-grounding-design.md).
 
+- [ ] **open-prose receipts/IR как evaluation-вход** (effort S–M, ACTIVE — решение 2026-07-16)
+  - Оффер: `../prograph-vault/authored/notes/2026-07-16-openprose-contracts-offer.md`
+    (2026-07-16). open-prose оставляет от каждого прогона `receipts.jsonl`
+    (`openprose.receipt.v1`, hash-chained журнал: что исполнилось, порядок, входы, токены
+    с `usage.basis: exact|estimated|unavailable`) и `{program}.ir.json`
+    (`openprose.compile-ir.v1`). Резонирует с нашей философией честного usage-учёта
+    (003d `usage_contract` / 003e provenance).
+  - **Почему делаем сейчас** (пересмотр решения «ждать спроса» того же дня): у ATP уже
+    отработана механика вендоренный-контракт + contract-тесты в CI (learning-event-v1,
+    EvidenceRef v1, RD-007) — закоммиченный corpus open-prose и есть workload для reader,
+    копия не гниёт молча; open-prose Rust-гейт 4.6 называет atp-platform поимённо
+    («receipts-verify crate used by atp-platform», их plan:82-84, ревизит в конце их
+    Phase 4) — факт «вендоренный контракт + работающий reader» должен существовать к
+    ревизиту, причинность: сначала задача здесь, потом легитимный триггер гейта.
+    Спешки нет — контракты append-frozen, но и триггер-ожидание больше не нужно.
+  - **Объём:**
+    - вендорить пинованную копию `open-prose/contracts/{receipt.md,ir.md}`
+      (+опц. референс канонизации `tools/src/openprose_tools/canonical.py`);
+    - reader **обязан приземлиться на существующую потребляющую поверхность**, не быть
+      библиотекой на полке: детерминированный checker (`receipt_chain` в
+      `atp/evaluators/checkers/`, под `grader: {type: programmatic}`) и/или маппинг
+      receipts → EvalCheck/EvidenceRef как evidence-source;
+    - contract-тесты на их corpus `open-prose/skills/prose/examples/runs/` (4 прогона,
+      вкл. skip-semantics resume) и битых фикстурах `open-prose/tests/fixtures/{runs,ir}/`;
+    - append-frozen семантика: неизвестные поля игнорировать, неизвестный `v` — отклонять.
+  - arbiter — вторичный потребитель (после reader'а здесь); proctor — не заводить ничего.
+
 ### Ждём от других проектов
 
 - **Maestro → R-03**: без MCP-клиента в Maestro невозможен feedback loop в arbiter → отложить R-06b/R-07
