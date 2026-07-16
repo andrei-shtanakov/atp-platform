@@ -1,0 +1,43 @@
+{
+  "agents": {
+    "worker": {
+      "backoff": null,
+      "model": "haiku",
+      "persist": null,
+      "prompt_hash": "sha256:b65d3ca4d4a487050e4d30eee8e7a4c5b14f58e8a9d18ac333206f3792d00417",
+      "retry": null,
+      "skills": []
+    }
+  },
+  "blocks": {},
+  "content_hash": "sha256:ca9b2744eb9799a5900e4cd0ffea882bb83c2d1fac62e2210de2393d1758be12",
+  "diagnostics": [],
+  "hash_algorithm": "sha256",
+  "inputs": {},
+  "outputs": {},
+  "program": "program.prose",
+  "source": {
+    "content_hash": "sha256:3a8d49c9573b0fc13ba37e954d7c60e7551a64e74eeb39f94c2bd14d415bb692",
+    "path": "program.prose"
+  },
+  "state_backend": "postgres",
+  "statements": [
+    {
+      "id": "s001",
+      "kind": "agent_def",
+      "line": 2,
+      "name": "worker"
+    },
+    {
+      "agent": "worker",
+      "binding": null,
+      "context": [],
+      "id": "s002",
+      "is_output": false,
+      "kind": "session",
+      "line": 6,
+      "prompt_hash": "sha256:3d3c4a8117c978e4de40a505bd3a2e74ffa6f8fc8a30c745a33af18fd1a90046"
+    }
+  ],
+  "v": "openprose.compile-ir.v1"
+}
