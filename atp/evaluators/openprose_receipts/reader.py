@@ -190,7 +190,7 @@ def verify_run(run_dir: Path) -> VerifyResult:
     receipts = loaded.receipts
     receipt_count = len(receipts)
 
-    if not receipts and not errors:
+    if not receipts and not errors and not warnings:
         errors.append(
             Issue(
                 code="empty_ledger",

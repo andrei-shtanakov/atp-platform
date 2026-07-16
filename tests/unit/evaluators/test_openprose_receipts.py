@@ -209,6 +209,17 @@ class TestVerifyRun:
         assert result.ok is False
         assert result.errors[0].code == "empty_ledger"
 
+    def test_torn_first_line_is_warning_not_empty_ledger(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "r"
+        run_dir.mkdir()
+        (run_dir / "receipts.jsonl").write_text(
+            '{"v": "openprose.rec', encoding="utf-8"
+        )
+        result = verify_run(run_dir)
+        assert result.ok is True
+        assert result.errors == []
+        assert any(w.code == "torn_write_line" for w in result.warnings)
+
     def test_unknown_version_is_refused(self, tmp_path: Path) -> None:
         receipts = _chain(1)
         receipts[0]["v"] = "openprose.receipt.v99"
