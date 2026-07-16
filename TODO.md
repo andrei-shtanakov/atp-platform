@@ -179,6 +179,7 @@
     - contract-тесты на их corpus `open-prose/skills/prose/examples/runs/` (4 прогона,
       вкл. skip-semantics resume) и битых фикстурах `open-prose/tests/fixtures/{runs,ir}/`;
     - append-frozen семантика: неизвестные поля игнорировать, неизвестный `v` — отклонять.
+    - Реализация: PR (ветка feat/openprose-receipts-input), спека docs/superpowers/specs/2026-07-16-openprose-receipts-evaluation-input-design.md.
   - arbiter — вторичный потребитель (после reader'а здесь); proctor — не заводить ничего.
 
 ### Ждём от других проектов
