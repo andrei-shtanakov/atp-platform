@@ -9,7 +9,9 @@ from typing import Any
 
 import pytest
 
+from atp.evaluators.checkers import get_checker
 from atp.evaluators.openprose_receipts.canonical import canonical_json, content_hash
+from atp.evaluators.openprose_receipts.checker import receipt_chain_check
 from atp.evaluators.openprose_receipts.reader import (  # noqa: F401
     LoadedLedger,
     VerifyResult,
@@ -316,3 +318,66 @@ class TestVerifyRun:
         assert result.ok is True
         assert result.receipt_count == 2
         assert any(w.code == "torn_write_line" for w in result.warnings)
+
+
+class TestReceiptChainChecker:
+    def _valid_case(self, case_dir: Path) -> dict[str, Any]:
+        receipts = _chain(2)
+        _write_run(case_dir / "runs" / "r1", receipts, _manifest(receipts))
+        return {"run_dir": "runs/r1", "_case_dir": str(case_dir)}
+
+    def test_registered_in_registry(self) -> None:
+        assert get_checker("receipt_chain") is receipt_chain_check
+
+    def test_pass_on_valid_run(self, tmp_path: Path) -> None:
+        verdict = receipt_chain_check(self._valid_case(tmp_path), None)
+        assert verdict.critical_pass is True
+        assert verdict.malformed is False
+        assert verdict.rubric_score == 1.0
+        assert verdict.details["receipt_count"] == 2
+        assert verdict.grader_version == "receipt_chain@1"
+
+    def test_text_argument_is_ignored(self, tmp_path: Path) -> None:
+        verdict = receipt_chain_check(self._valid_case(tmp_path), "NOT JSON {{{")
+        assert verdict.critical_pass is True
+
+    def test_fail_on_broken_chain_is_not_malformed(self, tmp_path: Path) -> None:
+        receipts = _chain(2)
+        receipts[1]["prev"] = "sha256:" + "0" * 64
+        receipts[1]["content_hash"] = content_hash(receipts[1])
+        _write_run(tmp_path / "runs" / "r1", receipts, _manifest(receipts))
+        verdict = receipt_chain_check(
+            {"run_dir": "runs/r1", "_case_dir": str(tmp_path)}, None
+        )
+        assert verdict.critical_pass is False
+        assert verdict.malformed is False
+        assert verdict.rubric_score == 0.0
+        assert verdict.details["errors"]
+
+    def test_missing_run_dir_config_is_malformed(self, tmp_path: Path) -> None:
+        verdict = receipt_chain_check({"_case_dir": str(tmp_path)}, None)
+        assert verdict.malformed is True and verdict.critical_pass is False
+
+    def test_absolute_run_dir_is_malformed(self, tmp_path: Path) -> None:
+        verdict = receipt_chain_check(
+            {"run_dir": str(tmp_path), "_case_dir": str(tmp_path)}, None
+        )
+        assert verdict.malformed is True
+
+    def test_missing_case_dir_is_malformed(self, tmp_path: Path) -> None:
+        verdict = receipt_chain_check({"run_dir": "runs/r1"}, None)
+        assert verdict.malformed is True
+
+    def test_escape_from_case_dir_is_malformed(self, tmp_path: Path) -> None:
+        case_dir = tmp_path / "case"
+        case_dir.mkdir()
+        verdict = receipt_chain_check(
+            {"run_dir": "../outside", "_case_dir": str(case_dir)}, None
+        )
+        assert verdict.malformed is True
+
+    def test_missing_ledger_is_malformed(self, tmp_path: Path) -> None:
+        verdict = receipt_chain_check(
+            {"run_dir": "runs/nope", "_case_dir": str(tmp_path)}, None
+        )
+        assert verdict.malformed is True
