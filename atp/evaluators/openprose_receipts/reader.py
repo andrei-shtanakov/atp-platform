@@ -72,7 +72,14 @@ def load_ledger(path: Path) -> LoadedLedger:
     receipts: list[dict[str, Any]] = []
     errors: list[Issue] = []
     warnings: list[Issue] = []
-    lines = path.read_text(encoding="utf-8").splitlines()
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as e:
+        errors.append(
+            Issue(code="unreadable_ledger", message=f"cannot read {path}: {e}")
+        )
+        return LoadedLedger(receipts=[], errors=errors, warnings=warnings)
+    lines = text.splitlines()
     while lines and not lines[-1].strip():
         lines.pop()
     for line_no, line in enumerate(lines, start=1):

@@ -193,6 +193,17 @@ class TestLoadLedger:
         loaded = load_ledger(run_dir / "receipts.jsonl")
         assert loaded.receipts == [] and loaded.errors == [] and loaded.warnings == []
 
+    def test_nonexistent_path_returns_unreadable_ledger_error(
+        self, tmp_path: Path
+    ) -> None:
+        missing = tmp_path / "nope" / "receipts.jsonl"
+        loaded = load_ledger(missing)
+        assert loaded.receipts == []
+        assert loaded.warnings == []
+        assert len(loaded.errors) == 1
+        assert loaded.errors[0].code == "unreadable_ledger"
+        assert str(missing) in loaded.errors[0].message
+
 
 class TestVerifyRun:
     def test_valid_run_is_ok(self, tmp_path: Path) -> None:
@@ -319,6 +330,17 @@ class TestVerifyRun:
         assert result.receipt_count == 2
         assert any(w.code == "torn_write_line" for w in result.warnings)
 
+    def test_missing_receipts_file_is_unreadable_ledger_not_empty(
+        self, tmp_path: Path
+    ) -> None:
+        run_dir = tmp_path / "r"
+        run_dir.mkdir()
+        result = verify_run(run_dir)
+        assert result.ok is False
+        assert len(result.errors) == 1
+        assert result.errors[0].code == "unreadable_ledger"
+        assert all(e.code != "empty_ledger" for e in result.errors)
+
 
 class TestReceiptChainChecker:
     def _valid_case(self, case_dir: Path) -> dict[str, Any]:
@@ -381,3 +403,62 @@ class TestReceiptChainChecker:
             {"run_dir": "runs/nope", "_case_dir": str(tmp_path)}, None
         )
         assert verdict.malformed is True
+
+    def test_receipts_symlink_escaping_case_dir_is_malformed(
+        self, tmp_path: Path
+    ) -> None:
+        case_dir = tmp_path / "case"
+        run_dir = case_dir / "runs" / "r1"
+        run_dir.mkdir(parents=True)
+        outside = tmp_path / "outside.jsonl"
+        outside.write_text(
+            "\n".join(json.dumps(r, sort_keys=True) for r in _chain(2)) + "\n",
+            encoding="utf-8",
+        )
+        (run_dir / "receipts.jsonl").symlink_to(outside)
+        verdict = receipt_chain_check(
+            {"run_dir": "runs/r1", "_case_dir": str(case_dir)}, None
+        )
+        assert verdict.malformed is True
+        assert "escapes" in verdict.details["reason"]
+
+    def test_run_json_symlink_escaping_case_dir_is_malformed(
+        self, tmp_path: Path
+    ) -> None:
+        case_dir = tmp_path / "case"
+        run_dir = case_dir / "runs" / "r1"
+        run_dir.mkdir(parents=True)
+        receipts = _chain(2)
+        (run_dir / "receipts.jsonl").write_text(
+            "\n".join(json.dumps(r, sort_keys=True) for r in receipts) + "\n",
+            encoding="utf-8",
+        )
+        outside_manifest = tmp_path / "outside_run.json"
+        outside_manifest.write_text(json.dumps(_manifest(receipts)), encoding="utf-8")
+        (run_dir / "run.json").symlink_to(outside_manifest)
+        verdict = receipt_chain_check(
+            {"run_dir": "runs/r1", "_case_dir": str(case_dir)}, None
+        )
+        assert verdict.malformed is True
+        assert "escapes" in verdict.details["reason"]
+
+    def test_dangling_run_json_symlink_is_not_flagged_as_escape(
+        self, tmp_path: Path
+    ) -> None:
+        case_dir = tmp_path / "case"
+        run_dir = case_dir / "runs" / "r1"
+        run_dir.mkdir(parents=True)
+        receipts = _chain(2)
+        (run_dir / "receipts.jsonl").write_text(
+            "\n".join(json.dumps(r, sort_keys=True) for r in receipts) + "\n",
+            encoding="utf-8",
+        )
+        (run_dir / "run.json").symlink_to(tmp_path / "does_not_exist.json")
+        verdict = receipt_chain_check(
+            {"run_dir": "runs/r1", "_case_dir": str(case_dir)}, None
+        )
+        # A merely-broken symlink is not an escape attempt: falls through to
+        # verify_run's existing "run.json missing" -> no_anchor warning path.
+        assert verdict.malformed is False
+        assert verdict.critical_pass is True
+        assert any(w["code"] == "no_anchor" for w in verdict.details["warnings"])

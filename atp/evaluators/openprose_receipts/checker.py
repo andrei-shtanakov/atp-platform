@@ -31,8 +31,14 @@ def receipt_chain_check(config: dict[str, Any], text: str | None) -> CaseVerdict
     resolved = (case_dir / run_dir).resolve()
     if not resolved.is_relative_to(case_dir):
         return _malformed("run_dir escapes the case directory")
-    if not (resolved / "receipts.jsonl").is_file():
+    receipts_path = resolved / "receipts.jsonl"
+    if not receipts_path.is_file():
         return _malformed("receipts.jsonl not found under run_dir")
+    if _escapes(receipts_path, case_dir):
+        return _malformed("receipts.jsonl escapes the case directory (symlink)")
+    manifest_path = resolved / "run.json"
+    if manifest_path.is_file() and _escapes(manifest_path, case_dir):
+        return _malformed("run.json escapes the case directory (symlink)")
     result = verify_run(resolved)
     return CaseVerdict(
         critical_pass=result.ok,
@@ -44,6 +50,11 @@ def receipt_chain_check(config: dict[str, Any], text: str | None) -> CaseVerdict
         },
         grader_version=RECEIPT_CHAIN_CHECKER_VERSION,
     )
+
+
+def _escapes(path: Path, case_dir: Path) -> bool:
+    """True if path, after following any symlinks, resolves outside case_dir."""
+    return not path.resolve().is_relative_to(case_dir)
 
 
 def _malformed(reason: str) -> CaseVerdict:
