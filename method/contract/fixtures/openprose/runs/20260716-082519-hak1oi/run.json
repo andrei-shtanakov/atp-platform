@@ -1,0 +1,9 @@
+{
+  "v": "openprose.run.v1",
+  "run_id": "20260716-082519-hak1oi",
+  "program": "examples/01-hello-world.prose",
+  "state_backend": "filesystem",
+  "status": "completed",
+  "receipt_count": 3,
+  "ledger_head": "sha256:e42da971d97de584e95aa51f58dc6fc5b187437fc29a8c9c4c88f7a5988d69dd"
+}

@@ -1,0 +1,9 @@
+{
+  "v": "openprose.run.v1",
+  "run_id": "20260101-000000-fixtur",
+  "program": "fixture.prose",
+  "state_backend": "filesystem",
+  "status": "completed",
+  "receipt_count": 2,
+  "ledger_head": "sha256:a7eff78acf8c992e790a04fb3c75c240c042de0f52146e243051b1d69e7da2c0"
+}

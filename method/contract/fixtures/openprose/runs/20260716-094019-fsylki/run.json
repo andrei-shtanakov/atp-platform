@@ -1,0 +1,10 @@
+{
+  "v": "openprose.run.v1",
+  "run_id": "20260716-094019-fsylki",
+  "program": "examples/16-parallel-reviews.prose",
+  "state_backend": "filesystem",
+  "status": "completed",
+  "receipt_count": 7,
+  "ledger_head": "sha256:031131b407a63400bd039da38a0dc63af65265abb48bd6ca644f41f9d8a21367",
+  "reuse_source_run": "20260716-082734-0vx3bm"
+}

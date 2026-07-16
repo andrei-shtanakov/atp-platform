@@ -1,0 +1,9 @@
+{
+  "v": "openprose.run.v1",
+  "run_id": "20260716-082734-0vx3bm",
+  "program": "examples/16-parallel-reviews.prose",
+  "state_backend": "filesystem",
+  "status": "completed",
+  "receipt_count": 7,
+  "ledger_head": "sha256:8b36906c2942c9110d3bd6b1108649e43b7166ca01ea40d92d9133504dbe86f6"
+}
