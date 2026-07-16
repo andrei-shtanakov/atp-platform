@@ -1,0 +1,7 @@
+# Fixture program
+agent worker:
+  model: haiku
+  prompt: "You do the work"
+
+session: worker
+  prompt: "Do the thing"

@@ -16,6 +16,8 @@ judge is injectable for testing.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from atp.evaluators.base import EvalCheck, EvalResult, Evaluator
 from atp.loader.models import Assertion, TestDefinition
 from atp.protocol import ATPEvent, ATPResponse
@@ -139,7 +141,15 @@ class AgentEvalCaseEvaluator(Evaluator):
             text = self._select_text_artifact(
                 response, assertion.config.get("artifact_name")
             )
-            verdict = checker(assertion.config, text)
+            config = dict(assertion.config)
+            # _case_dir is dispatch-owned (the confinement root for checkers
+            # that read case-relative artifacts, e.g. receipt_chain): never
+            # trust a user-supplied value.
+            config.pop("_case_dir", None)
+            case_path = (task.task.input_data or {}).get("case_path")
+            if case_path:
+                config["_case_dir"] = str(Path(str(case_path)).parent)
+            verdict = checker(config, text)
             message = (
                 "malformed findings — cannot verify"
                 if verdict.malformed

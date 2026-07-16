@@ -1,0 +1,9 @@
+{
+  "v": "openprose.run.v1",
+  "run_id": "20260716-083117-6pgtu7",
+  "program": "examples/30-captains-chair-simple.prose",
+  "state_backend": "filesystem",
+  "status": "completed",
+  "receipt_count": 9,
+  "ledger_head": "sha256:7263aaa713cc2042f6bb5f3832068b6f3bec82f73d63ed3a85290aefe5427459"
+}
