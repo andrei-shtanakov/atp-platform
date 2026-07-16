@@ -1,31 +1,36 @@
-# Design: open-prose receipts as an evaluation input — vendored contract + `receipt_chain` checker
+# Design: Libretto receipts as an evaluation input — vendored contract + `receipt_chain` checker
 
 **Date:** 2026-07-16
 **Status:** Approved (brainstorm) — ready for implementation plan
-**Origin:** open-prose contracts offer (handoff note
-`2026-07-16-openprose-contracts-offer.md` in the dev-only KB sibling; pointer, not a link —
+**Origin:** Libretto contracts offer (handoff note
+`2026-07-16-libretto-contracts-offer.md` in the dev-only KB sibling; pointer, not a link —
 see CLAUDE.md on cross-repo references). Decision log: TODO.md item
-"open-prose receipts/IR как evaluation-вход" (ACTIVE, 2026-07-16).
+"Libretto receipts/IR как evaluation-вход" (ACTIVE, 2026-07-16).
 **Scope profile:** v1 is **receipts-only**. The IR contract is vendored (the two contracts
 cross-reference: statement-id and canonical form live in `receipt.md`), but no IR reader or
 IR validation ships in v1.
+
+> Rename note (2026-07-16): the producer repo is now `libretto` and new artifacts use
+> `libretto.*` schema tags. Existing ATP code/fixtures may still use `openprose_*`
+> names as a compatibility surface until the downstream Phase 2 rename lands.
 
 ---
 
 ## Problem
 
-open-prose runs now leave two machine-readable, keyless-verifiable artifacts per run:
-`receipts.jsonl` (`openprose.receipt.v1` — an append-only, hash-chained ledger: one receipt
+Libretto runs now leave two machine-readable, keyless-verifiable artifacts per run:
+`receipts.jsonl` (`libretto.receipt.v1` — an append-only, hash-chained ledger: one receipt
 per completed statement, input/output fingerprints, honest token attribution via
 `usage.basis: exact|estimated|unavailable`) and `{program}.ir.json`
-(`openprose.compile-ir.v1`). ATP has no way to consume them: grading an open-prose run today
+(`libretto.compile-ir.v1`). Legacy `openprose.*` ledgers remain readable for historical
+artifacts. ATP has no way to consume them: grading a Libretto run today
 would mean parsing the human-readable `state.md` narrative.
 
 ATP already owns the exact mechanics this needs — vendored pinned contracts with contract
 tests in CI (`method/contract/learning-event-v1.schema.json`, RD-007 M1a) and a closed
 deterministic-checker registry (`atp/evaluators/checkers/`, selected via
 `grader: {type: programmatic, checker: <name>}`). This design lands the receipts contract on
-those two existing surfaces. It also makes ATP the named consumer that open-prose's Rust
+those two existing surfaces. It also makes ATP the named consumer that Libretto's Rust
 gate 4.6 ("a `receipts-verify` crate used by atp-platform", their plan, revisited at the end
 of their Phase 4) predicates on — causality is correct only in this direction: working
 reader first, gate trigger second.
@@ -39,8 +44,8 @@ usage rollup into the cost view (ADR-003d); verifying `bindings/*` files against
 ```
 method/contract/openprose/
 ├── PROVENANCE.md            # source repo + commit (a0395cd), per-file sha256, vendoring date
-├── receipt.md               # pinned copy of open-prose/contracts/receipt.md
-└── ir.md                    # pinned copy of open-prose/contracts/ir.md (contract only, no reader)
+├── receipt.md               # pinned copy of libretto/contracts/receipt.md
+└── ir.md                    # pinned copy of libretto/contracts/ir.md (contract only, no reader)
 
 method/contract/fixtures/openprose/
 ├── runs/                    # pinned copies of the 4 committed corpus runs
@@ -65,7 +70,7 @@ tests/unit/evaluators/test_openprose_receipts.py
 
 Vendoring is mandatory, not a convenience: CI does not have the polyrepo sibling, and
 shipped/test code must never resolve paths outside the repo (workspace rule). Fixtures total
-≈180 KB. `PROVENANCE.md` records the open-prose commit and a sha256 per vendored file so
+≈180 KB. `PROVENANCE.md` records the Libretto commit and a sha256 per vendored file so
 drift against upstream is checkable by hand (byte-conformance automation is out of scope,
 same posture as RD-007 M2).
 
@@ -87,7 +92,7 @@ anchor) is inexpressible in JSON Schema anyway. Zero new dependencies.
   `prev` and any unknown fields (append-frozen compatibility: unknown fields are ignored
   semantically but hashed as received).
 
-Written against the vendored contract text; `open-prose/tools/.../canonical.py` was read as
+Written against the vendored contract text; `libretto/tools/.../canonical.py` was read as
 a reference implementation, not copied.
 
 ### `reader.py`
@@ -119,7 +124,8 @@ class VerifyResult(BaseModel):
 
 `verify_run` checks, in order:
 
-1. **Version** — every receipt's `v` must be `"openprose.receipt.v1"`; unknown `v` →
+1. **Version** — every new receipt's `v` must be `"libretto.receipt.v1"`; legacy
+   `"openprose.receipt.v1"` is accepted for historical fixtures; unknown `v` →
    error `unknown_version` (contract: consumers MUST refuse unknown versions).
 2. **Structure** (in code, not jsonschema) — required fields present; `kind` / `status` /
    `usage.basis` enums valid; all numbers integers (float → error `invalid_number`);
@@ -128,7 +134,8 @@ class VerifyResult(BaseModel):
    (message contains "content_hash mismatch").
 4. **Chain** — line N's `prev` equals line N−1's `content_hash`, line 1 has `prev: null` →
    error `chain_break` (message contains "prev broken").
-5. **Anchor** — `run.json` (`openprose.run.v1`): `ledger_head` must equal the last
+5. **Anchor** — `run.json` (`libretto.run.v1`, with legacy `openprose.run.v1`
+   accepted for historical fixtures): `ledger_head` must equal the last
    receipt's `content_hash` → error `ledger_head_mismatch` on divergence (message contains
    "ledger_head") — **except** the torn-write manifest case below. With a matching head,
    `run.json.receipt_count` must equal the ledger's receipt count → error
