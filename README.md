@@ -1,4 +1,4 @@
-# ATP — Agent Test Platform
+#  Agent Testing Platform (ATP)
 
 **The framework-agnostic platform for testing and evaluating AI agents.**
 
@@ -105,7 +105,7 @@ tests:
 - **PerformanceEvaluator** - Latency, throughput, regression detection
 - **CompositeEvaluator** - Boolean logic (AND/OR/NOT) over nested assertions
 - **FindingsMatchEvaluator** - Deterministic code-review findings matching (anchor + rule_id)
-- **Deterministic checkers** (`atp/evaluators/checkers/`) - Named checks selected via `grader: {type: programmatic, checker: <name>}`: `citation_grounding`, `findings_match`, `json_path`
+- **Deterministic checkers** (`atp/evaluators/checkers/`) - Named checks selected via `grader: {type: programmatic, checker: <name>}`: `citation_grounding`, `findings_match`, `json_path`, `receipt_chain`
 
 > Container-isolated code execution (Docker/Podman, resource limits) is provided by the container runtime (`atp/evaluators/container.py`), wired in by the `code_exec` evaluator (optional `ContainerRuntime`) rather than being a standalone registered evaluator.
 
