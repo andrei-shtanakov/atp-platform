@@ -56,6 +56,20 @@ def test_record_and_reload_round_trip(tmp_path: Path) -> None:
     assert results[0].runs[0].response.status == ResponseStatus.COMPLETED
 
 
+def test_load_results_follow_suite_order(tmp_path: Path) -> None:
+    """Rehydrated results come back in suite order, not completion order."""
+    t1, t2, t3 = make_test("t-1"), make_test("t-2"), make_test("t-3")
+    cp = SuiteCheckpoint(tmp_path / "cp.json")
+    # Record in reverse completion order (as a parallel run might).
+    cp.record(make_result(t3))
+    cp.record(make_result(t1))
+    cp.record(make_result(t2))
+
+    reloaded = SuiteCheckpoint(tmp_path / "cp.json")
+    results = reloaded.load_results(make_suite(t1, t2, t3))
+    assert [r.test.id for r in results] == ["t-1", "t-2", "t-3"]
+
+
 def test_load_ignores_tests_missing_from_suite(tmp_path: Path) -> None:
     stale = make_test("gone")
     cp = SuiteCheckpoint(tmp_path / "cp.json")

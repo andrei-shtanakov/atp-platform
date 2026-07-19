@@ -118,13 +118,18 @@ class SuiteCheckpoint:
         self._save()
 
     def load_results(self, suite: TestSuite) -> list[TestResult]:
-        """Rehydrate recorded results, matching tests by id in the suite."""
-        by_id = {test.id: test for test in suite.tests}
+        """Rehydrate recorded results in suite order.
+
+        The checkpoint dict preserves completion order, which is
+        nondeterministic after a parallel run; iterating the suite keeps
+        restored results stable. Recorded tests no longer present in the
+        suite are skipped.
+        """
         results: list[TestResult] = []
-        for test_id, payload in self._tests.items():
-            test = by_id.get(test_id)
-            if test is None:
-                continue  # suite changed since the checkpoint was written
+        for test in suite.tests:
+            payload = self._tests.get(test.id)
+            if payload is None:
+                continue
             results.append(_test_result_from_dict(test, payload))
         return results
 
@@ -134,7 +139,10 @@ class SuiteCheckpoint:
 
     def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".json.tmp")
+        # Per-process temp name: concurrent atp processes on the same suite
+        # must not interleave writes into a shared temp file. Within one
+        # process this method is synchronous, so asyncio tasks cannot race.
+        tmp = self.path.with_suffix(f".json.tmp.{os.getpid()}")
         tmp.write_text(
             json.dumps({"version": CHECKPOINT_VERSION, "tests": self._tests})
         )
