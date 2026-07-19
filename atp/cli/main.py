@@ -296,15 +296,17 @@ def _setup_cli_logging(verbose: bool) -> None:
     settings request it; pretty console otherwise). --verbose forces DEBUG.
     """
     from atp.core.logging import configure_logging
-    from atp.core.settings import get_cached_settings
+    from atp.core.settings import LoggingSettings
 
-    settings = get_cached_settings()
+    # Instantiate LoggingSettings directly (same as ATPSettings' default
+    # factory) so dashboard settings validators don't fire on every CLI call.
+    logging_settings = LoggingSettings()
     configure_logging(
-        level="DEBUG" if verbose else settings.logging.level,
+        level="DEBUG" if verbose else logging_settings.level,
         # False means "not explicitly requested" -> let configure_logging
         # auto-detect by TTY; True forces JSON.
-        json_output=True if settings.logging.json_output else None,
-        log_file=settings.logging.file,
+        json_output=True if logging_settings.json_output else None,
+        log_file=logging_settings.file,
     )
 
 
