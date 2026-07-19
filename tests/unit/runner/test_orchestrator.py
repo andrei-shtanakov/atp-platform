@@ -938,3 +938,26 @@ class TestRunSuiteConvenience:
         )
         assert result.success is True
         assert result.total_tests == 2
+
+
+class TestRunIdCorrelation:
+    """run_suite must capture the active correlation id as run_id."""
+
+    @pytest.mark.anyio
+    async def test_run_suite_captures_correlation_id(
+        self, test_suite: TestSuite
+    ) -> None:
+        from atp.core.logging import correlation_context
+
+        orchestrator = TestOrchestrator(adapter=MockAdapter())
+        with correlation_context("run-abc-123"):
+            result = await orchestrator.run_suite(test_suite, agent_name="agent-x")
+        assert result.run_id == "run-abc-123"
+
+    @pytest.mark.anyio
+    async def test_run_suite_without_context_leaves_run_id_none(
+        self, test_suite: TestSuite
+    ) -> None:
+        orchestrator = TestOrchestrator(adapter=MockAdapter())
+        result = await orchestrator.run_suite(test_suite, agent_name="agent-x")
+        assert result.run_id is None

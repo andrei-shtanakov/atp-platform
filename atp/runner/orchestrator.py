@@ -12,6 +12,7 @@ from opentelemetry.trace import SpanKind, Status, StatusCode
 
 from atp.adapters.base import AgentAdapter
 from atp.adapters.exceptions import AdapterError, AdapterTimeoutError
+from atp.core.logging import get_correlation_id
 from atp.core.metrics import get_metrics
 from atp.core.telemetry import (
     add_span_event,
@@ -781,6 +782,7 @@ class TestOrchestrator:
             suite_name=suite.test_suite,
             agent_name=agent_name,
             start_time=datetime.now(tz=UTC),
+            run_id=get_correlation_id(),
         )
 
         # Record suite start in metrics

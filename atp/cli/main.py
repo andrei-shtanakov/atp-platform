@@ -603,28 +603,34 @@ def test_cmd(
         # Then apply CLI adapter-config options (override file config)
         config_dict.update(_parse_adapter_config(adapter_config))
 
-        # Run tests
-        result = asyncio.run(
-            _run_suite(
-                suite=suite,
-                adapter_type=adapter,
-                adapter_config=config_dict,
-                agent_name=agent_name,
-                model=model,
-                parallel=parallel,
-                runs_per_test=runs,
-                fail_fast=fail_fast,
-                sandbox_enabled=sandbox,
-                verbose=verbose,
-                output_format=output,
-                summary_format=summary_format,
-                output_file=output_file,
-                save_to_db=not no_save,
-                save_results_dir=save_results,
-                live=live,
-                enable_tracing=trace,
+        # Run tests under a fresh correlation id so every log record and
+        # the SuiteResult share one run_id.
+        from atp.core.logging import correlation_context
+
+        with correlation_context() as run_id:
+            if verbose:
+                click.echo(f"Run ID: {run_id}")
+            result = asyncio.run(
+                _run_suite(
+                    suite=suite,
+                    adapter_type=adapter,
+                    adapter_config=config_dict,
+                    agent_name=agent_name,
+                    model=model,
+                    parallel=parallel,
+                    runs_per_test=runs,
+                    fail_fast=fail_fast,
+                    sandbox_enabled=sandbox,
+                    verbose=verbose,
+                    output_format=output,
+                    summary_format=summary_format,
+                    output_file=output_file,
+                    save_to_db=not no_save,
+                    save_results_dir=save_results,
+                    live=live,
+                    enable_tracing=trace,
+                )
             )
-        )
 
         # Exit with appropriate code
         sys.exit(EXIT_SUCCESS if result else EXIT_FAILURE)
