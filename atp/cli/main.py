@@ -264,6 +264,25 @@ def _suite_success_after_scoring(result: Any, scored_results: dict[str, Any]) ->
     )
 
 
+def _setup_cli_logging(verbose: bool) -> None:
+    """Configure structured logging for the CLI process.
+
+    Routes stdlib logging through structlog (JSON when not a TTY or when
+    settings request it; pretty console otherwise). --verbose forces DEBUG.
+    """
+    from atp.core.logging import configure_logging
+    from atp.core.settings import get_cached_settings
+
+    settings = get_cached_settings()
+    configure_logging(
+        level="DEBUG" if verbose else settings.logging.level,
+        # False means "not explicitly requested" -> let configure_logging
+        # auto-detect by TTY; True forces JSON.
+        json_output=True if settings.logging.json_output else None,
+        log_file=settings.logging.file,
+    )
+
+
 @click.group(invoke_without_command=True)
 @click.option(
     "--config",
@@ -307,6 +326,7 @@ def cli(ctx: click.Context, config_file: Path | None, verbose: bool) -> None:
     ctx.ensure_object(ConfigContext)
     config_ctx = ctx.obj
     config_ctx.verbose = verbose
+    _setup_cli_logging(verbose)
 
     try:
         config_ctx.load_config(config_file)
