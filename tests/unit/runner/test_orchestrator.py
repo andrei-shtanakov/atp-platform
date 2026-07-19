@@ -938,3 +938,104 @@ class TestRunSuiteConvenience:
         )
         assert result.success is True
         assert result.total_tests == 2
+
+
+class TestCheckpointIntegration:
+    """run_suite skips checkpointed tests and records new completions."""
+
+    @pytest.mark.anyio
+    async def test_resume_skips_completed_and_records_rest(
+        self, test_suite: TestSuite, tmp_path
+    ) -> None:
+        from atp.runner.checkpoint import SuiteCheckpoint
+
+        cp_path = tmp_path / "cp.json"
+
+        # First run: interrupt after the first test completes.
+        orch1 = TestOrchestrator(
+            adapter=MockAdapter(), checkpoint=SuiteCheckpoint(cp_path)
+        )
+
+        def stop_after_first(event: ProgressEvent) -> None:
+            if event.event_type == ProgressEventType.TEST_COMPLETED:
+                orch1.request_shutdown()
+
+        orch1.progress_callback = stop_after_first
+        first = await orch1.run_suite(test_suite, agent_name="a")
+        assert len(first.tests) == 1
+        assert SuiteCheckpoint(cp_path).completed_ids() == {first.tests[0].test.id}
+
+        # Second run: resume; completed test must not re-execute.
+        executed: list[str] = []
+
+        class CountingAdapter(MockAdapter):
+            async def execute(self, request):  # type: ignore[override]
+                executed.append(request.task_id)
+                return await super().execute(request)
+
+            async def stream_events(self, request):  # type: ignore[override]
+                executed.append(request.task_id)
+                async for item in super().stream_events(request):
+                    yield item
+
+        orch2 = TestOrchestrator(
+            adapter=CountingAdapter(), checkpoint=SuiteCheckpoint(cp_path)
+        )
+        second = await orch2.run_suite(test_suite, agent_name="a")
+        assert len(second.tests) == 2
+        # Only the one remaining test hit the adapter on resume.
+        assert len(executed) == 1
+        # Suite completed -> checkpoint removed.
+        assert not cp_path.exists()
+
+
+class TestCooperativeShutdown:
+    """request_shutdown() stops the suite between tests."""
+
+    @pytest.mark.anyio
+    async def test_shutdown_before_start_runs_nothing(
+        self, test_suite: TestSuite
+    ) -> None:
+        orchestrator = TestOrchestrator(adapter=MockAdapter())
+        orchestrator.request_shutdown()
+        result = await orchestrator.run_suite(test_suite, agent_name="a")
+        assert result.tests == []
+        assert result.error == "interrupted: shutdown requested"
+
+    @pytest.mark.anyio
+    async def test_shutdown_after_first_test_skips_rest(
+        self, test_suite: TestSuite
+    ) -> None:
+        orchestrator = TestOrchestrator(adapter=MockAdapter())
+
+        def stop_after_first(event: ProgressEvent) -> None:
+            if event.event_type == ProgressEventType.TEST_COMPLETED:
+                orchestrator.request_shutdown()
+
+        orchestrator.progress_callback = stop_after_first
+        result = await orchestrator.run_suite(test_suite, agent_name="a")
+        assert len(result.tests) == 1  # suite has 2 tests
+        assert result.error == "interrupted: shutdown requested"
+
+
+class TestRunIdCorrelation:
+    """run_suite must capture the active correlation id as run_id."""
+
+    @pytest.mark.anyio
+    async def test_run_suite_captures_correlation_id(
+        self, test_suite: TestSuite
+    ) -> None:
+        from atp.core.logging import correlation_context
+
+        orchestrator = TestOrchestrator(adapter=MockAdapter())
+        with correlation_context("run-abc-123"):
+            result = await orchestrator.run_suite(test_suite, agent_name="agent-x")
+        assert result.run_id == "run-abc-123"
+
+    @pytest.mark.anyio
+    async def test_run_suite_without_context_leaves_run_id_none(
+        self, test_suite: TestSuite
+    ) -> None:
+        orchestrator = TestOrchestrator(adapter=MockAdapter())
+        result = await orchestrator.run_suite(test_suite, agent_name="agent-x")
+        assert result.run_id is None

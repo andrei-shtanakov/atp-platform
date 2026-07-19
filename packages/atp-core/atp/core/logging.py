@@ -469,9 +469,9 @@ def configure_logging(
         log_file: Optional file path for log output
         module_levels: Dict of module name to log level for per-module config
     """
-    # Determine output format
+    # Determine output format from the console sink (stderr)
     if json_output is None:
-        json_output = not sys.stdout.isatty()
+        json_output = not sys.stderr.isatty()
 
     # Convert string level to int
     if isinstance(level, str):
@@ -532,8 +532,9 @@ def configure_logging(
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 
-    # Add console handler
-    console_handler = logging.StreamHandler(sys.stdout)
+    # Add console handler on stderr: stdout stays reserved for machine
+    # output (e.g. `atp test --output=json` prints the report there)
+    console_handler = logging.StreamHandler(sys.stderr)
     console_handler.setLevel(level)
     console_handler.setFormatter(formatter)
     root_logger.addHandler(console_handler)

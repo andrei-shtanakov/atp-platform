@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import sys
+from collections.abc import Callable
 from datetime import UTC
 from importlib.metadata import version
 from pathlib import Path
@@ -42,6 +43,30 @@ logger = logging.getLogger(__name__)
 EXIT_SUCCESS = 0  # All tests passed
 EXIT_FAILURE = 1  # Test failures detected
 EXIT_ERROR = 2  # Error (invalid config, missing file, etc.)
+EXIT_INTERRUPTED = 130  # Interrupted by SIGINT/SIGTERM (128 + SIGINT)
+
+
+def _install_signal_handlers(orchestrator: Any) -> Callable[[], None]:
+    """Install SIGINT/SIGTERM handlers that request cooperative shutdown.
+
+    Returns a zero-arg callable that removes the installed handlers.
+    """
+    import signal
+
+    loop = asyncio.get_running_loop()
+    installed: list[signal.Signals] = []
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, orchestrator.request_shutdown)
+            installed.append(sig)
+        except (NotImplementedError, RuntimeError):
+            pass  # e.g. Windows or non-main thread
+
+    def _remove() -> None:
+        for sig in installed:
+            loop.remove_signal_handler(sig)
+
+    return _remove
 
 
 class ConfigContext:
@@ -264,6 +289,27 @@ def _suite_success_after_scoring(result: Any, scored_results: dict[str, Any]) ->
     )
 
 
+def _setup_cli_logging(verbose: bool) -> None:
+    """Configure structured logging for the CLI process.
+
+    Routes stdlib logging through structlog (JSON when not a TTY or when
+    settings request it; pretty console otherwise). --verbose forces DEBUG.
+    """
+    from atp.core.logging import configure_logging
+    from atp.core.settings import LoggingSettings
+
+    # Instantiate LoggingSettings directly (same as ATPSettings' default
+    # factory) so dashboard settings validators don't fire on every CLI call.
+    logging_settings = LoggingSettings()
+    configure_logging(
+        level="DEBUG" if verbose else logging_settings.level,
+        # False means "not explicitly requested" -> let configure_logging
+        # auto-detect by TTY; True forces JSON.
+        json_output=True if logging_settings.json_output else None,
+        log_file=logging_settings.file,
+    )
+
+
 @click.group(invoke_without_command=True)
 @click.option(
     "--config",
@@ -307,6 +353,7 @@ def cli(ctx: click.Context, config_file: Path | None, verbose: bool) -> None:
     ctx.ensure_object(ConfigContext)
     config_ctx = ctx.obj
     config_ctx.verbose = verbose
+    _setup_cli_logging(verbose)
 
     try:
         config_ctx.load_config(config_file)
@@ -433,6 +480,14 @@ def version_cmd() -> None:
     help="Don't save results to dashboard database",
 )
 @click.option(
+    "--resume",
+    is_flag=True,
+    help=(
+        "Resume an interrupted run: skip tests already recorded in the "
+        "suite checkpoint (.atp-runs/checkpoints/) and run the rest."
+    ),
+)
+@click.option(
     "--save-results",
     type=click.Path(path_type=Path),
     help=(
@@ -469,6 +524,7 @@ def test_cmd(
     summary_format: str,
     output_file: Path | None,
     no_save: bool,
+    resume: bool,
     save_results: Path | None,
     live: bool,
     trace: bool,
@@ -583,28 +639,35 @@ def test_cmd(
         # Then apply CLI adapter-config options (override file config)
         config_dict.update(_parse_adapter_config(adapter_config))
 
-        # Run tests
-        result = asyncio.run(
-            _run_suite(
-                suite=suite,
-                adapter_type=adapter,
-                adapter_config=config_dict,
-                agent_name=agent_name,
-                model=model,
-                parallel=parallel,
-                runs_per_test=runs,
-                fail_fast=fail_fast,
-                sandbox_enabled=sandbox,
-                verbose=verbose,
-                output_format=output,
-                summary_format=summary_format,
-                output_file=output_file,
-                save_to_db=not no_save,
-                save_results_dir=save_results,
-                live=live,
-                enable_tracing=trace,
+        # Run tests under a fresh correlation id so every log record and
+        # the SuiteResult share one run_id.
+        from atp.core.logging import correlation_context
+
+        with correlation_context() as run_id:
+            if verbose:
+                click.echo(f"Run ID: {run_id}")
+            result = asyncio.run(
+                _run_suite(
+                    suite=suite,
+                    adapter_type=adapter,
+                    adapter_config=config_dict,
+                    agent_name=agent_name,
+                    model=model,
+                    parallel=parallel,
+                    runs_per_test=runs,
+                    fail_fast=fail_fast,
+                    sandbox_enabled=sandbox,
+                    verbose=verbose,
+                    output_format=output,
+                    summary_format=summary_format,
+                    output_file=output_file,
+                    save_to_db=not no_save,
+                    save_results_dir=save_results,
+                    live=live,
+                    enable_tracing=trace,
+                    resume=resume,
+                )
             )
-        )
 
         # Exit with appropriate code
         sys.exit(EXIT_SUCCESS if result else EXIT_FAILURE)
@@ -717,6 +780,14 @@ def test_cmd(
     help="Don't save results to dashboard database",
 )
 @click.option(
+    "--resume",
+    is_flag=True,
+    help=(
+        "Resume an interrupted run: skip tests already recorded in the "
+        "suite checkpoint (.atp-runs/checkpoints/) and run the rest."
+    ),
+)
+@click.option(
     "--save-results",
     type=click.Path(path_type=Path),
     help=(
@@ -753,6 +824,7 @@ def run(
     summary_format: str,
     output_file: Path | None,
     no_save: bool,
+    resume: bool,
     save_results: Path | None,
     live: bool,
     trace: bool,
@@ -781,6 +853,7 @@ def run(
         summary_format=summary_format,
         output_file=output_file,
         no_save=no_save,
+        resume=resume,
         save_results=save_results,
         live=live,
         trace=trace,
@@ -805,6 +878,7 @@ async def _run_suite(
     save_results_dir: Path | None = None,
     live: bool = False,
     enable_tracing: bool = False,
+    resume: bool = False,
 ) -> bool:
     """Run a test suite asynchronously.
 
@@ -824,6 +898,7 @@ async def _run_suite(
         save_to_db: Whether to save results to dashboard database
         live: Whether to use Rich live display
         enable_tracing: Whether to record execution traces
+        resume: Skip tests already recorded in the suite checkpoint
 
     Returns:
         True if all tests passed, False otherwise
@@ -871,6 +946,14 @@ async def _run_suite(
     # Determine if parallel execution should be used
     use_parallel = parallel > 1 and not fail_fast
 
+    # Suite checkpoint: resume keeps prior progress, otherwise start fresh
+    from atp.runner.checkpoint import SuiteCheckpoint
+
+    checkpoint_path = SuiteCheckpoint.default_path(suite.test_suite, agent_name)
+    if not resume:
+        checkpoint_path.unlink(missing_ok=True)
+    checkpoint = SuiteCheckpoint(checkpoint_path)
+
     # Create and run orchestrator
     if live_display is not None:
         live_display.start()
@@ -883,12 +966,17 @@ async def _run_suite(
             fail_fast=fail_fast,
             parallel_tests=use_parallel,
             max_parallel_tests=parallel,
+            checkpoint=checkpoint,
         ) as orchestrator:
-            result = await orchestrator.run_suite(
-                suite=suite,
-                agent_name=agent_name,
-                runs_per_test=runs_per_test,
-            )
+            remove_handlers = _install_signal_handlers(orchestrator)
+            try:
+                result = await orchestrator.run_suite(
+                    suite=suite,
+                    agent_name=agent_name,
+                    runs_per_test=runs_per_test,
+                )
+            finally:
+                remove_handlers()
     finally:
         if live_display is not None:
             live_display.stop()
@@ -1061,6 +1149,14 @@ async def _run_suite(
             model=model,
             eval_results=all_eval_results,
         )
+
+    if orchestrator.shutdown_requested:
+        click.echo(
+            "Run interrupted; partial results were reported. "
+            "Re-run with --resume to continue.",
+            err=True,
+        )
+        sys.exit(EXIT_INTERRUPTED)
 
     return _suite_success_after_scoring(result, all_scored_results)
 

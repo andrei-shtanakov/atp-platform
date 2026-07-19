@@ -285,6 +285,7 @@ class SuiteResult:
     start_time: datetime = field(default_factory=lambda: datetime.now(tz=UTC))
     end_time: datetime | None = None
     error: str | None = None
+    run_id: str | None = None
 
     @property
     def total_tests(self) -> int:

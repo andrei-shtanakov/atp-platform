@@ -316,7 +316,12 @@ class TestRunSuiteReporterConfig:
         """Test summary format is passed only to SummaryReporter config."""
 
         class FakeOrchestrator:
+            shutdown_requested = False
+
             def __init__(self, *args: object, **kwargs: object) -> None:
+                pass
+
+            def request_shutdown(self) -> None:
                 pass
 
             async def __aenter__(self) -> "FakeOrchestrator":
@@ -393,8 +398,13 @@ class TestRunSuiteReporterConfig:
         progress_events: list[ProgressEvent] = []
 
         class FakeOrchestrator:
+            shutdown_requested = False
+
             def __init__(self, *args: object, **kwargs: object) -> None:
                 self.progress_callback = kwargs["progress_callback"]
+
+            def request_shutdown(self) -> None:
+                pass
 
             async def __aenter__(self) -> "FakeOrchestrator":
                 return self

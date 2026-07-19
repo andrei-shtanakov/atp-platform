@@ -12,6 +12,7 @@ from opentelemetry.trace import SpanKind, Status, StatusCode
 
 from atp.adapters.base import AgentAdapter
 from atp.adapters.exceptions import AdapterError, AdapterTimeoutError
+from atp.core.logging import get_correlation_id
 from atp.core.metrics import get_metrics
 from atp.core.telemetry import (
     add_span_event,
@@ -36,6 +37,7 @@ from atp.protocol import (
     ResponseStatus,
     Task,
 )
+from atp.runner.checkpoint import SuiteCheckpoint
 from atp.runner.exceptions import RunnerTimeoutError, TestExecutionError
 from atp.runner.models import (
     ProgressCallback,
@@ -72,6 +74,7 @@ class TestOrchestrator:
         parallel_tests: bool = False,
         max_parallel_tests: int = 5,
         usage_capture: UsageCapture | None = None,
+        checkpoint: SuiteCheckpoint | None = None,
     ) -> None:
         """
         Initialize the orchestrator.
@@ -88,6 +91,8 @@ class TestOrchestrator:
             max_parallel_tests: Maximum number of parallel tests (default 5).
             usage_capture: Usage-capture sink (ADR-ECO-003e seam).
                 Defaults to capture_from_env().
+            checkpoint: Optional suite checkpoint; completed tests are
+                recorded to it and skipped on resume.
         """
         self.adapter = adapter
         self.sandbox_config = sandbox_config or SandboxConfig()
@@ -103,6 +108,8 @@ class TestOrchestrator:
         self._semaphore = asyncio.Semaphore(max_parallel)
         self._tests_semaphore = asyncio.Semaphore(max_parallel_tests)
         self._usage_capture = usage_capture or capture_from_env()
+        self._shutdown_requested = False
+        self.checkpoint = checkpoint
 
     def _emit_progress(self, event: ProgressEvent) -> None:
         """Emit a progress event if callback is registered."""
@@ -111,6 +118,16 @@ class TestOrchestrator:
                 self.progress_callback(event)
             except Exception as e:
                 logger.warning("Progress callback failed: %s", e)
+
+    def request_shutdown(self) -> None:
+        """Request cooperative shutdown: finish the current test, skip the rest."""
+        logger.warning("Shutdown requested; will stop after the current test")
+        self._shutdown_requested = True
+
+    @property
+    def shutdown_requested(self) -> bool:
+        """Whether a cooperative shutdown has been requested."""
+        return self._shutdown_requested
 
     def _create_request(
         self,
@@ -542,6 +559,11 @@ class TestOrchestrator:
 
         async def run_test_with_semaphore(test: TestDefinition) -> TestResult:
             async with self._tests_semaphore:
+                if self._shutdown_requested:
+                    skipped = TestResult(test=test)
+                    skipped.error = "skipped: shutdown requested"
+                    skipped.end_time = skipped.start_time
+                    return skipped
                 logger.info(
                     "Starting parallel test: %s (%s)",
                     test.name,
@@ -550,9 +572,12 @@ class TestOrchestrator:
                 # Decrement pending tests
                 if metrics:
                     metrics.record_test_dequeued()
-                return await self.run_single_test(
+                test_result = await self.run_single_test(
                     test, runs=num_runs, suite_name=suite_name
                 )
+                if self.checkpoint is not None:
+                    self.checkpoint.record(test_result)
+                return test_result
 
         # Create tasks for all tests
         tasks = [run_test_with_semaphore(test) for test in tests]
@@ -781,6 +806,7 @@ class TestOrchestrator:
             suite_name=suite.test_suite,
             agent_name=agent_name,
             start_time=datetime.now(tz=UTC),
+            run_id=get_correlation_id(),
         )
 
         # Record suite start in metrics
@@ -815,30 +841,60 @@ class TestOrchestrator:
             # Apply defaults to tests
             suite.apply_defaults()
 
-            try:
-                if self.parallel_tests and not self.fail_fast and total_tests > 1:
-                    # Execute tests in parallel (fail_fast is incompatible)
+            pending_tests = suite.tests
+            if self.checkpoint is not None:
+                done = self.checkpoint.completed_ids()
+                if done:
+                    restored = self.checkpoint.load_results(suite)
+                    result.tests.extend(restored)
+                    pending_tests = [t for t in suite.tests if t.id not in done]
                     logger.info(
-                        "Running %d tests in parallel (max_parallel=%d)",
-                        total_tests,
-                        self.max_parallel_tests,
+                        "Resuming suite: %d restored, %d pending",
+                        len(restored),
+                        len(pending_tests),
                     )
-                    add_span_event(
-                        "parallel_execution",
-                        {"max_parallel": self.max_parallel_tests},
-                    )
-                    result.tests = await self._execute_tests_parallel(
-                        tests=suite.tests,
-                        num_runs=num_runs,
-                        suite_name=suite.test_suite,
-                    )
+
+            try:
+                if (
+                    self.parallel_tests
+                    and not self.fail_fast
+                    and len(pending_tests) > 1
+                ):
+                    if self._shutdown_requested:
+                        result.error = "interrupted: shutdown requested"
+                    else:
+                        # Execute tests in parallel (fail_fast is incompatible)
+                        logger.info(
+                            "Running %d tests in parallel (max_parallel=%d)",
+                            len(pending_tests),
+                            self.max_parallel_tests,
+                        )
+                        add_span_event(
+                            "parallel_execution",
+                            {"max_parallel": self.max_parallel_tests},
+                        )
+                        result.tests.extend(
+                            await self._execute_tests_parallel(
+                                tests=pending_tests,
+                                num_runs=num_runs,
+                                suite_name=suite.test_suite,
+                            )
+                        )
+                        if any(
+                            t.error == "skipped: shutdown requested"
+                            for t in result.tests
+                        ):
+                            result.error = "interrupted: shutdown requested"
                 else:
                     # Execute tests sequentially
-                    for idx, test in enumerate(suite.tests):
+                    for idx, test in enumerate(pending_tests):
+                        if self._shutdown_requested:
+                            result.error = "interrupted: shutdown requested"
+                            break
                         logger.info(
                             "Running test %d/%d: %s (%s)",
                             idx + 1,
-                            total_tests,
+                            len(pending_tests),
                             test.name,
                             test.id,
                         )
@@ -850,6 +906,8 @@ class TestOrchestrator:
                             test, runs=num_runs, suite_name=suite.test_suite
                         )
                         result.tests.append(test_result)
+                        if self.checkpoint is not None:
+                            self.checkpoint.record(test_result)
 
                         # Check for fail-fast
                         if not test_result.success and self.fail_fast:
@@ -870,6 +928,12 @@ class TestOrchestrator:
                 span.set_status(Status(StatusCode.ERROR, str(e)))
 
             result.end_time = datetime.now(tz=UTC)
+
+            ran_to_completion = result.error is None and len(result.tests) == len(
+                suite.tests
+            )
+            if self.checkpoint is not None and ran_to_completion:
+                self.checkpoint.delete()
 
             # Record suite end in metrics
             if metrics:
