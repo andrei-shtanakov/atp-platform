@@ -478,6 +478,14 @@ def version_cmd() -> None:
     help="Don't save results to dashboard database",
 )
 @click.option(
+    "--resume",
+    is_flag=True,
+    help=(
+        "Resume an interrupted run: skip tests already recorded in the "
+        "suite checkpoint (.atp-runs/checkpoints/) and run the rest."
+    ),
+)
+@click.option(
     "--save-results",
     type=click.Path(path_type=Path),
     help=(
@@ -514,6 +522,7 @@ def test_cmd(
     summary_format: str,
     output_file: Path | None,
     no_save: bool,
+    resume: bool,
     save_results: Path | None,
     live: bool,
     trace: bool,
@@ -654,6 +663,7 @@ def test_cmd(
                     save_results_dir=save_results,
                     live=live,
                     enable_tracing=trace,
+                    resume=resume,
                 )
             )
 
@@ -768,6 +778,14 @@ def test_cmd(
     help="Don't save results to dashboard database",
 )
 @click.option(
+    "--resume",
+    is_flag=True,
+    help=(
+        "Resume an interrupted run: skip tests already recorded in the "
+        "suite checkpoint (.atp-runs/checkpoints/) and run the rest."
+    ),
+)
+@click.option(
     "--save-results",
     type=click.Path(path_type=Path),
     help=(
@@ -804,6 +822,7 @@ def run(
     summary_format: str,
     output_file: Path | None,
     no_save: bool,
+    resume: bool,
     save_results: Path | None,
     live: bool,
     trace: bool,
@@ -832,6 +851,7 @@ def run(
         summary_format=summary_format,
         output_file=output_file,
         no_save=no_save,
+        resume=resume,
         save_results=save_results,
         live=live,
         trace=trace,
@@ -856,6 +876,7 @@ async def _run_suite(
     save_results_dir: Path | None = None,
     live: bool = False,
     enable_tracing: bool = False,
+    resume: bool = False,
 ) -> bool:
     """Run a test suite asynchronously.
 
@@ -875,6 +896,7 @@ async def _run_suite(
         save_to_db: Whether to save results to dashboard database
         live: Whether to use Rich live display
         enable_tracing: Whether to record execution traces
+        resume: Skip tests already recorded in the suite checkpoint
 
     Returns:
         True if all tests passed, False otherwise
@@ -922,6 +944,14 @@ async def _run_suite(
     # Determine if parallel execution should be used
     use_parallel = parallel > 1 and not fail_fast
 
+    # Suite checkpoint: resume keeps prior progress, otherwise start fresh
+    from atp.runner.checkpoint import SuiteCheckpoint
+
+    checkpoint_path = SuiteCheckpoint.default_path(suite.test_suite, agent_name)
+    if not resume:
+        checkpoint_path.unlink(missing_ok=True)
+    checkpoint = SuiteCheckpoint(checkpoint_path)
+
     # Create and run orchestrator
     if live_display is not None:
         live_display.start()
@@ -934,6 +964,7 @@ async def _run_suite(
             fail_fast=fail_fast,
             parallel_tests=use_parallel,
             max_parallel_tests=parallel,
+            checkpoint=checkpoint,
         ) as orchestrator:
             remove_handlers = _install_signal_handlers(orchestrator)
             try:
