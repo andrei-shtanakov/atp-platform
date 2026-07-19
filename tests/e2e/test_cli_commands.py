@@ -320,9 +320,10 @@ class TestJsonReportGeneration:
 
         assert result.exit_code == EXIT_SUCCESS, f"Output: {result.output}"
 
-        # The output contains progress bar info followed by JSON
-        # Find the JSON part (starts with '{')
-        output = result.output
+        # The machine-readable report goes to stdout; logs go to stderr
+        # (result.output would mix both streams). Progress text may precede
+        # the JSON, so parse from the first '{'.
+        output = result.stdout
         json_start = output.find("{")
         assert json_start != -1, f"No JSON found in output: {output}"
         json_str = output[json_start:]
