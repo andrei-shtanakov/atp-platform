@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import sys
+from collections.abc import Callable
 from datetime import UTC
 from importlib.metadata import version
 from pathlib import Path
@@ -42,6 +43,30 @@ logger = logging.getLogger(__name__)
 EXIT_SUCCESS = 0  # All tests passed
 EXIT_FAILURE = 1  # Test failures detected
 EXIT_ERROR = 2  # Error (invalid config, missing file, etc.)
+EXIT_INTERRUPTED = 130  # Interrupted by SIGINT/SIGTERM (128 + SIGINT)
+
+
+def _install_signal_handlers(orchestrator: Any) -> Callable[[], None]:
+    """Install SIGINT/SIGTERM handlers that request cooperative shutdown.
+
+    Returns a zero-arg callable that removes the installed handlers.
+    """
+    import signal
+
+    loop = asyncio.get_running_loop()
+    installed: list[signal.Signals] = []
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, orchestrator.request_shutdown)
+            installed.append(sig)
+        except (NotImplementedError, RuntimeError):
+            pass  # e.g. Windows or non-main thread
+
+    def _remove() -> None:
+        for sig in installed:
+            loop.remove_signal_handler(sig)
+
+    return _remove
 
 
 class ConfigContext:
@@ -910,11 +935,15 @@ async def _run_suite(
             parallel_tests=use_parallel,
             max_parallel_tests=parallel,
         ) as orchestrator:
-            result = await orchestrator.run_suite(
-                suite=suite,
-                agent_name=agent_name,
-                runs_per_test=runs_per_test,
-            )
+            remove_handlers = _install_signal_handlers(orchestrator)
+            try:
+                result = await orchestrator.run_suite(
+                    suite=suite,
+                    agent_name=agent_name,
+                    runs_per_test=runs_per_test,
+                )
+            finally:
+                remove_handlers()
     finally:
         if live_display is not None:
             live_display.stop()
@@ -1087,6 +1116,14 @@ async def _run_suite(
             model=model,
             eval_results=all_eval_results,
         )
+
+    if orchestrator.shutdown_requested:
+        click.echo(
+            "Run interrupted; partial results were reported. "
+            "Re-run with --resume to continue.",
+            err=True,
+        )
+        sys.exit(EXIT_INTERRUPTED)
 
     return _suite_success_after_scoring(result, all_scored_results)
 

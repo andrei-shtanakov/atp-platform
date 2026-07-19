@@ -940,6 +940,35 @@ class TestRunSuiteConvenience:
         assert result.total_tests == 2
 
 
+class TestCooperativeShutdown:
+    """request_shutdown() stops the suite between tests."""
+
+    @pytest.mark.anyio
+    async def test_shutdown_before_start_runs_nothing(
+        self, test_suite: TestSuite
+    ) -> None:
+        orchestrator = TestOrchestrator(adapter=MockAdapter())
+        orchestrator.request_shutdown()
+        result = await orchestrator.run_suite(test_suite, agent_name="a")
+        assert result.tests == []
+        assert result.error == "interrupted: shutdown requested"
+
+    @pytest.mark.anyio
+    async def test_shutdown_after_first_test_skips_rest(
+        self, test_suite: TestSuite
+    ) -> None:
+        orchestrator = TestOrchestrator(adapter=MockAdapter())
+
+        def stop_after_first(event: ProgressEvent) -> None:
+            if event.event_type == ProgressEventType.TEST_COMPLETED:
+                orchestrator.request_shutdown()
+
+        orchestrator.progress_callback = stop_after_first
+        result = await orchestrator.run_suite(test_suite, agent_name="a")
+        assert len(result.tests) == 1  # suite has 2 tests
+        assert result.error == "interrupted: shutdown requested"
+
+
 class TestRunIdCorrelation:
     """run_suite must capture the active correlation id as run_id."""
 

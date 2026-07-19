@@ -104,6 +104,7 @@ class TestOrchestrator:
         self._semaphore = asyncio.Semaphore(max_parallel)
         self._tests_semaphore = asyncio.Semaphore(max_parallel_tests)
         self._usage_capture = usage_capture or capture_from_env()
+        self._shutdown_requested = False
 
     def _emit_progress(self, event: ProgressEvent) -> None:
         """Emit a progress event if callback is registered."""
@@ -112,6 +113,16 @@ class TestOrchestrator:
                 self.progress_callback(event)
             except Exception as e:
                 logger.warning("Progress callback failed: %s", e)
+
+    def request_shutdown(self) -> None:
+        """Request cooperative shutdown: finish the current test, skip the rest."""
+        logger.warning("Shutdown requested; will stop after the current test")
+        self._shutdown_requested = True
+
+    @property
+    def shutdown_requested(self) -> bool:
+        """Whether a cooperative shutdown has been requested."""
+        return self._shutdown_requested
 
     def _create_request(
         self,
@@ -543,6 +554,11 @@ class TestOrchestrator:
 
         async def run_test_with_semaphore(test: TestDefinition) -> TestResult:
             async with self._tests_semaphore:
+                if self._shutdown_requested:
+                    skipped = TestResult(test=test)
+                    skipped.error = "skipped: shutdown requested"
+                    skipped.end_time = skipped.start_time
+                    return skipped
                 logger.info(
                     "Starting parallel test: %s (%s)",
                     test.name,
@@ -819,24 +835,35 @@ class TestOrchestrator:
 
             try:
                 if self.parallel_tests and not self.fail_fast and total_tests > 1:
-                    # Execute tests in parallel (fail_fast is incompatible)
-                    logger.info(
-                        "Running %d tests in parallel (max_parallel=%d)",
-                        total_tests,
-                        self.max_parallel_tests,
-                    )
-                    add_span_event(
-                        "parallel_execution",
-                        {"max_parallel": self.max_parallel_tests},
-                    )
-                    result.tests = await self._execute_tests_parallel(
-                        tests=suite.tests,
-                        num_runs=num_runs,
-                        suite_name=suite.test_suite,
-                    )
+                    if self._shutdown_requested:
+                        result.error = "interrupted: shutdown requested"
+                    else:
+                        # Execute tests in parallel (fail_fast is incompatible)
+                        logger.info(
+                            "Running %d tests in parallel (max_parallel=%d)",
+                            total_tests,
+                            self.max_parallel_tests,
+                        )
+                        add_span_event(
+                            "parallel_execution",
+                            {"max_parallel": self.max_parallel_tests},
+                        )
+                        result.tests = await self._execute_tests_parallel(
+                            tests=suite.tests,
+                            num_runs=num_runs,
+                            suite_name=suite.test_suite,
+                        )
+                        if any(
+                            t.error == "skipped: shutdown requested"
+                            for t in result.tests
+                        ):
+                            result.error = "interrupted: shutdown requested"
                 else:
                     # Execute tests sequentially
                     for idx, test in enumerate(suite.tests):
+                        if self._shutdown_requested:
+                            result.error = "interrupted: shutdown requested"
+                            break
                         logger.info(
                             "Running test %d/%d: %s (%s)",
                             idx + 1,
