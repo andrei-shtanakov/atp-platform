@@ -1,0 +1,17 @@
+# Vendored governance caller (ADR-ECO-004 D5). The @governance-v1 pin IS the vendored copy.
+# Canon: ai-orchestrators-workspace/ci/governance/ (governance-gate.yml).
+name: governance
+permissions:
+  contents: read          # gate only reads (2× checkout of public repos); least-privilege
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  governance:
+    uses: andrei-shtanakov/ai-orchestrators-workspace/.github/workflows/governance-gate.yml@governance-v1
+    with:
+      umbrella-ref: "governance-v1"
+      strict: true
+      runtime-scan: true        # runtime code — GOV-003 applies
+      authority-guard: false    # holds no authority-root paths

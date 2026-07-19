@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# gov:allow-cowork-file: error message names the dev-mirror path, not a resolve
 """R-07 Task 6 — code-review pipe-check harness (PAID when not --dry-run).
 
 Drives the `code-review-planted-defect` agent-eval-case family through the ATP
