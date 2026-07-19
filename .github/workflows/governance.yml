@@ -1,6 +1,7 @@
-# Governance caller (ADR-ECO-004 D5) — this caller file is what lives here; it holds a pinned
-# reference to the reusable gate workflow in ai-orchestrators-workspace (no code copied). The
-# immutable @governance-v1 tag is the pin. Canon: ai-orchestrators-workspace/ci/governance/.
+# Governance caller (ADR-ECO-004 D5). Thin caller: it holds a pinned reference to the reusable
+# gate workflow at ai-orchestrators-workspace/.github/workflows/governance-gate.yml@governance-v1
+# (the checks it runs live under ci/governance/). No code is copied here; the immutable tag is
+# the pin.
 name: governance
 permissions:
   contents: read          # gate only reads (2× checkout of public repos); least-privilege
@@ -12,7 +13,7 @@ jobs:
   governance:
     uses: andrei-shtanakov/ai-orchestrators-workspace/.github/workflows/governance-gate.yml@governance-v1
     with:
-      umbrella-ref: "governance-v1"
+      umbrella-ref: "governance-v1"   # same tag as the uses: pin above
       strict: true
       runtime-scan: true        # runtime code — GOV-003 applies
       authority-guard: false    # holds no authority-root paths
