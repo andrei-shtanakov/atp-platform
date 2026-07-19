@@ -1,5 +1,6 @@
-# Vendored governance caller (ADR-ECO-004 D5). The @governance-v1 pin IS the vendored copy.
-# Canon: ai-orchestrators-workspace/ci/governance/ (governance-gate.yml).
+# Governance caller (ADR-ECO-004 D5) — this caller file is what lives here; it holds a pinned
+# reference to the reusable gate workflow in ai-orchestrators-workspace (no code copied). The
+# immutable @governance-v1 tag is the pin. Canon: ai-orchestrators-workspace/ci/governance/.
 name: governance
 permissions:
   contents: read          # gate only reads (2× checkout of public repos); least-privilege
