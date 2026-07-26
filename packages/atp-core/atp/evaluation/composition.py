@@ -46,9 +46,14 @@ class EvaluatorNotPermitted(LookupError):
 class FilteredResolver:
     """A resolver that can only produce what its policy permits.
 
-    Wrapping rather than checking at the call site is deliberate: the wrapped
-    registry is not reachable through this object, so no amount of downstream
-    code can widen what it yields.
+    Wrapping rather than checking at the call site is deliberate: the registry
+    is not part of this object's public surface, so ordinary downstream code
+    cannot widen what it yields.
+
+    This is an engineering boundary, not a sandbox. Python has no private
+    attributes, so `_inner` remains reachable by anyone who goes looking. It
+    stops the accident and the shortcut, which is what package boundaries are
+    for; it does not stop code that has already decided to break out.
     """
 
     def __init__(self, inner: EvaluatorResolver, policy: EvaluationPolicy) -> None:

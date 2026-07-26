@@ -3,8 +3,13 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
+    # atp.server:create_server_app is the composition root: it injects the
+    # policy-restricted evaluator resolver. Pointing uvicorn at
+    # atp.dashboard.v2.factory:app instead yields a completion-only server,
+    # which would score submissions on completion while the leaderboard
+    # implied quality.
     command: >
-      uv run --no-sync uvicorn atp.dashboard.v2.factory:app
+      uv run --no-sync uvicorn atp.server:create_server_app --factory
       --host 0.0.0.0 --port 8080 --workers 1
     environment:
       ATP_DATABASE_URL: "sqlite+aiosqlite:////data/atp.db"

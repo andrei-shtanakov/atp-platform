@@ -24,6 +24,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DASHBOARD = REPO_ROOT / "packages" / "atp-dashboard"
+CORE = REPO_ROOT / "packages" / "atp-core"
 
 #: Top-level `atp.*` modules that belong to atp-platform, not atp-core.
 PLATFORM_ONLY = {
@@ -94,6 +95,26 @@ def test_dashboard_does_not_import_platform_modules(source: Path) -> None:
         f"{source.relative_to(REPO_ROOT)} imports {found}, which lives in "
         "atp-platform. Inject it from the composition root, or move the "
         "neutral part of it into atp-core."
+    )
+
+
+@pytest.mark.parametrize(
+    "source", _python_files(CORE), ids=lambda p: str(p.relative_to(CORE))
+)
+def test_core_does_not_import_platform_modules(source: Path) -> None:
+    """atp-core is the bottom of the graph and may depend on nothing above it.
+
+    Added after the dashboard's "imports without atp-platform" test started
+    actually blocking: it failed, and the culprit was not the dashboard at all
+    but `atp/scoring/aggregator.py` importing `EvalResult` from
+    `atp.evaluators.base` -- a re-export of a class atp-core already owns. The
+    guard scanned only the dashboard, so the deeper violation was invisible.
+    """
+    found = _violations(source)
+    assert not found, (
+        f"{source.relative_to(REPO_ROOT)} imports {found} from atp-platform. "
+        "atp-core sits below it; move the needed piece down or invert the "
+        "dependency."
     )
 
 

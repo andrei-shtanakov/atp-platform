@@ -31,7 +31,10 @@ async def health() -> dict[str, str]:
 async def evaluation_capabilities(request: Request) -> dict[str, object]:
     """What this deployment can actually evaluate.
 
-    Unauthenticated on purpose, alongside `/health`: an operator needs to be
+    Served at `/api/evaluation/capabilities` (this router is mounted under the
+    `/api` prefix, so the sibling health probe is `/api/health`).
+
+    Unauthenticated on purpose, like that probe: an operator needs to be
     able to tell a completion-only server from an evaluating one *before*
     trusting a leaderboard, and a participant needs to know which assertion
     types their suite will actually be scored on. Nothing here is a secret —

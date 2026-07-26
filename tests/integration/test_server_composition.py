@@ -50,10 +50,13 @@ class TestFactoryStandsAlone:
 
     def test_factory_module_imports_without_platform_modules(self) -> None:
         """Run in a subprocess with the platform packages blocked entirely."""
+        # `find_spec`, not the legacy `find_module`: the latter was removed
+        # from the import system in 3.12, so a blocker using it is inert and
+        # this test would pass without blocking anything.
         script = (
             "import sys\n"
             "class Blocker:\n"
-            "    def find_module(self, name, path=None):\n"
+            "    def find_spec(self, name, path=None, target=None):\n"
             "        if name.split('.')[0:2] == ['atp', 'evaluators']:\n"
             "            raise ImportError('atp.evaluators is not available here')\n"
             "        return None\n"
@@ -154,21 +157,47 @@ class TestCompositionRoot:
 class TestProductionLaunchPath:
     """6 — the deployed command must use the composition root."""
 
-    def test_docker_compose_starts_the_dashboard_through_the_cli(self) -> None:
-        """Asserted by what the command does, not by the service's name."""
-        compose = yaml.safe_load((REPO_ROOT / "docker-compose.yml").read_text())
-        commands = [
-            service["command"]
-            for service in compose["services"].values()
-            if isinstance(service.get("command"), list)
-        ]
-        serving = [c for c in commands if "atp" in c and "dashboard" in c]
-        assert serving, f"no service runs `atp dashboard`; commands were {commands}"
+    def _compose_files(self) -> list[Path]:
+        """Every compose file in the repo, not just the one at the root.
 
-    def test_no_service_bypasses_the_root_with_a_raw_uvicorn_command(self) -> None:
-        """`uvicorn atp.dashboard...:app` would be a completion-only server."""
-        raw = (REPO_ROOT / "docker-compose.yml").read_text()
-        assert "atp.dashboard.v2.factory:app" not in raw
+        Checking only the root file is how `deploy/docker-compose.yml` sat
+        there running `uvicorn atp.dashboard.v2.factory:app` -- the production
+        path bypassing the composition root while a green test said otherwise.
+        """
+        found = sorted(REPO_ROOT.glob("**/docker-compose*.yml"))
+        assert found, "no compose files found; the glob is wrong"
+        return [p for p in found if ".venv" not in p.parts]
+
+    def test_some_service_serves_the_dashboard(self) -> None:
+        """Asserted by what the command does, not by the service's name."""
+        commands = []
+        for path in self._compose_files():
+            compose = yaml.safe_load(path.read_text()) or {}
+            for service in (compose.get("services") or {}).values():
+                command = service.get("command")
+                if command:
+                    commands.append(str(command))
+        assert any("dashboard" in c or "atp.server" in c for c in commands), commands
+
+    @pytest.mark.parametrize(
+        "path", sorted(REPO_ROOT.glob("**/docker-compose*.yml")), ids=str
+    )
+    def test_no_compose_file_bypasses_the_composition_root(self, path: Path) -> None:
+        """A completion-only server deployed by accident is the whole risk.
+
+        Reads the parsed commands rather than the file text: a comment
+        explaining why the direct path is wrong is documentation, and a test
+        that punishes documentation gets the documentation deleted.
+        """
+        compose = yaml.safe_load(path.read_text()) or {}
+        for name, service in (compose.get("services") or {}).items():
+            command = str(service.get("command") or "")
+            assert "atp.dashboard.v2.factory:app" not in command, (
+                f"{path.relative_to(REPO_ROOT)} service '{name}' launches the "
+                "dashboard app directly, which skips the evaluator resolver. "
+                "Use `uvicorn atp.server:create_server_app --factory` or "
+                "`atp dashboard`."
+            )
 
     def test_the_cli_launches_the_composition_root(self) -> None:
         """Not `atp.dashboard...:app`, which would be completion-only."""
