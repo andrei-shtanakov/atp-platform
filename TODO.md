@@ -11,7 +11,7 @@
 ## Ecosystem Roadmap (план от 2026-04-16)
 
 > Стратегический контекст: `../prograph-vault/authored/notes/ecosystem-roadmap.md`
-> Актуальный статус: `../prograph-vault/authored/notes/status/2026-04-10-status.md`
+> Актуальный статус: `../prograph-vault/authored/notes/status/2026-07-08-1228-status.md`
 > **Роль ATP в экосистеме**: валидация задач Maestro (`validation_cmd`) и eval-driven обучение arbiter
 
 ### Активные кросс-проектные задачи
@@ -77,16 +77,16 @@
 > заблокировано на Maestro R-03» была протухшей в двух местах: (1) **R-03 закрыт** ещё в
 > Maestro v0.2.0 — `../prograph-vault/authored/notes/archive/2026-04-05-ecosystem-roadmap.md:24,31`,
 > и в карточке R-06b поле *Depends on* стоит как `R-03 ✅`; (2) **R-06b целиком реализован
-> на стороне Maestro** — `Maestro/TODO.md:98-102`, M1 (05-07) … M5, включая
+> на стороне Maestro** — `../maestro/TODO.md:98-102`, M1 (05-07) … M5, включая
 > `MaestroATPAdapter` поверх нашего `atp-platform-sdk>=2.0.0`. Запрос пришёл и был обслужен;
 > открытым остался конкретный дефицит на нашей стороне (ниже).
 
 - [ ] **Экспортировать разбивку скора в benchmark-run status** (для Maestro R-06b M3)
-  - `Maestro/TODO.md:100`: «`score_components={}` пока ATP не экспортирует breakdown» —
+  - `../maestro/TODO.md:100`: «`score_components={}` пока ATP не экспортирует breakdown» —
     их `finalize()` читает из `GET /api/v1/runs/{id}/status` только `total_score`.
   - Наша сторона (проверено 2026-07-26): роут есть —
     `benchmark_api.py:413` `GET /api/v1/runs/{run_id}/status` → `RunStatusResponse`
-    (`benchmark/schemas.py:38-46`), но в нём только `total_score`; в модели `Run`
+    (`benchmark/schemas.py:76-84`), но в нём только `total_score`; в модели `Run`
     (`benchmark/models.py:127`) поля под разбивку тоже нет. Нужны: `score_components` на
     `Run` + Alembic-миграция + проброс в `RunStatusResponse` + заполнение из агрегатора.
   - Потребитель известен и уже написан — это не спекулятивная фича.
