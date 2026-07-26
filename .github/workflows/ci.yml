@@ -235,3 +235,40 @@ jobs:
       - name: Teardown
         if: always()
         run: docker compose -f deploy/docker-compose.yml down -v
+
+  plan-owners:
+    # Existence of a GitHub login/team needs the network, so it is deliberately
+    # NOT in the pre-commit hook (which must stay usable offline). The hook
+    # checks tag *form*; this job checks that the handles resolve.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve @owner handles against GitHub
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          logins=$(grep -ho '@owner:github:[A-Za-z0-9-]*' TODO.md CLAUDE.md \
+            | sed 's/@owner:github://' | sort -u || true)
+          teams=$(grep -ho '@owner:github-team:[A-Za-z0-9._/-]*' TODO.md CLAUDE.md \
+            | sed 's/@owner:github-team://' | sort -u || true)
+          rc=0
+          for login in $logins; do
+            if gh api "users/$login" >/dev/null 2>&1; then
+              echo "ok   user $login"
+            else
+              echo "FAIL user $login does not resolve"; rc=1
+            fi
+          done
+          for team in $teams; do
+            org=${team%%/*}; slug=${team##*/}
+            if gh api "orgs/$org/teams/$slug" >/dev/null 2>&1; then
+              echo "ok   team $team"
+            else
+              # A team lookup needs org scope the default token may lack;
+              # report it rather than failing the build on a permissions gap.
+              echo "WARN team $team unresolved (token may lack org scope)"
+            fi
+          done
+          exit $rc

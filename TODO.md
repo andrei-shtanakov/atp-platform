@@ -1,12 +1,34 @@
 # TODO
 
-> Инлайн-теги в хвосте пункта (формат из `../_cowork_output/2026-07-26-plan-fields-and-todo-coverage-handoff.md`,
-> §3): `@blocked_by:<repo>#<slug>` — чем заблокирован, `@trigger:"условие"` — при каком
-> проверяемом условии пункт становится актуальным, `@owner:<handle>` — владелец. Все три
-> опциональны; **отсутствие означает «неизвестно», а не «нет»**, и придумывать значение хуже,
-> чем оставить пусто. Парсер Robin (`plan_state`) исключает теги из ключа идентичности
-> (robin-runtime#27), так что разметка не даёт фантомных «закрыт/открыт» в дневной дельте.
-> `@owner:` пока не проставляется — конвенция хэндлов не решена (handoff §5.3).
+> ## Разметка пунктов
+>
+> **Главное правило: cross-repo статус — это кэш, а не источник истины.** Этот файл и
+> `CLAUDE.md` пересказывают факты, которыми владеют другие репо. В 2026-07 такой пересказ
+> прожил протухшим три месяца, потому что каждый источник цитировал другой, а не владельца
+> (#263). Поэтому утверждение о соседнем проекте обязано нести владельца, свидетельство,
+> дату наблюдения и срок годности — тогда это кэш с TTL, а не самоподтверждающаяся истина.
+>
+> | Тег | Значение | Форма |
+> |---|---|---|
+> | `@owner:` | accountable человек или команда, **не** имя репозитория | `github:<login>` · `github-team:<org>/<team>` · `TBD` |
+> | `@owner-decision-by:` | обязателен при `@owner:TBD`; после даты проверка падает | `YYYY-MM-DD` |
+> | `@provider:` / `@consumer:` | стороны cross-repo пункта | имя репо |
+> | `@blocked_by:` | чем заблокирован | `<repo>#<slug>` |
+> | `@trigger:` | проверяемое условие актуальности | `"текст"` |
+> | `@source-owner:` `@source-ref:` `@observed-at:` `@recheck-by:` | атрибуция кэша чужого статуса — **всё или ничего** | ref: коммит/PR/issue; даты `YYYY-MM-DD` |
+>
+> Правила: display names и свободный текст запрещены; у открытого actionable-пункта ровно
+> один `@owner`; частичный набор freshness-тегов — ошибка (выглядит подтверждённым, не будучи
+> перепроверяемым); истёкший `@recheck-by` — ошибка, лечится перепроверкой у владельца и
+> обновлением `@observed-at`. Отсутствие тега по-прежнему означает «неизвестно», и придумать
+> значение хуже, чем оставить пусто.
+>
+> Форму и TTL проверяет `scripts/ci/check_plan_citations.py` (pre-commit на этих двух файлах).
+> Существование GitHub-логина/команды намеренно **не** проверяется локально — это сеть, она
+> сделала бы хук хрупким и непригодным офлайн; проверка живёт в CI. Парсер Robin (`plan_state`)
+> исключает теги из ключа идентичности (robin-runtime#27), так что разметка не даёт фантомных
+> «закрыт/открыт» в дневной дельте. Разметка идёт с новых и cross-repo пунктов; массовый
+> backfill старого бэклога — отдельным проходом, чтобы не мешать его с продуктовой работой.
 
 ## Ecosystem Roadmap (план от 2026-04-16)
 
@@ -82,6 +104,8 @@
 > открытым остался конкретный дефицит на нашей стороне (ниже).
 
 - [ ] **Экспортировать разбивку скора в benchmark-run status** (для Maestro R-06b M3)
+  @owner:github:andrei-shtanakov @provider:atp-platform @consumer:maestro
+  @source-owner:maestro @source-ref:maestro@07d408d @observed-at:2026-07-26 @recheck-by:2026-10-26
   - `../maestro/TODO.md:100`: «`score_components={}` пока ATP не экспортирует breakdown» —
     их `finalize()` читает из `GET /api/v1/runs/{id}/status` только `total_score`.
   - Наша сторона (проверено 2026-07-26): роут есть —
@@ -263,6 +287,7 @@
     без миграций схемы: два существующих шва (`cli()` в `atp/cli/main.py` и `TestOrchestrator`).
 
 - [ ] **P6 — стабилизировать и версионировать benchmark-payload** (живой роадмап, urgency Medium)
+  @owner:github:andrei-shtanakov @provider:atp-platform
   - `../prograph-vault/authored/notes/ecosystem-roadmap.md` §1.1 + таблица приоритетов P6:
     ATP держат как поставщика routing-grade данных, и фокус там сформулирован явно —
     «stabilize the benchmark-contract payload and version it as strictly as the MCP protocol».
@@ -271,6 +296,7 @@
   - Пункт ATP-owned, ни в одном нашем плане до 2026-07-26 не значился.
 
 - [ ] **Привести логи к `observability-contract/v1`** (живой роадмап §3, enabler для §1.1/1.2/1.4)
+  @owner:github:andrei-shtanakov @provider:atp-platform
   - Там прямо: «`atp-platform` logs structurally but in its own format
     (`correlation_id/version/hostname`)», и в списке действий — «(3) bring atp-platform to
     contract fields» (`../prograph-vault/authored/notes/ecosystem-roadmap.md:109,114`).
