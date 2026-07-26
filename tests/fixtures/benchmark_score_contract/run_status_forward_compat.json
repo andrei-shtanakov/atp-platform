@@ -1,0 +1,63 @@
+{
+  "completed_tasks": [
+    {
+      "eval_results": null,
+      "score": 100.0,
+      "task_index": 0
+    },
+    {
+      "eval_results": null,
+      "score": 0.0,
+      "task_index": 1
+    },
+    {
+      "eval_results": null,
+      "score": 100.0,
+      "task_index": 2
+    }
+  ],
+  "current_task_index": 3,
+  "id": 42,
+  "score_components": {
+    "correctness": {
+      "normalized_value": 0.82,
+      "weight": 0.6
+    },
+    "some_future_axis_atp_has_not_invented_yet": {
+      "normalized_value": 0.5
+    }
+  },
+  "score_semantics": {
+    "aggregation": {
+      "function": "mean",
+      "over": "task_score"
+    },
+    "caveats": [
+      "null_until_finalized: total_score is null until the run completes",
+      "zero_is_ambiguous: a run that scored no tasks finalizes to 0.0, which is indistinguishable from every task failing"
+    ],
+    "kind": "weighted_quality",
+    "level": "run",
+    "note": "Completion, not quality: a task scores 100 when the agent returned a completed response, regardless of what the response contained. Evaluators are not wired into the benchmark plane yet.",
+    "quality_signal": true,
+    "range": {
+      "max": 100.0,
+      "min": 0.0
+    },
+    "schema_version": 1,
+    "some_future_key": "consumers must ignore this",
+    "task_score": {
+      "kind": "completion_boolean",
+      "level": "task",
+      "unit": "percent",
+      "values": [
+        0.0,
+        100.0
+      ]
+    },
+    "unit": "percent"
+  },
+  "status": "completed",
+  "tasks_count": 3,
+  "total_score": 66.66666666666667
+}

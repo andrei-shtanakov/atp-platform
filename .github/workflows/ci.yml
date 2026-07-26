@@ -244,31 +244,42 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
       - name: Resolve @owner handles against GitHub
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          logins=$(grep -ho '@owner:github:[A-Za-z0-9-]*' TODO.md CLAUDE.md \
-            | sed 's/@owner:github://' | sort -u || true)
-          teams=$(grep -ho '@owner:github-team:[A-Za-z0-9._/-]*' TODO.md CLAUDE.md \
-            | sed 's/@owner:github-team://' | sort -u || true)
+          # Handles come from the same parser the hook uses. Re-extracting them
+          # with a shell regex would silently truncate a handle at the first
+          # character the class omits and then validate a different account.
+          python3 scripts/ci/check_plan_citations.py --print-owners > handles.txt
+          cat handles.txt
           rc=0
-          for login in $logins; do
-            if gh api "users/$login" >/dev/null 2>&1; then
-              echo "ok   user $login"
-            else
-              echo "FAIL user $login does not resolve"; rc=1
-            fi
-          done
-          for team in $teams; do
-            org=${team%%/*}; slug=${team##*/}
-            if gh api "orgs/$org/teams/$slug" >/dev/null 2>&1; then
-              echo "ok   team $team"
-            else
-              # A team lookup needs org scope the default token may lack;
-              # report it rather than failing the build on a permissions gap.
-              echo "WARN team $team unresolved (token may lack org scope)"
-            fi
-          done
+          while read -r kind value; do
+            [ -n "${kind:-}" ] || continue
+            case "$kind" in
+              user)
+                if gh api "users/$value" >/dev/null 2>&1; then
+                  echo "ok   user $value"
+                else
+                  echo "FAIL user $value does not resolve"; rc=1
+                fi
+                ;;
+              team)
+                org=${value%%/*}; slug=${value##*/}
+                if gh api "orgs/$org/teams/$slug" >/dev/null 2>&1; then
+                  echo "ok   team $value"
+                else
+                  # A team lookup needs org scope the default token may lack;
+                  # report it rather than failing on a permissions gap.
+                  echo "WARN team $value unresolved (token may lack org scope)"
+                fi
+                ;;
+            esac
+          done < handles.txt
           exit $rc

@@ -251,25 +251,48 @@ def iter_items(text: str) -> list[Item]:
 
     Tags routinely sit on a continuation line rather than the checkbox line
     itself, so checks must see the whole block, not one line.
+
+    Single linear pass: slicing the remaining lines per item copied the tail
+    of the file for every checkbox, which is quadratic on a long plan file.
     """
     items: list[Item] = []
-    lines = text.splitlines()
-    for lineno, line in enumerate(lines, start=1):
-        if not ANY_ITEM.match(line):
-            continue
-        block = [line]
-        for following in lines[lineno:]:
-            if ANY_ITEM.match(following):
-                break
-            block.append(following)
-        items.append(
-            Item(
-                lineno=lineno,
-                block="\n".join(block),
-                is_open=not CHECKED_ITEM.match(line),
+    current: Item | None = None
+    block: list[str] = []
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        if ANY_ITEM.match(line):
+            if current is not None:
+                current.block = "\n".join(block)
+                items.append(current)
+            current = Item(
+                lineno=lineno, block="", is_open=not CHECKED_ITEM.match(line)
             )
-        )
+            block = [line]
+        elif current is not None:
+            block.append(line)
+    if current is not None:
+        current.block = "\n".join(block)
+        items.append(current)
     return items
+
+
+def collect_owners(items: list[Item]) -> list[str]:
+    """Well-formed owner handles, as ``user <login>`` / ``team <org>/<slug>``.
+
+    Exists so CI resolves the *same* handles this file's grammar accepts.
+    A second, looser parser in shell would silently truncate a handle at the
+    first character its character class omits and then cheerfully validate a
+    different, real account.
+    """
+    seen: list[str] = []
+    for item in items:
+        for owner in OWNER_TAG.findall(item.block):
+            if not OWNER_VALUE.match(owner) or owner == "TBD":
+                continue
+            kind, _, value = owner.partition(":")
+            line = f"{'user' if kind == 'github' else 'team'} {value}"
+            if line not in seen:
+                seen.append(line)
+    return seen
 
 
 def check_dates(where: str, block: str, report: Report) -> dict[str, date]:
@@ -377,11 +400,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--strict", action="store_true", help="treat warnings as failures"
     )
+    parser.add_argument(
+        "--print-owners",
+        action="store_true",
+        help="list well-formed owner handles (for the CI existence check) and exit",
+    )
     args = parser.parse_args(argv)
 
     targets = [Path(name) for name in args.files] or [
         REPO_ROOT / name for name in DEFAULT_FILES
     ]
+
+    if args.print_owners:
+        for doc in targets:
+            if doc.exists():
+                for handle in collect_owners(iter_items(doc.read_text("utf-8"))):
+                    print(handle)
+        return 0
     report = Report()
     for doc in targets:
         if not doc.exists():

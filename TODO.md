@@ -114,6 +114,20 @@
     (`packages/atp-dashboard/atp/dashboard/benchmark/models.py:127`) поля под разбивку тоже нет. Нужны: `score_components` на
     `Run` + Alembic-миграция + проброс в `RunStatusResponse` + заполнение из агрегатора.
   - Потребитель известен и уже написан — это не спекулятивная фича.
+  - [x] **v1 wire-контракт шипнут** ✅ 2026-07-26: `score_semantics` (обязательный,
+    версионированный) + `score_components: {}` на `RunStatusResponse` и `RunResponse`;
+    источник — `packages/atp-dashboard/atp/dashboard/benchmark/score_contract.py`,
+    тесты — `tests/unit/dashboard/test_score_contract.py`, фикстуры (completion-only +
+    forward-compat) — `tests/fixtures/benchmark_score_contract/`, handoff с пинами —
+    [`docs/maestro-score-contract-handoff.md`](docs/maestro-score-contract-handoff.md).
+    Схема честно объявляет `quality_signal: false` и `kind: completion_rate`: на этой
+    плоскости 100 означает «ответ завершён», а не «ответ хорош».
+  - [ ] **Осталось не у нас:** consumer contract-тест и обновление статуса зависимости —
+    сторона maestro (их репо, отсюда read-only); указатель в KB — `../prograph-vault/`.
+  - [ ] **Deferred, с явным триггером:** первый реально вычисленный компонент → EPIC
+    выбирает persistence-модель. DB-колонки нет намеренно: `{}` в каждой строке `Run`
+    завёл бы вторую persistence-репрезентацию рядом с существующей `ScoreComponent`
+    (плоскость `TestExecution`) до решения EPIC. Wire-map при этом не меняет форму.
 
 - [ ] **R-07: Eval-driven routing validation**
   - A/B тестирование arbiter DT routing vs random vs always-best-agent

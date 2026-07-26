@@ -429,3 +429,69 @@ class TestOwnerCoverage:
         report = checker.Report()
         checker.check_owner_coverage(doc, report, checker.iter_items(doc.read_text()))
         assert report.warnings == []
+
+
+class TestOwnerCollection:
+    """CI must resolve exactly the handles this grammar accepts."""
+
+    def test_handles_are_emitted_in_a_kind_value_form(
+        self, checker: ModuleType, repo: Path, tmp_path: Path
+    ) -> None:
+        doc = _write(
+            repo / "TODO.md",
+            "- [ ] a @owner:github:andrei-shtanakov\n"
+            "- [ ] b @owner:github-team:acme/platform\n",
+        )
+        handles = checker.collect_owners(checker.iter_items(doc.read_text()))
+        assert handles == ["user andrei-shtanakov", "team acme/platform"]
+
+    def test_underscored_handle_is_not_truncated_into_a_different_account(
+        self, checker: ModuleType, repo: Path, tmp_path: Path
+    ) -> None:
+        """A shell character class stopped at `_` and validated `foo` instead."""
+        doc = _write(repo / "TODO.md", "- [ ] a @owner:github:foo_bar\n")
+        assert checker.collect_owners(checker.iter_items(doc.read_text())) == []
+
+    def test_tbd_and_malformed_owners_are_not_sent_to_the_api(
+        self, checker: ModuleType, repo: Path, tmp_path: Path
+    ) -> None:
+        doc = _write(
+            repo / "TODO.md",
+            "- [ ] a @owner:TBD @owner-decision-by:2099-01-01\n- [ ] b @owner:Andrei\n",
+        )
+        assert checker.collect_owners(checker.iter_items(doc.read_text())) == []
+
+    def test_duplicate_handles_are_emitted_once(
+        self, checker: ModuleType, repo: Path, tmp_path: Path
+    ) -> None:
+        doc = _write(
+            repo / "TODO.md",
+            "- [ ] a @owner:github:x\n- [ ] b @owner:github:x\n",
+        )
+        assert checker.collect_owners(checker.iter_items(doc.read_text())) == ["user x"]
+
+
+class TestItemSplitting:
+    """iter_items is a single linear pass over the file."""
+
+    def test_blocks_carry_their_continuation_lines(
+        self, checker: ModuleType, repo: Path, tmp_path: Path
+    ) -> None:
+        items = checker.iter_items("- [ ] a\n  tail-a\n- [x] b\n  tail-b\n")
+        assert [(i.lineno, i.is_open) for i in items] == [(1, True), (3, False)]
+        assert "tail-a" in items[0].block and "tail-a" not in items[1].block
+
+    def test_preamble_before_the_first_item_is_ignored(
+        self, checker: ModuleType, repo: Path, tmp_path: Path
+    ) -> None:
+        items = checker.iter_items("# Heading\nprose\n- [ ] a\n")
+        assert len(items) == 1 and items[0].lineno == 3
+
+    def test_scales_linearly_on_a_long_tail(
+        self, checker: ModuleType, repo: Path, tmp_path: Path
+    ) -> None:
+        """One item followed by a long tail must not copy the tail repeatedly."""
+        text = "- [ ] a\n" + "\n".join(f"  line {n}" for n in range(20_000))
+        items = checker.iter_items(text)
+        assert len(items) == 1
+        assert items[0].block.count("\n") == 20_000
