@@ -71,14 +71,27 @@
     - Shared types через FFI / JSON Schema (rec #1, "revisit only if a third project pulls in").
     - Re-naming правил под канон arbiter — это бы скрыло реальное разделение фаз.
 
-### Готовы предоставить (ждём запроса от Maestro)
+### Интеграция с Maestro
 
-- [ ] **R-06b: SDK-интеграция для Maestro** @blocked_by:Maestro#R-03
-  - `atp.sdk.arun()` или SDK Adapter — структурированные результаты
-  - Автоматический feedback loop: Maestro → задача → ATP eval → arbiter обучение
-  - Наш SDK уже готов (PyPI `atp-platform-sdk` v2.0.0)
+> **Сверка с vault 2026-07-26 (важно).** Прежняя формулировка «ждём запроса от Maestro,
+> заблокировано на Maestro R-03» была протухшей в двух местах: (1) **R-03 закрыт** ещё в
+> Maestro v0.2.0 — `../prograph-vault/authored/notes/archive/2026-04-05-ecosystem-roadmap.md:24,31`,
+> и в карточке R-06b поле *Depends on* стоит как `R-03 ✅`; (2) **R-06b целиком реализован
+> на стороне Maestro** — `Maestro/TODO.md:98-102`, M1 (05-07) … M5, включая
+> `MaestroATPAdapter` поверх нашего `atp-platform-sdk>=2.0.0`. Запрос пришёл и был обслужен;
+> открытым остался конкретный дефицит на нашей стороне (ниже).
 
-- [ ] **R-07: Eval-driven routing validation** @blocked_by:Maestro#R-03
+- [ ] **Экспортировать разбивку скора в benchmark-run status** (для Maestro R-06b M3)
+  - `Maestro/TODO.md:100`: «`score_components={}` пока ATP не экспортирует breakdown» —
+    их `finalize()` читает из `GET /api/v1/runs/{id}/status` только `total_score`.
+  - Наша сторона (проверено 2026-07-26): роут есть —
+    `benchmark_api.py:413` `GET /api/v1/runs/{run_id}/status` → `RunStatusResponse`
+    (`benchmark/schemas.py:38-46`), но в нём только `total_score`; в модели `Run`
+    (`benchmark/models.py:127`) поля под разбивку тоже нет. Нужны: `score_components` на
+    `Run` + Alembic-миграция + проброс в `RunStatusResponse` + заполнение из агрегатора.
+  - Потребитель известен и уже написан — это не спекулятивная фича.
+
+- [ ] **R-07: Eval-driven routing validation**
   - A/B тестирование arbiter DT routing vs random vs always-best-agent
   - Совместно с `../arbiter/` — набор test suites на нашей стороне
 
@@ -236,6 +249,10 @@
     contract-тест; `CODEOWNERS` на governed-пути (v1 acceptance).
   - [ ] **M2 (отложено):** conformance-CI (вендоренные byte-проверки, сканер no-runtime-writes);
     новые продюсеры (experiment recommendations, catalog proposals) переходят на схему.
+    @trigger:"stable Evidence-refs" — источник:
+    `../prograph-vault/authored/notes/2026-07-11-ai-dark-factory-consolidated-roadmap.md:269`
+    («atp + ecosystem-kb — LearningEvent после stable Evidence-refs, через steward-governance,
+    не silent-write», приоритет P3 = последний слой, потребляет evidence/risk/decisions/outcomes).
   - Не наше: M1b (robin-runtime — selfreview эмитит события), M1c (prograph-vault — CODEOWNERS
     на `authored/**`). Отслеживать, не делать.
 
@@ -245,10 +262,28 @@
     SIGINT/SIGTERM, чекпоинты сьюта → прерванный `atp test` возобновляем. Без новых сервисов и
     без миграций схемы: два существующих шва (`cli()` в `atp/cli/main.py` и `TestOrchestrator`).
 
+- [ ] **P6 — стабилизировать и версионировать benchmark-payload** (живой роадмап, urgency Medium)
+  - `../prograph-vault/authored/notes/ecosystem-roadmap.md` §1.1 + таблица приоритетов P6:
+    ATP держат как поставщика routing-grade данных, и фокус там сформулирован явно —
+    «stabilize the benchmark-contract payload and version it as strictly as the MCP protocol».
+  - У `report_benchmark-v1` пять владельцев (вкл. arbiter), дрейфа сейчас нет — задача в том,
+    чтобы versioning был дисциплиной, а не удачей: явная политика версий + гейт на дрейф.
+  - Пункт ATP-owned, ни в одном нашем плане до 2026-07-26 не значился.
+
+- [ ] **Привести логи к `observability-contract/v1`** (живой роадмап §3, enabler для §1.1/1.2/1.4)
+  - Там прямо: «`atp-platform` logs structurally but in its own format
+    (`correlation_id/version/hostname`)», и в списке действий — «(3) bring atp-platform to
+    contract fields» (`ecosystem-roadmap.md:109,114`).
+  - Проверено 2026-07-26: `atp/core/logging.py` по-прежнему на своих полях. #258 подключил
+    structlog к CLI-рантайму, но **формат не менял** — разрыв с контрактом остался.
+  - Приземляется на `dispatcher`, который читает контрактный `.jsonl`; без этого ATP не виден
+    в кросс-проектном drill-down.
+
 ### Ждём от других проектов
 
-- **Maestro → R-03**: без MCP-клиента в Maestro невозможен feedback loop в arbiter → отложить R-06b/R-07
 - **arbiter → R-10 (CI)**: при работе над R-13 хочется уверенности в стабильности invariants
+
+> Строка «Maestro → R-03» убрана 2026-07-26: R-03 закрыт в Maestro v0.2.0 (см. сверку выше).
 
 ### НЕ делаем здесь
 
