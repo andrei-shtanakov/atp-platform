@@ -17,9 +17,45 @@ from atp.evaluation.vocabulary import (
     EXECUTES_UNTRUSTED_INPUT,
 )
 
+#: Exactly what a submission may have evaluated. Written out rather than
+#: sampled: the allowlist is a security control, and a control that widens
+#: without a test failing is not a control. Adding a deterministic evaluator
+#: is a deliberate act, so updating this set is the deliberate part.
+PERMITTED = {
+    "artifact_exists",
+    "behavior",
+    "composite",
+    "contains",
+    "dir_exists",
+    "file_contains",
+    "file_count",
+    "file_exists",
+    "file_not_exists",
+    "findings_match",
+    "forbidden_tools",
+    "max_tool_calls",
+    "min_tool_calls",
+    "must_use_tools",
+    "no_errors",
+    "passive_voice",
+    "performance",
+    "readability",
+    "schema",
+    "sections",
+    "security",
+    "sentence_length",
+    "style",
+    "style_rules",
+    "tone",
+}
+
 
 class TestServerPolicy:
     """The benchmark plane runs on input from a self-service token holder."""
+
+    def test_the_allowlist_is_exactly_this(self) -> None:
+        """Fails on any widening, including one arriving through the vocabulary."""
+        assert UNTRUSTED_SUBMISSION.allowed_assertion_types == PERMITTED
 
     @pytest.mark.parametrize(
         "assertion", sorted(EXECUTES_UNTRUSTED_INPUT | CALLS_EXTERNAL_SERVICE)

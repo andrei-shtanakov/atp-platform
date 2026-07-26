@@ -44,6 +44,13 @@ def _submission() -> ATPResponse:
             ArtifactFile(type="file", path="src/main.py", content="second"),
             # over the per-file budget
             ArtifactFile(type="file", path="huge.txt", content="x" * 5000),
+            # A traversal attempt. `ArtifactFile` validation rejects `..`, so
+            # this is built unvalidated on purpose: the workspace's own check
+            # is defence in depth, and defence in depth that is never
+            # exercised is an assumption, not a defence.
+            ArtifactFile.model_construct(
+                type="file", path="../escaped.txt", content="pwned"
+            ),
         ],
     )
 
@@ -85,7 +92,7 @@ async def test_inspection_assertion_still_runs_and_counts_as_quality() -> None:
 
 
 async def test_a_hostile_payload_neither_crashes_nor_escapes() -> None:
-    """Collision, duplicate and oversized artifacts all become findings."""
+    """Traversal, collision, duplicate and oversized all become findings."""
     workspace = ArtifactWorkspace(WorkspaceLimits(max_file_bytes=1000))
     pipeline = EvaluationPipeline(
         get_registry(), UNTRUSTED_SUBMISSION, artifacts=workspace.prepare
@@ -96,7 +103,12 @@ async def test_a_hostile_payload_neither_crashes_nor_escapes() -> None:
     )
 
     reasons = {r.reason for r in workspace.report.rejected}
-    assert reasons == {"path_collision", "duplicate_path", "file_too_large"}
+    assert reasons == {
+        "path_collision",
+        "duplicate_path",
+        "file_too_large",
+        "escapes_workspace",
+    }
     assert workspace.report.written == ["src/main.py"]
     # The run still produced a result for the assertion it was allowed to run.
     assert "contains" in outcome.applied or outcome.skipped
