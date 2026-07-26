@@ -18,7 +18,7 @@ from typing import Any
 
 import pytest
 
-from atp.core.results import EvalResult
+from atp.core.results import EvalCheck, EvalResult
 from atp.evaluation import (
     EvaluationPipeline,
     EvaluationPolicy,
@@ -58,7 +58,12 @@ class RecordingEvaluator:
         assertion: Assertion,
     ) -> EvalResult:
         self.calls += 1
-        return EvalResult(evaluator=self.name, passed=True, score=1.0, checks=[])
+        # `passed`/`score` are computed from checks, not fields: passing them
+        # as kwargs only worked because pydantic dropped the extras.
+        return EvalResult(
+            evaluator=self.name,
+            checks=[EvalCheck(name="ok", passed=True, score=1.0)],
+        )
 
 
 class ExplodingEvaluator:
