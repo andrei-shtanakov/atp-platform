@@ -20,6 +20,13 @@ repos:
 
   - repo: local
     hooks:
+      - id: plan-citations
+        name: plan citation check (TODO.md / CLAUDE.md)
+        entry: uv run python scripts/ci/check_plan_citations.py
+        language: system
+        files: ^(TODO|CLAUDE)\.md$
+        pass_filenames: false
+
       - id: pyrefly
         name: pyrefly type check
         entry: bash -c 'uv run pyrefly check'

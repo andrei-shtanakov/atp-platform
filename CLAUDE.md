@@ -5,6 +5,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Active Work & Roadmap
 
 - **Current task list:** `./TODO.md` — read it at the start of every session (ecosystem section at top)
+- **Before editing `TODO.md`/`CLAUDE.md`, reconcile cross-project claims.** Both files *restate*
+  facts owned by other repos, and those restatements drift — in 2026-07 both claimed R-06b was
+  blocked on Maestro R-03 for ~3 months after R-03 shipped, because each source cited the other
+  instead of the owner (PR #263). Procedure:
+  1. Run `uv run python scripts/ci/check_plan_citations.py` (also a pre-commit hook on these two
+     files). It catches the mechanical half: dead `path:line` citations, `@blocked_by:` targets
+     already checked off upstream, a stale vault status pointer. Sibling-dependent checks report
+     *skipped* outside the dev workspace, so a bare clone stays green.
+  2. Judgment half — the script cannot do this: for every cross-project item, read the **owner's**
+     `TODO.md` and the live `notes/ecosystem-roadmap.md`, not our restatement of them. Claims
+     phrased as "waiting for X" are the ones that rot.
+  3. Cite as `path:line` from the repo root so the next reader can re-check it, and prefer naming
+     the source over paraphrasing it.
 - **Ecosystem roadmap (strategic):** `../prograph-vault/authored/notes/ecosystem-roadmap.md` — living doc, rewritten 2026-07-08 around five anchor directions + a P1…P8 priority list. It **replaced** the old R-01…R-16 critical path, which is archived at `../prograph-vault/authored/notes/archive/2026-04-05-ecosystem-roadmap.md` (that path shipped). ATP's items there: §1.1 (routing-grade data provider) and P6 (version the benchmark payload).
 - **Latest weekly status:** `../prograph-vault/authored/notes/status/2026-07-08-1228-status.md` (+ `2026-07-08-logging-audit.md`)
 - **Sibling projects** (reference only): `../maestro/`, `../arbiter/`, `../spec-runner/`, `../proctor/`
