@@ -10,6 +10,7 @@ from atp.evaluation.pipeline import (
     SkipReason,
     no_artifacts,
 )
+from atp.evaluation.policies import TRUSTED_LOCAL, UNTRUSTED_SUBMISSION
 from atp.evaluation.vocabulary import (
     ASSERTION_TO_EVALUATOR,
     CALLS_EXTERNAL_SERVICE,
@@ -28,6 +29,8 @@ from atp.evaluation.workspace import (
 
 __all__ = [
     "ASSERTION_TO_EVALUATOR",
+    "TRUSTED_LOCAL",
+    "UNTRUSTED_SUBMISSION",
     "ArtifactWorkspace",
     "MaterializationReport",
     "RejectReason",
