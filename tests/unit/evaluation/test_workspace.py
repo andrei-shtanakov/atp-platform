@@ -86,21 +86,16 @@ class TestPathEscapes:
         assert workspace._check(tmp_path, "a/../b.txt", "x", set()) == Path("b.txt")
         assert workspace.report.rejected == []
 
-    def test_symlink_component_is_rejected(self) -> None:
-        """A link planted by an earlier artifact must not be written through."""
+    def test_symlink_component_is_rejected(self, tmp_path: Path) -> None:
+        """A link planted by an earlier artifact must not be written through.
+
+        Driven directly against a prepared directory, since a fresh temp dir
+        never contains a symlink of its own.
+        """
+        (tmp_path / "link").symlink_to(tmp_path, target_is_directory=True)
         workspace = ArtifactWorkspace()
-        with workspace.prepare(_response()) as _:
-            pass
-
-        # Drive the check directly against a workspace containing a symlink,
-        # since a fresh temp dir never has one.
-        import tempfile
-
-        root = Path(tempfile.mkdtemp(prefix="atp-eval-test-"))
-        (root / "link").symlink_to(root, target_is_directory=True)
-        checker = ArtifactWorkspace()
-        assert checker._check(root, "link/file.txt", "x", set()) is None
-        assert _reasons(checker) == [RejectReason.SYMLINK_IN_PATH]
+        assert workspace._check(tmp_path, "link/file.txt", "x", set()) is None
+        assert _reasons(workspace) == [RejectReason.SYMLINK_IN_PATH]
 
     @pytest.mark.parametrize("name", [".atp/config", ".atp-workspace/x.txt"])
     def test_reserved_names_are_rejected(self, name: str) -> None:
@@ -148,6 +143,80 @@ class TestBounds:
             assert workspace.root is not None
             assert (workspace.root / "a.txt").read_text() == "first"
         assert _reasons(workspace) == [RejectReason.DUPLICATE_PATH]
+
+
+class TestNothingEscapesAsAnException:
+    """The module promises rejection, not throwing. These used to throw."""
+
+    def test_a_path_naming_the_workspace_root_is_rejected(self) -> None:
+        """`.` resolves to a directory; writing it raised IsADirectoryError."""
+        workspace = ArtifactWorkspace()
+        with workspace.prepare(_response(_artifact(".", "x"))):
+            pass
+        assert _reasons(workspace) == [RejectReason.NOT_A_FILE]
+
+    def test_file_then_directory_of_the_same_name_is_rejected(self) -> None:
+        """`a` as a file, then `a/b.txt`: mkdir used to raise FileExistsError."""
+        workspace = ArtifactWorkspace()
+        with workspace.prepare(
+            _response(_artifact("a", "file"), _artifact("a/b.txt", "child"))
+        ):
+            pass
+        assert workspace.report.written == ["a"]
+        assert _reasons(workspace) == [RejectReason.PATH_COLLISION]
+
+    def test_directory_then_file_of_the_same_name_is_rejected(self) -> None:
+        """The reverse order raised IsADirectoryError instead."""
+        workspace = ArtifactWorkspace()
+        with workspace.prepare(
+            _response(_artifact("a/b.txt", "child"), _artifact("a", "file"))
+        ):
+            pass
+        assert workspace.report.written == ["a/b.txt"]
+        assert _reasons(workspace) == [RejectReason.PATH_COLLISION]
+
+    def test_a_collision_does_not_stop_later_artifacts(self) -> None:
+        """The whole point: a poisoned path costs points, not the run."""
+        workspace = ArtifactWorkspace()
+        with workspace.prepare(
+            _response(
+                _artifact("a", "file"),
+                _artifact("a/b.txt", "child"),
+                _artifact("later.txt", "kept"),
+            )
+        ):
+            assert workspace.root is not None
+            assert (workspace.root / "later.txt").read_text() == "kept"
+
+
+class TestReuse:
+    """A reused instance must not spend another submission's budget."""
+
+    def test_report_is_reset_between_evaluations(self) -> None:
+        workspace = ArtifactWorkspace()
+        with workspace.prepare(_response(_artifact("first.txt", "aaaa"))):
+            pass
+        with workspace.prepare(_response(_artifact("second.txt", "bb"))):
+            pass
+        assert workspace.report.written == ["second.txt"]
+        assert workspace.report.total_bytes == 2
+
+    def test_rejections_do_not_leak_into_the_next_report(self) -> None:
+        workspace = ArtifactWorkspace(WorkspaceLimits(max_file_bytes=2))
+        with workspace.prepare(_response(_artifact("big.txt", "toolong"))):
+            pass
+        assert workspace.report.rejected
+        with workspace.prepare(_response(_artifact("ok.txt", "x"))):
+            pass
+        assert workspace.report.clean is True
+
+    def test_file_count_budget_does_not_accumulate(self) -> None:
+        """Otherwise the second submission is judged by the first one's usage."""
+        workspace = ArtifactWorkspace(WorkspaceLimits(max_files=2))
+        for _ in range(3):
+            with workspace.prepare(_response(_artifact("a.txt"), _artifact("b.txt"))):
+                pass
+            assert workspace.report.clean is True
 
 
 class TestLifecycle:

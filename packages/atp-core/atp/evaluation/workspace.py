@@ -53,6 +53,9 @@ class RejectReason:
     TOTAL_TOO_LARGE = "total_size_exceeded"
     DUPLICATE_PATH = "duplicate_path"
     EMPTY_PATH = "empty_path"
+    NOT_A_FILE = "not_a_file"
+    PATH_COLLISION = "path_collision"
+    WRITE_FAILED = "write_failed"
 
 
 @dataclass(frozen=True)
@@ -133,6 +136,9 @@ class ArtifactWorkspace:
         directory is removed on the way out, including when the body raises —
         an evaluator that crashes must not leave a submission's files on disk.
         """
+        # Fresh report per evaluation: a reused instance must not carry another
+        # submission's rejections, nor spend its budget.
+        self.report = MaterializationReport()
         root = Path(tempfile.mkdtemp(prefix="atp-eval-"))
         self.root = root
         try:
@@ -161,8 +167,18 @@ class ArtifactWorkspace:
                 continue
 
             target = root / relative
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(content, encoding="utf-8")
+            try:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(content, encoding="utf-8")
+            except OSError as exc:
+                # Belt and braces. The collision checks above catch the cases
+                # we know of; this catches the ones we do not, because the
+                # module promises that a bad artifact is recorded, never
+                # thrown -- otherwise one poisoned path kills a whole run.
+                self.report.rejected.append(
+                    RejectedArtifact(raw_path, RejectReason.WRITE_FAILED, str(exc))
+                )
+                continue
 
             seen.add(str(relative))
             accepted[index] = str(relative)
@@ -202,6 +218,13 @@ class ArtifactWorkspace:
             return None
 
         relative = resolved.relative_to(root_resolved)
+        if relative == Path("."):
+            # `.` and anything resolving to the workspace root name a
+            # directory, not a file; writing it raised IsADirectoryError.
+            reject(RejectReason.NOT_A_FILE, "path names the workspace root")
+            return None
+        if self._collides(root, relative):
+            return None
         if str(relative) in seen:
             reject(RejectReason.DUPLICATE_PATH, str(relative))
             return None
@@ -218,6 +241,33 @@ class ArtifactWorkspace:
             return None
 
         return relative
+
+    def _collides(self, root: Path, relative: Path) -> bool:
+        """True after recording a rejection when the path fights the tree.
+
+        Two artifacts can describe incompatible shapes -- `a` as a file and
+        then `a/b.txt`, or the reverse. Both are attacker-controlled and both
+        used to raise mid-materialization, aborting an evaluation that should
+        merely have scored lower.
+        """
+
+        def reject(detail: str) -> None:
+            self.report.rejected.append(
+                RejectedArtifact(str(relative), RejectReason.PATH_COLLISION, detail)
+            )
+
+        target = root / relative
+        if target.is_dir():
+            reject("a directory already exists at this path")
+            return True
+
+        current = root
+        for part in relative.parts[:-1]:
+            current = current / part
+            if current.exists() and not current.is_dir():
+                reject(f"'{current.relative_to(root)}' already exists as a file")
+                return True
+        return False
 
     @staticmethod
     def _rewrite(response: ATPResponse, accepted: dict[int, str]) -> ATPResponse:
