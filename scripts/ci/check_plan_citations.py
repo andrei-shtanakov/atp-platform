@@ -15,10 +15,10 @@ Three deterministic checks, run over the plan files:
 3. **Pointer freshness** (warning) — a cited vault status note that is no
    longer the newest one.
 
-Checks 2 and 3 need sibling repos, which exist only in the dev workspace
-(see the `../_cowork_output/` rule in CLAUDE.md). When a sibling is absent
-the check reports *skipped* and never fails — a clone without the workspace
-must stay green.
+Checks 2 and 3 read sibling repos (`../prograph-vault`, `../<repo>/TODO.md`),
+which exist only in the polyrepo dev workspace — see the dev-only sibling
+rule in CLAUDE.md. When a sibling is absent the check reports *skipped* and
+never fails, so a clone without the workspace stays green.
 
 Usage::
 
