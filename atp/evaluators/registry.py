@@ -2,6 +2,8 @@
 
 from typing import Any
 
+from atp.evaluation.vocabulary import ASSERTION_TO_EVALUATOR
+
 from .artifact import ArtifactEvaluator
 from .base import Evaluator
 from .behavior import BehaviorEvaluator
@@ -48,55 +50,10 @@ class EvaluatorRegistry:
         self.register("composite", CompositeEvaluator)
         self.register("findings_match", FindingsMatchEvaluator)
 
-        self._register_assertion_mapping("artifact_exists", "artifact")
-        self._register_assertion_mapping("contains", "artifact")
-        self._register_assertion_mapping("schema", "artifact")
-        self._register_assertion_mapping("sections", "artifact")
-
-        self._register_assertion_mapping("behavior", "behavior")
-        self._register_assertion_mapping("must_use_tools", "behavior")
-        self._register_assertion_mapping("max_tool_calls", "behavior")
-        self._register_assertion_mapping("min_tool_calls", "behavior")
-        self._register_assertion_mapping("no_errors", "behavior")
-        self._register_assertion_mapping("forbidden_tools", "behavior")
-
-        self._register_assertion_mapping("llm_eval", "llm_judge")
-
-        self._register_assertion_mapping("code_exec", "code_exec")
-        self._register_assertion_mapping("pytest", "code_exec")
-        self._register_assertion_mapping("npm", "code_exec")
-        self._register_assertion_mapping("custom_command", "code_exec")
-        self._register_assertion_mapping("lint", "code_exec")
-
-        # Security assertions
-        self._register_assertion_mapping("security", "security")
-
-        # Factuality assertions
-        self._register_assertion_mapping("factuality", "factuality")
-
-        # Performance assertions
-        self._register_assertion_mapping("performance", "performance")
-
-        # Style assertions
-        self._register_assertion_mapping("style", "style")
-        self._register_assertion_mapping("tone", "style")
-        self._register_assertion_mapping("readability", "style")
-        self._register_assertion_mapping("passive_voice", "style")
-        self._register_assertion_mapping("sentence_length", "style")
-        self._register_assertion_mapping("style_rules", "style")
-
-        # Filesystem assertions
-        self._register_assertion_mapping("file_exists", "filesystem")
-        self._register_assertion_mapping("file_not_exists", "filesystem")
-        self._register_assertion_mapping("file_contains", "filesystem")
-        self._register_assertion_mapping("dir_exists", "filesystem")
-        self._register_assertion_mapping("file_count", "filesystem")
-
-        # Composite assertions
-        self._register_assertion_mapping("composite", "composite")
-
-        # Findings match assertions
-        self._register_assertion_mapping("findings_match", "findings_match")
+        # Vocabulary is owned by atp-core so the dashboard can ask which
+        # assertion names exist without importing evaluator classes.
+        for assertion_type, evaluator_type in ASSERTION_TO_EVALUATOR.items():
+            self._register_assertion_mapping(assertion_type, evaluator_type)
 
     def register(
         self,

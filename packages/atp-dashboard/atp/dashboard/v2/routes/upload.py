@@ -11,6 +11,7 @@ import sys
 from typing import Annotated, Any
 
 import yaml
+from atp.evaluation.vocabulary import known_assertion_types
 from atp.loader.models import TestSuite
 from fastapi import (
     APIRouter,
@@ -93,19 +94,17 @@ def _deep_sizeof(obj: Any, seen: set[int] | None = None) -> int:
 
 
 def _get_known_assertion_types() -> set[str]:
-    """Get known assertion types from the evaluator registry.
+    """Get known assertion types from the shared vocabulary.
+
+    Reads atp-core, not the evaluator registry: this is a question about
+    assertion *names*, and answering it must not pull evaluator
+    implementations (which live in atp-platform) into the dashboard process.
+    See tests/architecture/test_package_boundaries.py.
 
     Returns:
-        Set of known assertion type strings, or empty set if unavailable.
+        Set of known assertion type strings.
     """
-    try:
-        from atp.evaluators import EvaluatorRegistry
-
-        registry = EvaluatorRegistry()
-        return set(registry.list_assertion_types())
-    except Exception:
-        # If registry is not available, skip assertion validation
-        return set()
+    return set(known_assertion_types())
 
 
 def _validate_yaml(
