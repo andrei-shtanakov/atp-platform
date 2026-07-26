@@ -28,9 +28,17 @@
       "null_until_finalized: total_score is null until the run completes",
       "zero_is_ambiguous: a run that scored no tasks finalizes to 0.0, which is indistinguishable from every task failing"
     ],
+    "coverage": {
+      "assertions_applied": {},
+      "assertions_skipped": [],
+      "tasks_completion_only": 3,
+      "tasks_evaluated": 0,
+      "tasks_submitted": 3,
+      "tasks_total": 3
+    },
     "kind": "completion_rate",
     "level": "run",
-    "note": "Completion, not quality: a task scores 100 when the agent returned a completed response, regardless of what the response contained. Evaluators are not wired into the benchmark plane yet.",
+    "note": "Completion, not quality: a task scores 100 when the agent returned a completed response, regardless of what the response contained. No evaluator ran on this run.",
     "quality_signal": false,
     "range": {
       "max": 100.0,

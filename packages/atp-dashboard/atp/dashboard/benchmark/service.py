@@ -19,7 +19,16 @@ from atp.dashboard.benchmark.schemas import BenchmarkCreate, SubmitRequest
 
 
 class BenchmarkService:
-    """Synchronous service for benchmark CRUD and run management."""
+    """Synchronous service for benchmark CRUD and run management.
+
+    Not on the API path: every benchmark endpoint in
+    `atp.dashboard.v2.routes.benchmark_api` works against the async session
+    directly, and nothing outside the tests constructs this class. Its
+    `_evaluate_sync` therefore stays completion-only — evaluation is wired in
+    `atp.dashboard.benchmark.scoring`, which the route uses. Keeping a second,
+    silently-diverging scorer alive is the thing to avoid here; removing this
+    module and its test file is a separate cleanup.
+    """
 
     def __init__(self, session: Session) -> None:
         self.session = session

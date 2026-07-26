@@ -4,11 +4,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from atp.dashboard.benchmark.score_contract import (
-    empty_score_components,
-    run_score_semantics,
-)
-
 
 class BenchmarkCreate(BaseModel):
     """Schema for creating a new benchmark."""
@@ -46,8 +41,11 @@ class RunResponse(BaseModel):
     status: str
     current_task_index: int
     total_score: float | None
-    score_semantics: dict[str, Any] = Field(default_factory=run_score_semantics)
-    score_components: dict[str, Any] = Field(default_factory=empty_score_components)
+    # Required, not defaulted: a default would let a call site that forgot to
+    # derive the semantics publish a confident-looking label for free, and the
+    # whole point of the field is that the label is earned.
+    score_semantics: dict[str, Any]
+    score_components: dict[str, Any]
     started_at: str
     finished_at: str | None
 
@@ -88,6 +86,7 @@ class RunStatusResponse(BaseModel):
     current_task_index: int
     tasks_count: int
     total_score: float | None
-    score_semantics: dict[str, Any] = Field(default_factory=run_score_semantics)
-    score_components: dict[str, Any] = Field(default_factory=empty_score_components)
+    # Required for the same reason as on RunResponse: derived, never assumed.
+    score_semantics: dict[str, Any]
+    score_components: dict[str, Any]
     completed_tasks: list[TaskResultResponse]

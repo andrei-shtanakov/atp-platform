@@ -14,7 +14,9 @@ from atp.evaluation import TRUSTED_LOCAL, UNTRUSTED_SUBMISSION
 from atp.evaluation.vocabulary import (
     ASSERTION_TO_EVALUATOR,
     CALLS_EXTERNAL_SERVICE,
+    DELEGATES_TO_REGISTRY,
     EXECUTES_UNTRUSTED_INPUT,
+    READS_HOST_FILESYSTEM,
 )
 
 #: Exactly what a submission may have evaluated. Written out rather than
@@ -24,13 +26,7 @@ from atp.evaluation.vocabulary import (
 PERMITTED = {
     "artifact_exists",
     "behavior",
-    "composite",
     "contains",
-    "dir_exists",
-    "file_contains",
-    "file_count",
-    "file_exists",
-    "file_not_exists",
     "findings_match",
     "forbidden_tools",
     "max_tool_calls",
@@ -58,14 +54,18 @@ class TestServerPolicy:
         assert UNTRUSTED_SUBMISSION.allowed_assertion_types == PERMITTED
 
     @pytest.mark.parametrize(
-        "assertion", sorted(EXECUTES_UNTRUSTED_INPUT | CALLS_EXTERNAL_SERVICE)
+        "evaluator",
+        sorted(
+            EXECUTES_UNTRUSTED_INPUT
+            | CALLS_EXTERNAL_SERVICE
+            | READS_HOST_FILESYSTEM
+            | DELEGATES_TO_REGISTRY
+        ),
     )
-    def test_no_evaluator_class_that_executes_or_calls_out_is_permitted(
-        self, assertion: str
-    ) -> None:
+    def test_no_withheld_evaluator_class_is_permitted(self, evaluator: str) -> None:
         """Checked by evaluator class, so a new assertion alias cannot sneak in."""
-        for assertion_type, evaluator in ASSERTION_TO_EVALUATOR.items():
-            if evaluator == assertion:
+        for assertion_type, mapped in ASSERTION_TO_EVALUATOR.items():
+            if mapped == evaluator:
                 assert UNTRUSTED_SUBMISSION.permits(assertion_type) is False
 
     @pytest.mark.parametrize(
@@ -78,6 +78,12 @@ class TestServerPolicy:
             "custom_command",
             "llm_eval",
             "factuality",
+            # Withheld for reasons of their own; see the vocabulary. Named
+            # here as well as derived because the derivation could break.
+            "file_exists",
+            "file_contains",
+            "dir_exists",
+            "composite",
         ],
     )
     def test_named_dangerous_assertions_are_refused(self, assertion: str) -> None:
@@ -90,7 +96,6 @@ class TestServerPolicy:
             "contains",
             "schema",
             "behavior",
-            "file_exists",
             "tone",
             "findings_match",
             "security",

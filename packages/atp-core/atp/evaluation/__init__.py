@@ -23,8 +23,10 @@ from atp.evaluation.policies import TRUSTED_LOCAL, UNTRUSTED_SUBMISSION
 from atp.evaluation.vocabulary import (
     ASSERTION_TO_EVALUATOR,
     CALLS_EXTERNAL_SERVICE,
+    DELEGATES_TO_REGISTRY,
     DETERMINISTIC_EVALUATORS,
     EXECUTES_UNTRUSTED_INPUT,
+    READS_HOST_FILESYSTEM,
     deterministic_assertion_types,
     known_assertion_types,
 )
@@ -53,8 +55,10 @@ __all__ = [
     "RejectedArtifact",
     "WorkspaceLimits",
     "CALLS_EXTERNAL_SERVICE",
+    "DELEGATES_TO_REGISTRY",
     "DETERMINISTIC_EVALUATORS",
     "EXECUTES_UNTRUSTED_INPUT",
+    "READS_HOST_FILESYSTEM",
     "EvaluationOutcome",
     "EvaluationPipeline",
     "EvaluationPolicy",
