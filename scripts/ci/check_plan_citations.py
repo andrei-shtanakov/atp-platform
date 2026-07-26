@@ -26,6 +26,12 @@ Usage::
     uv run python scripts/ci/check_plan_citations.py FILE...    # explicit set
     uv run python scripts/ci/check_plan_citations.py --strict   # warnings fail too
 
+Explicit FILE arguments resolve against the current directory, as any CLI
+tool would. The citations *inside* a document always resolve against the
+repo root, whatever the document's own location — that convention is what
+makes a citation re-checkable by the next reader (CLAUDE.md, "reconcile
+cross-project claims").
+
 Exit codes: 0 ok, 1 problems found.
 """
 
@@ -62,12 +68,33 @@ class Report:
         return not self.errors and not (strict and self.warnings)
 
 
-def cited_lines(spec: str) -> list[int]:
-    """Line numbers referenced by a citation suffix (``12``, ``1-3``, ``1,3``)."""
+def cited_lines(spec: str) -> list[int] | None:
+    """Line numbers in a citation suffix (``12``, ``1-3``, ``1,3``).
+
+    Returns None for a spec that cannot describe real lines: line 0, or a
+    reversed range like ``9-1``. The point of the check is "these lines
+    exist", so a nonsensical spec is a defect, not something to skip.
+    """
     if "-" in spec:
         start, end = (int(part) for part in spec.split("-", 1))
+        if start < 1 or end < start:
+            return None
         return [start, end]
-    return [int(part) for part in spec.split(",")]
+    numbers = [int(part) for part in spec.split(",")]
+    if any(number < 1 for number in numbers):
+        return None
+    return numbers
+
+
+def within_workspace(target: Path) -> bool:
+    """True if target stays inside the repo or its polyrepo workspace.
+
+    Citations are authored text; one that resolves outside the workspace is
+    a broken citation, and following it would make the hook read files it
+    has no business reading.
+    """
+    workspace = REPO_ROOT.parent.resolve()
+    return target == workspace or workspace in target.parents
 
 
 def check_citations(doc: Path, text: str, report: Report) -> None:
@@ -75,10 +102,20 @@ def check_citations(doc: Path, text: str, report: Report) -> None:
     seen_missing_siblings: set[str] = set()
     for lineno, line in enumerate(text.splitlines(), start=1):
         for path_str, spec in CITATION.findall(line):
+            where = f"{doc.name}:{lineno}"
             target = (REPO_ROOT / path_str).resolve()
             is_sibling = path_str.startswith("../")
+
+            wanted_lines = cited_lines(spec)
+            if wanted_lines is None:
+                report.errors.append(f"{where} — invalid line spec: {path_str}:{spec}")
+                continue
+            if not within_workspace(target):
+                report.errors.append(
+                    f"{where} — citation escapes the workspace: {path_str}"
+                )
+                continue
             if not target.exists():
-                where = f"{doc.name}:{lineno}"
                 if is_sibling:
                     if path_str not in seen_missing_siblings:
                         seen_missing_siblings.add(path_str)
@@ -86,11 +123,15 @@ def check_citations(doc: Path, text: str, report: Report) -> None:
                 else:
                     report.errors.append(f"{where} — no such file: {path_str}")
                 continue
-            total = len(target.read_text(encoding="utf-8").splitlines())
-            for wanted in cited_lines(spec):
+            try:
+                total = len(target.read_text(encoding="utf-8").splitlines())
+            except (OSError, UnicodeDecodeError) as exc:
+                report.errors.append(f"{where} — cannot read {path_str}: {exc}")
+                continue
+            for wanted in wanted_lines:
                 if wanted > total:
                     report.errors.append(
-                        f"{doc.name}:{lineno} — {path_str}:{spec} out of range "
+                        f"{where} — {path_str}:{spec} out of range "
                         f"(file has {total} lines)"
                     )
                     break
