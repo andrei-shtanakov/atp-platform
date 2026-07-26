@@ -37,7 +37,7 @@ TRUSTED_LOCAL = EvaluationPolicy(name="trusted_local")
 
 
 @contextlib.contextmanager
-def materialize_artifacts(response: ATPResponse) -> Iterator[None]:
+def materialize_artifacts(response: ATPResponse) -> Iterator[ATPResponse]:
     """Write inline artifacts to the working directory for the block's duration.
 
     `code_exec` evaluators (pytest, npm, lint) import the files under test from
@@ -57,7 +57,8 @@ def materialize_artifacts(response: ATPResponse) -> Iterator[None]:
                 file_path.parent.mkdir(parents=True, exist_ok=True)
                 file_path.write_text(content)
                 written.append(file_path)
-        yield
+        # The CLI evaluates the response as-is: paths are the operator's own.
+        yield response
     finally:
         for file_path in written:
             file_path.unlink(missing_ok=True)
