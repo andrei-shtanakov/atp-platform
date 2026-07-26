@@ -6,7 +6,12 @@ restatements drift: in 2026-07 both files claimed R-06b was blocked on
 Maestro R-03 for ~3 months after R-03 shipped, because every source cited
 the other rather than the owner (PR #263).
 
-Three deterministic checks, run over the plan files:
+The governing rule: **a cross-repo status is a cache, not a source of
+truth.** A claim about another project must name its owner, its evidence,
+when it was observed, and when it stops being trusted. These files are then
+caches with a TTL rather than mutually-citing authorities.
+
+Deterministic checks, run over the plan files:
 
 1. **Citation liveness** (error) — every ``path:line`` / ``path:a-b`` /
    ``path:a,b`` citation resolves and the lines exist.
@@ -14,6 +19,18 @@ Three deterministic checks, run over the plan files:
    slug appears only on completed (``[x]``) lines in the sibling's TODO.
 3. **Pointer freshness** (warning) — a cited vault status note that is no
    longer the newest one.
+4. **Owner form** (error) — ``@owner:`` is ``github:<login>`` or
+   ``github-team:<org>/<team>``; no display names, no free text; at most one
+   per item. ``@owner:TBD`` requires ``@owner-decision-by:<date>`` and fails
+   once that date has passed. Whether the login *exists* is deliberately not
+   checked here — that needs the network, which would make the hook brittle
+   and unusable offline; it belongs in CI.
+5. **Status freshness** (error/warning) — the metadata set
+   ``@source-owner`` / ``@source-ref`` / ``@observed-at`` / ``@recheck-by``
+   is all-or-nothing (a partial set is the dangerous case), and an expired
+   ``@recheck-by`` fails. An ``@blocked_by:`` with no metadata warns.
+6. **Owner coverage** (warning) — open actionable items with no ``@owner``,
+   reported as one count while the backlog backfill is pending.
 
 Checks 2 and 3 read sibling repos (`../prograph-vault`, `../<repo>/TODO.md`),
 which exist only in the polyrepo dev workspace — see the dev-only sibling
@@ -41,6 +58,7 @@ import argparse
 import re
 import sys
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 
 DEFAULT_FILES = ("TODO.md", "CLAUDE.md")
@@ -51,8 +69,33 @@ CITATION = re.compile(r"`([\w./-]+\.\w+):(\d+(?:[-,]\d+)?)`")
 BLOCKED_BY = re.compile(r"@blocked_by:([\w.-]+)#([\w.-]+)")
 STATUS_POINTER = re.compile(r"`\.\./prograph-vault/[\w./-]*/status/([\w.-]+\.md)`")
 CHECKED_ITEM = re.compile(r"^\s*[-*]\s*\[[xX]\]")
+ANY_ITEM = re.compile(r"^\s*[-*]\s*\[[ xX]\]")
 LEADING_DATE = re.compile(r"(\d{4}-\d{2}-\d{2})")
 STATUS_DIR = Path("../prograph-vault/authored/notes/status")
+
+# Owner identity is a handle, never a display name: an accountable GitHub
+# user or team. `TBD` is a temporary escape with an expiry.
+OWNER_TAG = re.compile(r"@owner:(\S+)")
+OWNER_VALUE = re.compile(
+    r"^(?:github:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?"
+    r"|github-team:[A-Za-z0-9._-]+/[A-Za-z0-9._-]+"
+    r"|TBD)$"
+)
+DATED_TAGS = ("@owner-decision-by", "@observed-at", "@recheck-by")
+# All four travel together; a partial set is worse than none, because it
+# looks sourced without being re-checkable.
+FRESHNESS_TAGS = ("@source-owner", "@source-ref", "@observed-at", "@recheck-by")
+ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def today() -> date:
+    """Current date, isolated so tests can pin it."""
+    return date.today()
+
+
+def tag_values(block: str, tag: str) -> list[str]:
+    """Every value given for ``tag`` inside an item block."""
+    return re.findall(rf"{re.escape(tag)}:(\S+)", block)
 
 
 @dataclass
@@ -194,12 +237,135 @@ def check_status_pointer(doc: Path, text: str, report: Report) -> None:
                 )
 
 
+@dataclass
+class Item:
+    """One checkbox item and the indented lines that belong to it."""
+
+    lineno: int
+    block: str
+    is_open: bool
+
+
+def iter_items(text: str) -> list[Item]:
+    """Split a plan file into checkbox items with their continuation lines.
+
+    Tags routinely sit on a continuation line rather than the checkbox line
+    itself, so checks must see the whole block, not one line.
+    """
+    items: list[Item] = []
+    lines = text.splitlines()
+    for lineno, line in enumerate(lines, start=1):
+        if not ANY_ITEM.match(line):
+            continue
+        block = [line]
+        for following in lines[lineno:]:
+            if ANY_ITEM.match(following):
+                break
+            block.append(following)
+        items.append(
+            Item(
+                lineno=lineno,
+                block="\n".join(block),
+                is_open=not CHECKED_ITEM.match(line),
+            )
+        )
+    return items
+
+
+def check_dates(where: str, block: str, report: Report) -> dict[str, date]:
+    """Validate every dated tag in a block; return the ones that parsed."""
+    parsed: dict[str, date] = {}
+    for tag in DATED_TAGS:
+        for value in tag_values(block, tag):
+            if not ISO_DATE.match(value):
+                report.errors.append(
+                    f"{where} — {tag} must be YYYY-MM-DD, got '{value}'"
+                )
+                continue
+            parsed[tag] = date.fromisoformat(value)
+    return parsed
+
+
+def check_owner_form(doc: Path, report: Report, items: list[Item]) -> None:
+    """Enforce the owner handle grammar and the TBD expiry."""
+    for item in items:
+        where = f"{doc.name}:{item.lineno}"
+        owners = OWNER_TAG.findall(item.block)
+        if len(owners) > 1:
+            report.errors.append(
+                f"{where} — {len(owners)} @owner tags; an item has exactly one"
+            )
+        dates = check_dates(where, item.block, report)
+        for owner in owners:
+            if not OWNER_VALUE.match(owner):
+                report.errors.append(
+                    f"{where} — bad @owner '{owner}'; use github:<login>, "
+                    "github-team:<org>/<team>, or TBD"
+                )
+                continue
+            if owner != "TBD":
+                continue
+            deadline = dates.get("@owner-decision-by")
+            if deadline is None:
+                report.errors.append(
+                    f"{where} — @owner:TBD needs @owner-decision-by:YYYY-MM-DD"
+                )
+            elif deadline < today():
+                report.errors.append(
+                    f"{where} — @owner:TBD expired on {deadline.isoformat()}; "
+                    "name an owner"
+                )
+
+
+def check_status_freshness(doc: Path, report: Report, items: list[Item]) -> None:
+    """A cached cross-repo status must be attributed, dated, and expirable."""
+    for item in items:
+        where = f"{doc.name}:{item.lineno}"
+        present = [tag for tag in FRESHNESS_TAGS if tag_values(item.block, tag)]
+        if present and len(present) < len(FRESHNESS_TAGS):
+            missing = ", ".join(tag for tag in FRESHNESS_TAGS if tag not in present)
+            report.errors.append(
+                f"{where} — incomplete status metadata, missing: {missing}"
+            )
+            continue
+        if not present:
+            if item.is_open and BLOCKED_BY.search(item.block):
+                report.warnings.append(
+                    f"{where} — @blocked_by with no @source-ref/@observed-at/"
+                    "@recheck-by; a cross-repo status is a cache, not a source"
+                )
+            continue
+        dates = check_dates(where, item.block, report)
+        recheck = dates.get("@recheck-by")
+        if recheck is not None and recheck < today():
+            report.errors.append(
+                f"{where} — status went stale on {recheck.isoformat()}; "
+                "re-check against the owner and update @observed-at"
+            )
+
+
+def check_owner_coverage(doc: Path, report: Report, items: list[Item]) -> None:
+    """Count open items with no owner (one line, not one per item)."""
+    unowned = [
+        item for item in items if item.is_open and not OWNER_TAG.search(item.block)
+    ]
+    if unowned:
+        report.warnings.append(
+            f"{doc.name} — {len(unowned)} open item(s) without @owner "
+            f"(first at line {unowned[0].lineno}); backfill pending"
+        )
+
+
 def check_file(doc: Path, report: Report) -> None:
     """Run every check over one plan file."""
     text = doc.read_text(encoding="utf-8")
+    items = iter_items(text)
     check_citations(doc, text, report)
     check_blockers(doc, text, report)
     check_status_pointer(doc, text, report)
+    check_owner_form(doc, report, items)
+    check_status_freshness(doc, report, items)
+    check_owner_coverage(doc, report, items)
 
 
 def main(argv: list[str] | None = None) -> int:

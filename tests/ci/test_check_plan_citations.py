@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+from datetime import date
 from pathlib import Path
 from types import ModuleType
 
@@ -244,3 +245,187 @@ class TestExitCodes:
     ) -> None:
         report = checker.Report(errors=["boom"])
         assert not report.ok(strict=False)
+
+
+class TestOwnerForm:
+    """Check 4 — owner is an accountable handle, not a display name."""
+
+    @pytest.mark.parametrize(
+        "owner",
+        ["github:andrei-shtanakov", "github-team:acme/platform"],
+    )
+    def test_valid_handles_pass(
+        self, checker: ModuleType, repo: Path, tmp_path: Path, owner: str
+    ) -> None:
+        doc = _write(repo / "TODO.md", f"- [ ] thing @owner:{owner}\n")
+        report = checker.Report()
+        checker.check_owner_form(doc, report, checker.iter_items(doc.read_text()))
+        assert report.errors == []
+
+    @pytest.mark.parametrize(
+        "owner", ["Andrei", "atp-platform", "github:", "team:acme/platform"]
+    )
+    def test_display_names_and_repos_are_rejected(
+        self, checker: ModuleType, repo: Path, tmp_path: Path, owner: str
+    ) -> None:
+        """An owner is a person or team — never a repository, never prose."""
+        doc = _write(repo / "TODO.md", f"- [ ] thing @owner:{owner}\n")
+        report = checker.Report()
+        checker.check_owner_form(doc, report, checker.iter_items(doc.read_text()))
+        assert "bad @owner" in report.errors[0]
+
+    def test_two_owners_is_an_error(
+        self, checker: ModuleType, repo: Path, tmp_path: Path
+    ) -> None:
+        doc = _write(
+            repo / "TODO.md",
+            "- [ ] thing @owner:github:a @owner:github:b\n",
+        )
+        report = checker.Report()
+        checker.check_owner_form(doc, report, checker.iter_items(doc.read_text()))
+        assert "exactly one" in report.errors[0]
+
+    def test_tbd_requires_a_decision_date(
+        self, checker: ModuleType, repo: Path, tmp_path: Path
+    ) -> None:
+        doc = _write(repo / "TODO.md", "- [ ] thing @owner:TBD\n")
+        report = checker.Report()
+        checker.check_owner_form(doc, report, checker.iter_items(doc.read_text()))
+        assert "@owner-decision-by" in report.errors[0]
+
+    def test_expired_tbd_fails(
+        self,
+        checker: ModuleType,
+        repo: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(checker, "today", lambda: date(2026, 7, 26))
+        doc = _write(
+            repo / "TODO.md",
+            "- [ ] thing @owner:TBD @owner-decision-by:2026-07-01\n",
+        )
+        report = checker.Report()
+        checker.check_owner_form(doc, report, checker.iter_items(doc.read_text()))
+        assert "expired" in report.errors[0]
+
+    def test_unexpired_tbd_passes(
+        self,
+        checker: ModuleType,
+        repo: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(checker, "today", lambda: date(2026, 7, 26))
+        doc = _write(
+            repo / "TODO.md",
+            "- [ ] thing @owner:TBD @owner-decision-by:2026-09-01\n",
+        )
+        report = checker.Report()
+        checker.check_owner_form(doc, report, checker.iter_items(doc.read_text()))
+        assert report.errors == []
+
+    def test_malformed_date_is_an_error(
+        self, checker: ModuleType, repo: Path, tmp_path: Path
+    ) -> None:
+        doc = _write(
+            repo / "TODO.md",
+            "- [ ] thing @owner:TBD @owner-decision-by:26-07-01\n",
+        )
+        report = checker.Report()
+        checker.check_owner_form(doc, report, checker.iter_items(doc.read_text()))
+        assert "YYYY-MM-DD" in report.errors[0]
+
+    def test_tag_on_a_continuation_line_is_seen(
+        self, checker: ModuleType, repo: Path, tmp_path: Path
+    ) -> None:
+        """Tags routinely sit under the checkbox line, not on it."""
+        doc = _write(
+            repo / "TODO.md",
+            "- [ ] thing\n  more prose\n  @owner:not-a-handle\n",
+        )
+        report = checker.Report()
+        checker.check_owner_form(doc, report, checker.iter_items(doc.read_text()))
+        assert "bad @owner" in report.errors[0]
+
+
+class TestStatusFreshness:
+    """Check 5 — a cached cross-repo status must be attributable and expirable."""
+
+    FULL = (
+        "@source-owner:maestro @source-ref:maestro@07d408d "
+        "@observed-at:2026-07-26 @recheck-by:2026-10-26"
+    )
+
+    def test_complete_and_current_metadata_passes(
+        self,
+        checker: ModuleType,
+        repo: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(checker, "today", lambda: date(2026, 7, 26))
+        doc = _write(repo / "TODO.md", f"- [ ] thing {self.FULL}\n")
+        report = checker.Report()
+        checker.check_status_freshness(doc, report, checker.iter_items(doc.read_text()))
+        assert report.errors == []
+
+    def test_partial_metadata_is_an_error(
+        self, checker: ModuleType, repo: Path, tmp_path: Path
+    ) -> None:
+        """Half a citation looks sourced without being re-checkable."""
+        doc = _write(repo / "TODO.md", "- [ ] thing @source-owner:maestro\n")
+        report = checker.Report()
+        checker.check_status_freshness(doc, report, checker.iter_items(doc.read_text()))
+        assert "incomplete status metadata" in report.errors[0]
+
+    def test_expired_recheck_by_is_an_error(
+        self,
+        checker: ModuleType,
+        repo: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(checker, "today", lambda: date(2027, 1, 1))
+        doc = _write(repo / "TODO.md", f"- [ ] thing {self.FULL}\n")
+        report = checker.Report()
+        checker.check_status_freshness(doc, report, checker.iter_items(doc.read_text()))
+        assert "went stale" in report.errors[0]
+
+    def test_blocked_by_without_metadata_warns(
+        self, checker: ModuleType, repo: Path, tmp_path: Path
+    ) -> None:
+        doc = _write(repo / "TODO.md", "- [ ] thing @blocked_by:maestro#R-03\n")
+        report = checker.Report()
+        checker.check_status_freshness(doc, report, checker.iter_items(doc.read_text()))
+        assert "cache, not a source" in report.warnings[0]
+
+    def test_closed_item_without_metadata_is_quiet(
+        self, checker: ModuleType, repo: Path, tmp_path: Path
+    ) -> None:
+        """A done item's blocker no longer needs a TTL."""
+        doc = _write(repo / "TODO.md", "- [x] thing @blocked_by:maestro#R-03\n")
+        report = checker.Report()
+        checker.check_status_freshness(doc, report, checker.iter_items(doc.read_text()))
+        assert report.warnings == []
+
+
+class TestOwnerCoverage:
+    """Check 6 — unowned open items counted once, not spammed per item."""
+
+    def test_unowned_open_items_produce_one_warning(
+        self, checker: ModuleType, repo: Path, tmp_path: Path
+    ) -> None:
+        doc = _write(repo / "TODO.md", "- [ ] a\n- [ ] b\n- [x] done\n")
+        report = checker.Report()
+        checker.check_owner_coverage(doc, report, checker.iter_items(doc.read_text()))
+        assert len(report.warnings) == 1
+        assert "2 open item(s) without @owner" in report.warnings[0]
+
+    def test_fully_owned_file_is_quiet(
+        self, checker: ModuleType, repo: Path, tmp_path: Path
+    ) -> None:
+        doc = _write(repo / "TODO.md", "- [ ] a @owner:github:someone\n")
+        report = checker.Report()
+        checker.check_owner_coverage(doc, report, checker.iter_items(doc.read_text()))
+        assert report.warnings == []
