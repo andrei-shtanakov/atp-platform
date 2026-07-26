@@ -80,14 +80,19 @@ class EvaluatorResolver(Protocol):
 #: Returns a reason to skip evaluation entirely, or None to proceed.
 GuardrailFn = Callable[[TestDefinition, ATPResponse], str | None]
 
-#: Makes response artifacts reachable on disk for the duration of the block.
-ArtifactContext = Callable[[ATPResponse], contextlib.AbstractContextManager[None]]
+#: Makes response artifacts reachable on disk for the duration of the block,
+#: and yields the response evaluators should see. A sandboxing implementation
+#: returns a rewritten response whose paths are workspace-relative, so an
+#: agent-chosen path can never reach an evaluator.
+ArtifactContext = Callable[
+    [ATPResponse], contextlib.AbstractContextManager[ATPResponse]
+]
 
 
 @contextlib.contextmanager
-def no_artifacts(response: ATPResponse) -> Iterator[None]:
-    """Default artifact context: touch nothing on disk."""
-    yield
+def no_artifacts(response: ATPResponse) -> Iterator[ATPResponse]:
+    """Default artifact context: touch nothing on disk, change nothing."""
+    yield response
 
 
 @dataclass(frozen=True)
@@ -174,9 +179,9 @@ class EvaluationPipeline:
                 )
                 return outcome
 
-        with self._artifacts(response):
+        with self._artifacts(response) as prepared:
             for assertion in assertions:
-                await self._evaluate_one(task, response, trace, assertion, outcome)
+                await self._evaluate_one(task, prepared, trace, assertion, outcome)
         return outcome
 
     async def _evaluate_one(
