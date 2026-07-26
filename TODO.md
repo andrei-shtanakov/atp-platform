@@ -85,9 +85,9 @@
   - `../maestro/TODO.md:100`: «`score_components={}` пока ATP не экспортирует breakdown» —
     их `finalize()` читает из `GET /api/v1/runs/{id}/status` только `total_score`.
   - Наша сторона (проверено 2026-07-26): роут есть —
-    `benchmark_api.py:413` `GET /api/v1/runs/{run_id}/status` → `RunStatusResponse`
-    (`benchmark/schemas.py:76-84`), но в нём только `total_score`; в модели `Run`
-    (`benchmark/models.py:127`) поля под разбивку тоже нет. Нужны: `score_components` на
+    `packages/atp-dashboard/atp/dashboard/v2/routes/benchmark_api.py:413` `GET /api/v1/runs/{run_id}/status` → `RunStatusResponse`
+    (`packages/atp-dashboard/atp/dashboard/benchmark/schemas.py:76-84`), но в нём только `total_score`; в модели `Run`
+    (`packages/atp-dashboard/atp/dashboard/benchmark/models.py:127`) поля под разбивку тоже нет. Нужны: `score_components` на
     `Run` + Alembic-миграция + проброс в `RunStatusResponse` + заполнение из агрегатора.
   - Потребитель известен и уже написан — это не спекулятивная фича.
 
@@ -273,7 +273,7 @@
 - [ ] **Привести логи к `observability-contract/v1`** (живой роадмап §3, enabler для §1.1/1.2/1.4)
   - Там прямо: «`atp-platform` logs structurally but in its own format
     (`correlation_id/version/hostname`)», и в списке действий — «(3) bring atp-platform to
-    contract fields» (`ecosystem-roadmap.md:109,114`).
+    contract fields» (`../prograph-vault/authored/notes/ecosystem-roadmap.md:109,114`).
   - Проверено 2026-07-26: `atp/core/logging.py` по-прежнему на своих полях. #258 подключил
     structlog к CLI-рантайму, но **формат не менял** — разрыв с контрактом остался.
   - Приземляется на `dispatcher`, который читает контрактный `.jsonl`; без этого ATP не виден
