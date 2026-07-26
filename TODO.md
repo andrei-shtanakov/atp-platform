@@ -1,5 +1,13 @@
 # TODO
 
+> Инлайн-теги в хвосте пункта (формат из `../_cowork_output/2026-07-26-plan-fields-and-todo-coverage-handoff.md`,
+> §3): `@blocked_by:<repo>#<slug>` — чем заблокирован, `@trigger:"условие"` — при каком
+> проверяемом условии пункт становится актуальным, `@owner:<handle>` — владелец. Все три
+> опциональны; **отсутствие означает «неизвестно», а не «нет»**, и придумывать значение хуже,
+> чем оставить пусто. Парсер Robin (`plan_state`) исключает теги из ключа идентичности
+> (robin-runtime#27), так что разметка не даёт фантомных «закрыт/открыт» в дневной дельте.
+> `@owner:` пока не проставляется — конвенция хэндлов не решена (handoff §5.3).
+
 ## Ecosystem Roadmap (план от 2026-04-16)
 
 > Стратегический контекст: `../prograph-vault/authored/notes/ecosystem-roadmap.md`
@@ -65,12 +73,12 @@
 
 ### Готовы предоставить (ждём запроса от Maestro)
 
-- [ ] **R-06b: SDK-интеграция для Maestro** (зависит от Maestro R-03)
+- [ ] **R-06b: SDK-интеграция для Maestro** @blocked_by:Maestro#R-03
   - `atp.sdk.arun()` или SDK Adapter — структурированные результаты
   - Автоматический feedback loop: Maestro → задача → ATP eval → arbiter обучение
   - Наш SDK уже готов (PyPI `atp-platform-sdk` v2.0.0)
 
-- [ ] **R-07: Eval-driven routing validation** (зависит от R-03, R-06b)
+- [ ] **R-07: Eval-driven routing validation** @blocked_by:Maestro#R-03
   - A/B тестирование arbiter DT routing vs random vs always-best-agent
   - Совместно с `../arbiter/` — набор test suites на нашей стороне
 
@@ -140,21 +148,27 @@
     - ❌ **#3 проверка использования линтеров — НЕ делаем.** Линтеры детерминированы; LLM
       бенчмаркаем на семантике. Запуск линтера агентом = file_write/exec = возврат проблемы
       fidelity спавнера, от которой ушли через text-out.
-    - [ ] **#5 grounding/recency-ось на CLI-ростере (Путь A) — ВАЖНАЯ задача развития.**
-      PR #203 (fomih) добавил `run_mode: read_only_corpus` + детерминированный грейдер
-      `citation_grounding` (агент обнаруживает/читает файлы корпуса, отсеивает устаревший
-      дистрактор, цитирует источник; SHA-256-верифицированный корпус → материализация →
-      `Context.tools_endpoint`). Но wired только под `anthropic_api` — **наши CLI-шимы
-      (claude_code/codex_cli/pi/opencode) этот режим не умеют**: продуктовый CLI имеет свой
-      закрытый tool-набор и не знает про ATP `tools_endpoint`. Путь A: нацелить нативные
-      инструменты CLI на **уже материализованную** директорию корпуса (`cwd=workspace_path`
-      + confinement), HTTP-эндпоинт для CLI не нужен. Объём: расщепить `CorpusRunPreparer`
-      (materialize-only), corpus-режим в `_cli_common.py`, per-CLI confine-флаги, нормализация
-      относительных путей цитат, тул-агностичная инструкция, confinement-тест + живой смоук
-      (гейт). Per-CLI работа, начинать с `claude_code`. Дизайн:
+    - [x] **#5 grounding/recency-ось на CLI-ростере (Путь A)** ✅ 2026-07-05…07-06.
+      PR #203 (fomih) дал `run_mode: read_only_corpus` + детерминированный грейдер
+      `citation_grounding`, но wired был только под `anthropic_api`: продуктовый CLI имеет
+      свой закрытый tool-набор и не знает про ATP `tools_endpoint`. Путь A нацелил **нативные**
+      инструменты CLI на уже материализованную директорию корпуса (`cwd=workspace_path` +
+      per-CLI confinement; HTTP-эндпоинт не понадобился). Шипнуто по срезам:
+      `claude_code` (#227), `codex_cli` (#228), `pi` (#229), `opencode` (#230) поверх общего
+      `method/spawners/_cli_common.py` (`corpus_workspace()`, `corpus_args`/`corpus_env`,
+      нормализация цитат в corpus-relative) + severity-лестница (#231: 4 кейса clean…very_severe
+      в `method/cases/req-extraction/`). `run_pipe_check.py` больше не скипает corpus-кейсы для
+      corpus-capable харнессов; для остальных сохранено громкое skip-поведение #217. Дизайн:
       [`docs/superpowers/specs/2026-06-21-cli-corpus-grounding-design.md`](docs/superpowers/specs/2026-06-21-cli-corpus-grounding-design.md).
+      **Результат свипа** (runs=3, 2026-07-06, `_bench_output/r07-pipecheck/corpus-sweep-runs3-2026-07-06/`):
+      `claude_code@claude-sonnet-4-6` / `codex_cli@gpt-5.5` / `pi@gpt-5` — `crit_pass=1.000`,
+      `opencode@glm-5.1` — 0.941 (malformed 0.059); infra-fail 0 у всех. Два вывода:
+      (1) прежний «corpus-clean валит обоих» был **артефактом обвязки**, Путь A его снял;
+      (2) как роутинг-сигнал ось **упирается в потолок на фронтир-ростере** — null той же формы,
+      что crossover 07-02. Чтобы ось дискриминировала, нужен более слабый ростер либо более
+      жёсткая лестница дистракторов; на текущем ростере это не задача развития.
 
-- [ ] **Libretto receipts/IR как evaluation-вход** (effort S–M, ACTIVE — решение 2026-07-16)
+- [x] **Libretto receipts/IR как evaluation-вход** (effort S–M) ✅ 2026-07-16 (#252, #253, #255)
   - Оффер: `../prograph-vault/authored/notes/2026-07-16-libretto-contracts-offer.md`
     (2026-07-16). Libretto оставляет от каждого прогона `receipts.jsonl`
     (`libretto.receipt.v1`, hash-chained журнал: что исполнилось, порядок, входы, токены
@@ -170,18 +184,66 @@
     Phase 4) — факт «вендоренный контракт + работающий reader» должен существовать к
     ревизиту, причинность: сначала задача здесь, потом легитимный триггер гейта.
     Спешки нет — контракты append-frozen, но и триггер-ожидание больше не нужно.
-  - **Объём:**
-    - вендорить пинованную копию `libretto/contracts/{receipt.md,ir.md}`
-      (+опц. референс канонизации `tools/src/libretto_tools/canonical.py`);
-    - reader **обязан приземлиться на существующую потребляющую поверхность**, не быть
-      библиотекой на полке: детерминированный checker (`receipt_chain` в
-      `atp/evaluators/checkers/`, под `grader: {type: programmatic}`) и/или маппинг
-      receipts → EvalCheck/EvidenceRef как evidence-source;
-    - contract-тесты на их corpus `libretto/skills/libretto/examples/runs/` (4 прогона,
-      вкл. skip-semantics resume) и битых фикстурах `libretto/tests/fixtures/{runs,ir}/`;
-    - append-frozen семантика: неизвестные поля игнорировать, неизвестный `v` — отклонять.
-    - Реализация: PR (ветка feat/libretto-receipts-input), спека docs/superpowers/specs/2026-07-16-libretto-receipts-evaluation-input-design.md.
-  - arbiter — вторичный потребитель (после reader'а здесь); proctor — не заводить ничего.
+  - **Сделано:**
+    - вендорена пинованная копия контрактов → `method/contract/openprose/{receipt.md,ir.md}`
+      + `PROVENANCE.md`;
+    - reader приземлён на существующую потребляющую поверхность (не библиотека на полке):
+      детерминированный чекер `receipt_chain` (`atp/evaluators/openprose_receipts/checker.py`,
+      `receipt_chain@1`), зарегистрирован в `atp/evaluators/checkers/` под
+      `grader: {type: programmatic, checker: receipt_chain}`;
+    - contract-тесты на корпусе Libretto и битых фикстурах —
+      `tests/unit/evaluators/test_openprose_receipts.py`;
+    - append-frozen семантика: неизвестные поля игнорируются, неизвестный `v` — отклоняется.
+    - Спека: `docs/superpowers/specs/2026-07-16-libretto-receipts-evaluation-input-design.md`;
+      план: [`docs/superpowers/plans/2026-07-16-libretto-receipts-evaluation-input.md`](docs/superpowers/plans/2026-07-16-libretto-receipts-evaluation-input.md).
+  - **Осталось:** при ревизите Libretto-гейта 4.6 факт «вендоренный контракт + работающий
+    reader» готов к предъявлению. arbiter — вторичный потребитель (не начат); proctor — ничего.
+
+- [ ] **ADR-ECO-003e: runtime cost control** (эпик; M0 закрыт, дальше M1→M4)
+  - План M0: [`docs/superpowers/plans/2026-07-15-adr-eco-003e-m0-usage-capture-probe.md`](docs/superpowers/plans/2026-07-15-adr-eco-003e-m0-usage-capture-probe.md);
+    раннбук: [`docs/cost/003e-action0-probe-runbook.md`](docs/cost/003e-action0-probe-runbook.md).
+  - [x] **M0 — UsageCapture seam + Action №0 probe** ✅ 2026-07-15 (#251). Observe-only:
+    `atp/cost/capture.py` (контракт + JSONL-сток), шов в `TestOrchestrator`,
+    `python -m atp.cost.probe_report` (таблица покрытия), `track_response_cost` помечен
+    `DeprecationWarning` (удаление — в M1).
+  - [x] **Action №0 — bounded probe прогнан** ✅ 2026-07-16, обе ноги
+    (`_bench_output/003e-probe/`). **Результат, который упорядочивает M1:** usage
+    захватывается (389 токенов через deepseek), но `model` и `cost_usd` **не заполняются
+    никогда** — честный `None` вместо выдуманного `"unknown"`. То есть узкое место не в
+    сборе usage, а в отсутствии идентичности модели на границе адаптера.
+  - [ ] **M1 — adapter adoption + model identity.** Пробросить реальные `model`/`provider`
+    в `UsageRecord` по адаптерам (порядок — по колонке объёма токенов из пробы: cli первым);
+    удалить `track_response_cost` и мёртвый флаг `enable_cost_tracking`; зафиксировать
+    финальный дом шва (оркестратор vs base-adapter template) после переписи не-оркестраторных
+    вызовов. **Следующий шаг эпика.**
+  - [ ] **M2 — price snapshot (003e D7).** Генератор снапшота (канон-каталог +
+    `method/price_overrides.toml` + litellm map) → версионированный артефакт со штампом
+    `price_map_version`; синхронный snapshot-прайсер с трёхзначным
+    `pricing_status ∈ {known, ceiling, unknown}` (правило «молчаливый ноль = unknown», D6.3);
+    депрекейт и снос System-A таблицы в `atp/cost/models.py` + миграция `CostTracker`.
+  - [ ] **M3 — BudgetControl (003e D1/D3/D4/D5).** `estimate/reserve/settle`, атомарный
+    store резерваций (SQLite single-writer, идемпотентность по `call_id`/`reservation_id`,
+    reaper по settle-timeout); таксономия скоупов attempt⊂task⊂run⊂day; per-scope политика;
+    завести deny в оркестратор (`budget_usd` уже течёт в `ATPRequest.constraints`, но никем
+    не энфорсится — это и есть естественная первая точка).
+  - [ ] **M4 — ecosystem handoff.** Когда контрактный модуль устоится — вендоринг-хендофф для
+    Maestro / spec-runner / robin-runtime в `../prograph-vault/authored/notes/` (их репо
+    отсюда read-only); выравнивание advisory-budget инварианта arbiter.
+
+- [ ] **RD-007: LearningEvent v1 — обучение через governance, без silent-write**
+  - Дизайн: [`docs/2026-07-12-rd-007-learning-event-design.md`](docs/2026-07-12-rd-007-learning-event-design.md) (#248).
+  - [x] **M1a (наша доля)** ✅ 2026-07-12 (#249): `learning-event-v1.schema.json` + фикстуры +
+    contract-тест; `CODEOWNERS` на governed-пути (v1 acceptance).
+  - [ ] **M2 (отложено):** conformance-CI (вендоренные byte-проверки, сканер no-runtime-writes);
+    новые продюсеры (experiment recommendations, catalog proposals) переходят на схему.
+  - Не наше: M1b (robin-runtime — selfreview эмитит события), M1c (prograph-vault — CODEOWNERS
+    на `authored/**`). Отслеживать, не делать.
+
+- [x] **Runtime observability & recovery** ✅ 2026-07-19 (#258)
+  - План: [`docs/superpowers/plans/2026-07-19-runtime-observability-recovery.md`](docs/superpowers/plans/2026-07-19-runtime-observability-recovery.md).
+  - Structlog подключён к CLI-рантайму, `run_id`-корреляция прогонов, кооперативная обработка
+    SIGINT/SIGTERM, чекпоинты сьюта → прерванный `atp test` возобновляем. Без новых сервисов и
+    без миграций схемы: два существующих шва (`cli()` в `atp/cli/main.py` и `TestOrchestrator`).
 
 ### Ждём от других проектов
 
@@ -422,7 +484,9 @@ Spec: `docs/superpowers/specs/2026-04-20-admin-tournament-gui-design.md`
 Plan: `docs/superpowers/plans/2026-04-20-admin-tournament-gui.md`
 
 - [ ] **h · Live MCP SSE connection status** per participant in admin detail — needs a new in-memory connection registry bound to the FastMCP server plus a `/ui/admin/tournaments/{id}/connections` fragment. Scope: ~2 days.
-- [ ] **f · Force-advance round** (admin button + REST endpoint wrapping existing `TournamentService.force_resolve_round`) — currently only the deadline worker can trigger it. Safety: needs a confirmation step and audit log entry.
+- [x] **f · Force-advance round** ✅ 2026-07-11 (#247) — admin button (`ui/admin/tournament_detail.html`)
+  + `POST /api/v1/tournaments/{id}/force-advance` над существующим
+  `TournamentService.force_resolve_round`; аудит-запись `TOURNAMENT_FORCE_ADVANCE`.
 - [ ] **g · Extend round deadline mid-round** — requires adding a service method and a new audit row since mutating `Round.deadline` after creation is currently disallowed.
 - [ ] **Generalize admin create form to all 8 games** — currently hardcoded to `el_farol` dropdown. Add per-game config fieldsets keyed off the game registry.
 - [ ] **Long-lived bot MCP sessions (spec C)** — separate design and plan; the admin TTL change in this PR does not address bot-side session budget (still capped at `(ATP_TOKEN_EXPIRE_MINUTES − 10) × 60` in `TournamentService.create_tournament`).
