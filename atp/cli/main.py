@@ -981,99 +981,38 @@ async def _run_suite(
         if live_display is not None:
             live_display.stop()
 
-    # Evaluate assertions and compute scores
-    from atp.evaluators.registry import get_registry as get_evaluator_registry
-    from atp.scoring.aggregator import ScoreAggregator
+    # Evaluate assertions and compute scores through the shared pipeline
+    # (atp.evaluation); this module is its CLI composition root.
+    from atp.cli.evaluation_runner import (
+        build_cli_pipeline,
+        report_skips,
+        score_outcome,
+    )
 
-    evaluator_registry = get_evaluator_registry()
+    pipeline = build_cli_pipeline()
     all_eval_results: dict[str, list[Any]] = {}
     all_scored_results: dict[str, Any] = {}
+
+    def _echo(message: str) -> None:
+        click.echo(message, err=True)
 
     for test_result in result.tests:
         test_id = test_result.test.id
         test_def = test_result.test
-        assertions = test_def.assertions
 
-        if not assertions or not test_result.runs:
+        if not test_def.assertions or not test_result.runs:
             continue
 
-        # Evaluate assertions against the first successful run
+        # Assertions are evaluated against the first run, as before.
         run = test_result.runs[0]
+        outcome = await pipeline.evaluate(test_def, run.response, run.events)
+        report_skips(test_id, outcome, _echo)
 
-        # Materialize inline artifacts to CWD so code_exec
-        # evaluators (pytest, etc.) can import them
-        materialized_files: list[Path] = []
-        for artifact in run.response.artifacts:
-            content = getattr(artifact, "content", None)
-            a_path = getattr(artifact, "path", None)
-            if content and a_path:
-                file_path = Path(a_path)
-                file_path.parent.mkdir(parents=True, exist_ok=True)
-                file_path.write_text(content)
-                materialized_files.append(file_path)
+        all_eval_results[test_id] = outcome.results
 
-        eval_results_list: list[Any] = []
-
-        # Pre-evaluation guardrails: skip evaluators if preconditions fail
-        from atp.evaluators.guardrails import (
-            run_guardrails,
-            should_skip_evaluation,
-        )
-
-        guardrail_checks = run_guardrails(test_def, run.response)
-        skip_reason = should_skip_evaluation(guardrail_checks)
-
-        if skip_reason:
-            click.echo(
-                f"  Skipping evaluation for '{test_id}': {skip_reason}",
-                err=True,
-            )
-        else:
-            for assertion in assertions:
-                try:
-                    evaluator = evaluator_registry.create_for_assertion(assertion.type)
-                    eval_result = await evaluator.evaluate(
-                        test_def,
-                        run.response,
-                        run.events,
-                        assertion,
-                    )
-                    # Propagate the hard-gate flag so scoring can fail the test
-                    # outright when a critical assertion fails.
-                    eval_result.critical = assertion.critical
-                    eval_results_list.append(eval_result)
-                except Exception as e:
-                    click.echo(
-                        f"  Warning: evaluator for '{assertion.type}' failed: {e}",
-                        err=True,
-                    )
-
-        # Clean up materialized artifacts
-        for f in materialized_files:
-            f.unlink(missing_ok=True)
-
-        all_eval_results[test_id] = eval_results_list
-
-        # Score the evaluation results
-        if eval_results_list:
-            try:
-                scoring_weights = test_def.scoring
-                aggregator = ScoreAggregator(weights=scoring_weights)
-
-                scored = aggregator.score_test_result(
-                    test_id=test_id,
-                    eval_results=eval_results_list,
-                    response=run.response,
-                    max_steps=test_def.constraints.max_steps,
-                    max_tokens=test_def.constraints.max_tokens,
-                    max_cost_usd=test_def.constraints.budget_usd,
-                )
-                all_scored_results[test_id] = scored
-            except Exception as e:
-                click.echo(
-                    f"  Warning: scoring for '{test_id}' failed: {e}",
-                    err=True,
-                )
+        scored = score_outcome(test_id, test_def, run.response, outcome, _echo)
+        if scored is not None:
+            all_scored_results[test_id] = scored
 
     if scored_progress_callback is not None:
         scored_progress_callback.replay_scored(result, all_scored_results)
