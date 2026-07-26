@@ -24,16 +24,13 @@ from pathlib import Path
 from typing import Any
 
 from atp.evaluation import (
+    TRUSTED_LOCAL,
     EvaluationOutcome,
     EvaluationPipeline,
-    EvaluationPolicy,
     SkipReason,
 )
 from atp.loader.models import TestDefinition
 from atp.protocol import ATPResponse
-
-#: The CLI trusts its input, so no assertion type is withheld.
-TRUSTED_LOCAL = EvaluationPolicy(name="trusted_local")
 
 
 @contextlib.contextmanager
