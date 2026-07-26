@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Any
 
+from atp.evaluation import EvaluationMode, FilteredResolver
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
@@ -22,6 +23,10 @@ from slowapi.middleware import SlowAPIMiddleware
 from atp.dashboard.database import init_database
 from atp.dashboard.tournament.deadlines import run_deadline_worker
 from atp.dashboard.v2.config import DashboardConfig, get_config
+from atp.dashboard.v2.evaluation_composition import (
+    COMPLETION_ONLY_CAPABILITY,
+    EvaluationCapability,
+)
 from atp.dashboard.v2.logging_config import configure_app_logging
 from atp.dashboard.v2.rate_limit import (
     JWTUserStateMiddleware,
@@ -71,6 +76,33 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield
 
     # Cleanup on shutdown (if needed)
+
+
+def create_dashboard_app(
+    *,
+    evaluator_resolver: FilteredResolver | None,
+    evaluation_mode: EvaluationMode,
+    config: DashboardConfig | None = None,
+    **kwargs: Any,
+) -> FastAPI:
+    """Create the application with its evaluation capability declared.
+
+    This is the canonical factory. `evaluation_mode` is stated, never inferred
+    from whether a resolver happened to be passed: the difference between
+    "scoring is off by choice" and "the wrong entrypoint was launched" must be
+    visible at startup, and a mismatch raises `IncompleteComposition` here.
+
+    The resolver arrives already restricted by the server policy — the
+    dashboard never holds the full registry.
+
+    Composition root: `atp dashboard` in atp-platform, which is also what
+    docker-compose runs. Launching `atp.dashboard.v2.factory:app` directly is
+    supported only for the explicitly chosen completion-only deployment.
+    """
+    capability = EvaluationCapability.build(evaluation_mode, evaluator_resolver)
+    app = create_app(config=config, **kwargs)
+    app.state.evaluation = capability
+    return app
 
 
 def create_app(
@@ -173,6 +205,11 @@ def create_app(
 
     # Store config in app state for access in lifespan and deps
     app.state.config = config
+
+    # Default capability: a bare `create_app()` has no evaluators. Callers that
+    # mean to evaluate go through `create_dashboard_app`, which validates the
+    # pairing instead of letting it be implied.
+    app.state.evaluation = COMPLETION_ONLY_CAPABILITY
 
     # Set up rate limiting.
     # Middleware order matters: Starlette applies middleware LIFO, so the

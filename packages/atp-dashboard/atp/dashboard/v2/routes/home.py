@@ -9,7 +9,7 @@ Permissions:
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
@@ -25,6 +25,23 @@ router = APIRouter(tags=["dashboard"])
 async def health() -> dict[str, str]:
     """Health check endpoint for Docker/load balancer probes."""
     return {"status": "ok"}
+
+
+@router.get("/evaluation/capabilities", tags=["evaluation"])
+async def evaluation_capabilities(request: Request) -> dict[str, object]:
+    """What this deployment can actually evaluate.
+
+    Served at `/api/evaluation/capabilities` (this router is mounted under the
+    `/api` prefix, so the sibling health probe is `/api/health`).
+
+    Unauthenticated on purpose, like that probe: an operator needs to be
+    able to tell a completion-only server from an evaluating one *before*
+    trusting a leaderboard, and a participant needs to know which assertion
+    types their suite will actually be scored on. Nothing here is a secret —
+    it is the server's own policy, not anyone's data.
+    """
+    capability = request.app.state.evaluation
+    return capability.describe()
 
 
 @router.get("/dashboard/summary", response_model=DashboardSummary)
