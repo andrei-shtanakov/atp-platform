@@ -13,6 +13,7 @@ from typing import Any
 from atp.loader.models import TestDefinition, TestSuite
 from atp.protocol import ATPEvent, ATPRequest, ATPResponse, Task
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from pydantic import ValidationError
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -414,7 +415,18 @@ async def submit_result(
 
     task_index = data.task_index
 
-    response = ATPResponse.model_validate(data.response)
+    try:
+        response = ATPResponse.model_validate(data.response)
+    except ValidationError as exc:
+        # `SubmitRequest.response` is a bare dict, so this is the first place
+        # the protocol is actually checked — and a raised ValidationError here
+        # is an unhandled exception, i.e. a 500. A self-service caller that
+        # sent a malformed response should be told what is wrong.
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"response is not a valid ATPResponse: {exc.errors()}",
+        ) from exc
+
     bm = await session.get(Benchmark, run.benchmark_id)
     scored = await score_submission(
         request.app.state.evaluation.resolver,

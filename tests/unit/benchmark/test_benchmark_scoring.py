@@ -29,6 +29,7 @@ from atp.dashboard.benchmark.score_contract import (
 )
 from atp.dashboard.benchmark.scoring import (
     COMPLETION_SCORE,
+    EVALUATION_RECORD_VERSION,
     INCOMPLETE_SCORE,
     RecordStatus,
     derive_run_score_view,
@@ -269,6 +270,7 @@ class TestScoreSubmission:
 
 
 APPLIED = {
+    "record_version": EVALUATION_RECORD_VERSION,
     "assertion_type": "contains",
     "status": RecordStatus.APPLIED,
     "evaluator": "artifact",
@@ -278,6 +280,7 @@ APPLIED = {
     "checks": [],
 }
 SKIPPED = {
+    "record_version": EVALUATION_RECORD_VERSION,
     "assertion_type": "pytest",
     "status": RecordStatus.SKIPPED,
     "reason": SkipReason.NOT_ALLOWED,
@@ -363,3 +366,31 @@ class TestRunSemantics:
         """A consumer that cannot version the meaning cannot use it safely."""
         semantics, _ = derive_run_score_view([[APPLIED]], tasks_total=1)
         assert semantics["schema_version"] == 1
+
+
+class TestRecordVersion:
+    """The stored shape carries its version, and the reader honours it."""
+
+    async def test_every_stored_record_is_stamped(self) -> None:
+        """A version nobody writes down is a version scheme in name only."""
+        scored = await score_submission(
+            resolver_for({"contains": StubEvaluator("artifact", 1.0)}),
+            make_test_def("contains", "pytest"),
+            completed(),
+            [],
+        )
+        assert scored.records is not None
+        versions = {r["record_version"] for r in scored.records}
+        assert versions == {EVALUATION_RECORD_VERSION}
+
+    def test_an_unknown_version_is_counted_not_guessed_at(self) -> None:
+        """Reading a future shape with today's field names invents a number."""
+        future = {**APPLIED, "record_version": EVALUATION_RECORD_VERSION + 1}
+        semantics, components = derive_run_score_view([[future]], tasks_total=1)
+        assert components == {}
+        assert semantics["kind"] == COMPLETION_RATE
+        assert semantics["coverage"]["records_unreadable"] == 1
+
+    def test_a_readable_run_reports_no_unreadable_records(self) -> None:
+        semantics, _ = derive_run_score_view([[APPLIED]], tasks_total=1)
+        assert semantics["coverage"]["records_unreadable"] == 0

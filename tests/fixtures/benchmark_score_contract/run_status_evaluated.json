@@ -14,6 +14,7 @@
           "critical": false,
           "evaluator": "artifact",
           "passed": false,
+          "record_version": 1,
           "score": 0.5,
           "status": "applied"
         },
@@ -21,6 +22,7 @@
           "assertion_type": "pytest",
           "detail": "policy 'untrusted_submission' does not permit this evaluator",
           "reason": "not_allowed_by_policy",
+          "record_version": 1,
           "status": "skipped"
         }
       ],
@@ -53,6 +55,7 @@
           "reason": "not_allowed_by_policy"
         }
       ],
+      "records_unreadable": 0,
       "tasks_completion_only": 0,
       "tasks_evaluated": 1,
       "tasks_submitted": 1,

@@ -21,11 +21,16 @@ from atp.dashboard.benchmark.score_contract import (
     empty_score_components,
     run_score_semantics,
 )
-from atp.dashboard.benchmark.scoring import RecordStatus, derive_run_score_view
+from atp.dashboard.benchmark.scoring import (
+    EVALUATION_RECORD_VERSION,
+    RecordStatus,
+    derive_run_score_view,
+)
 
 #: One applied and one withheld assertion, as `submit` stores them.
 EVALUATED_RECORDS: list[dict[str, Any]] = [
     {
+        "record_version": EVALUATION_RECORD_VERSION,
         "assertion_type": "contains",
         "status": RecordStatus.APPLIED,
         "evaluator": "artifact",
@@ -35,6 +40,7 @@ EVALUATED_RECORDS: list[dict[str, Any]] = [
         "checks": [{"name": "contains", "passed": False, "score": 0.5}],
     },
     {
+        "record_version": EVALUATION_RECORD_VERSION,
         "assertion_type": "pytest",
         "status": RecordStatus.SKIPPED,
         "reason": "not_allowed_by_policy",

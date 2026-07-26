@@ -31,6 +31,7 @@
     "coverage": {
       "assertions_applied": {},
       "assertions_skipped": [],
+      "records_unreadable": 0,
       "tasks_completion_only": 3,
       "tasks_evaluated": 0,
       "tasks_submitted": 3,

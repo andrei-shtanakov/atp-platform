@@ -55,6 +55,11 @@ logger = logging.getLogger(__name__)
 
 #: Version of the per-task record shape stored in `TaskResult.eval_results`.
 #: Bumped when the shape changes; readers branch on it rather than guessing.
+#:
+#: Stamped on every record rather than once per task: the column is a
+#: `list[dict]`, so there is no envelope to put it in, and a row written today
+#: will be read by code written later — that is the whole reason the number
+#: exists. A constant nobody writes down is a version scheme in name only.
 EVALUATION_RECORD_VERSION = 1
 
 #: Score for a task whose response completed, when no evaluator ran on it.
@@ -132,6 +137,7 @@ async def score_submission(
     ]
     records.extend(
         {
+            "record_version": EVALUATION_RECORD_VERSION,
             "assertion_type": skipped.assertion_type,
             "status": RecordStatus.SKIPPED,
             "reason": skipped.reason,
@@ -155,6 +161,7 @@ async def score_submission(
 def _applied_record(assertion_type: str, result: EvalResult) -> dict[str, Any]:
     """One evaluator's outcome, flattened for storage."""
     return {
+        "record_version": EVALUATION_RECORD_VERSION,
         "assertion_type": assertion_type,
         "status": RecordStatus.APPLIED,
         "evaluator": result.evaluator,
@@ -207,6 +214,8 @@ class _Coverage:
 
     tasks_submitted: int = 0
     tasks_evaluated: int = 0
+    #: Records stored in a shape this code does not know how to read.
+    unreadable: int = 0
     applied: Counter[str] = field(default_factory=Counter)
     skipped: Counter[tuple[str, str]] = field(default_factory=Counter)
     scores: defaultdict[str, list[float]] = field(
@@ -236,11 +245,20 @@ def derive_run_score_view(
 
 
 def _tally(task_records: list[list[dict[str, Any]] | None]) -> _Coverage:
-    """Fold the per-task records into run-level counts."""
+    """Fold the per-task records into run-level counts.
+
+    A record whose `record_version` this code does not recognise is counted
+    and otherwise ignored. Reading unknown fields with today's expectations
+    would turn a shape change into a quietly wrong measurement, and a wrong
+    measurement is the one outcome the whole contract is built to avoid.
+    """
     coverage = _Coverage(tasks_submitted=len(task_records))
     for records in task_records:
         evaluated = False
         for record in records or []:
+            if record.get("record_version") != EVALUATION_RECORD_VERSION:
+                coverage.unreadable += 1
+                continue
             assertion_type = str(record.get("assertion_type", "unknown"))
             if record.get("status") == RecordStatus.APPLIED:
                 evaluated = True
@@ -280,6 +298,9 @@ def _coverage_view(coverage: _Coverage, tasks_total: int) -> dict[str, Any]:
         "tasks_submitted": coverage.tasks_submitted,
         "tasks_evaluated": coverage.tasks_evaluated,
         "tasks_completion_only": coverage.tasks_submitted - coverage.tasks_evaluated,
+        # Stored under a record shape this code cannot read. Reported rather
+        # than dropped: silently missing evidence reads as evidence of absence.
+        "records_unreadable": coverage.unreadable,
         "assertions_applied": dict(sorted(coverage.applied.items())),
         "assertions_skipped": [
             {"assertion_type": assertion_type, "reason": reason, "count": count}

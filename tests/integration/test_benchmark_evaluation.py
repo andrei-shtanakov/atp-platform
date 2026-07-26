@@ -271,3 +271,25 @@ class TestNotEvaluated:
         assert body["total_score"] == 0.0
         assert body["score_semantics"]["kind"] == "completion_rate"
         assert body["completed_tasks"][0]["eval_results"] is None
+
+
+class TestMalformedSubmission:
+    async def test_an_unparseable_response_is_a_422_not_a_500(
+        self, evaluating_client: AsyncClient
+    ) -> None:
+        """A self-service caller gets told what is wrong, not a server error."""
+        created = await evaluating_client.post(
+            "/api/v1/benchmarks",
+            json={"name": "malformed", "suite": suite_with(CONTAINS_HELLO)},
+        )
+        benchmark_id = created.json()["id"]
+        started = await evaluating_client.post(
+            f"/api/v1/benchmarks/{benchmark_id}/start"
+        )
+        run_id = started.json()["id"]
+
+        submitted = await evaluating_client.post(
+            f"/api/v1/runs/{run_id}/submit",
+            json={"task_index": 0, "response": {"status": "completed"}},
+        )
+        assert submitted.status_code == 422, submitted.status_code

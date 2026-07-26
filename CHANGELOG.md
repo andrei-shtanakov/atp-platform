@@ -19,7 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reported under `coverage` with a reason and never becomes a component worth
   0.0. A run scored partly by evaluation and partly by completion carries a
   `mixed_task_scores` caveat. Per-task evidence is stored in the existing
-  `TaskResult.eval_results` column — no migration. (#272)
+  `TaskResult.eval_results` column — no migration — with a `record_version` on
+  every record; a record whose version the reader does not recognise is counted
+  under `coverage.records_unreadable` rather than parsed with today's field
+  names. (#272)
+
+### Fixed
+
+- **`POST /api/v1/runs/{id}/submit` returns 422, not 500, for a malformed
+  response body.** `SubmitRequest.response` is a bare dict, so the protocol was
+  first checked inside the handler, where a `ValidationError` became an
+  unhandled exception. A self-service caller now gets told what is wrong. (#272)
 
 ### Changed
 
