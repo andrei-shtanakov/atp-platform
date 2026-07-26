@@ -2065,7 +2065,11 @@ def dashboard_cmd(host: str | None, port: int | None, reload: bool) -> None:
     click.echo("Press Ctrl+C to stop")
 
     try:
-        from atp.dashboard import run_server
+        # atp.server is the composition root: it wires the restricted
+        # evaluator resolver into the dashboard factory. Launching the
+        # dashboard's own module-level app instead would silently produce a
+        # completion-only server.
+        from atp.server import run_server
     except ImportError:
         raise click.ClickException(
             "Dashboard requires the atp-dashboard package. "

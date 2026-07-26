@@ -1,5 +1,14 @@
 """Dependency-neutral evaluation orchestration (no evaluator implementations)."""
 
+from atp.evaluation.composition import (
+    COMPLETION_ONLY,
+    DETERMINISTIC_ALLOWLIST,
+    EvaluationMode,
+    EvaluatorNotPermitted,
+    FilteredResolver,
+    IncompleteComposition,
+    validate_composition,
+)
 from atp.evaluation.pipeline import (
     EvaluationOutcome,
     EvaluationPipeline,
@@ -29,6 +38,13 @@ from atp.evaluation.workspace import (
 
 __all__ = [
     "ASSERTION_TO_EVALUATOR",
+    "COMPLETION_ONLY",
+    "DETERMINISTIC_ALLOWLIST",
+    "EvaluationMode",
+    "EvaluatorNotPermitted",
+    "FilteredResolver",
+    "IncompleteComposition",
+    "validate_composition",
     "TRUSTED_LOCAL",
     "UNTRUSTED_SUBMISSION",
     "ArtifactWorkspace",
