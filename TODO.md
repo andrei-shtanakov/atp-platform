@@ -112,7 +112,7 @@
 > открытым остался конкретный дефицит на нашей стороне (ниже).
 
 - [ ] **Экспортировать разбивку скора в benchmark-run status** (для Maestro R-06b M3) @owner:github:andrei-shtanakov
- @provider:atp-platform @consumer:maestro
+  @provider:atp-platform @consumer:maestro
   @source-owner:maestro @source-ref:maestro@07d408d @observed-at:2026-07-26 @recheck-by:2026-10-26
   - `../maestro/TODO.md:100`: «`score_components={}` пока ATP не экспортирует breakdown» —
     их `finalize()` читает из `GET /api/v1/runs/{id}/status` только `total_score`.
@@ -139,7 +139,7 @@
     (закрытый M3) до сих пор фиксирует «`score_components={}` пока ATP не экспортирует
     breakdown» — после #272 это уже неверно, но заметка на их стороне. Наше утверждение
     «осталось не у нас» — это наше ожидание, а не их зафиксированный план.
- @provider:atp-platform @consumer:maestro
+  @provider:atp-platform @consumer:maestro
     @source-owner:maestro @source-ref:maestro@d0fd80e @observed-at:2026-07-27 @recheck-by:2026-10-27
   - [ ] **Deferred, с явным триггером:** первый реально вычисленный компонент → EPIC @owner:github:andrei-shtanakov
     выбирает persistence-модель. DB-колонки нет намеренно: `{}` в каждой строке `Run`
@@ -170,12 +170,12 @@
       `pred.path` (`eec1879` #30, тест `3c307ad` #33, скоуп `1fbbdf7` #34).
       Наша запись «написан, не исполнен» держалась после отгрузки — тот же класс ошибки,
       что R-06b/R-03 (#263): мы цитировали себя, а не владельца.
- @provider:arbiter
+      @provider:arbiter
       @source-owner:arbiter @source-ref:arbiter@94ed8d2 @observed-at:2026-07-27 @recheck-by:2026-10-27
     - [ ] **Открыто у arbiter (не у нас):** A/B-вью над `benchmark_runs` @owner:github:andrei-shtanakov
       (`../arbiter/TODO.md:33`), crossover-гейт (`:48`), развилка по силе связи `rank_score`
       (`:50`). Отслеживать, не делать.
- @provider:arbiter
+      @provider:arbiter
       @source-owner:arbiter @source-ref:arbiter@94ed8d2 @observed-at:2026-07-27 @recheck-by:2026-10-27
 
   - **Eval-improvements (план от 2026-06-14, NEXT SESSION):** ревью двух рецензентов сошлось,
@@ -231,7 +231,7 @@
       в `benchmark_runs`. Влияет на валидность роутинга. **Реально не начата — следующая ось.**
       Сверено 2026-07-27 в коде владельца: `../arbiter/arbiter-mcp/src/features.rs:135-136`
       (`v[1] = task.language.as_ordinal()`) и `:210-211` (`[16] agent_supports_language`).
- @consumer:arbiter
+      @consumer:arbiter
       @source-owner:arbiter @source-ref:arbiter@94ed8d2 @observed-at:2026-07-27 @recheck-by:2026-10-27
     - [x] **#2 correctness-семейство** — `code-review-correctness` (capability `correctness`):
       ✅ сделано — 7 кейсов в `method/cases/code-review/case-code-review-correctness-*`
@@ -329,7 +329,7 @@
     contract-тест; `CODEOWNERS` на governed-пути (v1 acceptance).
   - [ ] **M2 (отложено):** conformance-CI (вендоренные byte-проверки, сканер no-runtime-writes); @trigger:"stable Evidence-refs" @owner:github:andrei-shtanakov
     новые продюсеры (experiment recommendations, catalog proposals) переходят на схему.
- — источник:
+    — источник:
     `../prograph-vault/authored/notes/2026-07-11-ai-dark-factory-consolidated-roadmap.md:269`
     («atp + ecosystem-kb — LearningEvent после stable Evidence-refs, через steward-governance,
     не silent-write», приоритет P3 = последний слой, потребляет evidence/risk/decisions/outcomes).
@@ -344,7 +344,7 @@
     без миграций схемы: два существующих шва (`cli()` в `atp/cli/main.py` и `TestOrchestrator`).
 
 - [ ] **P6 — стабилизировать и версионировать benchmark-payload** (живой роадмап, urgency Medium) @owner:github:andrei-shtanakov
- @provider:atp-platform
+  @provider:atp-platform
   - `../prograph-vault/authored/notes/ecosystem-roadmap.md` §1.1 + таблица приоритетов P6:
     ATP держат как поставщика routing-grade данных, и фокус там сформулирован явно —
     «stabilize the benchmark-contract payload and version it as strictly as the MCP protocol».
@@ -358,7 +358,7 @@
     @source-owner:prograph-vault @source-ref:prograph-vault@4ce14a8 @observed-at:2026-07-27 @recheck-by:2026-10-27
 
 - [ ] **Привести логи к `observability-contract/v1`** (живой роадмап §3, enabler для §1.1/1.2/1.4) @owner:github:andrei-shtanakov
- @provider:atp-platform
+  @provider:atp-platform
   - Там прямо: «`atp-platform` logs structurally but in its own format
     (`correlation_id/version/hostname`)», и в списке действий — «(3) bring atp-platform to
     contract fields» (`../prograph-vault/authored/notes/ecosystem-roadmap.md:109,114`).
@@ -590,7 +590,7 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
   [`docs/superpowers/plans/2026-07-26-step6-score-semantics.md`](docs/superpowers/plans/2026-07-26-step6-score-semantics.md).
 - [ ] **13 удержанных типов утверждений на benchmark-плоскости** — ADR-008 @owner:github:andrei-shtanakov
   ([`docs/adr/008-benchmark-evaluation-worker.md`](docs/adr/008-benchmark-evaluation-worker.md),
- Proposed 2026-07-27)
+  Proposed 2026-07-27)
   «Шаг 7 — воркер» оказался **четырьмя** разными задачами с разными блокерами; ADR их
   расцепляет, чтобы дешёвые не ждали дорогую. Порядок и триггеры:
   - [x] **A — `composite`** ✅ 2026-07-27 (PR #274): получает resolver вместо

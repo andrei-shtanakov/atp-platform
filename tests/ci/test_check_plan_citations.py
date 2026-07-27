@@ -495,3 +495,99 @@ class TestItemSplitting:
         items = checker.iter_items(text)
         assert len(items) == 1
         assert items[0].block.count("\n") == 20_000
+
+
+class TestTagPlacement:
+    """Check 7 — a contract tag must sit where the ecosystem parser reads.
+
+    Robin matches an item's first line only, so a tag on a continuation line is
+    invisible to the registry and to the fleet check. This checker reads whole
+    blocks, and that leniency is exactly how 40 backfilled `@owner` tags came
+    to be invisible while this file reported full coverage.
+    """
+
+    def test_tag_on_the_checkbox_line_passes(
+        self, checker: ModuleType, repo: Path, tmp_path: Path
+    ) -> None:
+        doc = _write(
+            repo / "TODO.md",
+            "- [ ] thing @owner:github:andrei-shtanakov\n  more prose here\n",
+        )
+        report = checker.Report()
+        checker.check_tag_placement(doc, report, checker.iter_items(doc.read_text()))
+        assert report.errors == []
+
+    @pytest.mark.parametrize(
+        "tag",
+        [
+            "@owner:github:andrei-shtanakov",
+            "@blocked_by:maestro#some-slug",
+            '@trigger:"a condition"',
+        ],
+    )
+    def test_tag_only_on_a_continuation_line_fails(
+        self, checker: ModuleType, repo: Path, tmp_path: Path, tag: str
+    ) -> None:
+        """All three contract tags, since all three are read the same way."""
+        doc = _write(repo / "TODO.md", f"- [ ] thing\n  {tag}\n")
+        report = checker.Report()
+        checker.check_tag_placement(doc, report, checker.iter_items(doc.read_text()))
+        assert len(report.errors) == 1
+        assert "cannot see it" in report.errors[0]
+
+    def test_a_tag_repeated_below_is_not_an_error(
+        self, checker: ModuleType, repo: Path, tmp_path: Path
+    ) -> None:
+        """Present on the first line is the whole requirement.
+
+        Duplicating it lower is redundant, not invisible, and failing it would
+        make the check about tidiness rather than about being read.
+        """
+        doc = _write(
+            repo / "TODO.md",
+            "- [ ] thing @owner:github:andrei-shtanakov\n"
+            "  @owner:github:andrei-shtanakov\n",
+        )
+        report = checker.Report()
+        checker.check_tag_placement(doc, report, checker.iter_items(doc.read_text()))
+        assert report.errors == []
+
+    @pytest.mark.parametrize(
+        "tag",
+        [
+            "@source-owner:maestro",
+            "@provider:atp-platform",
+            "@consumer:arbiter",
+            "@recheck-by:2026-10-27",
+        ],
+    )
+    def test_local_extensions_may_stay_on_continuation_lines(
+        self, checker: ModuleType, repo: Path, tmp_path: Path, tag: str
+    ) -> None:
+        """Nothing outside this repo reads them, so hoisting them buys nothing.
+
+        Without this, the check would push the freshness quad onto the first
+        line and make it unreadable.
+        """
+        doc = _write(
+            repo / "TODO.md",
+            f"- [ ] thing @owner:github:andrei-shtanakov\n  {tag}\n",
+        )
+        report = checker.Report()
+        checker.check_tag_placement(doc, report, checker.iter_items(doc.read_text()))
+        assert report.errors == []
+
+    def test_a_nested_item_is_judged_on_its_own_first_line(
+        self, checker: ModuleType, repo: Path, tmp_path: Path
+    ) -> None:
+        """A parent's tag does not cover its children; the registry sees rows."""
+        doc = _write(
+            repo / "TODO.md",
+            "- [ ] parent @owner:github:andrei-shtanakov\n"
+            "  - [ ] child\n"
+            "    @owner:github:andrei-shtanakov\n",
+        )
+        report = checker.Report()
+        checker.check_tag_placement(doc, report, checker.iter_items(doc.read_text()))
+        assert len(report.errors) == 1
+        assert ":2" in report.errors[0]
