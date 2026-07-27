@@ -1,15 +1,17 @@
 # ADR-008: Evaluating Executing and Networked Assertions on the Benchmark Plane
 
-**Status**: Proposed (2026-07-27)
+**Status**: Proposed (2026-07-27) — revised 2026-07-27 after review
 **Date**: 2026-07-27
 **Builds on**: #272 (step 6 — the benchmark plane runs deterministic evaluators
-and labels the result), `packages/atp-core/atp/evaluation/policies.py` (policy per
-execution context), `atp/evaluators/container.py` (existing container runtime).
-Paths are given as they resolve from the repo root; `atp/evaluation` is a
-symlink to the atp-core package, so the package path is cited where the file
-actually lives.
-**Supersedes the label** "step 7 — worker for executing evaluators" in `TODO.md`,
-which turns out to name four different problems.
+and labels the result), `packages/atp-core/atp/evaluation/policies.py` (policy
+per execution context), `atp/evaluators/container.py` (existing container
+runtime).
+**Supersedes the label** "step 7 — worker for executing evaluators" in
+`TODO.md`, which turns out to name four different problems.
+
+Paths are cited from the repo root. `atp/evaluation`, `atp/core` and
+`atp/scoring` are symlinks into `packages/atp-core/`; where it matters the
+package path is cited, because that is where the file lives.
 
 ## Context
 
@@ -52,171 +54,287 @@ fire-and-forget and loses in-flight work on restart. Nothing exists to build on.
 | **A — `composite`** | evaluator reaches for the global registry instead of receiving a resolver | no |
 | **B — `filesystem`** | evaluator is *told* a directory instead of being *given* a sandbox | no |
 | **C — network (`llm_eval`, `factuality`)** | synchronous request path, unbounded cost, non-reproducibility | deferred execution, not isolation |
-| **D — `code_exec`** | executes submission-derived code | deferred execution **and** isolation |
+| **D — `code_exec`** | executes submission-derived code | deferred execution **and** a proven isolation profile |
 
 A and B are interface defects in evaluators that happen to be visible from this
 plane. C and D are platform capabilities. Only D needs containers.
 
-### 2. Track A: `composite` receives the resolver it is allowed to use
+### 2. Track A: `composite` receives the resolver, and grows a third verdict
 
 `CompositeEvaluator._evaluate_leaf` calls `get_registry()`
 (`atp/evaluators/composite.py:282`). It should be handed the same
 `EvaluatorResolver` the pipeline holds, so its leaves pass through the policy
-that governs its parent. Then `composite` under `UNTRUSTED_SUBMISSION`
-composes permitted leaves and reports a policy refusal for the rest — the same
-answer the pipeline gives at the top level.
+that governs its parent. `EvaluatorRegistry.create_for_assertion` constructs
+with no arguments (`atp/evaluators/registry.py:180`), so this is a
+construction-path change rather than a one-liner.
 
-`EvaluatorRegistry.create_for_assertion` constructs with no arguments
-(`atp/evaluators/registry.py:180`), so this is a construction-path change
-rather than a one-liner. That is the cost, and it is small.
+**Filtering the leaves is the easy half.** The hard half is what a refused leaf
+*means* to the operator above it. "Permitted leaves run, refused ones report a
+refusal" is not an answer for `AND`/`OR`/`NOT`/`threshold`, and the obvious
+shortcut — treating a refusal as `False`/`0.0` — reintroduces the exact defect
+#272 removed: an unmeasured thing presented as a bad measurement.
 
-**Once the leaves are policy-filtered, `composite` returns to the allowlist.**
-It never needed a worker; it needed to stop being a hole in the policy.
+So a leaf yields one of **three** verdicts, propagating by Kleene logic:
 
-### 3. Track B: `filesystem` is given a root, or stays out
+| Operator | Rule |
+|---|---|
+| `NOT` | `NOT PASS = FAIL`, `NOT FAIL = PASS`, **`NOT UNEVALUATED = UNEVALUATED`** |
+| `AND` | any `FAIL` → `FAIL` (false regardless of the unknowns); else any `UNEVALUATED` → `UNEVALUATED`; else `PASS` |
+| `OR` | any `PASS` → `PASS` (true regardless); else any `UNEVALUATED` → `UNEVALUATED`; else `FAIL` |
+| `threshold` | evaluate the comparison at both ends of the score interval, taking each `UNEVALUATED` leaf as `[0.0, 1.0]`. Both ends agree → that verdict; they disagree → `UNEVALUATED` |
 
-The evaluator's contract — "name a directory in the suite, I will look in it" —
-cannot be made safe by wrapping it, because the directory is its input. Two
-honest options:
+The asymmetry in `AND`/`OR` is the point: a conjunction containing one real
+failure is genuinely false, and refusing to say so would be its own dishonesty.
+The unknown wins only where it could change the answer.
 
-1. **Give it the sandbox.** The evaluator gains an injected workspace root; the
-   `workspace_path` config key is ignored when a root is injected. Server-side
-   the root is the `ArtifactWorkspace` the submission was materialized into, so
-   `file_exists` finally measures the agent's own output. The CLI keeps
-   today's behaviour by injecting the working directory.
-2. **Leave it CLI-only.** The benchmark plane checks artifacts through the
-   `artifact` evaluator, which reads the response, and never grows a filesystem
-   assertion.
+A composite resolving to `UNEVALUATED` contributes **no component** and appears
+in `coverage` with the reasons its leaves gave — the same treatment every other
+unevaluated assertion gets.
 
-**Decision: option 1.** Option 2 permanently splits the vocabulary by plane,
-which is the "zoo" ADR-007 exists to prevent, and it gives up a check that is
-genuinely meaningful once the root is right. Path arguments from the suite are
-confined to the root via the existing `validate_path_within_workspace`.
+**Acceptance for track A includes a docstring.** `UNTRUSTED_SUBMISSION`
+currently states that all four withheld classes wait for an isolated worker
+(`packages/atp-core/atp/evaluation/policies.py:34`). That sentence is what this
+ADR contradicts; leaving it would leave the codebase asserting the opposite of
+the accepted decision.
+
+### 3. Track B: the root is always injected, and the config is never silently ignored
+
+Today `workspace_path` is required and *is* the root
+(`atp/evaluators/filesystem.py:41`). The first draft of this ADR proposed
+ignoring that key when a root is injected. That is wrong twice: it makes one
+spec field mean different things on different planes, and silent ignoring is
+how a suite author's intent disappears without a diagnostic.
+
+The contract instead:
+
+1. **The evaluator always receives a trusted root** from its composition — the
+   `ArtifactWorkspace` on the server, the working directory on the CLI. It
+   never derives a root from the suite.
+2. **`workspace_path`, if kept, is a relative subpath *within* that root**, not
+   a root of its own. The field keeps its usefulness — address a subdirectory
+   of the workspace — and loses its authority.
+3. **An absolute path or a traversal is a config error**, reported as such:
+   not quietly clamped, not quietly ignored.
+   `validate_path_within_workspace`
+   (`packages/atp-core/atp/core/security.py:478`) already draws that line.
+4. **Existing CLI suites are converted explicitly**, by an adapter that
+   rewrites the old meaning into the new one — not by assuming that injecting
+   the working directory reproduces it. In general it does not: today's
+   `workspace_path` can point anywhere.
+
+**Separately, a latent bug that deserves its own regression test.** An invalid
+path in `file_not_exists` returns `passed=True`, "treated as not existing"
+(`atp/evaluators/filesystem.py:129`). On a policy boundary that is backwards: a
+path the evaluator could not resolve is an *unanswered* question, and answering
+it "absent, therefore pass" lets a malformed assertion score points. It should
+be a config error like any other, and a test should keep it that way.
 
 ### 4. Tracks C and D share one prerequisite: evaluation leaves the request path
 
-Both need `submit` to accept, persist, and return — with evaluation happening
-afterwards. That is the shared piece, and it is a bigger contract change than
-either evaluator class:
+Both need `submit` to accept, persist and return, with evaluation happening
+afterwards:
 
 - `submit` returns the stored task result with evaluation **pending**, not a
   score;
-- a job records what is to be evaluated, its state, its attempts, and its
+- a job records what is to be evaluated, its state, its attempts and its
   outcome;
 - `GET /runs/{id}/status` reports pending evaluation as a state.
 
+**This is a wire change, not an internal one.** `submit` returns `202 Accepted`
+when it enqueues and stays `200` when it scores inline, so a client can tell
+the two apart without parsing the body. The published SDK
+(`atp-platform-sdk`) must treat `202` as success and expose the pending state:
+a client that polls `status` until `total_score` is non-null already behaves
+correctly, but one that reads the score straight out of the submit response
+does not. `SCORE_CONTRACT_VERSION` increments.
+
 ### 5. Pending is a state, not an absence
 
-This is the contract consequence and the part most likely to be got wrong.
-
 Today a task with no `eval_results` means "nothing was evaluated, the score is
-completion". Once evaluation is deferred, the same absence can mean "not
+completion". Once evaluation is deferred the same absence can mean "not
 evaluated **yet**". Publishing `completion_rate` for a run whose evaluation is
 queued would be exactly the defect #272 removed, reintroduced through the back
 door: a confident label on an unfinished measurement.
 
 So `score_semantics` gains an explicit evaluation state, and a run with pending
 work is neither `completion_rate` nor `aggregated_evaluation` until its jobs
-settle. The existing `null_until_finalized` caveat covers `total_score`; this
-covers the label. `coverage` gains the pending count.
+reach terminal states. `coverage` gains the pending count.
 
-### 6. Network evaluators need a budget and an opt-in, not a container
+**The leaderboard must not rank an unsettled run.** The earlier draft left
+"exclude or display as unsettled" to the implementation; that is a contract
+decision, not a rendering one. A rank is a claim about relative quality, and a
+run scored so far only by completion would be ranked on a number about to
+change. Unsettled runs are excluded from rank until terminal, and may be shown
+as pending.
 
-`llm_eval` and `factuality` do not execute anything. Their problems are cost
-and reproducibility, and the cost is *asymmetric*: a self-service participant's
-submission spends the operator's money, at up to 120 submissions per minute.
+### 6. Identity, and an honest delivery guarantee
 
-Therefore: a per-benchmark budget with a hard cap, an explicit operator opt-in
-per benchmark (not a global switch), and a recorded per-submission cost. When
-the budget is exhausted, assertions are **skipped with a reason** — they do not
-become zeros, and they do not silently fall back to a cheaper judge.
+The earlier draft proposed a natural key of `(run_id, task_index, evaluator)`
+and called the result idempotent. Both halves were wrong.
 
-Reproducibility stays a caveat rather than a promise: the semantics already
-carry `quality_signal`, and a judged score is honest about being a judgement.
+**The key collides.** A test may carry two assertions of the same type — two
+`contains` with different patterns is ordinary — so the key must include the
+assertion's position: `(run_id, task_index, assertion_index)`. The stored
+*outcome* additionally records the evaluator name, its version and a digest of
+its input, so a re-run under changed code is recognisable as a new measurement
+rather than silently overwriting an old one.
 
-### 7. Code execution needs isolation on top of all of the above
+(By contrast `score_components` keys by assertion *type* and averages within
+it. That is a per-type mean by design — a different question from job
+identity.)
 
-Only track D needs the full list: container isolation, resource and time
-limits, no network by default, a filesystem confined to the materialized
-workspace, cancellation, and an audit record of what was executed for which
-submission.
+**Exactly-once is not available, and claiming it is worse than not having it.**
+A job can crash after the provider has answered and before the outcome is
+written; the lease expires and the job runs again. A unique key prevents a
+duplicate row. It does nothing about a duplicate charge, because the side
+effect happened outside the database.
 
-Worth stating plainly, because it inverts the intuition the name "worker"
-creates: **the container is the part that already exists.**
-`CodeExecEvaluator` accepts an injected `ContainerRuntime`
-(`atp/evaluators/code_exec.py:109`), so isolation is a composition decision,
-not a build. What does not exist is everything around it — the job model, the
-limits, the accounting, the audit trail, and the contract changes in §4 and §5.
-Estimating this track by its scariest word gets the cost backwards.
+So the guarantee is stated as it actually is:
+
+- **execution is at-least-once**, bounded by `max_attempts`;
+- **charging is at-most-once where the provider supports an idempotency key**,
+  which is sent and stored with the job;
+- **where it does not**, duplicate spend on retry is an accepted, bounded
+  operational risk — bounded by `max_attempts` and by the reservation below,
+  and visible because every attempt records its provider request ID;
+- **budget is reserved before the call and reconciled after**, so a crash leaks
+  a reservation (recoverable, conservative) rather than overrunning the budget
+  (not recoverable).
+
+Reservation must be atomic against concurrent submissions: two submissions
+racing for the last of a budget must not both succeed. That is a conditional
+update on the budget row, not a read-then-write.
+
+### 7. Track D: the primitive exists; the isolation profile does not
+
+The container runtime exists. `CodeExecEvaluator` accepts an injected
+`ContainerRuntime` (`atp/evaluators/code_exec.py:109`), and the runtime already
+sets `network=none`, a read-only root, CPU and memory limits and a temporary
+workspace. That is a real head start, and the earlier draft was right about the
+*primitive*.
+
+It was wrong about the *profile*. The same module documents a subprocess
+fallback — "Falls back to subprocess + rlimits if no runtime"
+(`atp/evaluators/container.py:4`) — and `_detect_runtime` returns `None` with
+"No container runtime available, using subprocess sandbox"
+(`atp/evaluators/container.py:194`). That is **fail-open**: on a host where the
+runtime is missing or the socket is unreachable, submission-derived code runs
+in the API process's own sandbox. Sensible on a developer's laptop;
+unacceptable under `ISOLATED_WORKER`.
+
+So this section claims only what it can support: **a container execution
+primitive exists; a production isolation profile has yet to be built and
+demonstrated.** That profile requires, at minimum:
+
+- **fail-closed**: no container runtime → the job fails with a reason; never a
+  subprocess fallback;
+- **an image allowlist with digest pins** — not tags, which are mutable;
+- **rootless runtime, and a non-root user inside the container**;
+- **`no-new-privileges`, all capabilities dropped, a PID limit**;
+- **bounded stdout/stderr**, so output volume cannot exhaust the host;
+- **no host path mounts and no Docker socket**, ever;
+- **an adversarial isolation test** — a case that *tries* to escape, reach the
+  network and exhaust resources, and is expected to fail — rather than
+  `is_available()` returning true;
+- **a written Docker-vs-Podman threat-model comparison for this use**, since
+  rootless Podman and a mounted Docker socket are very different exposures.
 
 **Do not build D before there is a suite that needs it.** Nothing shipped in
 `examples/`, `method/` or `benchmarks/` asserts `pytest`, `code_exec`, `npm`,
-`lint` or `custom_command` — checked 2026-07-27. Building a container-execution
-service for a hypothetical suite is how a platform acquires an attack surface
-nobody is using.
+`lint` or `custom_command` — checked 2026-07-27. Building container execution
+for a hypothetical suite is how a platform acquires an attack surface nobody is
+using.
 
-### 8. A third policy, not a wider one
+### 8. Network evaluators need a budget, an opt-in, and a snapshot
 
-The worker gets its own `EvaluationPolicy` (`ISOLATED_WORKER`), derived the same
-way from the vocabulary classification. `UNTRUSTED_SUBMISSION` — the in-process
-policy — never widens. The two contexts are then distinguishable in the code
-that grants them, and an evaluator permitted in the worker cannot become
-permitted in the API process by accident.
+`llm_eval` and `factuality` execute nothing. Their problems are cost and
+reproducibility, and the cost is *asymmetric*: a self-service participant's
+submission spends the operator's money, at up to 120 submissions per minute.
 
-Tracks A and B do change `UNTRUSTED_SUBMISSION`, and correctly: they remove the
-reason the classification excluded those evaluators, so the derivation yields a
-different answer. That is the classification working, not being overridden.
+Therefore: a per-benchmark budget with a hard cap, reserved atomically as in
+§6; an explicit operator opt-in per benchmark rather than a global switch,
+gated by its own RBAC permission rather than by "is admin"; and a recorded
+per-submission cost. An exhausted budget makes assertions **skip with a
+reason** — they do not become zeros, and they do not silently fall back to a
+cheaper judge.
 
-### 9. Jobs live in the database, not in a broker
+**The opt-in and its budget are snapshotted when a run starts.** Otherwise a
+benchmark edited mid-run scores its early and late tasks under different rules,
+and the run's total means nothing in particular.
+
+### 9. Jobs live in a table, and the table needs a protocol
 
 The deployment is one VPS running Docker Compose (`deploy/docker-compose.yml`).
-Adding Redis or Celery adds a service to operate, monitor, and secure, for a
-queue whose depth is bounded by benchmark participation.
+Redis or Celery would add a service to operate, monitor and secure, for a queue
+whose depth is bounded by benchmark participation. A job table plus a poller
+gives durability across restart — the property `asyncio.create_task` lacks —
+with no new infrastructure, and keeps job state in the same transaction as the
+task result it belongs to.
 
-A job table plus a poller in the same process gives durability across restart —
-the property `asyncio.create_task` lacks — with no new infrastructure. It also
-keeps job state in the same transaction as the task result it belongs to, which
-is what makes "submitted but not yet evaluated" a consistent read rather than a
-race.
+"A table and a poller" is not a design, though. Production runs uvicorn and can
+run multiple workers, so **two processes will poll the same table**. The
+protocol is what stops them both running one job:
 
-Revisit if evaluation ever needs to scale horizontally; a job table migrates to
-a broker far more easily than the reverse.
+- **atomic claim**: a single conditional `UPDATE … WHERE state='queued'`
+  returning the claimed row. Never select-then-update.
+- **lease with expiry, plus heartbeat**: a claim is time-bounded; a worker that
+  dies loses the lease and the job returns to `queued`. Interval and duration
+  are configured, not implied.
+- **attempts, backoff, `max_attempts`** — with the §6 caveat that retrying a
+  networked job may spend money again.
+- **terminal states** `SUCCEEDED` / `FAILED` / `CANCELLED`, never re-entered.
+- **dead-letter and operator retry**: a job exhausting `max_attempts` is
+  inspectable and re-queueable by hand, not silently lost.
+- **atomic run finalization**: `total_score` is computed once, when the run's
+  last job reaches a terminal state, under a condition two concurrent
+  finalizers cannot both satisfy.
+- **cancellation**: `POST /runs/{id}/cancel` cancels that run's queued jobs and
+  signals running ones, or the platform keeps spending on a run its owner
+  abandoned.
+- **graceful shutdown**: in-flight jobs are finished or released before exit,
+  so a deploy does not park work until lease expiry.
+- **recovery on start**: leases held by a previous incarnation of this process
+  are reclaimed rather than waited out.
+- **observability**: queue depth, oldest-queued age, lease expiries and failure
+  rate are metrics, because a queue nobody can see is a queue that silently
+  stops.
+
+Revisit the choice if evaluation ever needs more than one host; a job table
+migrates to a broker far more easily than the reverse.
 
 ## Non-goals
 
-- Making judged scores reproducible. They are judgements; the contract says so.
-- Running participant code with network access. If a suite needs that, it is a
-  different ADR with a different threat model.
+- Making judged scores reproducible. They are judgements, and the contract says
+  so.
+- Running participant code with network access. Different threat model,
+  different ADR.
 - Retro-evaluating existing runs. Semantics are derived from stored evidence;
   runs without evidence stay `completion_rate`, honestly.
 
 ## Consequences
 
-**Leaderboard ordering becomes eventually consistent.** A run can be complete
-but not yet scored. The leaderboard must either exclude unsettled runs or show
-them as unsettled; silently ranking a pending run by its completion score would
-publish a wrong order.
-
-**Idempotency becomes load-bearing.** A retried job must not double-charge an
-LLM budget or double-execute a submission. Jobs need a natural key
-(`run_id`, `task_index`, evaluator) and an outcome that is written once.
-
-**Cancellation grows a second meaning.** `POST /runs/{id}/cancel` currently
-marks a run cancelled; it must also cancel that run's pending jobs, or the
-platform keeps spending on a run its owner abandoned.
-
-**Cost becomes an operational concern for the first time.** Nothing on this
-plane has spent money per request before.
+- **Leaderboard ordering becomes eventually consistent**, and unsettled runs go
+  unranked until terminal (§5).
+- **Cost becomes an operational concern for the first time.** Nothing on this
+  plane has spent money per request before.
+- **Retry can cost money** (§6) — a property of the design, stated rather than
+  hidden behind the word "idempotent".
+- **`submit` gains a second success status** (§4), which is a published-SDK
+  concern and not only a server one.
+- **Tracks A and B change `UNTRUSTED_SUBMISSION`** — correctly: they remove the
+  reason the classification excluded those evaluators. The worker gets its own
+  `ISOLATED_WORKER` policy; the in-process policy never widens to accommodate
+  it.
 
 ## Sequencing and triggers
 
 | Track | When |
 |---|---|
-| **A — `composite`** | Do it. It is a policy hole, and closing it costs a construction-path change. |
-| **B — `filesystem`** | Do it after A. Same shape of fix, and it makes a withheld check meaningful rather than merely safe. |
-| **C — network** | When an operator wants a judged benchmark and accepts the bill. Requires §4, §5, §6, §9. |
-| **D — `code_exec`** | When a suite that needs it exists. Requires everything above plus §7. Not before. |
+| **A — `composite`** | Do it. A policy hole, closed by a construction-path change plus the three-valued model in §2. |
+| **B — `filesystem`** | After A. Same shape of fix; also carries the `file_not_exists` regression test. |
+| **C — network** | When an operator wants a judged benchmark and accepts the bill. Requires §4, §5, §6, §8, §9. |
+| **D — `code_exec`** | When a suite that needs it exists. Requires everything above plus the §7 isolation profile, demonstrated adversarially. Not before. |
 
 A and B are ordinary work. C and D are each their own project, and this ADR
-exists so that neither is started by accident when someone reads "step 7" and
+exists so neither is started by accident when someone reads "step 7" and
 assumes it means "build the worker".

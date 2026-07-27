@@ -544,18 +544,32 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
   Proposed 2026-07-27) @owner:github:andrei-shtanakov
   «Шаг 7 — воркер» оказался **четырьмя** разными задачами с разными блокерами; ADR их
   расцепляет, чтобы дешёвые не ждали дорогую. Порядок и триггеры:
-  - [ ] **A — `composite`**: получает resolver вместо `get_registry()`; после этого
-    возвращается в allowlist. Воркер не нужен — это дыра в политике. **Делать.**
-  - [ ] **B — `filesystem`**: получает корень sandbox вместо `workspace_path` из конфига;
-    на сервере это `ArtifactWorkspace`, и проверка впервые начинает измерять работу
-    агента. Воркер не нужен. **Делать после A.**
-  - [ ] **C — сетевые** (`llm_eval`, `factuality`): нужен вынос оценки из
-    request-пути + бюджет с жёстким потолком + явный opt-in на бенчмарк. Изоляция НЕ
-    нужна. Триггер: оператор захотел judged-бенчмарк и принял счёт.
-  - [ ] **D — `code_exec`** (5 типов): всё вышеперечисленное + изоляция. Контейнер —
-    единственная часть, которая уже есть (`CodeExecEvaluator` принимает
-    `ContainerRuntime`); отсутствует job-модель, лимиты, учёт, аудит. Триггер: появился
-    сьют, которому это нужно. На 2026-07-27 ни один shipped-сьют не утверждает `pytest`.
+  - [ ] **A — `composite`**: получает resolver вместо `get_registry()`. Воркер не нужен —
+    это дыра в политике. Но фильтрация листьев — лёгкая половина: нужна **трёхзначная**
+    модель `PASS|FAIL|UNEVALUATED` с правилами Клини для `AND`/`OR`/`NOT`/`threshold`
+    (ADR §2). Превращать refusal в `False`/`0.0` нельзя — это снова «неизмеренное как
+    плохое». Плюс правка docstring `UNTRUSTED_SUBMISSION`
+    (`packages/atp-core/atp/evaluation/policies.py:34`), который сейчас утверждает
+    обратное ADR. **Делать.**
+  - [ ] **B — `filesystem`**: корень **всегда** инъектируется (на сервере —
+    `ArtifactWorkspace`), `workspace_path` становится относительным subpath внутри него,
+    absolute/traversal — явная ошибка конфига, молча игнорировать поле нельзя; старые
+    CLI-сьюты конвертирует явный адаптер (ADR §3). Отдельно: `file_not_exists` при
+    невалидном пути сейчас возвращает `passed=True`
+    (`atp/evaluators/filesystem.py:129`) — на границе политики это наоборот, нужен
+    регресс-тест. **Делать после A.**
+  - [ ] **C — сетевые** (`llm_eval`, `factuality`): вынос оценки из request-пути + бюджет
+    с атомарной резервацией + opt-in на бенчмарк под своей RBAC-ролью + snapshot политики
+    на старте прогона. Изоляция НЕ нужна. Честная гарантия — at-least-once исполнение,
+    at-most-once оплата только там, где провайдер поддерживает idempotency key (ADR §6).
+    Триггер: оператор захотел judged-бенчмарк и принял счёт.
+  - [ ] **D — `code_exec`** (5 типов): всё вышеперечисленное + **доказанный** профиль
+    изоляции. Контейнерный примитив есть, но `container.py` **fail-open** — при
+    отсутствии runtime падает в subprocess (`atp/evaluators/container.py:194`). Нужны
+    fail-closed, digest-pinned allowlist образов, rootless/non-root, no-new-privileges,
+    drop caps, PID limit, bounded stdout, запрет host paths и docker.sock, adversarial
+    isolation-тест и threat-model Docker vs Podman (ADR §7). Триггер: появился сьют,
+    которому это нужно. На 2026-07-27 ни один shipped-сьют не утверждает `pytest`.
 
 ## ~~`atp-method` plugin — run methodology cases via ATP~~ ✅ DONE 2026-06-10
 
