@@ -367,6 +367,42 @@ def check_status_freshness(doc: Path, report: Report, items: list[Item]) -> None
             )
 
 
+#: The three tags the ecosystem contract defines. Robin matches only an item's
+#: first line, so these are ineffective anywhere else.
+CONTRACT_TAG = re.compile(r"@(?:owner|blocked_by|trigger):")
+
+
+def check_tag_placement(doc: Path, report: Report, items: list[Item]) -> None:
+    r"""A contract tag below the checkbox line is invisible where it counts.
+
+    `@owner` / `@blocked_by` / `@trigger` belong at the tail of an item's first
+    line, because the ecosystem registry parses items with
+    ``^\s*[-*]\s*\[ \]\s+(\S.*)$`` and never looks further. This checker reads
+    whole blocks, which is more forgiving — and that forgiveness is precisely
+    how 40 backfilled `@owner` tags came to be invisible to the fleet check and
+    to Robin while this file reported full coverage.
+
+    Our own extensions (the freshness quad, `@provider`, `@consumer`) are
+    deliberately exempt: nothing outside this repo reads them, and forcing them
+    onto the first line would make it unreadable for no gain.
+    """
+    for item in items:
+        lines = item.block.splitlines()
+        if not lines:
+            continue
+        first, rest = lines[0], lines[1:]
+        misplaced = sorted(
+            {tag for line in rest for tag in CONTRACT_TAG.findall(line)}
+            - set(CONTRACT_TAG.findall(first))
+        )
+        if misplaced:
+            report.errors.append(
+                f"{doc.name}:{item.lineno} — {', '.join(misplaced)} sits below "
+                f"the checkbox line, where the ecosystem parser cannot see it; "
+                f"move it to the tail of the item's first line"
+            )
+
+
 def check_owner_coverage(doc: Path, report: Report, items: list[Item]) -> None:
     """Count open items with no owner (one line, not one per item)."""
     unowned = [
@@ -388,6 +424,7 @@ def check_file(doc: Path, report: Report) -> None:
     check_status_pointer(doc, text, report)
     check_owner_form(doc, report, items)
     check_status_freshness(doc, report, items)
+    check_tag_placement(doc, report, items)
     check_owner_coverage(doc, report, items)
 
 
