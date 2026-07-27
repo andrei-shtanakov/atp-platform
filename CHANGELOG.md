@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`composite` runs on the benchmark plane again, under the policy that
+  governs it** (ADR-008 track A). It used to resolve its leaves through the
+  global registry, so nesting `pytest` under a `composite` assertion reached an
+  evaluator the server allowlist exists to withhold. It now builds them through
+  the resolver it is handed, passed down to any depth of nesting; with no
+  resolver bound it evaluates nothing, because a fallback is precisely the hole
+  being closed. The untrusted allowlist goes 19 → 20 assertion types.
+- **A leaf that was not evaluated is no longer a leaf that failed.** Conditions
+  yield `PASS`, `FAIL` or `UNEVALUATED`, propagating by Kleene logic: `AND` lets
+  a real failure decide, `OR` lets a real pass decide, `NOT UNEVALUATED` stays
+  unevaluated, and a threshold is decided only when both ends of the score
+  interval agree (each unknown leaf counting as `[0, 1]`). A composite that
+  cannot be decided raises the new `AssertionUnevaluated`, which the pipeline
+  records as coverage with reason `indeterminate` rather than as a failed
+  measurement. (#274)
+
 - **Benchmark submissions are evaluated, and the score says what it is** — the
   benchmark plane scored 100 for any completed response; it now runs the shared
   `atp.evaluation` pipeline under the server policy and publishes

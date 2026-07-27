@@ -293,3 +293,68 @@ class TestMalformedSubmission:
             json={"task_index": 0, "response": {"status": "completed"}},
         )
         assert submitted.status_code == 422, submitted.status_code
+
+
+COMPOSITE_OK = [
+    {
+        "type": "composite",
+        "config": {
+            "operator": "and",
+            "conditions": [{"type": "contains", "config": {"pattern": "hello"}}],
+        },
+    }
+]
+
+COMPOSITE_SMUGGLING_PYTEST = [
+    {
+        "type": "composite",
+        "config": {
+            "operator": "and",
+            "conditions": [{"type": "pytest", "config": {}}],
+        },
+    }
+]
+
+
+class TestCompositeOnTheBenchmarkPlane:
+    """ADR-008 track A: composite runs here, and its leaves obey the policy.
+
+    These go through the pipeline rather than constructing the evaluator, so
+    they are what proves the pipeline binds its resolver at all — the unit
+    tests inject one by hand and cannot see that step.
+    """
+
+    async def test_a_composite_over_permitted_leaves_is_evaluated(
+        self, evaluating_client: AsyncClient
+    ) -> None:
+        body = await run_one(
+            evaluating_client, suite_with(COMPOSITE_OK), response_with("hello there")
+        )
+        assert body["score_semantics"]["kind"] == "aggregated_evaluation"
+        assert "composite" in body["score_components"]
+
+    async def test_a_composite_hiding_pytest_evaluates_nothing(
+        self, evaluating_client: AsyncClient
+    ) -> None:
+        """The hole: nesting an excluded assertion used to reach it anyway."""
+        body = await run_one(
+            evaluating_client,
+            suite_with(COMPOSITE_SMUGGLING_PYTEST),
+            response_with("hello"),
+        )
+        assert body["score_components"] == {}
+        assert body["score_semantics"]["kind"] == "completion_rate"
+        skipped = body["score_semantics"]["coverage"]["assertions_skipped"]
+        assert skipped == [
+            {"assertion_type": "composite", "reason": "indeterminate", "count": 1}
+        ]
+
+    async def test_a_failing_composite_still_fails(
+        self, evaluating_client: AsyncClient
+    ) -> None:
+        """Unevaluated must not swallow real failures on the way out."""
+        body = await run_one(
+            evaluating_client, suite_with(COMPOSITE_OK), response_with("goodbye")
+        )
+        assert body["score_semantics"]["quality_signal"] is True
+        assert body["score_components"]["composite"] == 0.0

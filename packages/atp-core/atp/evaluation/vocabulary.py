@@ -85,19 +85,14 @@ CALLS_EXTERNAL_SERVICE: Final[frozenset[str]] = frozenset({"llm_judge", "factual
 #: until it accepts a sandbox instead of naming a directory.
 READS_HOST_FILESYSTEM: Final[frozenset[str]] = frozenset({"filesystem"})
 
-#: Evaluators that build their own sub-evaluators instead of receiving them.
-#:
-#: `CompositeEvaluator` resolves each leaf through `get_registry()` directly,
-#: so an assertion the policy would refuse becomes reachable by nesting it:
-#: `composite` → leaf `pytest` executes code that `EXECUTES_UNTRUSTED_INPUT`
-#: exists to keep out. The pipeline's policy check happens before *it* resolves
-#: an evaluator and cannot see inside one. Until a delegating evaluator is
-#: handed the restricted resolver instead of reaching for the global registry,
-#: allowing this class would make every other exclusion advisory.
-DELEGATES_TO_REGISTRY: Final[frozenset[str]] = frozenset({"composite"})
-
 #: Evaluators safe to run in-process against an untrusted submission: they
 #: only inspect the response and the trace.
+#:
+#: `composite` belongs here despite building sub-evaluators, because it now
+#: builds them through the resolver it is handed rather than a global registry
+#: (ADR-008 track A). Its leaves are therefore filtered by whatever policy
+#: governs it, and a leaf it may not evaluate is reported as unevaluated
+#: rather than as a failure.
 #:
 #: Derived by subtraction, so adding an evaluator without classifying it makes
 #: it *permitted* — which is why `test_every_evaluator_is_classified` exists.
@@ -106,7 +101,6 @@ DETERMINISTIC_EVALUATORS: Final[frozenset[str]] = frozenset(
     - EXECUTES_UNTRUSTED_INPUT
     - CALLS_EXTERNAL_SERVICE
     - READS_HOST_FILESYSTEM
-    - DELEGATES_TO_REGISTRY
 )
 
 

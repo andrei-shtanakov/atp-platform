@@ -31,7 +31,7 @@ ATP's role in the ecosystem: task validation for Maestro (`validation_cmd` — s
 - Shipped/runtime code must never read, import, or resolve paths under `../_cowork_output/`.
 - Canonical shippable facts live inside the owning repo: the ecosystem agents-catalog SSOT is **`method/agents-catalog.toml` in this repo** (ADR-ECO-003, canon confirmed 2026-07-03); arbiter vendors a byte-identical copy (`config/agents-catalog.toml`), and `../_cowork_output/contracts/` holds a communication mirror only.
 - Vendoring a pinned copy INTO a repo is the correct pattern; referencing OUT to `../_cowork_output/` from shipped code is the antipattern.
-- Only workspace-local dev tooling (e.g. the conformance check in `../_cowork_output/devtools/`) and documentation may reference it.
+- Only workspace-level dev tooling and documentation may reference it. That tooling no longer lives in `../_cowork_output/devtools/`: it was moved out on 2026-07-10 into its own versioned repo, **`../devtools/`** (`git@github.com:andrei-shtanakov/devtools.git`), precisely because `_cowork_output/` is one machine's scratch and does not travel with a clone. The old path now holds only `MOVED.md`. Cross-repo checks (contract drift, agent-id conformance, graph-registry drift, release drift) live there and are read-only toward every other repo — `make drift`, `make conformance`, `make morning`.
 
 ## Project Overview
 

@@ -1,9 +1,10 @@
 """Unit tests for CompositeEvaluator."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
+from atp.evaluation import AssertionUnevaluated
 from atp.evaluators.base import EvalCheck, EvalResult
 from atp.evaluators.composite import CompositeEvaluator
 from atp.loader.models import (
@@ -21,8 +22,15 @@ from atp.protocol import (
 
 @pytest.fixture
 def evaluator() -> CompositeEvaluator:
-    """Create CompositeEvaluator instance."""
-    return CompositeEvaluator()
+    """A composite bound to the full registry — the CLI's trusted context.
+
+    There is no unbound variant that still works: an unbound composite cannot
+    resolve anything, by design. That is the fix in ADR-008 track A — the
+    global-registry fallback was the policy hole.
+    """
+    from atp.evaluators.registry import get_registry
+
+    return CompositeEvaluator(get_registry())
 
 
 @pytest.fixture
@@ -513,7 +521,7 @@ class TestThresholdCondition:
         sample_task: TestDefinition,
         sample_response: ATPResponse,
     ) -> None:
-        """Threshold without inner condition fails."""
+        """A threshold with nothing to compare is malformed, not failed."""
         assertion = Assertion(
             type="composite",
             config={
@@ -527,8 +535,8 @@ class TestThresholdCondition:
                 ],
             },
         )
-        result = await evaluator.evaluate(sample_task, sample_response, [], assertion)
-        assert result.passed is False
+        with pytest.raises(AssertionUnevaluated):
+            await evaluator.evaluate(sample_task, sample_response, [], assertion)
 
 
 class TestEmptyConditions:
@@ -592,8 +600,8 @@ class TestErrorHandling:
                 ],
             },
         )
-        result = await evaluator.evaluate(sample_task, sample_response, [], assertion)
-        assert result.passed is False
+        with pytest.raises(AssertionUnevaluated):
+            await evaluator.evaluate(sample_task, sample_response, [], assertion)
 
     @pytest.mark.anyio
     async def test_missing_type_in_condition(
@@ -602,7 +610,7 @@ class TestErrorHandling:
         sample_task: TestDefinition,
         sample_response: ATPResponse,
     ) -> None:
-        """Condition without type fails."""
+        """A malformed condition is unmeasured, not measured-and-bad."""
         assertion = Assertion(
             type="composite",
             config={
@@ -612,8 +620,8 @@ class TestErrorHandling:
                 ],
             },
         )
-        result = await evaluator.evaluate(sample_task, sample_response, [], assertion)
-        assert result.passed is False
+        with pytest.raises(AssertionUnevaluated):
+            await evaluator.evaluate(sample_task, sample_response, [], assertion)
 
     @pytest.mark.anyio
     async def test_unknown_assertion_type(
@@ -622,7 +630,7 @@ class TestErrorHandling:
         sample_task: TestDefinition,
         sample_response: ATPResponse,
     ) -> None:
-        """Unknown assertion type in condition fails."""
+        """An unresolvable leaf is unknown, so the AND above it is unknown."""
         assertion = Assertion(
             type="composite",
             config={
@@ -635,12 +643,31 @@ class TestErrorHandling:
                 ],
             },
         )
-        result = await evaluator.evaluate(sample_task, sample_response, [], assertion)
-        assert result.passed is False
+        with pytest.raises(AssertionUnevaluated):
+            await evaluator.evaluate(sample_task, sample_response, [], assertion)
 
 
-class TestWithMockedEvaluators:
-    """Tests using mocked sub-evaluators."""
+class StubResolver:
+    """Resolves whatever the test says, and records what was asked for."""
+
+    def __init__(self, evaluators: dict[str, object]) -> None:
+        self._evaluators = evaluators
+        self.asked: list[str] = []
+
+    def create_for_assertion(self, assertion_type: str) -> object:
+        self.asked.append(assertion_type)
+        if assertion_type not in self._evaluators:
+            raise LookupError(f"no evaluator for '{assertion_type}'")
+        return self._evaluators[assertion_type]
+
+
+class TestWithInjectedEvaluators:
+    """Sub-evaluators arrive through the injected resolver.
+
+    These used to patch `get_registry`, which is exactly the call the fix
+    removes — a test that patches a global is a test that only passes while
+    the global is still being consulted.
+    """
 
     @pytest.mark.anyio
     async def test_and_with_mocked_evaluators(
@@ -655,26 +682,21 @@ class TestWithMockedEvaluators:
             return_value=_make_result(True, 0.9, "mock")
         )
 
-        with patch("atp.evaluators.registry.get_registry") as mock_registry:
-            registry = mock_registry.return_value
-            registry.supports_assertion.return_value = True
-            registry.create_for_assertion.return_value = mock_evaluator
+        composite = CompositeEvaluator(StubResolver({"mock_type": mock_evaluator}))
 
-            assertion = Assertion(
-                type="composite",
-                config={
-                    "operator": "and",
-                    "conditions": [
-                        {"type": "mock_type", "config": {}},
-                        {"type": "mock_type", "config": {}},
-                    ],
-                },
-            )
-            result = await evaluator.evaluate(
-                sample_task, sample_response, [], assertion
-            )
-            assert result.passed is True
-            assert mock_evaluator.evaluate.call_count == 2
+        assertion = Assertion(
+            type="composite",
+            config={
+                "operator": "and",
+                "conditions": [
+                    {"type": "mock_type", "config": {}},
+                    {"type": "mock_type", "config": {}},
+                ],
+            },
+        )
+        result = await composite.evaluate(sample_task, sample_response, [], assertion)
+        assert result.passed is True
+        assert mock_evaluator.evaluate.call_count == 2
 
     @pytest.mark.anyio
     async def test_or_with_mixed_mocked_results(
@@ -689,34 +711,22 @@ class TestWithMockedEvaluators:
         fail_eval = AsyncMock()
         fail_eval.evaluate = AsyncMock(return_value=_make_result(False, 0.0, "fail"))
 
-        call_count = 0
+        composite = CompositeEvaluator(
+            StubResolver({"type_a": fail_eval, "type_b": pass_eval})
+        )
 
-        def create_evaluator(assertion_type: str) -> AsyncMock:
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return fail_eval
-            return pass_eval
-
-        with patch("atp.evaluators.registry.get_registry") as mock_registry:
-            registry = mock_registry.return_value
-            registry.supports_assertion.return_value = True
-            registry.create_for_assertion.side_effect = create_evaluator
-
-            assertion = Assertion(
-                type="composite",
-                config={
-                    "operator": "or",
-                    "conditions": [
-                        {"type": "type_a", "config": {}},
-                        {"type": "type_b", "config": {}},
-                    ],
-                },
-            )
-            result = await evaluator.evaluate(
-                sample_task, sample_response, [], assertion
-            )
-            assert result.passed is True
+        assertion = Assertion(
+            type="composite",
+            config={
+                "operator": "or",
+                "conditions": [
+                    {"type": "type_a", "config": {}},
+                    {"type": "type_b", "config": {}},
+                ],
+            },
+        )
+        result = await composite.evaluate(sample_task, sample_response, [], assertion)
+        assert result.passed is True
 
 
 class TestDefaultOperator:

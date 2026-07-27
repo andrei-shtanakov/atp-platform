@@ -14,7 +14,6 @@ from atp.evaluation import TRUSTED_LOCAL, UNTRUSTED_SUBMISSION
 from atp.evaluation.vocabulary import (
     ASSERTION_TO_EVALUATOR,
     CALLS_EXTERNAL_SERVICE,
-    DELEGATES_TO_REGISTRY,
     EXECUTES_UNTRUSTED_INPUT,
     READS_HOST_FILESYSTEM,
 )
@@ -26,6 +25,9 @@ from atp.evaluation.vocabulary import (
 PERMITTED = {
     "artifact_exists",
     "behavior",
+    # Permitted again as of ADR-008 track A: its leaves are resolved through
+    # the policy-restricted resolver it is handed, not the global registry.
+    "composite",
     "contains",
     "findings_match",
     "forbidden_tools",
@@ -56,10 +58,7 @@ class TestServerPolicy:
     @pytest.mark.parametrize(
         "evaluator",
         sorted(
-            EXECUTES_UNTRUSTED_INPUT
-            | CALLS_EXTERNAL_SERVICE
-            | READS_HOST_FILESYSTEM
-            | DELEGATES_TO_REGISTRY
+            EXECUTES_UNTRUSTED_INPUT | CALLS_EXTERNAL_SERVICE | READS_HOST_FILESYSTEM
         ),
     )
     def test_no_withheld_evaluator_class_is_permitted(self, evaluator: str) -> None:
@@ -83,7 +82,6 @@ class TestServerPolicy:
             "file_exists",
             "file_contains",
             "dir_exists",
-            "composite",
         ],
     )
     def test_named_dangerous_assertions_are_refused(self, assertion: str) -> None:
