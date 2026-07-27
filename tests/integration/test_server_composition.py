@@ -127,10 +127,11 @@ class TestCompositionRoot:
         # grows and says nothing about *which* types crossed the boundary,
         # so it can stay satisfied while the wrong ones do.
         permitted = set(described["allowed_assertion_types"])
-        assert {"contains", "behavior", "findings_match"} <= permitted
-        assert permitted.isdisjoint(
-            {"pytest", "code_exec", "llm_eval", "file_exists", "composite"}
-        )
+        # `composite` is permitted again as of ADR-008 track A: it resolves its
+        # leaves through this very resolver, so nesting an excluded assertion
+        # under it no longer reaches one.
+        assert {"contains", "behavior", "findings_match", "composite"} <= permitted
+        assert permitted.isdisjoint({"pytest", "code_exec", "llm_eval", "file_exists"})
 
     def test_forbidden_evaluator_is_unreachable_though_registered(self) -> None:
         """The platform registry has it; what crosses the boundary does not."""

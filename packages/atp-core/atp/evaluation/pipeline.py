@@ -52,6 +52,19 @@ class SkipReason:
     UNSUPPORTED = "unsupported_assertion_type"
     GUARDRAIL = "guardrail_precondition_failed"
     EVALUATOR_ERROR = "evaluator_error"
+    #: The evaluator ran and declined to reach a verdict — distinct from
+    #: crashing, and very distinct from deciding "fail".
+    INDETERMINATE = "indeterminate"
+
+
+class AssertionUnevaluated(Exception):
+    """Raised by an evaluator that ran but could not reach a verdict.
+
+    The alternative is for such an evaluator to invent one, and the invented
+    verdict is always "fail": a score of zero, indistinguishable from a real
+    measurement of zero. `CompositeEvaluator` raises this when its operator
+    cannot be decided from the leaves it was allowed to evaluate.
+    """
 
 
 @runtime_checkable
@@ -75,6 +88,33 @@ class EvaluatorResolver(Protocol):
     def create_for_assertion(self, assertion_type: str) -> EvaluatorLike:
         """Return an evaluator for this assertion type, or raise if unknown."""
         ...
+
+
+@runtime_checkable
+class ResolverAware(Protocol):
+    """An evaluator that builds sub-evaluators and must be told which resolver.
+
+    Only `CompositeEvaluator` implements this today. It exists because an
+    evaluator that reaches for a global registry evaluates its children under
+    *no* policy — which is how a `composite` wrapping `pytest` used to walk
+    past the server allowlist entirely.
+    """
+
+    def bind_resolver(self, resolver: EvaluatorResolver) -> None:
+        """Receive the resolver this evaluator must build children through."""
+        ...
+
+
+def bind_resolver(evaluator: object, resolver: EvaluatorResolver) -> None:
+    """Hand a freshly resolved evaluator the resolver that produced it.
+
+    One rule, applied at every site that resolves an evaluator: whoever
+    resolved it passes on the resolver *it* was governed by. A composite
+    nested three levels deep is then restricted exactly as its root was,
+    without any level having to remember to re-apply the policy.
+    """
+    if isinstance(evaluator, ResolverAware):
+        evaluator.bind_resolver(resolver)
 
 
 #: Returns a reason to skip evaluation entirely, or None to proceed.
@@ -228,8 +268,19 @@ class EvaluationPipeline:
             )
             return
 
+        # A delegating evaluator builds its children through the same resolver
+        # this pipeline uses, so the policy reaches all the way down.
+        bind_resolver(evaluator, self._resolver)
+
         try:
             result = await evaluator.evaluate(task, response, trace, assertion)
+        except AssertionUnevaluated as exc:
+            # Ran, declined to guess. Recorded as coverage rather than as a
+            # failed measurement — the distinction the whole contract rests on.
+            outcome.skipped.append(
+                SkippedEvaluation(assertion.type, SkipReason.INDETERMINATE, str(exc))
+            )
+            return
         except Exception as exc:
             logger.warning(
                 "evaluator for '%s' failed: %s", assertion.type, exc, exc_info=True

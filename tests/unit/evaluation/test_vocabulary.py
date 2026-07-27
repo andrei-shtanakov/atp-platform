@@ -18,7 +18,6 @@ import pytest
 from atp.evaluation.vocabulary import (
     ASSERTION_TO_EVALUATOR,
     CALLS_EXTERNAL_SERVICE,
-    DELEGATES_TO_REGISTRY,
     DETERMINISTIC_EVALUATORS,
     EXECUTES_UNTRUSTED_INPUT,
     READS_HOST_FILESYSTEM,
@@ -100,7 +99,6 @@ class TestBehaviourClassification:
             | EXECUTES_UNTRUSTED_INPUT
             | CALLS_EXTERNAL_SERVICE
             | READS_HOST_FILESYSTEM
-            | DELEGATES_TO_REGISTRY
         )
         assert all_evaluators == classified
 
@@ -110,7 +108,6 @@ class TestBehaviourClassification:
             EXECUTES_UNTRUSTED_INPUT,
             CALLS_EXTERNAL_SERVICE,
             READS_HOST_FILESYSTEM,
-            DELEGATES_TO_REGISTRY,
         ],
     )
     def test_classes_do_not_overlap(self, unsafe: frozenset[str]) -> None:
@@ -126,9 +123,14 @@ class TestBehaviourClassification:
         """`workspace_path` comes from the suite, so the server's disk is the target."""
         assert assertion not in deterministic_assertion_types()
 
-    def test_delegating_assertions_are_not_deterministic(self) -> None:
-        """`composite` resolves its leaves itself, so it can nest an excluded one."""
-        assert "composite" not in deterministic_assertion_types()
+    def test_composite_is_deterministic_again(self) -> None:
+        """ADR-008 track A: its leaves go through the resolver it is handed.
+
+        It stopped reaching for the global registry, so nesting an excluded
+        assertion under it no longer escapes the policy — the behavioural
+        proof is in `tests/unit/evaluators/test_composite.py`.
+        """
+        assert "composite" in deterministic_assertion_types()
 
     @pytest.mark.parametrize("assertion", ["pytest", "code_exec", "npm", "lint"])
     def test_executing_assertions_are_not_deterministic(self, assertion: str) -> None:

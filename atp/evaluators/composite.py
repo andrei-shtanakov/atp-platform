@@ -1,11 +1,58 @@
-"""Composite evaluator for combining evaluators with boolean logic."""
+"""Composite evaluator: boolean logic over other evaluators.
 
+Two properties matter here beyond the boolean algebra, and they are the reason
+this module was withheld from the benchmark plane until now (ADR-008 track A).
+
+**Children are built through an injected resolver, never a global registry.**
+An evaluator that calls `get_registry()` evaluates its children under no
+policy at all, so a `composite` wrapping `pytest` walked straight past the
+server allowlist. The resolver arrives from whoever resolved *this* evaluator
+and is passed down to whoever this evaluator resolves, so a leaf three levels
+deep is restricted exactly as the root was. With no resolver bound there is no
+fallback: the leaf is unevaluated. Fail-closed is the point — a fallback is
+precisely the hole being closed.
+
+**A leaf that was not evaluated is not a leaf that failed.** A refused,
+unknown or broken leaf yields `UNEVALUATED`, and the operators propagate it by
+Kleene logic. Collapsing it to `False`/`0.0` would publish "assessed and bad"
+for something nobody assessed, which is the defect the benchmark score
+contract exists to prevent.
+"""
+
+from __future__ import annotations
+
+import logging
+from enum import StrEnum
 from typing import Any
 
+from atp.evaluation import AssertionUnevaluated, EvaluatorResolver, bind_resolver
 from atp.loader.models import Assertion, TestDefinition
 from atp.protocol import ATPEvent, ATPResponse
 
 from .base import EvalCheck, EvalResult, Evaluator
+
+logger = logging.getLogger(__name__)
+
+
+class Verdict(StrEnum):
+    """Three-valued outcome of a condition."""
+
+    PASS = "pass"
+    FAIL = "fail"
+    #: Not measured. Never a synonym for "failed".
+    UNEVALUATED = "unevaluated"
+
+
+#: A condition's score as an interval. Degenerate (`lo == hi`) when everything
+#: underneath was evaluated; widened to the unknown's full range otherwise, so
+#: a threshold can tell "provably above" from "might be either".
+ScoreRange = tuple[float, float]
+
+#: What an unevaluated leaf contributes: no information at all.
+UNKNOWN_RANGE: ScoreRange = (0.0, 1.0)
+
+#: Internal result of evaluating one condition.
+Outcome = tuple[Verdict, ScoreRange, list[EvalCheck]]
 
 
 class CompositeEvaluator(Evaluator):
@@ -32,10 +79,17 @@ class CompositeEvaluator(Evaluator):
               config: { ... }
     """
 
+    def __init__(self, resolver: EvaluatorResolver | None = None) -> None:
+        self._resolver = resolver
+
     @property
     def name(self) -> str:
         """Return the evaluator name."""
         return "composite"
+
+    def bind_resolver(self, resolver: EvaluatorResolver) -> None:
+        """Receive the resolver this evaluator must build its leaves through."""
+        self._resolver = resolver
 
     async def evaluate(
         self,
@@ -47,14 +101,9 @@ class CompositeEvaluator(Evaluator):
         """
         Evaluate composite assertions using boolean logic.
 
-        Args:
-            task: Test definition containing task details.
-            response: ATP Response from the agent.
-            trace: List of ATP Events from execution.
-            assertion: Assertion with composite config.
-
-        Returns:
-            EvalResult with combined check outcomes.
+        Raises:
+            AssertionUnevaluated: if the operator cannot be decided from the
+                leaves this evaluator was permitted and able to evaluate.
         """
         config = assertion.config
         operator = config.get("operator", "and")
@@ -71,9 +120,18 @@ class CompositeEvaluator(Evaluator):
                 ]
             )
 
-        passed, score, sub_checks = await self._evaluate_operator(
+        verdict, score_range, sub_checks = await self._evaluate_operator(
             operator, conditions, task, response, trace
         )
+
+        if verdict is Verdict.UNEVALUATED:
+            raise AssertionUnevaluated(
+                f"composite '{operator}' could not be decided: "
+                f"{self._unevaluated_detail(sub_checks)}"
+            )
+
+        passed = verdict is Verdict.PASS
+        score = _report_score(verdict, score_range)
 
         summary_check = self._create_check(
             name=f"composite_{operator}",
@@ -85,6 +143,9 @@ class CompositeEvaluator(Evaluator):
                 "operator": operator,
                 "score": score,
                 "num_conditions": len(conditions),
+                # Present whenever the verdict held despite missing leaves, so
+                # a reader can see the answer was decided, not complete.
+                "score_bounds": list(score_range),
                 "sub_checks": [
                     {
                         "name": c.name,
@@ -96,10 +157,15 @@ class CompositeEvaluator(Evaluator):
                 ],
             },
         )
-        if passed:
-            summary_check.score = score
+        summary_check.score = score
 
         return self._create_result([summary_check])
+
+    @staticmethod
+    def _unevaluated_detail(sub_checks: list[EvalCheck]) -> str:
+        """Summarize why, from the leaf checks that recorded a reason."""
+        reasons = [c.message for c in sub_checks if c.message and not c.passed]
+        return "; ".join(reasons) if reasons else "no leaf produced a verdict"
 
     async def _evaluate_operator(
         self,
@@ -108,27 +174,21 @@ class CompositeEvaluator(Evaluator):
         task: TestDefinition,
         response: ATPResponse,
         trace: list[ATPEvent],
-    ) -> tuple[bool, float, list[EvalCheck]]:
-        """Evaluate conditions with a boolean operator.
-
-        Returns:
-            Tuple of (passed, score, sub_checks).
-        """
+    ) -> Outcome:
+        """Evaluate conditions with a boolean operator."""
         if operator == "and":
             return await self._evaluate_and(conditions, task, response, trace)
-        elif operator == "or":
+        if operator == "or":
             return await self._evaluate_or(conditions, task, response, trace)
-        elif operator == "not":
+        if operator == "not":
             return await self._evaluate_not(conditions, task, response, trace)
-        elif operator == "threshold":
+        if operator == "threshold":
             return await self._evaluate_threshold(conditions, task, response, trace)
-        else:
-            check = self._create_check(
-                name="composite_error",
-                passed=False,
-                message=f"Unknown operator: {operator}",
-            )
-            return False, 0.0, [check]
+
+        # An operator nobody implements is a malformed suite, not a failed
+        # agent. Reporting it as a failure would score the author's typo
+        # against the agent.
+        return self._unevaluated(f"Unknown operator: {operator}")
 
     async def _evaluate_and(
         self,
@@ -136,23 +196,35 @@ class CompositeEvaluator(Evaluator):
         task: TestDefinition,
         response: ATPResponse,
         trace: list[ATPEvent],
-    ) -> tuple[bool, float, list[EvalCheck]]:
-        """Evaluate AND: all conditions must pass."""
+    ) -> Outcome:
+        """AND: a real failure decides it; otherwise an unknown blocks it.
+
+        The asymmetry is deliberate. A conjunction containing one genuine
+        failure is false whatever the unknowns turn out to be, and refusing to
+        say so would be its own kind of dishonesty.
+        """
         all_checks: list[EvalCheck] = []
-        all_passed = True
-        total_score = 0.0
+        verdicts: list[Verdict] = []
+        los: list[float] = []
+        his: list[float] = []
 
         for condition in conditions:
-            passed, score, checks = await self._evaluate_condition(
+            verdict, (lo, hi), checks = await self._evaluate_condition(
                 condition, task, response, trace
             )
             all_checks.extend(checks)
-            if not passed:
-                all_passed = False
-            total_score += score
+            verdicts.append(verdict)
+            los.append(lo)
+            his.append(hi)
 
-        avg_score = total_score / len(conditions) if conditions else 1.0
-        return all_passed, avg_score, all_checks
+        count = len(conditions)
+        score_range = (sum(los) / count, sum(his) / count)
+
+        if Verdict.FAIL in verdicts:
+            return Verdict.FAIL, score_range, all_checks
+        if Verdict.UNEVALUATED in verdicts:
+            return Verdict.UNEVALUATED, score_range, all_checks
+        return Verdict.PASS, score_range, all_checks
 
     async def _evaluate_or(
         self,
@@ -160,22 +232,29 @@ class CompositeEvaluator(Evaluator):
         task: TestDefinition,
         response: ATPResponse,
         trace: list[ATPEvent],
-    ) -> tuple[bool, float, list[EvalCheck]]:
-        """Evaluate OR: at least one condition must pass."""
+    ) -> Outcome:
+        """OR: a real pass decides it; otherwise an unknown blocks it."""
         all_checks: list[EvalCheck] = []
-        any_passed = False
-        max_score = 0.0
+        verdicts: list[Verdict] = []
+        lo_max = 0.0
+        hi_max = 0.0
 
         for condition in conditions:
-            passed, score, checks = await self._evaluate_condition(
+            verdict, (lo, hi), checks = await self._evaluate_condition(
                 condition, task, response, trace
             )
             all_checks.extend(checks)
-            if passed:
-                any_passed = True
-            max_score = max(max_score, score)
+            verdicts.append(verdict)
+            lo_max = max(lo_max, lo)
+            hi_max = max(hi_max, hi)
 
-        return any_passed, max_score, all_checks
+        score_range = (lo_max, hi_max)
+
+        if Verdict.PASS in verdicts:
+            return Verdict.PASS, score_range, all_checks
+        if Verdict.UNEVALUATED in verdicts:
+            return Verdict.UNEVALUATED, score_range, all_checks
+        return Verdict.FAIL, score_range, all_checks
 
     async def _evaluate_not(
         self,
@@ -183,18 +262,20 @@ class CompositeEvaluator(Evaluator):
         task: TestDefinition,
         response: ATPResponse,
         trace: list[ATPEvent],
-    ) -> tuple[bool, float, list[EvalCheck]]:
-        """Evaluate NOT: invert the first condition's result."""
+    ) -> Outcome:
+        """NOT: inverts a verdict, but the negation of unknown is unknown."""
         if not conditions:
-            return True, 1.0, []
+            return Verdict.PASS, (1.0, 1.0), []
 
-        condition = conditions[0]
-        passed, score, checks = await self._evaluate_condition(
-            condition, task, response, trace
+        verdict, (lo, hi), checks = await self._evaluate_condition(
+            conditions[0], task, response, trace
         )
-        inverted = not passed
-        inverted_score = 1.0 - score
-        return inverted, inverted_score, checks
+        inverted_range = (1.0 - hi, 1.0 - lo)
+
+        if verdict is Verdict.UNEVALUATED:
+            return Verdict.UNEVALUATED, inverted_range, checks
+        flipped = Verdict.FAIL if verdict is Verdict.PASS else Verdict.PASS
+        return flipped, inverted_range, checks
 
     async def _evaluate_threshold(
         self,
@@ -202,37 +283,36 @@ class CompositeEvaluator(Evaluator):
         task: TestDefinition,
         response: ATPResponse,
         trace: list[ATPEvent],
-    ) -> tuple[bool, float, list[EvalCheck]]:
-        """Evaluate threshold: check if score meets threshold.
+    ) -> Outcome:
+        """Threshold: decided only when both ends of the interval agree.
 
-        Expects conditions to be a single-element list with
-        threshold config embedded in the first element.
-        This method is called from _evaluate_condition when
-        operator=threshold is used.
+        With every leaf evaluated the interval is a point and this is the
+        comparison it always was. With an unknown in it, "score >= 0.8" has no
+        answer unless the unknown cannot change it.
         """
         if not conditions:
-            return True, 1.0, []
+            return Verdict.PASS, (1.0, 1.0), []
 
-        # The threshold config is passed through conditions[0]
         threshold_config = conditions[0]
         value = threshold_config.get("value", 0.0)
         comparator = threshold_config.get("comparator", ">=")
         inner = threshold_config.get("condition", {})
 
         if not inner:
-            check = self._create_check(
-                name="threshold_error",
-                passed=False,
-                message="No inner condition for threshold",
-            )
-            return False, 0.0, [check]
+            return self._unevaluated("No inner condition for threshold")
 
-        passed, score, checks = await self._evaluate_condition(
+        verdict, (lo, hi), checks = await self._evaluate_condition(
             inner, task, response, trace
         )
+        if verdict is Verdict.UNEVALUATED and lo == hi:
+            # Unknown with no usable bounds at all.
+            return Verdict.UNEVALUATED, UNKNOWN_RANGE, checks
 
-        threshold_passed = _compare(score, comparator, value)
-        return threshold_passed, score, checks
+        at_lo = _compare(lo, comparator, value)
+        at_hi = _compare(hi, comparator, value)
+        if at_lo != at_hi:
+            return Verdict.UNEVALUATED, (lo, hi), checks
+        return (Verdict.PASS if at_lo else Verdict.FAIL), (lo, hi), checks
 
     async def _evaluate_condition(
         self,
@@ -240,7 +320,7 @@ class CompositeEvaluator(Evaluator):
         task: TestDefinition,
         response: ATPResponse,
         trace: list[ATPEvent],
-    ) -> tuple[bool, float, list[EvalCheck]]:
+    ) -> Outcome:
         """Evaluate a single condition (may be nested or leaf).
 
         A condition is either:
@@ -268,7 +348,6 @@ class CompositeEvaluator(Evaluator):
                 operator, nested_conditions, task, response, trace
             )
 
-        # Leaf assertion — delegate to the appropriate evaluator
         return await self._evaluate_leaf(condition, task, response, trace)
 
     async def _evaluate_leaf(
@@ -277,36 +356,73 @@ class CompositeEvaluator(Evaluator):
         task: TestDefinition,
         response: ATPResponse,
         trace: list[ATPEvent],
-    ) -> tuple[bool, float, list[EvalCheck]]:
-        """Evaluate a leaf assertion via the evaluator registry."""
-        from .registry import get_registry
+    ) -> Outcome:
+        """Evaluate a leaf through the injected resolver, or report unknown.
 
+        Every failure mode here is `UNEVALUATED`, never `FAIL`: a leaf the
+        policy withheld, a type nobody implements, an evaluator that crashed
+        and a malformed condition are all things nobody measured. Scoring them
+        as failures would charge the agent for the suite author's typo or for
+        the server's own restrictions.
+        """
         assertion_type = condition.get("type", "")
-        assertion_config = condition.get("config", {})
-
         if not assertion_type:
-            check = self._create_check(
-                name="composite_error",
-                passed=False,
-                message="Condition missing 'type' field",
+            return self._unevaluated("Condition missing 'type' field")
+
+        if self._resolver is None:
+            # No global-registry fallback by design: reaching for one is
+            # exactly how this evaluator used to escape its policy.
+            return self._unevaluated(
+                f"No resolver bound; cannot evaluate leaf '{assertion_type}'"
             )
-            return False, 0.0, [check]
 
-        registry = get_registry()
+        try:
+            evaluator = self._resolver.create_for_assertion(assertion_type)
+        except Exception as exc:
+            # Covers both "policy withheld it" and "nobody implements it";
+            # the resolver's message says which.
+            return self._unevaluated(f"Leaf '{assertion_type}' unavailable: {exc}")
 
-        if not registry.supports_assertion(assertion_type):
-            check = self._create_check(
-                name="composite_error",
-                passed=False,
-                message=(f"Unknown assertion type: {assertion_type}"),
+        # Pass the restriction down: a nested composite is bound as we were.
+        bind_resolver(evaluator, self._resolver)
+
+        sub_assertion = Assertion(
+            type=assertion_type, config=condition.get("config", {})
+        )
+        try:
+            result = await evaluator.evaluate(task, response, trace, sub_assertion)
+        except AssertionUnevaluated as exc:
+            return self._unevaluated(f"Leaf '{assertion_type}': {exc}")
+        except Exception as exc:
+            logger.warning(
+                "composite leaf '%s' failed: %s", assertion_type, exc, exc_info=True
             )
-            return False, 0.0, [check]
+            return self._unevaluated(f"Leaf '{assertion_type}' errored: {exc}")
 
-        evaluator = registry.create_for_assertion(assertion_type)
-        sub_assertion = Assertion(type=assertion_type, config=assertion_config)
-        result = await evaluator.evaluate(task, response, trace, sub_assertion)
+        verdict = Verdict.PASS if result.passed else Verdict.FAIL
+        return verdict, (result.score, result.score), list(result.checks)
 
-        return result.passed, result.score, list(result.checks)
+    def _unevaluated(self, message: str) -> Outcome:
+        """An unknown, carrying a check that records why."""
+        check = self._create_check(
+            name="composite_unevaluated", passed=False, message=message
+        )
+        return Verdict.UNEVALUATED, UNKNOWN_RANGE, [check]
+
+
+def _report_score(verdict: Verdict, score_range: ScoreRange) -> float:
+    """The score to publish for a decided composite.
+
+    When every leaf was evaluated the interval is a point and that point is
+    the score, exactly as before. When the verdict held *despite* an unknown,
+    the interval is not a measurement — so the published score states the
+    verdict (1.0 passed, 0.0 failed) rather than averaging a number that was
+    never measured into one that was.
+    """
+    lo, hi = score_range
+    if lo == hi:
+        return lo
+    return 1.0 if verdict is Verdict.PASS else 0.0
 
 
 def _compare(score: float, comparator: str, value: float) -> bool:

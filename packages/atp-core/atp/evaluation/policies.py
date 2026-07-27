@@ -21,21 +21,25 @@ and the trace. Excluded, and why:
 * **host filesystem reads** (`file_exists`, `file_contains`, …) — the
   directory comes from the suite, not from the sandbox the submission was
   materialized into, so the check measures something unrelated and answers a
-  question about the server's own disk while doing it;
-* **delegation** (`composite`) — resolves its leaves through the global
-  registry, so nesting `pytest` under it would walk straight past this policy
-  and execute submission-derived code in the API process.
+  question about the server's own disk while doing it.
 
-The first two are the classes this plane will eventually run elsewhere; the
-last two are exclusions of a different kind — `filesystem` needs a sandbox it
-is *given* rather than one it is told about, and `composite` needs to be
-handed the restricted resolver instead of reaching for the global one.
+The first two are classes this plane will eventually run elsewhere, and they
+stay excluded until there is an isolated worker to run them in: durable queue,
+resource and time limits, network policy, cost budget, idempotency,
+cancellation, audit trail. Until every one of those exists, "temporarily allow
+it, we'll add limits later" is how an API process ends up executing strangers'
+code. See ADR-008 tracks C and D.
 
-All four stay excluded until there is an isolated worker to run them in:
-durable queue, resource and time limits, network policy, cost budget,
-idempotency, cancellation, audit trail. Until every one of those exists,
-"temporarily allow it, we'll add limits later" is how an API process ends up
-executing strangers' code.
+`filesystem` is a different kind of exclusion — not dangerous *machinery* but
+a wrong *interface*. It needs a sandbox it is given rather than one it is told
+about, which is ADR-008 track B and needs no worker at all.
+
+`composite` used to be excluded here for a third reason and no longer is. It
+resolved its leaves through the global registry, so nesting `pytest` under it
+walked straight past this policy; it now builds them through the resolver it
+is handed, so its leaves are filtered by whatever policy governs it and a
+withheld leaf is reported as unevaluated rather than as a failure (ADR-008
+track A).
 
 The allowlist is derived from the behaviour classification in
 :mod:`atp.evaluation.vocabulary` rather than typed out here. A hand-kept list

@@ -10,20 +10,22 @@ from atp.evaluation.composition import (
     validate_composition,
 )
 from atp.evaluation.pipeline import (
+    AssertionUnevaluated,
     EvaluationOutcome,
     EvaluationPipeline,
     EvaluationPolicy,
     EvaluatorLike,
     EvaluatorResolver,
+    ResolverAware,
     SkippedEvaluation,
     SkipReason,
+    bind_resolver,
     no_artifacts,
 )
 from atp.evaluation.policies import TRUSTED_LOCAL, UNTRUSTED_SUBMISSION
 from atp.evaluation.vocabulary import (
     ASSERTION_TO_EVALUATOR,
     CALLS_EXTERNAL_SERVICE,
-    DELEGATES_TO_REGISTRY,
     DETERMINISTIC_EVALUATORS,
     EXECUTES_UNTRUSTED_INPUT,
     READS_HOST_FILESYSTEM,
@@ -40,6 +42,9 @@ from atp.evaluation.workspace import (
 
 __all__ = [
     "ASSERTION_TO_EVALUATOR",
+    "AssertionUnevaluated",
+    "ResolverAware",
+    "bind_resolver",
     "COMPLETION_ONLY",
     "DETERMINISTIC_ALLOWLIST",
     "EvaluationMode",
@@ -55,7 +60,6 @@ __all__ = [
     "RejectedArtifact",
     "WorkspaceLimits",
     "CALLS_EXTERNAL_SERVICE",
-    "DELEGATES_TO_REGISTRY",
     "DETERMINISTIC_EVALUATORS",
     "EXECUTES_UNTRUSTED_INPUT",
     "READS_HOST_FILESYSTEM",

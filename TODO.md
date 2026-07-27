@@ -544,13 +544,13 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
   Proposed 2026-07-27) @owner:github:andrei-shtanakov
   «Шаг 7 — воркер» оказался **четырьмя** разными задачами с разными блокерами; ADR их
   расцепляет, чтобы дешёвые не ждали дорогую. Порядок и триггеры:
-  - [ ] **A — `composite`**: получает resolver вместо `get_registry()`. Воркер не нужен —
-    это дыра в политике. Но фильтрация листьев — лёгкая половина: нужна **трёхзначная**
-    модель `PASS|FAIL|UNEVALUATED` с правилами Клини для `AND`/`OR`/`NOT`/`threshold`
-    (ADR §2). Превращать refusal в `False`/`0.0` нельзя — это снова «неизмеренное как
-    плохое». Плюс правка docstring `UNTRUSTED_SUBMISSION`
-    (`packages/atp-core/atp/evaluation/policies.py:34`), который сейчас утверждает
-    обратное ADR. **Делать.**
+  - [x] **A — `composite`** ✅ 2026-07-27 (PR #274): получает resolver вместо
+    `get_registry()` и передаёт его вглубь; без привязки не резолвит ничего (fail-closed).
+    Трёхзначная модель `PASS|FAIL|UNEVALUATED` с логикой Клини; `threshold` решается по
+    обоим концам интервала. Нерешаемый composite → `AssertionUnevaluated` → пайплайн
+    пишет coverage с причиной `indeterminate`, а не провал. Allowlist 19 → 20;
+    `DELEGATES_TO_REGISTRY` удалён (класс перестал быть правдой), docstring
+    `UNTRUSTED_SUBMISSION` приведён в соответствие с ADR.
   - [ ] **B — `filesystem`**: корень **всегда** инъектируется (на сервере —
     `ArtifactWorkspace`), `workspace_path` становится относительным subpath внутри него,
     absolute/traversal — явная ошибка конфига, молча игнорировать поле нельзя; старые
