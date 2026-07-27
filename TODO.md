@@ -539,12 +539,23 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
   `atp/server.py`, и наконец проводка в `POST /runs/{id}/submit` + честный
   `score_semantics`. План и ратифицированная таблица —
   [`docs/superpowers/plans/2026-07-26-step6-score-semantics.md`](docs/superpowers/plans/2026-07-26-step6-score-semantics.md).
-- [ ] **Шаг 7 — воркер для исполняющих и сетевых эвалюаторов** (триггер, не дата).
-  `code_exec`/`pytest`/`npm`/`lint`/`custom_command`, `llm_eval`/`factuality`, а также
-  `filesystem` (нужен sandbox, который ему *передают*, а не называют в конфиге) и
-  `composite` (нужен ограниченный resolver вместо глобального реестра) остаются вне
-  benchmark-плоскости, пока нет: durable queue, лимитов по ресурсам и времени, сетевой
-  политики, бюджета стоимости, идемпотентности, отмены и аудита. ADR — до кода.
+- [ ] **13 удержанных типов утверждений на benchmark-плоскости** — ADR-008
+  ([`docs/adr/008-benchmark-evaluation-worker.md`](docs/adr/008-benchmark-evaluation-worker.md),
+  Proposed 2026-07-27) @owner:github:andrei-shtanakov
+  «Шаг 7 — воркер» оказался **четырьмя** разными задачами с разными блокерами; ADR их
+  расцепляет, чтобы дешёвые не ждали дорогую. Порядок и триггеры:
+  - [ ] **A — `composite`**: получает resolver вместо `get_registry()`; после этого
+    возвращается в allowlist. Воркер не нужен — это дыра в политике. **Делать.**
+  - [ ] **B — `filesystem`**: получает корень sandbox вместо `workspace_path` из конфига;
+    на сервере это `ArtifactWorkspace`, и проверка впервые начинает измерять работу
+    агента. Воркер не нужен. **Делать после A.**
+  - [ ] **C — сетевые** (`llm_eval`, `factuality`): нужен вынос оценки из
+    request-пути + бюджет с жёстким потолком + явный opt-in на бенчмарк. Изоляция НЕ
+    нужна. Триггер: оператор захотел judged-бенчмарк и принял счёт.
+  - [ ] **D — `code_exec`** (5 типов): всё вышеперечисленное + изоляция. Контейнер —
+    единственная часть, которая уже есть (`CodeExecEvaluator` принимает
+    `ContainerRuntime`); отсутствует job-модель, лимиты, учёт, аудит. Триггер: появился
+    сьют, которому это нужно. На 2026-07-27 ни один shipped-сьют не утверждает `pytest`.
 
 ## ~~`atp-method` plugin — run methodology cases via ATP~~ ✅ DONE 2026-06-10
 
