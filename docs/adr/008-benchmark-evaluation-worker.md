@@ -3,8 +3,11 @@
 **Status**: Proposed (2026-07-27)
 **Date**: 2026-07-27
 **Builds on**: #272 (step 6 — the benchmark plane runs deterministic evaluators
-and labels the result), `atp/evaluation/policies.py` (policy per execution
-context), `atp/evaluators/container.py` (existing container runtime).
+and labels the result), `packages/atp-core/atp/evaluation/policies.py` (policy per
+execution context), `atp/evaluators/container.py` (existing container runtime).
+Paths are given as they resolve from the repo root; `atp/evaluation` is a
+symlink to the atp-core package, so the package path is cited where the file
+actually lives.
 **Supersedes the label** "step 7 — worker for executing evaluators" in `TODO.md`,
 which turns out to name four different problems.
 
@@ -36,7 +39,8 @@ place makes the client's HTTP timeout the de-facto evaluation timeout and turns
 one slow submission into a stuck worker slot.
 
 **There is no durable background execution.** The only background work today is
-webhook delivery via `asyncio.create_task` (`webhook.py:145`), which is
+webhook delivery via `asyncio.create_task`
+(`packages/atp-dashboard/atp/dashboard/webhook.py:151`), which is
 fire-and-forget and loses in-flight work on restart. Nothing exists to build on.
 
 ## Decision
@@ -55,15 +59,16 @@ plane. C and D are platform capabilities. Only D needs containers.
 
 ### 2. Track A: `composite` receives the resolver it is allowed to use
 
-`CompositeEvaluator._evaluate_leaf` calls `get_registry()`. It should be handed
-the same `EvaluatorResolver` the pipeline holds, so its leaves pass through the
-policy that governs its parent. Then `composite` under `UNTRUSTED_SUBMISSION`
+`CompositeEvaluator._evaluate_leaf` calls `get_registry()`
+(`atp/evaluators/composite.py:282`). It should be handed the same
+`EvaluatorResolver` the pipeline holds, so its leaves pass through the policy
+that governs its parent. Then `composite` under `UNTRUSTED_SUBMISSION`
 composes permitted leaves and reports a policy refusal for the rest — the same
 answer the pipeline gives at the top level.
 
 `EvaluatorRegistry.create_for_assertion` constructs with no arguments
-(`registry.py:180`), so this is a construction-path change, not a one-liner.
-That is the cost, and it is small.
+(`atp/evaluators/registry.py:180`), so this is a construction-path change
+rather than a one-liner. That is the cost, and it is small.
 
 **Once the leaves are policy-filtered, `composite` returns to the allowlist.**
 It never needed a worker; it needed to stop being a hole in the policy.
