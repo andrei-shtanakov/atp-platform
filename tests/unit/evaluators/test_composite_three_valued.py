@@ -314,3 +314,56 @@ class TestPublishedScore:
 def test_verdict_has_exactly_three_values() -> None:
     """A fourth would need propagation rules nobody has written."""
     assert {v.value for v in Verdict} == {"pass", "fail", "unevaluated"}
+
+
+class TestEmptyNestedOperators:
+    """Vacuous cases, which only reach the operators when nested.
+
+    `evaluate` special-cases empty conditions at the top level, so an empty
+    operator can only arrive from inside another one — which is how the
+    average in `AND` came to divide by zero after the three-valued rewrite
+    dropped the guard the original code had.
+    """
+
+    async def test_a_nested_empty_and_is_vacuously_true(self) -> None:
+        evaluator, _ = composite_for({})
+        result = await run(
+            evaluator,
+            {
+                "operator": "and",
+                "conditions": [{"operator": "and", "conditions": []}],
+            },
+        )
+        assert result.passed is True
+        assert result.checks[0].score == 1.0
+
+    async def test_a_nested_empty_or_is_vacuously_false(self) -> None:
+        """The classical counterpart, decided rather than incidental."""
+        evaluator, _ = composite_for({})
+        result = await run(
+            evaluator,
+            {
+                "operator": "and",
+                "conditions": [{"operator": "or", "conditions": []}],
+            },
+        )
+        assert result.passed is False
+
+    async def test_an_empty_operator_is_not_an_evaluator_error(self) -> None:
+        """A crash here would be reported as `evaluator_error` — a wrong reason.
+
+        The suite is unusual, not broken, and the pipeline would have recorded
+        it as the evaluator failing rather than as a vacuous truth.
+        """
+        evaluator, _ = composite_for({"contains": PASSING})
+        result = await run(
+            evaluator,
+            {
+                "operator": "and",
+                "conditions": [
+                    leaf("contains"),
+                    {"operator": "and", "conditions": []},
+                ],
+            },
+        )
+        assert result.passed is True

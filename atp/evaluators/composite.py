@@ -202,7 +202,15 @@ class CompositeEvaluator(Evaluator):
         The asymmetry is deliberate. A conjunction containing one genuine
         failure is false whatever the unknowns turn out to be, and refusing to
         say so would be its own kind of dishonesty.
+
+        An empty conjunction is vacuously true. `evaluate` catches the
+        top-level case before dispatching, but a *nested* `{operator: "and",
+        conditions: []}` arrives here, and the score average has nothing to
+        divide by.
         """
+        if not conditions:
+            return Verdict.PASS, (1.0, 1.0), []
+
         all_checks: list[EvalCheck] = []
         verdicts: list[Verdict] = []
         los: list[float] = []
@@ -233,7 +241,16 @@ class CompositeEvaluator(Evaluator):
         response: ATPResponse,
         trace: list[ATPEvent],
     ) -> Outcome:
-        """OR: a real pass decides it; otherwise an unknown blocks it."""
+        """OR: a real pass decides it; otherwise an unknown blocks it.
+
+        An empty disjunction is vacuously false — the classical counterpart of
+        the empty conjunction above, and what this returned before the
+        three-valued rewrite. It does not divide, so it never crashed; it is
+        spelled out here so the pair is decided rather than incidental.
+        """
+        if not conditions:
+            return Verdict.FAIL, (0.0, 0.0), []
+
         all_checks: list[EvalCheck] = []
         verdicts: list[Verdict] = []
         lo_max = 0.0
