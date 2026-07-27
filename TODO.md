@@ -127,7 +127,12 @@
     плоскости 100 означает «ответ завершён», а не «ответ хорош».
   - [ ] **Осталось не у нас:** consumer contract-тест и обновление статуса зависимости —
     сторона maestro (их репо, отсюда read-only); указатель в KB — `../prograph-vault/`.
-    @owner:github:andrei-shtanakov
+    Сверено 2026-07-27: у maestro **нет открытого пункта** под это. Их `TODO.md:117`
+    (закрытый M3) до сих пор фиксирует «`score_components={}` пока ATP не экспортирует
+    breakdown» — после #272 это уже неверно, но заметка на их стороне. Наше утверждение
+    «осталось не у нас» — это наше ожидание, а не их зафиксированный план.
+    @owner:github:andrei-shtanakov @provider:atp-platform @consumer:maestro
+    @source-owner:maestro @source-ref:maestro@d0fd80e @observed-at:2026-07-27 @recheck-by:2026-10-27
   - [ ] **Deferred, с явным триггером:** первый реально вычисленный компонент → EPIC
     выбирает persistence-модель. DB-колонки нет намеренно: `{}` в каждой строке `Run`
     завёл бы вторую persistence-репрезентацию рядом с существующей `ScoreComponent`
@@ -137,6 +142,13 @@
 - [ ] **R-07: Eval-driven routing validation**
   - A/B тестирование arbiter DT routing vs random vs always-best-agent
   - Совместно с `../arbiter/` — набор test suites на нашей стороне
+  - ⚠️ **Мяч на нашей стороне, сверено 2026-07-27.** `../arbiter/TODO.md:60`:
+    «Данные для R-07 №2 и A/B-вью — прогон второго task_type тремя агентами»
+    помечено там владельцем atp и заблокировано на benchmark-2 с нашей стороны
+    (теги приведены словами: дословная цитата чужой разметки читается нашим же
+    парсером как наша). То есть arbiter ждёт данных от нас, а не мы от них;
+    до сверки наш TODO этого не отражал вовсе.
+    @source-owner:arbiter @source-ref:arbiter@94ed8d2 @observed-at:2026-07-27 @recheck-by:2026-10-27
 
   - **Phase 1 (2026-06-13): code-review вертикаль — тонкий срез.** Планы:
     [`docs/superpowers/plans/2026-06-13-r07-phase1-code-review-eval.md`](docs/superpowers/plans/2026-06-13-r07-phase1-code-review-eval.md)
@@ -146,12 +158,23 @@
       (clean/moderate, SEC-011) + `report_benchmark` reporter + smoke. Ветка `r07/code-review-eval`.
     - [x] **Задача 6 — pipe-check (НЕ бенчмарк):** ✅ 2026-06-17. Прогон против живого `claude` + судьи,
       труба пропускает реальный сигнал — подтверждено. Детали ниже (см. отметку у «платного pipe-check»).
-    - [ ] **arbiter-план** (reader + re-rank + A/B) — написан, не исполнен; после go. **Go получен** (сигнал дискриминирует).
+    - [x] **arbiter-план: reader + re-rank ИСПОЛНЕНЫ** ✅ — сверено 2026-07-27 у владельца.
+      `../arbiter/TODO.md:79`: R-07 track B slice A влит — `get_benchmark_score`
+      (task_type-scoped) + `apply_benchmark_rerank` под `ARBITER_BENCH_WEIGHT`, аудит в
+      `pred.path` (`eec1879` #30, тест `3c307ad` #33, скоуп `1fbbdf7` #34).
+      Наша запись «написан, не исполнен» держалась после отгрузки — тот же класс ошибки,
+      что R-06b/R-03 (#263): мы цитировали себя, а не владельца.
+      @owner:github:andrei-shtanakov @provider:arbiter
+      @source-owner:arbiter @source-ref:arbiter@94ed8d2 @observed-at:2026-07-27 @recheck-by:2026-10-27
+    - [ ] **Открыто у arbiter (не у нас):** A/B-вью над `benchmark_runs`
+      (`../arbiter/TODO.md:33`), crossover-гейт (`:48`), развилка по силе связи `rank_score`
+      (`:50`). Отслеживать, не делать.
+      @owner:github:andrei-shtanakov @provider:arbiter
+      @source-owner:arbiter @source-ref:arbiter@94ed8d2 @observed-at:2026-07-27 @recheck-by:2026-10-27
 
   - **Eval-improvements (план от 2026-06-14, NEXT SESSION):** ревью двух рецензентов сошлось,
     зафиксировано в [`../_cowork_output/10-code-review-eval-improvements-proposals.md`](../_cowork_output/10-code-review-eval-improvements-proposals.md) (v2).
     Порядок исполнения (routing-сигнал идёт ТОЛЬКО из `critical_pass_rate`; рубрика не гейтит):
-      @owner:github:andrei-shtanakov
     - [x] **P3 (ПЕРВЫМ, ~0.5д) — strict `Finding`-валидация + `malformed_rate`.** ✅ Сделано.
       `Finding` pydantic (req `rule_id`/`anchor`/`severity` Literal[critical|major|minor], `extra=ignore`);
       `strict` глобально (одна невалидная находка малформит весь вывод, без lenient-режима).
@@ -201,9 +224,12 @@
       а `output_contract` уводит промпт на `GENERIC_ENVELOPE` (теряется строка-персона
       «senior code reviewer», роль остаётся в `instruction`) — проверить эффект на сигнале.
     - [ ] **#4 языковая ось** — в схеме `agent-eval-case` нет поля `language`, а arbiter
-      роутит по языку (`features.rs` f[1]/f[16]) → скоры надо разбивать по языку + протянуть
+      роутит по языку → скоры надо разбивать по языку + протянуть
       в `benchmark_runs`. Влияет на валидность роутинга. **Реально не начата — следующая ось.**
-      @owner:github:andrei-shtanakov
+      Сверено 2026-07-27 в коде владельца: `../arbiter/arbiter-mcp/src/features.rs:135-136`
+      (`v[1] = task.language.as_ordinal()`) и `:210-211` (`[16] agent_supports_language`).
+      @owner:github:andrei-shtanakov @consumer:arbiter
+      @source-owner:arbiter @source-ref:arbiter@94ed8d2 @observed-at:2026-07-27 @recheck-by:2026-10-27
     - [x] **#2 correctness-семейство** — `code-review-correctness` (capability `correctness`):
       ✅ сделано — 7 кейсов в `method/cases/code-review/case-code-review-correctness-*`
       (logic/spec/distractor/fp), посеянные логические баги и ловушки на ложные срабатывания.
@@ -295,7 +321,9 @@
   - [ ] **M4 — ecosystem handoff.** Когда контрактный модуль устоится — вендоринг-хендофф для
     Maestro / spec-runner / robin-runtime в `../prograph-vault/authored/notes/` (их репо
     отсюда read-only); выравнивание advisory-budget инварианта arbiter.
-    @owner:github:andrei-shtanakov
+    Quad свежести не нужен: пункт не утверждает статус соседей, а описывает нашу будущую
+    отдачу им — условие формализовано триггером.
+    @owner:github:andrei-shtanakov @trigger:"контрактный модуль ADR-ECO-003e устоялся"
 
 - [ ] **RD-007: LearningEvent v1 — обучение через governance, без silent-write**
   - Дизайн: [`docs/2026-07-12-rd-007-learning-event-design.md`](docs/2026-07-12-rd-007-learning-event-design.md) (#248).
@@ -311,6 +339,7 @@
   - Не наше: M1b (robin-runtime — selfreview эмитит события), M1c (prograph-vault — CODEOWNERS
     на `authored/**`). Отслеживать, не делать.
     @owner:github:andrei-shtanakov
+    @source-owner:prograph-vault @source-ref:prograph-vault@4ce14a8 @observed-at:2026-07-27 @recheck-by:2026-10-27
 
 - [x] **Runtime observability & recovery** ✅ 2026-07-19 (#258)
   - План: [`docs/superpowers/plans/2026-07-19-runtime-observability-recovery.md`](docs/superpowers/plans/2026-07-19-runtime-observability-recovery.md).
@@ -326,6 +355,11 @@
   - У `report_benchmark-v1` пять владельцев (вкл. arbiter), дрейфа сейчас нет — задача в том,
     чтобы versioning был дисциплиной, а не удачей: явная политика версий + гейт на дрейф.
   - Пункт ATP-owned, ни в одном нашем плане до 2026-07-26 не значился.
+  - Цитата сверена 2026-07-27 построчно:
+    `../prograph-vault/authored/notes/ecosystem-roadmap.md:56` (формулировка фокуса)
+    и `../prograph-vault/authored/notes/ecosystem-roadmap.md:220` (строка таблицы
+    приоритетов, urgency Medium, «Feeds arbiter routing ✅»).
+    @source-owner:prograph-vault @source-ref:prograph-vault@4ce14a8 @observed-at:2026-07-27 @recheck-by:2026-10-27
 
 - [ ] **Привести логи к `observability-contract/v1`** (живой роадмап §3, enabler для §1.1/1.2/1.4)
   @owner:github:andrei-shtanakov @provider:atp-platform
@@ -336,6 +370,10 @@
     structlog к CLI-рантайму, но **формат не менял** — разрыв с контрактом остался.
   - Приземляется на `dispatcher`, который читает контрактный `.jsonl`; без этого ATP не виден
     в кросс-проектном drill-down.
+  - Цитаты сверены построчно 2026-07-27:
+    `../prograph-vault/authored/notes/ecosystem-roadmap.md:109-110` (фраза переносится
+    через строку) и `../prograph-vault/authored/notes/ecosystem-roadmap.md:114`.
+    @source-owner:prograph-vault @source-ref:prograph-vault@4ce14a8 @observed-at:2026-07-27 @recheck-by:2026-10-27
 
 ### Ждём от других проектов
 
