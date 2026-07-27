@@ -17,29 +17,30 @@ and the trace. Excluded, and why:
 * **code execution** (`pytest`, `npm`, `lint`, `code_exec`, `custom_command`) —
   runs code derived from the submission inside the API process;
 * **network calls** (`llm_eval`, `factuality`) — spends money per submission
-  and makes the score non-reproducible;
-* **host filesystem reads** (`file_exists`, `file_contains`, …) — the
-  directory comes from the suite, not from the sandbox the submission was
-  materialized into, so the check measures something unrelated and answers a
-  question about the server's own disk while doing it.
+  and makes the score non-reproducible.
 
-The first two are classes this plane will eventually run elsewhere, and they
-stay excluded until there is an isolated worker to run them in: durable queue,
+Both are classes this plane will eventually run elsewhere, and they stay
+excluded until there is an isolated worker to run them in: durable queue,
 resource and time limits, network policy, cost budget, idempotency,
 cancellation, audit trail. Until every one of those exists, "temporarily allow
 it, we'll add limits later" is how an API process ends up executing strangers'
 code. See ADR-008 tracks C and D.
 
-`filesystem` is a different kind of exclusion — not dangerous *machinery* but
-a wrong *interface*. It needs a sandbox it is given rather than one it is told
-about, which is ADR-008 track B and needs no worker at all.
+Two evaluators used to be excluded here and no longer are, in both cases
+because the interface was fixed rather than the policy loosened.
 
-`composite` used to be excluded here for a third reason and no longer is. It
-resolved its leaves through the global registry, so nesting `pytest` under it
-walked straight past this policy; it now builds them through the resolver it
-is handed, so its leaves are filtered by whatever policy governs it and a
-withheld leaf is reported as unevaluated rather than as a failure (ADR-008
-track A).
+`composite` resolved its leaves through the global registry, so nesting
+`pytest` under it walked straight past this policy; it now builds them through
+the resolver it is handed, so its leaves are filtered by whatever policy
+governs it and a withheld leaf is reported as unevaluated rather than as a
+failure (ADR-008 track A).
+
+`filesystem` took its root from the suite, so it inspected a directory of the
+server's own instead of the sandbox the submission was materialized into — and
+answered questions about that directory to whoever ran the benchmark. It is
+now given its root by the composition and can address nothing outside it
+(ADR-008 track B), which means on this plane it inspects the submission and
+only the submission.
 
 The allowlist is derived from the behaviour classification in
 :mod:`atp.evaluation.vocabulary` rather than typed out here. A hand-kept list
@@ -53,7 +54,7 @@ from atp.evaluation.pipeline import EvaluationPolicy
 from atp.evaluation.vocabulary import deterministic_assertion_types
 
 #: The CLI: the operator's own suite, on the operator's own machine.
-TRUSTED_LOCAL = EvaluationPolicy(name="trusted_local")
+TRUSTED_LOCAL = EvaluationPolicy(name="trusted_local", trusted=True)
 
 #: The benchmark plane: input from a self-service token holder.
 UNTRUSTED_SUBMISSION = EvaluationPolicy(

@@ -27,6 +27,7 @@ from atp.evaluation import (
     TRUSTED_LOCAL,
     EvaluationOutcome,
     EvaluationPipeline,
+    PreparedResponse,
     SkipReason,
 )
 from atp.loader.models import TestDefinition
@@ -34,7 +35,7 @@ from atp.protocol import ATPResponse
 
 
 @contextlib.contextmanager
-def materialize_artifacts(response: ATPResponse) -> Iterator[ATPResponse]:
+def materialize_artifacts(response: ATPResponse) -> Iterator[PreparedResponse]:
     """Write inline artifacts to the working directory for the block's duration.
 
     `code_exec` evaluators (pytest, npm, lint) import the files under test from
@@ -43,6 +44,11 @@ def materialize_artifacts(response: ATPResponse) -> Iterator[ATPResponse]:
     Local-only by design: the path comes from the agent's response, so this is
     safe exactly to the degree that the agent is trusted. The server plane must
     not reuse it — that is what the injected artifact context exists for.
+
+    The working directory is also the root granted to filesystem evaluators
+    here, because it is where the artifacts just landed. The grant is what
+    makes a `file_exists` assertion mean the same thing on both planes: the
+    files this run produced, not a directory the suite happened to name.
     """
     written: list[Path] = []
     try:
@@ -55,7 +61,7 @@ def materialize_artifacts(response: ATPResponse) -> Iterator[ATPResponse]:
                 file_path.write_text(content)
                 written.append(file_path)
         # The CLI evaluates the response as-is: paths are the operator's own.
-        yield response
+        yield PreparedResponse(response, Path.cwd())
     finally:
         for file_path in written:
             file_path.unlink(missing_ok=True)

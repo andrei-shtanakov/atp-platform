@@ -123,3 +123,59 @@ async def test_the_sandbox_is_gone_afterwards() -> None:
     )
     await pipeline.evaluate(_test_def("contains"), _submission(), [])
     assert workspace.root is None
+
+
+async def test_a_filesystem_assertion_measures_the_submission() -> None:
+    """ADR-008 track B, end to end with the real registry and sandbox.
+
+    Before the root was granted, this assertion could not be run here at all:
+    it would have addressed whatever directory the suite named, which is never
+    where the submission was materialized. It now answers about the artifact
+    the participant actually sent.
+    """
+    workspace = ArtifactWorkspace()
+    pipeline = EvaluationPipeline(
+        get_registry(), UNTRUSTED_SUBMISSION, artifacts=workspace.prepare
+    )
+
+    test_def = TestDefinition(
+        id="t1",
+        name="t1",
+        task=TaskDefinition(description="do the thing"),
+        assertions=[
+            Assertion(type="file_exists", config={"path": "src/main.py"}),
+            Assertion(type="file_exists", config={"path": "never_sent.py"}),
+        ],
+    )
+    outcome = await pipeline.evaluate(test_def, _submission(), [])
+
+    assert outcome.applied == ["file_exists", "file_exists"]
+    assert [r.passed for r in outcome.results] == [True, False]
+
+
+async def test_a_suite_named_directory_is_refused_not_read() -> None:
+    """The defect the track closes, stated against the real composition.
+
+    A benchmark author naming an absolute directory must not turn the
+    submission endpoint into an existence oracle for the server's own disk.
+    """
+    workspace = ArtifactWorkspace()
+    pipeline = EvaluationPipeline(
+        get_registry(), UNTRUSTED_SUBMISSION, artifacts=workspace.prepare
+    )
+
+    test_def = TestDefinition(
+        id="t1",
+        name="t1",
+        task=TaskDefinition(description="do the thing"),
+        assertions=[
+            Assertion(
+                type="file_exists",
+                config={"path": "hosts", "workspace_path": "/etc"},
+            )
+        ],
+    )
+    outcome = await pipeline.evaluate(test_def, _submission(), [])
+
+    assert outcome.results[0].passed is False
+    assert "absolute path is not permitted" in outcome.results[0].checks[0].message

@@ -16,10 +16,13 @@ from atp.evaluation.pipeline import (
     EvaluationPolicy,
     EvaluatorLike,
     EvaluatorResolver,
+    PreparedResponse,
     ResolverAware,
     SkippedEvaluation,
     SkipReason,
+    WorkspaceAware,
     bind_resolver,
+    bind_workspace_root,
     no_artifacts,
 )
 from atp.evaluation.policies import TRUSTED_LOCAL, UNTRUSTED_SUBMISSION
@@ -28,7 +31,6 @@ from atp.evaluation.vocabulary import (
     CALLS_EXTERNAL_SERVICE,
     DETERMINISTIC_EVALUATORS,
     EXECUTES_UNTRUSTED_INPUT,
-    READS_HOST_FILESYSTEM,
     deterministic_assertion_types,
     known_assertion_types,
 )
@@ -43,8 +45,11 @@ from atp.evaluation.workspace import (
 __all__ = [
     "ASSERTION_TO_EVALUATOR",
     "AssertionUnevaluated",
+    "PreparedResponse",
     "ResolverAware",
+    "WorkspaceAware",
     "bind_resolver",
+    "bind_workspace_root",
     "COMPLETION_ONLY",
     "DETERMINISTIC_ALLOWLIST",
     "EvaluationMode",
@@ -62,7 +67,6 @@ __all__ = [
     "CALLS_EXTERNAL_SERVICE",
     "DETERMINISTIC_EVALUATORS",
     "EXECUTES_UNTRUSTED_INPUT",
-    "READS_HOST_FILESYSTEM",
     "EvaluationOutcome",
     "EvaluationPipeline",
     "EvaluationPolicy",

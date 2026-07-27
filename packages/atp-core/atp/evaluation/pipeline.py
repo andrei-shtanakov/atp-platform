@@ -16,6 +16,12 @@ Everything implementation-specific arrives by injection:
   disk. The CLI materializes into the working directory; the server will use a
   bounded sandbox. Filesystem policy is not core's business.
 
+The artifact context also names the directory it materialized into, and that
+root is handed to any evaluator that addresses the filesystem. An evaluator
+must never derive a root from the suite: on the server the suite and the
+submission come from different people, and a root taken from the suite points
+at the server's own disk rather than at the submission (ADR-008 track B).
+
 Two behaviours matter more than they look:
 
 * **A disallowed evaluator is never resolved**, only reported. Checking the
@@ -36,6 +42,7 @@ import contextlib
 import logging
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from atp.core.results import EvalResult
@@ -117,22 +124,75 @@ def bind_resolver(evaluator: object, resolver: EvaluatorResolver) -> None:
         evaluator.bind_resolver(resolver)
 
 
+@runtime_checkable
+class WorkspaceAware(Protocol):
+    """An evaluator that addresses the filesystem and must be told where.
+
+    The root is a grant, not a hint: an evaluator holding one may look inside
+    it and nowhere else. `trusted` says whether the surrounding plane is the
+    operator's own machine, which is the only place a suite may still name a
+    root of its own — see `FilesystemEvaluator` for what that legacy form
+    costs and how long it lives.
+    """
+
+    def bind_workspace_root(self, root: Path, *, trusted: bool = False) -> None:
+        """Receive the directory this evaluator may address, and nothing else."""
+        ...
+
+
+def bind_workspace_root(
+    evaluator: object, root: Path | None, *, trusted: bool = False
+) -> None:
+    """Hand a freshly resolved evaluator the root it is allowed to address.
+
+    Mirrors :func:`bind_resolver`, and for the same reason: applied at every
+    site that resolves an evaluator, so a leaf nested inside a composite is
+    confined exactly as its root was.
+
+    A `None` root binds nothing. That is not an oversight to paper over — an
+    evaluator left unrooted refuses to answer, which is the correct outcome
+    when no composition offered it a directory.
+    """
+    if root is not None and isinstance(evaluator, WorkspaceAware):
+        evaluator.bind_workspace_root(root, trusted=trusted)
+
+
 #: Returns a reason to skip evaluation entirely, or None to proceed.
 GuardrailFn = Callable[[TestDefinition, ATPResponse], str | None]
 
+
+@dataclass(frozen=True)
+class PreparedResponse:
+    """The response evaluators should see, and where its files live.
+
+    Carrying the root here rather than letting evaluators find it themselves
+    is the whole point: it exists only for the duration of one evaluation, and
+    the only object that knows it is the context manager that made it.
+    """
+
+    response: ATPResponse
+    #: Directory the artifacts were materialized into, or None when nothing
+    #: was written to disk at all.
+    root: Path | None = None
+
+
 #: Makes response artifacts reachable on disk for the duration of the block,
-#: and yields the response evaluators should see. A sandboxing implementation
-#: returns a rewritten response whose paths are workspace-relative, so an
-#: agent-chosen path can never reach an evaluator.
+#: and yields the response evaluators should see plus the root it lives in. A
+#: sandboxing implementation returns a rewritten response whose paths are
+#: workspace-relative, so an agent-chosen path can never reach an evaluator.
 ArtifactContext = Callable[
-    [ATPResponse], contextlib.AbstractContextManager[ATPResponse]
+    [ATPResponse], contextlib.AbstractContextManager[PreparedResponse]
 ]
 
 
 @contextlib.contextmanager
-def no_artifacts(response: ATPResponse) -> Iterator[ATPResponse]:
-    """Default artifact context: touch nothing on disk, change nothing."""
-    yield response
+def no_artifacts(response: ATPResponse) -> Iterator[PreparedResponse]:
+    """Default artifact context: touch nothing on disk, change nothing.
+
+    Yields no root, so a filesystem evaluator composed this way declines to
+    answer rather than reaching for the working directory.
+    """
+    yield PreparedResponse(response)
 
 
 @dataclass(frozen=True)
@@ -141,10 +201,18 @@ class EvaluationPolicy:
 
     `allowed_assertion_types=None` means "no restriction" and is only
     appropriate where the input is trusted.
+
+    `trusted` is declared separately rather than inferred from an empty
+    allowlist. They answer different questions — *which* evaluators may run
+    versus *whose* machine this is — and a plane that one day restricts the
+    CLI's evaluator set must not silently stop being the operator's own
+    machine as a side effect.
     """
 
     name: str
     allowed_assertion_types: frozenset[str] | None = None
+    #: True where the suite and the machine belong to the same person.
+    trusted: bool = False
 
     def permits(self, assertion_type: str) -> bool:
         """True if this context may evaluate the assertion type."""
@@ -242,7 +310,7 @@ class EvaluationPipeline:
     async def _evaluate_one(
         self,
         task: TestDefinition,
-        response: ATPResponse,
+        prepared: PreparedResponse,
         trace: list[ATPEvent],
         assertion: Assertion,
         outcome: EvaluationOutcome,
@@ -271,9 +339,12 @@ class EvaluationPipeline:
         # A delegating evaluator builds its children through the same resolver
         # this pipeline uses, so the policy reaches all the way down.
         bind_resolver(evaluator, self._resolver)
+        # Likewise for the filesystem: the root comes from the composition
+        # that prepared this response, never from the assertion's own config.
+        bind_workspace_root(evaluator, prepared.root, trusted=self._policy.trusted)
 
         try:
-            result = await evaluator.evaluate(task, response, trace, assertion)
+            result = await evaluator.evaluate(task, prepared.response, trace, assertion)
         except AssertionUnevaluated as exc:
             # Ran, declined to guess. Recorded as coverage rather than as a
             # failed measurement — the distinction the whole contract rests on.

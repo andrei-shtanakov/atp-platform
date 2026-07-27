@@ -20,7 +20,6 @@ from atp.evaluation.vocabulary import (
     CALLS_EXTERNAL_SERVICE,
     DETERMINISTIC_EVALUATORS,
     EXECUTES_UNTRUSTED_INPUT,
-    READS_HOST_FILESYSTEM,
     deterministic_assertion_types,
     known_assertion_types,
 )
@@ -95,10 +94,7 @@ class TestBehaviourClassification:
         """An unclassified evaluator would silently count as safe."""
         all_evaluators = set(ASSERTION_TO_EVALUATOR.values())
         classified = (
-            DETERMINISTIC_EVALUATORS
-            | EXECUTES_UNTRUSTED_INPUT
-            | CALLS_EXTERNAL_SERVICE
-            | READS_HOST_FILESYSTEM
+            DETERMINISTIC_EVALUATORS | EXECUTES_UNTRUSTED_INPUT | CALLS_EXTERNAL_SERVICE
         )
         assert all_evaluators == classified
 
@@ -107,7 +103,6 @@ class TestBehaviourClassification:
         [
             EXECUTES_UNTRUSTED_INPUT,
             CALLS_EXTERNAL_SERVICE,
-            READS_HOST_FILESYSTEM,
         ],
     )
     def test_classes_do_not_overlap(self, unsafe: frozenset[str]) -> None:
@@ -117,11 +112,17 @@ class TestBehaviourClassification:
         "assertion",
         ["file_exists", "file_not_exists", "file_contains", "file_count", "dir_exists"],
     )
-    def test_host_filesystem_assertions_are_not_deterministic(
-        self, assertion: str
-    ) -> None:
-        """`workspace_path` comes from the suite, so the server's disk is the target."""
-        assert assertion not in deterministic_assertion_types()
+    def test_filesystem_assertions_are_deterministic_now(self, assertion: str) -> None:
+        """ADR-008 track B: the root is granted by the composition, not the suite.
+
+        The old exclusion was about *where* the evaluator looked, not what it
+        did: it took `workspace_path` from the suite, so on the server it
+        answered questions about the server's own disk. It now inspects only
+        the directory it was handed — the artifact sandbox — which is the
+        submission and nothing else. The behavioural proof is in
+        `tests/unit/evaluators/test_filesystem.py`.
+        """
+        assert assertion in deterministic_assertion_types()
 
     def test_composite_is_deterministic_again(self) -> None:
         """ADR-008 track A: its leaves go through the resolver it is handed.

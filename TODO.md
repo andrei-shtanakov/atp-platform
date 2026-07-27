@@ -588,7 +588,7 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
   `atp/server.py`, и наконец проводка в `POST /runs/{id}/submit` + честный
   `score_semantics`. План и ратифицированная таблица —
   [`docs/superpowers/plans/2026-07-26-step6-score-semantics.md`](docs/superpowers/plans/2026-07-26-step6-score-semantics.md).
-- [ ] **13 удержанных типов утверждений на benchmark-плоскости** — ADR-008 @owner:github:andrei-shtanakov
+- [ ] **7 удержанных типов утверждений на benchmark-плоскости** (было 13) — ADR-008 @owner:github:andrei-shtanakov
   ([`docs/adr/008-benchmark-evaluation-worker.md`](docs/adr/008-benchmark-evaluation-worker.md),
   Proposed 2026-07-27)
   «Шаг 7 — воркер» оказался **четырьмя** разными задачами с разными блокерами; ADR их
@@ -600,13 +600,15 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
     пишет coverage с причиной `indeterminate`, а не провал. Allowlist 19 → 20;
     `DELEGATES_TO_REGISTRY` удалён (класс перестал быть правдой), docstring
     `UNTRUSTED_SUBMISSION` приведён в соответствие с ADR.
-  - [ ] **B — `filesystem`**: корень **всегда** инъектируется (на сервере — @owner:github:andrei-shtanakov
-    `ArtifactWorkspace`), `workspace_path` становится относительным subpath внутри него,
-    absolute/traversal — явная ошибка конфига, молча игнорировать поле нельзя; старые
-    CLI-сьюты конвертирует явный адаптер (ADR §3). Отдельно: `file_not_exists` при
-    невалидном пути сейчас возвращает `passed=True`
-    (`atp/evaluators/filesystem.py:129`) — на границе политики это наоборот, нужен
-    регресс-тест. **Делать после A.**
+  - [x] **B — `filesystem`** ✅ 2026-07-27: корень выдаётся композицией
+    (`PreparedResponse.root` — на сервере `ArtifactWorkspace`, в CLI — cwd), без выдачи
+    evaluator не отвечает вообще (`WorkspaceNotGranted`, fail-closed). `workspace_path`
+    — относительный subpath внутри выданного корня; absolute/traversal — явная ошибка
+    конфига с диагностикой. Грант идёт вглубь через `composite` ровно как resolver.
+    Legacy-адаптер (ADR §3.4): абсолютный `workspace_path` принимается **только** на
+    доверенной плоскости (`EvaluationPolicy.trusted`) с deprecation-варнингом, снести
+    после релиза. `file_not_exists` при невалидном пути больше не возвращает
+    `passed=True` — регресс-тест на месте. Allowlist 20 → 25.
   - [ ] **C — сетевые** (`llm_eval`, `factuality`): вынос оценки из request-пути + бюджет @owner:github:andrei-shtanakov
     с атомарной резервацией + opt-in на бенчмарк под своей RBAC-ролью + snapshot политики
     на старте прогона. Изоляция НЕ нужна. Честная гарантия — at-least-once исполнение,
