@@ -108,12 +108,15 @@
   @source-owner:maestro @source-ref:maestro@07d408d @observed-at:2026-07-26 @recheck-by:2026-10-26
   - `../maestro/TODO.md:100`: «`score_components={}` пока ATP не экспортирует breakdown» —
     их `finalize()` читает из `GET /api/v1/runs/{id}/status` только `total_score`.
-  - Наша сторона (проверено 2026-07-26): роут есть —
-    `packages/atp-dashboard/atp/dashboard/v2/routes/benchmark_api.py:413` `GET /api/v1/runs/{run_id}/status` → `RunStatusResponse`
-    (`packages/atp-dashboard/atp/dashboard/benchmark/schemas.py:76-84`), но в нём только `total_score`; в модели `Run`
-    (`packages/atp-dashboard/atp/dashboard/benchmark/models.py:127`) поля под разбивку тоже нет. Нужны: `score_components` на
-    `Run` + Alembic-миграция + проброс в `RunStatusResponse` + заполнение из агрегатора.
   - Потребитель известен и уже написан — это не спекулятивная фича.
+  - [x] **`score_components` реально заполняется** ✅ 2026-07-26 (шаг 6): сабмит
+    проходит через `atp.evaluation`-пайплайн под серверной политикой
+    (`packages/atp-dashboard/atp/dashboard/benchmark/scoring.py`), `GET /runs/{id}/status`
+    выводит `score_components: dict[str, float]` (ключ — assertion type) и
+    `score_semantics.kind = aggregated_evaluation` **только** если эвалюатор реально
+    отработал. Ничего пропущенного не превращается в 0.0 — это `coverage`.
+    Колонки в БД по-прежнему нет: свидетельство пишется в существующую
+    `TaskResult.eval_results`, map выводится на чтении.
   - [x] **v1 wire-контракт шипнут** ✅ 2026-07-26: `score_semantics` (обязательный,
     версионированный) + `score_components: {}` на `RunStatusResponse` и `RunResponse`;
     источник — `packages/atp-dashboard/atp/dashboard/benchmark/score_contract.py`,
@@ -530,7 +533,18 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
   Prereq fix already done: `SuiteExecutionSummary.agent_id` → `int | None` (CLI stores NULL).
 - [ ] **Chart.js in Analytics**: status pie chart, score histogram, per-agent line chart (templates/ui/analytics.html).
 - [ ] **Fix UI routes test isolation**: `.value` bug in analytics/home templates, UNIQUE constraint collision.
-- [ ] **Benchmark API scoring**: wire up evaluators instead of the naive score (100 if completed else 0).
+- [x] **Benchmark API scoring** ✅ 2026-07-26 — эвалюаторы вместо «100 если completed».
+  Шаги 1–6 (#267–#271 + шаг 6): общий пайплайн в `atp-core`, CLI переведён на него,
+  `ArtifactWorkspace`, серверная политика `UNTRUSTED_SUBMISSION`, composition root
+  `atp/server.py`, и наконец проводка в `POST /runs/{id}/submit` + честный
+  `score_semantics`. План и ратифицированная таблица —
+  [`docs/superpowers/plans/2026-07-26-step6-score-semantics.md`](docs/superpowers/plans/2026-07-26-step6-score-semantics.md).
+- [ ] **Шаг 7 — воркер для исполняющих и сетевых эвалюаторов** (триггер, не дата).
+  `code_exec`/`pytest`/`npm`/`lint`/`custom_command`, `llm_eval`/`factuality`, а также
+  `filesystem` (нужен sandbox, который ему *передают*, а не называют в конфиге) и
+  `composite` (нужен ограниченный resolver вместо глобального реестра) остаются вне
+  benchmark-плоскости, пока нет: durable queue, лимитов по ресурсам и времени, сетевой
+  политики, бюджета стоимости, идемпотентности, отмены и аудита. ADR — до кода.
 
 ## ~~`atp-method` plugin — run methodology cases via ATP~~ ✅ DONE 2026-06-10
 

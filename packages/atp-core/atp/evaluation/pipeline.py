@@ -141,6 +141,21 @@ class EvaluationOutcome:
         """
         return bool(self.applied)
 
+    @property
+    def applied_results(self) -> list[tuple[str, EvalResult]]:
+        """Each applied assertion type paired with the result it produced.
+
+        The two lists are appended together and are therefore parallel, but a
+        caller zipping them relies on an invariant it cannot see. Exposing the
+        pairing keeps that knowledge here, where the invariant is maintained.
+        """
+        if len(self.applied) != len(self.results):
+            raise RuntimeError(
+                "outcome is inconsistent: "
+                f"{len(self.applied)} applied vs {len(self.results)} results"
+            )
+        return list(zip(self.applied, self.results, strict=True))
+
 
 class EvaluationPipeline:
     """Runs a test's assertions under a policy, collecting results and skips."""

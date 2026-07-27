@@ -123,7 +123,14 @@ class TestCompositionRoot:
         assert described["evaluation_mode"] == "deterministic_allowlist"
         assert described["resolver_connected"] is True
         assert described["policy"] == "untrusted_submission"
-        assert len(described["allowed_assertion_types"]) == 25
+        # By membership, not by count: a count moves whenever the vocabulary
+        # grows and says nothing about *which* types crossed the boundary,
+        # so it can stay satisfied while the wrong ones do.
+        permitted = set(described["allowed_assertion_types"])
+        assert {"contains", "behavior", "findings_match"} <= permitted
+        assert permitted.isdisjoint(
+            {"pytest", "code_exec", "llm_eval", "file_exists", "composite"}
+        )
 
     def test_forbidden_evaluator_is_unreachable_though_registered(self) -> None:
         """The platform registry has it; what crosses the boundary does not."""

@@ -18,8 +18,10 @@ import pytest
 from atp.evaluation.vocabulary import (
     ASSERTION_TO_EVALUATOR,
     CALLS_EXTERNAL_SERVICE,
+    DELEGATES_TO_REGISTRY,
     DETERMINISTIC_EVALUATORS,
     EXECUTES_UNTRUSTED_INPUT,
+    READS_HOST_FILESYSTEM,
     deterministic_assertion_types,
     known_assertion_types,
 )
@@ -94,13 +96,39 @@ class TestBehaviourClassification:
         """An unclassified evaluator would silently count as safe."""
         all_evaluators = set(ASSERTION_TO_EVALUATOR.values())
         classified = (
-            DETERMINISTIC_EVALUATORS | EXECUTES_UNTRUSTED_INPUT | CALLS_EXTERNAL_SERVICE
+            DETERMINISTIC_EVALUATORS
+            | EXECUTES_UNTRUSTED_INPUT
+            | CALLS_EXTERNAL_SERVICE
+            | READS_HOST_FILESYSTEM
+            | DELEGATES_TO_REGISTRY
         )
         assert all_evaluators == classified
 
-    def test_classes_do_not_overlap(self) -> None:
-        assert not DETERMINISTIC_EVALUATORS & EXECUTES_UNTRUSTED_INPUT
-        assert not DETERMINISTIC_EVALUATORS & CALLS_EXTERNAL_SERVICE
+    @pytest.mark.parametrize(
+        "unsafe",
+        [
+            EXECUTES_UNTRUSTED_INPUT,
+            CALLS_EXTERNAL_SERVICE,
+            READS_HOST_FILESYSTEM,
+            DELEGATES_TO_REGISTRY,
+        ],
+    )
+    def test_classes_do_not_overlap(self, unsafe: frozenset[str]) -> None:
+        assert not DETERMINISTIC_EVALUATORS & unsafe
+
+    @pytest.mark.parametrize(
+        "assertion",
+        ["file_exists", "file_not_exists", "file_contains", "file_count", "dir_exists"],
+    )
+    def test_host_filesystem_assertions_are_not_deterministic(
+        self, assertion: str
+    ) -> None:
+        """`workspace_path` comes from the suite, so the server's disk is the target."""
+        assert assertion not in deterministic_assertion_types()
+
+    def test_delegating_assertions_are_not_deterministic(self) -> None:
+        """`composite` resolves its leaves itself, so it can nest an excluded one."""
+        assert "composite" not in deterministic_assertion_types()
 
     @pytest.mark.parametrize("assertion", ["pytest", "code_exec", "npm", "lint"])
     def test_executing_assertions_are_not_deterministic(self, assertion: str) -> None:
@@ -111,7 +139,7 @@ class TestBehaviourClassification:
         assert assertion not in deterministic_assertion_types()
 
     @pytest.mark.parametrize(
-        "assertion", ["file_exists", "tone", "contains", "findings_match"]
+        "assertion", ["tone", "contains", "findings_match", "no_errors"]
     )
     def test_inspection_only_assertions_are_deterministic(self, assertion: str) -> None:
         """The ten entries dropped by the bad extraction live in this class."""

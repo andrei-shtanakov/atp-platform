@@ -1,0 +1,87 @@
+{
+  "completed_tasks": [
+    {
+      "eval_results": [
+        {
+          "assertion_type": "contains",
+          "checks": [
+            {
+              "name": "contains",
+              "passed": false,
+              "score": 0.5
+            }
+          ],
+          "critical": false,
+          "evaluator": "artifact",
+          "passed": false,
+          "record_version": 1,
+          "score": 0.5,
+          "status": "applied"
+        },
+        {
+          "assertion_type": "pytest",
+          "detail": "policy 'untrusted_submission' does not permit this evaluator",
+          "reason": "not_allowed_by_policy",
+          "record_version": 1,
+          "status": "skipped"
+        }
+      ],
+      "score": 50.0,
+      "task_index": 0
+    }
+  ],
+  "current_task_index": 1,
+  "id": 43,
+  "score_components": {
+    "contains": 50.0
+  },
+  "score_semantics": {
+    "aggregation": {
+      "function": "mean",
+      "over": "task_score"
+    },
+    "caveats": [
+      "null_until_finalized: total_score is null until the run completes",
+      "zero_is_ambiguous: a run that scored no tasks finalizes to 0.0, which is indistinguishable from every task failing"
+    ],
+    "coverage": {
+      "assertions_applied": {
+        "contains": 1
+      },
+      "assertions_skipped": [
+        {
+          "assertion_type": "pytest",
+          "count": 1,
+          "reason": "not_allowed_by_policy"
+        }
+      ],
+      "records_unreadable": 0,
+      "tasks_completion_only": 0,
+      "tasks_evaluated": 1,
+      "tasks_submitted": 1,
+      "tasks_total": 1
+    },
+    "kind": "aggregated_evaluation",
+    "level": "run",
+    "note": "At least one evaluator ran. score_components lists the assertion types that were successfully measured; anything absent from it was not measured, and is not a zero.",
+    "quality_signal": true,
+    "range": {
+      "max": 100.0,
+      "min": 0.0
+    },
+    "schema_version": 1,
+    "task_score": {
+      "kind": "completion_boolean",
+      "level": "task",
+      "unit": "percent",
+      "values": [
+        0.0,
+        100.0
+      ]
+    },
+    "unit": "percent"
+  },
+  "status": "completed",
+  "tasks_count": 1,
+  "total_score": 50.0
+}

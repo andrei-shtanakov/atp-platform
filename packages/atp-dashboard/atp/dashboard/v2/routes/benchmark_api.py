@@ -5,13 +5,15 @@ submit, cancel), and leaderboards.  All database access goes through the
 async session provided by the ``DBSession`` dependency.
 """
 
+import logging
 import uuid
 from datetime import datetime
 from typing import Any
 
-from atp.loader.models import TestSuite
-from atp.protocol import ATPRequest, ATPResponse, Task
+from atp.loader.models import TestDefinition, TestSuite
+from atp.protocol import ATPEvent, ATPRequest, ATPResponse, Task
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from pydantic import ValidationError
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,6 +33,11 @@ from atp.dashboard.benchmark.schemas import (
     SubmitRequest,
     TaskResultResponse,
 )
+from atp.dashboard.benchmark.score_contract import (
+    empty_score_components,
+    run_score_semantics,
+)
+from atp.dashboard.benchmark.scoring import derive_run_score_view, score_submission
 from atp.dashboard.models import User
 from atp.dashboard.v2.dependencies import (
     AdminUser,
@@ -56,6 +63,8 @@ router = APIRouter(
     dependencies=[Depends(reject_tournament_token)],
 )
 
+logger = logging.getLogger(__name__)
+
 MAX_RUN_EVENTS = 1000
 
 
@@ -78,6 +87,13 @@ def _benchmark_to_response(bm: Benchmark) -> BenchmarkResponse:
 
 
 def _run_to_response(run: Run) -> RunResponse:
+    """A freshly started run: nothing submitted, so nothing evaluated.
+
+    The completion label here is the honest one even on a server wired with
+    evaluators — no evaluator has run on this run yet, and a server's capability
+    is not evidence about a particular run. `GET /runs/{id}/status` derives the
+    real label from the submitted tasks.
+    """
     return RunResponse(
         id=run.id,
         benchmark_id=run.benchmark_id,
@@ -86,9 +102,45 @@ def _run_to_response(run: Run) -> RunResponse:
         status=run.status,
         current_task_index=run.current_task_index,
         total_score=run.total_score,
+        score_semantics=run_score_semantics(),
+        score_components=empty_score_components(),
         started_at=(run.started_at.isoformat() if run.started_at else ""),
         finished_at=(run.finished_at.isoformat() if run.finished_at else None),
     )
+
+
+def _parse_events(raw: list[dict[str, Any]] | None) -> list[ATPEvent]:
+    """Parse submitted events for evaluation, dropping the ones that won't.
+
+    Behaviour assertions read the trace, so events have to become models. They
+    arrive from a self-service client, though, and rejecting the whole
+    submission over one malformed event would turn a scoring question into a
+    400 — the raw list is stored either way, so nothing is lost.
+    """
+    parsed: list[ATPEvent] = []
+    for item in raw or []:
+        try:
+            parsed.append(ATPEvent.model_validate(item))
+        except Exception:
+            logger.debug("dropping unparseable event from submission", exc_info=True)
+    return parsed
+
+
+def _test_definition_at(bm: Benchmark, task_index: int) -> TestDefinition | None:
+    """The suite's test at this index, or None if there isn't one.
+
+    A submission for an index the suite does not have is malformed rather than
+    unscoreable, but it must not take the API down: an unparseable stored suite
+    is a data problem, and the completion score remains available.
+    """
+    try:
+        suite = TestSuite.model_validate(bm.suite)
+    except Exception:
+        logger.warning("benchmark %s has an unparseable suite", bm.id, exc_info=True)
+        return None
+    if not 0 <= task_index < len(suite.tests):
+        return None
+    return suite.tests[task_index]
 
 
 async def _load_run_for_user(
@@ -352,13 +404,36 @@ async def submit_result(
     session: DBSession,
     current_user: BenchmarkCaller,
 ) -> dict[str, Any]:
-    """Submit a task result for a run owned by the current user."""
+    """Submit a task result for a run owned by the current user.
+
+    The submission is evaluated here, under the server's policy, when the app
+    was composed with evaluators and the suite asks for something this plane
+    may run. Otherwise the score is the completion score it has always been —
+    `GET /runs/{id}/status` reports which of the two happened.
+    """
     run = await _load_run_for_user(session, run_id, current_user)
 
     task_index = data.task_index
 
-    response = ATPResponse.model_validate(data.response)
-    score = 100.0 if response.status == "completed" else 0.0
+    try:
+        response = ATPResponse.model_validate(data.response)
+    except ValidationError as exc:
+        # `SubmitRequest.response` is a bare dict, so this is the first place
+        # the protocol is actually checked — and a raised ValidationError here
+        # is an unhandled exception, i.e. a 500. A self-service caller that
+        # sent a malformed response should be told what is wrong.
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"response is not a valid ATPResponse: {exc.errors()}",
+        ) from exc
+
+    bm = await session.get(Benchmark, run.benchmark_id)
+    scored = await score_submission(
+        request.app.state.evaluation.resolver,
+        _test_definition_at(bm, task_index) if bm is not None else None,
+        response,
+        _parse_events(data.events),
+    )
 
     tr = TaskResult(
         run_id=run_id,
@@ -366,7 +441,8 @@ async def submit_result(
         request={},
         response=data.response,
         events=data.events,
-        score=score,
+        eval_results=scored.records,
+        score=scored.score,
         submitted_at=datetime.now(),
     )
     session.add(tr)
@@ -381,7 +457,6 @@ async def submit_result(
     await session.refresh(tr)
 
     # Check if all tasks done
-    bm = await session.get(Benchmark, run.benchmark_id)
     if bm is not None and task_index + 1 >= bm.tasks_count:
         # Finalize run
         results = await session.execute(
@@ -434,17 +509,26 @@ async def get_run_status(
     )
     completed = results.scalars().all()
 
+    # Derived from the stored evidence on every read, rather than frozen when
+    # the run finished: what the number *means* is then always recomputed from
+    # what actually ran, and a change here needs no backfill.
+    semantics, components = derive_run_score_view(
+        [tr.eval_results for tr in completed], tasks_count
+    )
+
     return RunStatusResponse(
         id=run.id,
         status=run.status,
         current_task_index=run.current_task_index,
         tasks_count=tasks_count,
         total_score=run.total_score,
+        score_semantics=semantics,
+        score_components=components,
         completed_tasks=[
             TaskResultResponse(
                 task_index=tr.task_index,
                 score=tr.score,
-                eval_results=None,
+                eval_results=tr.eval_results,
             )
             for tr in completed
         ],

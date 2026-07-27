@@ -10,10 +10,10 @@ evaluator classes:
   types to warn on typos — a question about *names*, which must not drag
   evaluator implementations into the dashboard process.
 
-`EXECUTES_UNTRUSTED_INPUT` and `CALLS_EXTERNAL_SERVICE` classify evaluators by
-what they do rather than by what they are called, so a server-side policy can
-refuse a whole class instead of maintaining its own denylist that silently
-misses the next evaluator someone adds.
+The classification sets below describe evaluators by what they *do* rather
+than by what they are called, so a server-side policy can refuse a whole class
+instead of maintaining its own denylist that silently misses the next
+evaluator someone adds.
 """
 
 from __future__ import annotations
@@ -67,12 +67,46 @@ EXECUTES_UNTRUSTED_INPUT: Final[frozenset[str]] = frozenset({"code_exec"})
 #: makes evaluation non-deterministic.
 CALLS_EXTERNAL_SERVICE: Final[frozenset[str]] = frozenset({"llm_judge", "factuality"})
 
+#: Evaluators that address the *host* filesystem using a path taken from the
+#: suite rather than from a sandbox handed to them.
+#:
+#: `filesystem` reads `workspace_path` straight out of `assertion.config`.
+#: Server-side that is wrong twice over. It cannot measure the submission at
+#: all — the submitted artifacts are materialized into a per-evaluation
+#: sandbox the evaluator is never told about, so it inspects some unrelated
+#: directory and reports a confident pass or fail about it. And the pass/fail
+#: it reports is an existence answer about the server's own disk, handed to
+#: whoever ran the benchmark. Creating a benchmark is admin-only today, so
+#: that is a misconfiguration leak rather than a self-service oracle; the
+#: first reason stands on its own regardless.
+#:
+#: Nothing in the pipeline can redirect that config — it is the evaluator's
+#: own input — so withholding the evaluator is the only control available
+#: until it accepts a sandbox instead of naming a directory.
+READS_HOST_FILESYSTEM: Final[frozenset[str]] = frozenset({"filesystem"})
+
+#: Evaluators that build their own sub-evaluators instead of receiving them.
+#:
+#: `CompositeEvaluator` resolves each leaf through `get_registry()` directly,
+#: so an assertion the policy would refuse becomes reachable by nesting it:
+#: `composite` → leaf `pytest` executes code that `EXECUTES_UNTRUSTED_INPUT`
+#: exists to keep out. The pipeline's policy check happens before *it* resolves
+#: an evaluator and cannot see inside one. Until a delegating evaluator is
+#: handed the restricted resolver instead of reaching for the global registry,
+#: allowing this class would make every other exclusion advisory.
+DELEGATES_TO_REGISTRY: Final[frozenset[str]] = frozenset({"composite"})
+
 #: Evaluators safe to run in-process against an untrusted submission: they
 #: only inspect the response and the trace.
+#:
+#: Derived by subtraction, so adding an evaluator without classifying it makes
+#: it *permitted* — which is why `test_every_evaluator_is_classified` exists.
 DETERMINISTIC_EVALUATORS: Final[frozenset[str]] = frozenset(
     set(ASSERTION_TO_EVALUATOR.values())
     - EXECUTES_UNTRUSTED_INPUT
     - CALLS_EXTERNAL_SERVICE
+    - READS_HOST_FILESYSTEM
+    - DELEGATES_TO_REGISTRY
 )
 
 
@@ -82,7 +116,7 @@ def known_assertion_types() -> frozenset[str]:
 
 
 def deterministic_assertion_types() -> frozenset[str]:
-    """Assertion types whose evaluator neither executes code nor calls out."""
+    """Assertion types safe to evaluate in-process against untrusted input."""
     return frozenset(
         assertion
         for assertion, evaluator in ASSERTION_TO_EVALUATOR.items()

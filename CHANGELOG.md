@@ -9,6 +9,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Benchmark submissions are evaluated, and the score says what it is** — the
+  benchmark plane scored 100 for any completed response; it now runs the shared
+  `atp.evaluation` pipeline under the server policy and publishes
+  `score_semantics` describing the result. `kind` is `aggregated_evaluation`
+  with a `score_components` breakdown (keyed by assertion type) only when an
+  evaluator was *applied*; otherwise it stays `completion_rate` with
+  `quality_signal: false`. Anything skipped, refused, unknown or crashed is
+  reported under `coverage` with a reason and never becomes a component worth
+  0.0. A run scored partly by evaluation and partly by completion carries a
+  `mixed_task_scores` caveat. Per-task evidence is stored in the existing
+  `TaskResult.eval_results` column — no migration — with a `record_version` on
+  every record; a record whose version the reader does not recognise is counted
+  under `coverage.records_unreadable` rather than parsed with today's field
+  names. (#272)
+
+### Fixed
+
+- **`POST /api/v1/runs/{id}/submit` returns 422, not 500, for a malformed
+  response body.** `SubmitRequest.response` is a bare dict, so the protocol was
+  first checked inside the handler, where a `ValidationError` became an
+  unhandled exception. A self-service caller now gets told what is wrong. (#272)
+
+### Changed
+
+- **`score_semantics` and `score_components` are required** on
+  `RunResponse` and `RunStatusResponse`. Consumers see no wire change; a
+  default would have let a call site publish a label it never derived. (#272)
+- **The untrusted-submission allowlist narrows from 25 to 19 assertion types.**
+  `filesystem` addresses a directory named in the suite rather than the sandbox
+  the submission was materialized into, so on this plane it cannot measure the
+  agent's work and answers an existence question about the server's own disk.
+  `composite` resolves its leaves through the global registry, so nesting
+  `pytest` under it would reach an evaluator the policy withholds. Both are now
+  classified in `atp.evaluation.vocabulary` and excluded by derivation. The CLI
+  (`trusted_local`) is unaffected. (#272)
+
 - **LearningEvent v1 contract (RD-007 M1a):** `method/contract/learning-event-v1.schema.json` —
   observational learning events (gap / eval-signal / recommendation) with producer provenance,
   append-only `source` pointers, optional `evidence_refs` (vendored pinned copy of Maestro
