@@ -182,6 +182,8 @@ atp/                         # Namespace package (symlinks to packages/ + local 
 ├── loader/   → packages/atp-core/     # (symlink)
 ├── cost/     → packages/atp-core/     # (symlink)
 ├── chaos/    → packages/atp-core/     # (symlink)
+├── evaluation/ → packages/atp-core/   # (symlink)
+├── model_catalog/ → packages/atp-core/# (symlink)
 ├── scoring/  → packages/atp-core/     # (symlink)
 ├── statistics/→ packages/atp-core/    # (symlink)
 ├── streaming/→ packages/atp-core/     # (symlink)
