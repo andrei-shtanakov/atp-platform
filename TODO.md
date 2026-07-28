@@ -609,6 +609,20 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
     доверенной плоскости (`EvaluationPolicy.trusted`) с deprecation-варнингом, снести
     после релиза. `file_not_exists` при невалидном пути больше не возвращает
     `passed=True` — регресс-тест на месте. Allowlist 20 → 25.
+  - [ ] **Снести legacy-адаптер `workspace_path`** (`atp/evaluators/filesystem.py:168`) @owner:github:andrei-shtanakov @trigger:released-after-v2.1.0
+    Долг, заведённый треком B осознанно и с концом: `_legacy_absolute_root` принимает
+    абсолютный `workspace_path` как корень — **единственное** место, где поле значит
+    разное на доверенной и недоверенной плоскостях. Держится только ради сторонних
+    CLI-сьютов, написанных до ADR-008 §3.4; внутри репо это поле не использует ни один
+    сьют (проверено grep'ом на 2026-07-27), так что цена удаления — чужая, не наша.
+    **Триггер:** вышел релиз > `v2.1.0`, т.е. первый, где deprecation-варнинг уже
+    доехал до пользователей (#276 влит после тега `v2.1.0`). Тогда: убрать метод и
+    ветку `if declared and Path(declared).is_absolute()`, оставив абсолютный путь
+    обычной ошибкой конфига на обеих плоскостях; удалить `TestLegacyAbsoluteWorkspacePath`
+    и пробу «absolute honoured on the untrusted plane»; проверить, нужен ли ещё флаг
+    `EvaluationPolicy.trusted` — если других потребителей не появится, он уйдёт вместе
+    с адаптером, и это будет **правильно**: поле без потребителя тихо расходится с
+    реальностью. Снять и упоминание в ADR §3.4 («As implemented»).
   - [ ] **C — сетевые** (`llm_eval`, `factuality`): вынос оценки из request-пути + бюджет @owner:github:andrei-shtanakov
     с атомарной резервацией + opt-in на бенчмарк под своей RBAC-ролью + snapshot политики
     на старте прогона. Изоляция НЕ нужна. Честная гарантия — at-least-once исполнение,
