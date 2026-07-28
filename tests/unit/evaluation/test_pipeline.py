@@ -353,3 +353,37 @@ class TestWorkspaceRootIsGranted:
         pipeline = EvaluationPipeline(Resolver(contains=evaluator), TRUSTED)
         await pipeline.evaluate(_test_def(Assertion(type="contains")), _response(), [])
         assert evaluator.root == tmp_path
+
+
+class TestTheArtifactContextContractIsChecked:
+    """A composition mistake must be named where it is made."""
+
+    async def test_a_context_yielding_the_old_shape_is_rejected_clearly(self) -> None:
+        """`ArtifactContext` yielded a bare response before the root travelled.
+
+        The check earns its keep by *not* being an `AttributeError` on `.root`
+        from inside the per-assertion path — and by not being a silent wrap
+        either, which would grant `None` and turn one wiring mistake into a
+        run full of unexplained refusals.
+        """
+
+        @contextlib.contextmanager
+        def old_style(response: ATPResponse):
+            yield response
+
+        pipeline = EvaluationPipeline(
+            Resolver(contains=RecordingEvaluator()), TRUSTED, artifacts=old_style
+        )
+        with pytest.raises(TypeError, match="must yield a PreparedResponse"):
+            await pipeline.evaluate(
+                _test_def(Assertion(type="contains")), _response(), []
+            )
+
+    async def test_the_check_does_not_run_when_there_is_nothing_to_evaluate(
+        self,
+    ) -> None:
+        """The context is never entered for a suite with no assertions."""
+        outcome = await EvaluationPipeline(Resolver(), TRUSTED).evaluate(
+            _test_def(), _response(), []
+        )
+        assert outcome.results == []

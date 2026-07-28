@@ -185,6 +185,31 @@ ArtifactContext = Callable[
 ]
 
 
+def _require_prepared(prepared: object) -> None:
+    """Fail at the seam, with the contract named, when a context yields wrongly.
+
+    `ArtifactContext` used to yield a bare `ATPResponse`; it now yields a
+    `PreparedResponse` so the root can travel with it. A context still written
+    the old way would otherwise fail on `.root` deep inside the per-assertion
+    path, where the message names an attribute rather than the contract.
+
+    Accepting both shapes was the other option and is worse. The old shape
+    carries no root, so wrapping it would hand every filesystem evaluator a
+    `None` and turn one wiring mistake into a run where each such assertion
+    quietly reports "not granted a workspace root" — the failure mode this
+    whole change exists to remove. A composition error should stop the run at
+    the composition, not resurface later as a fleet of unexplained refusals.
+    """
+    if not isinstance(prepared, PreparedResponse):
+        raise TypeError(
+            "the injected artifact context must yield a PreparedResponse, got "
+            f"{type(prepared).__name__}. Wrap the response together with the "
+            "directory its artifacts were materialized into: "
+            "`yield PreparedResponse(response, root)`, or "
+            "`PreparedResponse(response)` if nothing was written to disk"
+        )
+
+
 @contextlib.contextmanager
 def no_artifacts(response: ATPResponse) -> Iterator[PreparedResponse]:
     """Default artifact context: touch nothing on disk, change nothing.
@@ -303,6 +328,7 @@ class EvaluationPipeline:
                 return outcome
 
         with self._artifacts(response) as prepared:
+            _require_prepared(prepared)
             for assertion in assertions:
                 await self._evaluate_one(task, prepared, trace, assertion, outcome)
         return outcome
