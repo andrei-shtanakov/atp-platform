@@ -111,7 +111,7 @@
 > `MaestroATPAdapter` поверх нашего `atp-platform-sdk>=2.0.0`. Запрос пришёл и был обслужен;
 > открытым остался конкретный дефицит на нашей стороне (ниже).
 
-- [ ] **Экспортировать разбивку скора в benchmark-run status** (для Maestro R-06b M3) @owner:github:andrei-shtanakov
+- [ ] **Экспортировать разбивку скора в benchmark-run status** (для Maestro R-06b M3) @owner:github:andrei-shtanakov @id:export-score-breakdown
   @provider:atp-platform @consumer:maestro
   @source-owner:maestro @source-ref:maestro@07d408d @observed-at:2026-07-26 @recheck-by:2026-10-26
   - `../maestro/TODO.md:100`: «`score_components={}` пока ATP не экспортирует breakdown» —
@@ -133,7 +133,7 @@
     [`docs/maestro-score-contract-handoff.md`](docs/maestro-score-contract-handoff.md).
     Схема честно объявляет `quality_signal: false` и `kind: completion_rate`: на этой
     плоскости 100 означает «ответ завершён», а не «ответ хорош».
-  - [ ] **Осталось не у нас:** consumer contract-тест и обновление статуса зависимости — @owner:github:andrei-shtanakov
+  - [ ] **Осталось не у нас:** consumer contract-тест и обновление статуса зависимости — @owner:github:andrei-shtanakov @id:score-breakdown-consumer-contract
     сторона maestro (их репо, отсюда read-only); указатель в KB — `../prograph-vault/`.
     Сверено 2026-07-27: у maestro **нет открытого пункта** под это. Их `TODO.md:117`
     (закрытый M3) до сих пор фиксирует «`score_components={}` пока ATP не экспортирует
@@ -141,12 +141,12 @@
     «осталось не у нас» — это наше ожидание, а не их зафиксированный план.
   @provider:atp-platform @consumer:maestro
     @source-owner:maestro @source-ref:maestro@d0fd80e @observed-at:2026-07-27 @recheck-by:2026-10-27
-  - [ ] **Deferred, с явным триггером:** первый реально вычисленный компонент → EPIC @owner:github:andrei-shtanakov
+  - [ ] **Deferred, с явным триггером:** первый реально вычисленный компонент → EPIC @owner:github:andrei-shtanakov @id:score-component-persistence-epic
     выбирает persistence-модель. DB-колонки нет намеренно: `{}` в каждой строке `Run`
     завёл бы вторую persistence-репрезентацию рядом с существующей `ScoreComponent`
     (плоскость `TestExecution`) до решения EPIC. Wire-map при этом не меняет форму.
 
-- [ ] **R-07: Eval-driven routing validation** @owner:github:andrei-shtanakov
+- [ ] **R-07: Eval-driven routing validation** @owner:github:andrei-shtanakov @id:r-07
   - A/B тестирование arbiter DT routing vs random vs always-best-agent
   - Совместно с `../arbiter/` — набор test suites на нашей стороне
   - ⚠️ **Мяч на нашей стороне, сверено 2026-07-27.** `../arbiter/TODO.md:60`:
@@ -172,7 +172,7 @@
       что R-06b/R-03 (#263): мы цитировали себя, а не владельца.
       @provider:arbiter
       @source-owner:arbiter @source-ref:arbiter@94ed8d2 @observed-at:2026-07-27 @recheck-by:2026-10-27
-    - [ ] **Открыто у arbiter (не у нас):** A/B-вью над `benchmark_runs` @owner:github:andrei-shtanakov
+    - [ ] **Открыто у arbiter (не у нас):** A/B-вью над `benchmark_runs` @owner:github:andrei-shtanakov @id:arbiter-ab-view-watch
       (`../arbiter/TODO.md:33`), crossover-гейт (`:48`), развилка по силе связи `rank_score`
       (`:50`). Отслеживать, не делать.
       @provider:arbiter
@@ -201,12 +201,12 @@
       Обвязка: `method/run_pipe_check.py` (CLI-адаптер → шим → оркестратор → findings_match →
       `report_benchmark` payload + sqlite). **Остаток:** per-task `score` в отчётах = 0.0 при высоком
       агрегатном `critical_pass_rate` — свериться, что per-task поле несёт не-гейтящую рубрику, а не баг.
-    - [ ] **P4 + prefill судьи (~0.5д).** strengths/weaknesses → только локальные логи (numeric-only @owner:github:andrei-shtanakov
+    - [ ] **P4 + prefill судьи (~0.5д).** strengths/weaknesses → только локальные логи (numeric-only @owner:github:andrei-shtanakov @id:p4-judge-prefill
       payload). Prefill (anthropic API) — робастность СУДЬИ, отдельный PR от P1.
-    - [ ] **P1 (~1д) — batched rubric** через отдельный structured-judge путь в method evaluator @owner:github:andrei-shtanakov
+    - [ ] **P1 (~1д) — batched rubric** через отдельный structured-judge путь в method evaluator @owner:github:andrei-shtanakov @id:p1-batched-rubric
       (НЕ перегружать `LLMJudgeEvaluator`). Батчинг меняет оценки → `rubric_mode` заморожен на серию;
       default `batched`, 1 retry → честный fail.
-    - [ ] **Phase-1b:** Тикет B (ablation API-vs-CLI, «харнесс vs API») + codex_cli/aider шимы + @owner:github:andrei-shtanakov
+    - [ ] **Phase-1b:** Тикет B (ablation API-vs-CLI, «харнесс vs API») + codex_cli/aider шимы + @owner:github:andrei-shtanakov @id:phase-1b-ablation-ticket-b
       полный 5-уровневый свип.
     - 3 остаточных вопроса к автору зафиксированы в файле (P1 location, prefill sequencing, ablation framing).
 
@@ -226,7 +226,7 @@
       **Риск к ре-базлайну (выходной прогон):** массив→объект меняет формат вывода агента,
       а `output_contract` уводит промпт на `GENERIC_ENVELOPE` (теряется строка-персона
       «senior code reviewer», роль остаётся в `instruction`) — проверить эффект на сигнале.
-    - [ ] **#4 языковая ось** — в схеме `agent-eval-case` нет поля `language`, а arbiter @owner:github:andrei-shtanakov
+    - [ ] **#4 языковая ось** — в схеме `agent-eval-case` нет поля `language`, а arbiter @owner:github:andrei-shtanakov @id:axis-4-language
       роутит по языку → скоры надо разбивать по языку + протянуть
       в `benchmark_runs`. Влияет на валидность роутинга. **Реально не начата — следующая ось.**
       Сверено 2026-07-27 в коде владельца: `../arbiter/arbiter-mcp/src/features.rs:135-136`
@@ -290,7 +290,7 @@
   - **Осталось:** при ревизите Libretto-гейта 4.6 факт «вендоренный контракт + работающий
     reader» готов к предъявлению. arbiter — вторичный потребитель (не начат); proctor — ничего.
 
-- [ ] **ADR-ECO-003e: runtime cost control** (эпик; M0 закрыт, дальше M1→M4) @owner:github:andrei-shtanakov
+- [ ] **ADR-ECO-003e: runtime cost control** (эпик; M0 закрыт, дальше M1→M4) @owner:github:andrei-shtanakov @id:adr-eco-003e
   - План M0: [`docs/superpowers/plans/2026-07-15-adr-eco-003e-m0-usage-capture-probe.md`](docs/superpowers/plans/2026-07-15-adr-eco-003e-m0-usage-capture-probe.md);
     раннбук: [`docs/cost/003e-action0-probe-runbook.md`](docs/cost/003e-action0-probe-runbook.md).
   - [x] **M0 — UsageCapture seam + Action №0 probe** ✅ 2026-07-15 (#251). Observe-only:
@@ -302,32 +302,32 @@
     захватывается (389 токенов через deepseek), но `model` и `cost_usd` **не заполняются
     никогда** — честный `None` вместо выдуманного `"unknown"`. То есть узкое место не в
     сборе usage, а в отсутствии идентичности модели на границе адаптера.
-  - [ ] **M1 — adapter adoption + model identity.** Пробросить реальные `model`/`provider` @owner:github:andrei-shtanakov
+  - [ ] **M1 — adapter adoption + model identity.** Пробросить реальные `model`/`provider` @owner:github:andrei-shtanakov @id:adr-eco-003e-m1
     в `UsageRecord` по адаптерам (порядок — по колонке объёма токенов из пробы: cli первым);
     удалить `track_response_cost` и мёртвый флаг `enable_cost_tracking`; зафиксировать
     финальный дом шва (оркестратор vs base-adapter template) после переписи не-оркестраторных
     вызовов. **Следующий шаг эпика.**
-  - [ ] **M2 — price snapshot (003e D7).** Генератор снапшота (канон-каталог + @owner:github:andrei-shtanakov
+  - [ ] **M2 — price snapshot (003e D7).** Генератор снапшота (канон-каталог + @owner:github:andrei-shtanakov @id:adr-eco-003e-m2
     `method/price_overrides.toml` + litellm map) → версионированный артефакт со штампом
     `price_map_version`; синхронный snapshot-прайсер с трёхзначным
     `pricing_status ∈ {known, ceiling, unknown}` (правило «молчаливый ноль = unknown», D6.3);
     депрекейт и снос System-A таблицы в `atp/cost/models.py` + миграция `CostTracker`.
-  - [ ] **M3 — BudgetControl (003e D1/D3/D4/D5).** `estimate/reserve/settle`, атомарный @owner:github:andrei-shtanakov
+  - [ ] **M3 — BudgetControl (003e D1/D3/D4/D5).** `estimate/reserve/settle`, атомарный @owner:github:andrei-shtanakov @id:adr-eco-003e-m3
     store резерваций (SQLite single-writer, идемпотентность по `call_id`/`reservation_id`,
     reaper по settle-timeout); таксономия скоупов attempt⊂task⊂run⊂day; per-scope политика;
     завести deny в оркестратор (`budget_usd` уже течёт в `ATPRequest.constraints`, но никем
     не энфорсится — это и есть естественная первая точка).
-  - [ ] **M4 — ecosystem handoff.** Когда контрактный модуль устоится — вендоринг-хендофф для @owner:github:andrei-shtanakov @trigger:"контрактный модуль ADR-ECO-003e устоялся"
+  - [ ] **M4 — ecosystem handoff.** Когда контрактный модуль устоится — вендоринг-хендофф для @owner:github:andrei-shtanakov @trigger:"контрактный модуль ADR-ECO-003e устоялся" @id:adr-eco-003e-m4
     Maestro / spec-runner / robin-runtime в `../prograph-vault/authored/notes/` (их репо
     отсюда read-only); выравнивание advisory-budget инварианта arbiter.
     Quad свежести не нужен: пункт не утверждает статус соседей, а описывает нашу будущую
     отдачу им — условие формализовано триггером.
 
-- [ ] **RD-007: LearningEvent v1 — обучение через governance, без silent-write** @owner:github:andrei-shtanakov
+- [ ] **RD-007: LearningEvent v1 — обучение через governance, без silent-write** @owner:github:andrei-shtanakov @id:rd-007
   - Дизайн: [`docs/2026-07-12-rd-007-learning-event-design.md`](docs/2026-07-12-rd-007-learning-event-design.md) (#248).
   - [x] **M1a (наша доля)** ✅ 2026-07-12 (#249): `learning-event-v1.schema.json` + фикстуры +
     contract-тест; `CODEOWNERS` на governed-пути (v1 acceptance).
-  - [ ] **M2 (отложено):** conformance-CI (вендоренные byte-проверки, сканер no-runtime-writes); @trigger:"stable Evidence-refs" @owner:github:andrei-shtanakov
+  - [ ] **M2 (отложено):** conformance-CI (вендоренные byte-проверки, сканер no-runtime-writes); @trigger:"stable Evidence-refs" @owner:github:andrei-shtanakov @id:rd-007-m2
     новые продюсеры (experiment recommendations, catalog proposals) переходят на схему.
     — источник:
     `../prograph-vault/authored/notes/2026-07-11-ai-dark-factory-consolidated-roadmap.md:269`
@@ -343,7 +343,7 @@
     SIGINT/SIGTERM, чекпоинты сьюта → прерванный `atp test` возобновляем. Без новых сервисов и
     без миграций схемы: два существующих шва (`cli()` в `atp/cli/main.py` и `TestOrchestrator`).
 
-- [ ] **P6 — стабилизировать и версионировать benchmark-payload** (живой роадмап, urgency Medium) @owner:github:andrei-shtanakov
+- [ ] **P6 — стабилизировать и версионировать benchmark-payload** (живой роадмап, urgency Medium) @owner:github:andrei-shtanakov @id:p6-benchmark-payload-versioning
   @provider:atp-platform
   - `../prograph-vault/authored/notes/ecosystem-roadmap.md` §1.1 + таблица приоритетов P6:
     ATP держат как поставщика routing-grade данных, и фокус там сформулирован явно —
@@ -357,7 +357,7 @@
     приоритетов, urgency Medium, «Feeds arbiter routing ✅»).
     @source-owner:prograph-vault @source-ref:prograph-vault@4ce14a8 @observed-at:2026-07-27 @recheck-by:2026-10-27
 
-- [ ] **Привести логи к `observability-contract/v1`** (живой роадмап §3, enabler для §1.1/1.2/1.4) @owner:github:andrei-shtanakov
+- [ ] **Привести логи к `observability-contract/v1`** (живой роадмап §3, enabler для §1.1/1.2/1.4) @owner:github:andrei-shtanakov @id:observability-contract-logs
   @provider:atp-platform
   - Там прямо: «`atp-platform` logs structurally but in its own format
     (`correlation_id/version/hostname`)», и в списке действий — «(3) bring atp-platform to
@@ -443,20 +443,20 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
 
 ### Post-MVP
 - [x] `?batch=N` for parallel task fetching (SDK v2.0.0)
-- [ ] Redis pub/sub for SDKAdapter (replaces asyncio.Event, survives restart) @owner:github:andrei-shtanakov
-- [ ] Automatic token tracking in the SDK (wrapper around LLM calls) @owner:github:andrei-shtanakov
-- [ ] Event streaming in the SDK (send ATPEvent during execution) @owner:github:andrei-shtanakov
-- [ ] Workspace management in the SDK (download/upload artifact files) @owner:github:andrei-shtanakov
+- [ ] Redis pub/sub for SDKAdapter (replaces asyncio.Event, survives restart) @owner:github:andrei-shtanakov @id:sdk-redis-pubsub
+- [ ] Automatic token tracking in the SDK (wrapper around LLM calls) @owner:github:andrei-shtanakov @id:sdk-token-tracking
+- [ ] Event streaming in the SDK (send ATPEvent during execution) @owner:github:andrei-shtanakov @id:sdk-event-streaming
+- [ ] Workspace management in the SDK (download/upload artifact files) @owner:github:andrei-shtanakov @id:sdk-workspace-management
 - [x] Async API in the SDK — AsyncATPClient + async for task in run (SDK v2.0.0)
 - [x] Retry/reconnect on drops in the SDK — exponential backoff + full jitter (SDK v2.0.0)
-- [ ] TypeScript SDK @owner:github:andrei-shtanakov
-- [ ] WebSocket for real-time tournaments (dashboard infrastructure is already in place) @owner:github:andrei-shtanakov
-- [ ] Container isolation for evaluators (Podman/Docker) @owner:github:andrei-shtanakov
-- [ ] Federation — a private atp-server @owner:github:andrei-shtanakov
-- [ ] Webhooks for CI/CD notifications on run completion @owner:github:andrei-shtanakov
-- [ ] Application-level rate limiting @owner:github:andrei-shtanakov
-- [ ] Extract atp-protocol as a separate lightweight package (if atp-core becomes too heavy for the SDK) @owner:github:andrei-shtanakov
-- [ ] Flesh out the Tournament API (cancel, server-side round timeouts, skipping deadlines) @owner:github:andrei-shtanakov
+- [ ] TypeScript SDK @owner:github:andrei-shtanakov @id:sdk-typescript
+- [ ] WebSocket for real-time tournaments (dashboard infrastructure is already in place) @owner:github:andrei-shtanakov @id:tournament-websocket
+- [ ] Container isolation for evaluators (Podman/Docker) @owner:github:andrei-shtanakov @id:evaluator-container-isolation
+- [ ] Federation — a private atp-server @owner:github:andrei-shtanakov @id:federation-private-server
+- [ ] Webhooks for CI/CD notifications on run completion @owner:github:andrei-shtanakov @id:run-completion-webhooks
+- [ ] Application-level rate limiting @owner:github:andrei-shtanakov @id:app-rate-limiting
+- [ ] Extract atp-protocol as a separate lightweight package (if atp-core becomes too heavy for the SDK) @owner:github:andrei-shtanakov @id:extract-atp-protocol
+- [ ] Flesh out the Tournament API (cancel, server-side round timeouts, skipping deadlines) @owner:github:andrei-shtanakov @id:tournament-api-completion
 
 ## Architecture Cleanup (P0 → P2)
 
@@ -475,12 +475,12 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
 ### P2 — Improvement
 
 - [x] **Decouple atp-dashboard from atp-platform**: shared result models moved to `atp.core.results`, dashboard depends on atp-core.
-- [ ] **Merge SSO/SAML route models**: remove request/response model duplication. @owner:github:andrei-shtanakov
-- [ ] **Clean up examples and configs** from the shell mode and older assumptions. @owner:github:andrei-shtanakov
+- [ ] **Merge SSO/SAML route models**: remove request/response model duplication. @owner:github:andrei-shtanakov @id:merge-sso-saml-models
+- [ ] **Clean up examples and configs** from the shell mode and older assumptions. @owner:github:andrei-shtanakov @id:cleanup-shell-mode-configs
 
 ## Dashboard UI
 
-- [ ] **EPIC — унификация просмотра/сравнения/истории результатов (исходная цель платформы).** @owner:github:andrei-shtanakov
+- [ ] **EPIC — унификация просмотра/сравнения/истории результатов (исходная цель платформы).** @owner:github:andrei-shtanakov @id:epic-unified-results-view
   Сейчас результаты раздроблены по 3 хранилищам с неравномерным UI, и это «зообарк»:
   1. **`SuiteExecution`** (дашборд-БД) — пишется из `atp test` по умолчанию (`--no-save`
      отключает), включая прогоны **atp-method**. Доступно только через JSON API
@@ -518,7 +518,7 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
     на верхнем уровне payload (clean…very_severe), модель/storage/шаблон уже поддерживали — импортёр
     его выбрасывал, колонка `breakpoint` была пустой. Теперь заполняется. `language` — 0/81 в payload
     (нет в данных), per-case recall/FP — `per_task` тонкий (`task_index/task_type/score/tokens/...`).
-  - [ ] **Осталось из исходного запроса** (требует правки `run_pipe_check.py`, не моста): свип по @owner:github:andrei-shtanakov
+  - [ ] **Осталось из исходного запроса** (требует правки `run_pipe_check.py`, не моста): свип по @owner:github:andrei-shtanakov @id:r-07-dashboard-axis-sweep
     `axis_level` (leaderboard берёт *последний* прогон на агента — `suite_leaderboard`, дисперсию
     схлопывает), по-кейсный recall/FP (нет в payload), языковая ось (нет в payload). Отдельный вид +
     обогащение `report_benchmark` — EPIC-уровень, см. родителя выше.
@@ -564,7 +564,7 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
     input+output, теряя `cache_creation`/`cache_read` (Claude Code кэширует контекст → tokens=1336 на
     прогоне 06-21). Теперь суммируются все 4 класса usage + оба cache-поля проброшены в `Metrics`.
     Валидировано ре-свипом 07-02: 575k токенов вместо 1336.
-  - [ ] **ИССЛЕДОВАТЬ (перспектива): полное слияние путей оценки** — дописать `BenchmarkReporter` @owner:github:andrei-shtanakov
+  - [ ] **ИССЛЕДОВАТЬ (перспектива): полное слияние путей оценки** — дописать `BenchmarkReporter` @owner:github:andrei-shtanakov @id:unify-eval-paths
     (сейчас `NotImplementedError`; маппинг `SuiteReport→report_benchmark` помечен Phase-1b), тогда
     `atp test method/cases/X -o report_benchmark` сам даёт arbiter-payload, а `run_pipe_check`
     становится тонким циклом `atp test` по агентам → пишет в `SuiteExecution` нативно И эмитит payload
@@ -575,20 +575,20 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
     `dashboard/dimensions.py`). Зависит от обогащения payload; смыкается с родительским EPIC.
     См. `docs/research/2026-06-19-unify-eval-paths.md`.
   Контекст: R-07 Phase 1, `method/run_pipe_check.py`.
-- [ ] **CLI run-history page `/ui/executions`**: SuiteExecution history (from `atp test`) is @owner:github:andrei-shtanakov
+- [ ] **CLI run-history page `/ui/executions`**: SuiteExecution history (from `atp test`) is @owner:github:andrei-shtanakov @id:ui-executions-history-page
   only reachable via the JSON API — no HTML page renders it (`/ui/*` is wired to the
   separate benchmark `Run` model). New page: list + detail + per-run statistics +
   failure-cause breakdown. Plan: [`spec/dashboard-execution-history.md`](spec/dashboard-execution-history.md).
   Prereq fix already done: `SuiteExecutionSummary.agent_id` → `int | None` (CLI stores NULL).
-- [ ] **Chart.js in Analytics**: status pie chart, score histogram, per-agent line chart (templates/ui/analytics.html). @owner:github:andrei-shtanakov
-- [ ] **Fix UI routes test isolation**: `.value` bug in analytics/home templates, UNIQUE constraint collision. @owner:github:andrei-shtanakov
+- [ ] **Chart.js in Analytics**: status pie chart, score histogram, per-agent line chart (templates/ui/analytics.html). @owner:github:andrei-shtanakov @id:analytics-chartjs
+- [ ] **Fix UI routes test isolation**: `.value` bug in analytics/home templates, UNIQUE constraint collision. @owner:github:andrei-shtanakov @id:fix-ui-routes-test-isolation
 - [x] **Benchmark API scoring** ✅ 2026-07-26 — эвалюаторы вместо «100 если completed».
   Шаги 1–6 (#267–#271 + шаг 6): общий пайплайн в `atp-core`, CLI переведён на него,
   `ArtifactWorkspace`, серверная политика `UNTRUSTED_SUBMISSION`, composition root
   `atp/server.py`, и наконец проводка в `POST /runs/{id}/submit` + честный
   `score_semantics`. План и ратифицированная таблица —
   [`docs/superpowers/plans/2026-07-26-step6-score-semantics.md`](docs/superpowers/plans/2026-07-26-step6-score-semantics.md).
-- [ ] **7 удержанных типов утверждений на benchmark-плоскости** (было 13) — ADR-008 @owner:github:andrei-shtanakov
+- [ ] **7 удержанных типов утверждений на benchmark-плоскости** (было 13) — ADR-008 @owner:github:andrei-shtanakov @id:adr-008-benchmark-assertions
   ([`docs/adr/008-benchmark-evaluation-worker.md`](docs/adr/008-benchmark-evaluation-worker.md),
   Proposed 2026-07-27)
   «Шаг 7 — воркер» оказался **четырьмя** разными задачами с разными блокерами; ADR их
@@ -609,7 +609,7 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
     доверенной плоскости (`EvaluationPolicy.trusted`) с deprecation-варнингом, снести
     после релиза. `file_not_exists` при невалидном пути больше не возвращает
     `passed=True` — регресс-тест на месте. Allowlist 20 → 25.
-  - [ ] **Снести legacy-адаптер `workspace_path`** (`atp/evaluators/filesystem.py:168`) @owner:github:andrei-shtanakov @trigger:released-after-v2.1.0
+  - [ ] **Снести legacy-адаптер `workspace_path`** (`atp/evaluators/filesystem.py:168`) @owner:github:andrei-shtanakov @trigger:released-after-v2.1.0 @id:remove-legacy-workspace-path-adapter
     Долг, заведённый треком B осознанно и с концом: `_legacy_absolute_root` принимает
     абсолютный `workspace_path` как корень — **единственное** место, где поле значит
     разное на доверенной и недоверенной плоскостях. Держится только ради сторонних
@@ -623,12 +623,12 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
     `EvaluationPolicy.trusted` — если других потребителей не появится, он уйдёт вместе
     с адаптером, и это будет **правильно**: поле без потребителя тихо расходится с
     реальностью. Снять и упоминание в ADR §3.4 («As implemented»).
-  - [ ] **C — сетевые** (`llm_eval`, `factuality`): вынос оценки из request-пути + бюджет @owner:github:andrei-shtanakov
+  - [ ] **C — сетевые** (`llm_eval`, `factuality`): вынос оценки из request-пути + бюджет @owner:github:andrei-shtanakov @id:adr-008-c-network-evaluators
     с атомарной резервацией + opt-in на бенчмарк под своей RBAC-ролью + snapshot политики
     на старте прогона. Изоляция НЕ нужна. Честная гарантия — at-least-once исполнение,
     at-most-once оплата только там, где провайдер поддерживает idempotency key (ADR §6).
     Триггер: оператор захотел judged-бенчмарк и принял счёт.
-  - [ ] **D — `code_exec`** (5 типов): всё вышеперечисленное + **доказанный** профиль @owner:github:andrei-shtanakov
+  - [ ] **D — `code_exec`** (5 типов): всё вышеперечисленное + **доказанный** профиль @owner:github:andrei-shtanakov @id:adr-008-d-code-exec
     изоляции. Контейнерный примитив есть, но `container.py` **fail-open** — при
     отсутствии runtime падает в subprocess (`atp/evaluators/container.py:194`). Нужны
     fail-closed, digest-pinned allowlist образов, rootless/non-root, no-new-privileges,
@@ -662,10 +662,10 @@ Shipped across PRs #142–#146.
 Spec: `docs/superpowers/specs/2026-04-20-admin-tournament-gui-design.md`
 Plan: `docs/superpowers/plans/2026-04-20-admin-tournament-gui.md`
 
-- [ ] **h · Live MCP SSE connection status** per participant in admin detail — needs a new in-memory connection registry bound to the FastMCP server plus a `/ui/admin/tournaments/{id}/connections` fragment. Scope: ~2 days. @owner:github:andrei-shtanakov
+- [ ] **h · Live MCP SSE connection status** per participant in admin detail — needs a new in-memory connection registry bound to the FastMCP server plus a `/ui/admin/tournaments/{id}/connections` fragment. Scope: ~2 days. @owner:github:andrei-shtanakov @id:admin-mcp-sse-status
 - [x] **f · Force-advance round** ✅ 2026-07-11 (#247) — admin button (`ui/admin/tournament_detail.html`)
   + `POST /api/v1/tournaments/{id}/force-advance` над существующим
   `TournamentService.force_resolve_round`; аудит-запись `TOURNAMENT_FORCE_ADVANCE`.
-- [ ] **g · Extend round deadline mid-round** — requires adding a service method and a new audit row since mutating `Round.deadline` after creation is currently disallowed. @owner:github:andrei-shtanakov
-- [ ] **Generalize admin create form to all 8 games** — currently hardcoded to `el_farol` dropdown. Add per-game config fieldsets keyed off the game registry. @owner:github:andrei-shtanakov
-- [ ] **Long-lived bot MCP sessions (spec C)** — separate design and plan; the admin TTL change in this PR does not address bot-side session budget (still capped at `(ATP_TOKEN_EXPIRE_MINUTES − 10) × 60` in `TournamentService.create_tournament`). @owner:github:andrei-shtanakov
+- [ ] **g · Extend round deadline mid-round** — requires adding a service method and a new audit row since mutating `Round.deadline` after creation is currently disallowed. @owner:github:andrei-shtanakov @id:admin-extend-round-deadline
+- [ ] **Generalize admin create form to all 8 games** — currently hardcoded to `el_farol` dropdown. Add per-game config fieldsets keyed off the game registry. @owner:github:andrei-shtanakov @id:admin-create-form-all-games
+- [ ] **Long-lived bot MCP sessions (spec C)** — separate design and plan; the admin TTL change in this PR does not address bot-side session budget (still capped at `(ATP_TOKEN_EXPIRE_MINUTES − 10) × 60` in `TournamentService.create_tournament`). @owner:github:andrei-shtanakov @id:bot-mcp-session-budget
