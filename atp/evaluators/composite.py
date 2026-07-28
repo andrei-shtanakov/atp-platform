@@ -23,9 +23,15 @@ from __future__ import annotations
 
 import logging
 from enum import StrEnum
+from pathlib import Path
 from typing import Any
 
-from atp.evaluation import AssertionUnevaluated, EvaluatorResolver, bind_resolver
+from atp.evaluation import (
+    AssertionUnevaluated,
+    EvaluatorResolver,
+    bind_resolver,
+    bind_workspace_root,
+)
 from atp.loader.models import Assertion, TestDefinition
 from atp.protocol import ATPEvent, ATPResponse
 
@@ -81,6 +87,8 @@ class CompositeEvaluator(Evaluator):
 
     def __init__(self, resolver: EvaluatorResolver | None = None) -> None:
         self._resolver = resolver
+        self._workspace_root: Path | None = None
+        self._trusted = False
 
     @property
     def name(self) -> str:
@@ -90,6 +98,16 @@ class CompositeEvaluator(Evaluator):
     def bind_resolver(self, resolver: EvaluatorResolver) -> None:
         """Receive the resolver this evaluator must build its leaves through."""
         self._resolver = resolver
+
+    def bind_workspace_root(self, root: Path, *, trusted: bool = False) -> None:
+        """Receive the root, and hold it only to grant leaves the same one.
+
+        This evaluator touches no files itself. It stores the grant because a
+        leaf it resolves must be confined exactly as it is — the resolver
+        rule, applied to the filesystem.
+        """
+        self._workspace_root = root
+        self._trusted = trusted
 
     async def evaluate(
         self,
@@ -400,8 +418,10 @@ class CompositeEvaluator(Evaluator):
             # the resolver's message says which.
             return self._unevaluated(f"Leaf '{assertion_type}' unavailable: {exc}")
 
-        # Pass the restriction down: a nested composite is bound as we were.
+        # Pass the restrictions down: a nested composite, and any leaf that
+        # reads the filesystem, are bound exactly as we were.
         bind_resolver(evaluator, self._resolver)
+        bind_workspace_root(evaluator, self._workspace_root, trusted=self._trusted)
 
         sub_assertion = Assertion(
             type=assertion_type, config=condition.get("config", {})

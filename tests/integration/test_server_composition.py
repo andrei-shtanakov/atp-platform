@@ -129,9 +129,17 @@ class TestCompositionRoot:
         permitted = set(described["allowed_assertion_types"])
         # `composite` is permitted again as of ADR-008 track A: it resolves its
         # leaves through this very resolver, so nesting an excluded assertion
-        # under it no longer reaches one.
-        assert {"contains", "behavior", "findings_match", "composite"} <= permitted
-        assert permitted.isdisjoint({"pytest", "code_exec", "llm_eval", "file_exists"})
+        # under it no longer reaches one. `file_exists` as of track B: its root
+        # is granted by the composition, so it addresses the artifact sandbox
+        # rather than a directory the suite named.
+        assert {
+            "contains",
+            "behavior",
+            "findings_match",
+            "composite",
+            "file_exists",
+        } <= permitted
+        assert permitted.isdisjoint({"pytest", "code_exec", "llm_eval", "factuality"})
 
     def test_forbidden_evaluator_is_unreachable_though_registered(self) -> None:
         """The platform registry has it; what crosses the boundary does not."""

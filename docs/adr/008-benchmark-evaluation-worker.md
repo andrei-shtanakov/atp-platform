@@ -1,6 +1,10 @@
 # ADR-008: Evaluating Executing and Networked Assertions on the Benchmark Plane
 
-**Status**: Proposed (2026-07-27) — revised 2026-07-27 after review
+**Status**: Proposed (2026-07-27) — revised 2026-07-27 after review.
+Tracks **A** (#274) and **B** (this branch) are implemented; C and D remain
+proposed and trigger-gated. The counts in *Context* below describe the plane
+at decision time: 6 of the 13 withheld types have since been admitted, leaving
+7 (`code_exec` ×5, `llm_eval`, `factuality`).
 **Date**: 2026-07-27
 **Builds on**: #272 (step 6 — the benchmark plane runs deterministic evaluators
 and labels the result), `packages/atp-core/atp/evaluation/policies.py` (policy
@@ -121,6 +125,27 @@ The contract instead:
    rewrites the old meaning into the new one — not by assuming that injecting
    the working directory reproduces it. In general it does not: today's
    `workspace_path` can point anywhere.
+
+**As implemented**, point 4 is `FilesystemEvaluator._legacy_absolute_root`: an
+absolute `workspace_path` is honoured as the root, with a deprecation warning
+naming the new meaning, **only** where the policy declares the plane trusted —
+the operator's own machine, naming the operator's own directory. Anywhere else
+it is the config error of point 3, because there it never named the submission
+in the first place. The grant carries `trusted` alongside the root for exactly
+this, and `trusted` is a declared field on `EvaluationPolicy` rather than
+inferred from an empty allowlist: "which evaluators may run" and "whose machine
+is this" are different questions, and a CLI that one day restricts the former
+must not silently stop being the latter. Transitional; removed once a release
+has shipped with the warning. No suite in this repository uses the field, so
+the conversion burden is entirely external.
+
+Point 3's answer is a failing check rather than an `AssertionUnevaluated`. A
+malformed `workspace_path` is the *suite author's* error: it exists before any
+agent runs and is identical for every submission, so it is not the "we could
+not measure this participant" case that the three-valued model in §2 protects.
+Reporting it as a failure with the reason attached puts it where the author
+will see it; routing it into coverage would file a broken suite under "not
+tested" and leave it there.
 
 **Separately, a latent bug that deserves its own regression test.** An invalid
 path in `file_not_exists` returns `passed=True`, "treated as not existing"
@@ -330,8 +355,8 @@ migrates to a broker far more easily than the reverse.
 
 | Track | When |
 |---|---|
-| **A — `composite`** | Do it. A policy hole, closed by a construction-path change plus the three-valued model in §2. |
-| **B — `filesystem`** | After A. Same shape of fix; also carries the `file_not_exists` regression test. |
+| **A — `composite`** | ✅ Done (#274). A policy hole, closed by a construction-path change plus the three-valued model in §2. |
+| **B — `filesystem`** | ✅ Done. Same shape of fix — the grant travels down through `composite` exactly as the resolver does — plus the `file_not_exists` regression test. |
 | **C — network** | When an operator wants a judged benchmark and accepts the bill. Requires §4, §5, §6, §8, §9. |
 | **D — `code_exec`** | When a suite that needs it exists. Requires everything above plus the §7 isolation profile, demonstrated adversarially. Not before. |
 

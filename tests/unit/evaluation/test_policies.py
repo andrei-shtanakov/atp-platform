@@ -15,7 +15,6 @@ from atp.evaluation.vocabulary import (
     ASSERTION_TO_EVALUATOR,
     CALLS_EXTERNAL_SERVICE,
     EXECUTES_UNTRUSTED_INPUT,
-    READS_HOST_FILESYSTEM,
 )
 
 #: Exactly what a submission may have evaluated. Written out rather than
@@ -29,6 +28,14 @@ PERMITTED = {
     # the policy-restricted resolver it is handed, not the global registry.
     "composite",
     "contains",
+    # Permitted as of ADR-008 track B: the root is granted by the composition
+    # (here, the artifact sandbox), so these address the submission and can
+    # address nothing else.
+    "dir_exists",
+    "file_contains",
+    "file_count",
+    "file_exists",
+    "file_not_exists",
     "findings_match",
     "forbidden_tools",
     "max_tool_calls",
@@ -57,9 +64,7 @@ class TestServerPolicy:
 
     @pytest.mark.parametrize(
         "evaluator",
-        sorted(
-            EXECUTES_UNTRUSTED_INPUT | CALLS_EXTERNAL_SERVICE | READS_HOST_FILESYSTEM
-        ),
+        sorted(EXECUTES_UNTRUSTED_INPUT | CALLS_EXTERNAL_SERVICE),
     )
     def test_no_withheld_evaluator_class_is_permitted(self, evaluator: str) -> None:
         """Checked by evaluator class, so a new assertion alias cannot sneak in."""
@@ -77,11 +82,6 @@ class TestServerPolicy:
             "custom_command",
             "llm_eval",
             "factuality",
-            # Withheld for reasons of their own; see the vocabulary. Named
-            # here as well as derived because the derivation could break.
-            "file_exists",
-            "file_contains",
-            "dir_exists",
         ],
     )
     def test_named_dangerous_assertions_are_refused(self, assertion: str) -> None:

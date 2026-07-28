@@ -34,6 +34,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from atp.evaluation.pipeline import PreparedResponse
 from atp.protocol import ATPResponse
 from atp.protocol.models import ArtifactFile
 
@@ -128,13 +129,18 @@ class ArtifactWorkspace:
         self.root: Path | None = None
 
     @contextlib.contextmanager
-    def prepare(self, response: ATPResponse) -> Iterator[ATPResponse]:
+    def prepare(self, response: ATPResponse) -> Iterator[PreparedResponse]:
         """Materialize artifacts into a fresh temp dir; yield a rewritten response.
 
         The yielded response carries sandbox-relative paths, so an evaluator
         cannot be handed an agent-chosen absolute path by accident. The
         directory is removed on the way out, including when the body raises —
         an evaluator that crashes must not leave a submission's files on disk.
+
+        The temp dir travels with the response as the root a filesystem
+        evaluator may address. It is the *only* directory such an evaluator
+        gets on this plane, which is what makes `filesystem` admissible here
+        at all: it now inspects the submission instead of the server's disk.
         """
         # Fresh report per evaluation: a reused instance must not carry another
         # submission's rejections, nor spend its budget.
@@ -143,7 +149,7 @@ class ArtifactWorkspace:
         self.root = root
         try:
             prepared = self._materialize(root, response)
-            yield prepared
+            yield PreparedResponse(prepared, root)
         finally:
             shutil.rmtree(root, ignore_errors=True)
             self.root = None

@@ -251,16 +251,32 @@ class TestPreparedResponse:
     def test_paths_are_rewritten_to_sandbox_relative(self) -> None:
         workspace = ArtifactWorkspace()
         with workspace.prepare(_response(_artifact("src/main.py", "code"))) as prepared:
-            assert prepared.artifacts[0].path == "src/main.py"
-            assert not Path(prepared.artifacts[0].path).is_absolute()
+            assert prepared.response.artifacts[0].path == "src/main.py"
+            assert not Path(prepared.response.artifacts[0].path).is_absolute()
 
     def test_rejected_artifact_keeps_content_but_nothing_is_written(self) -> None:
         """It is still readable by a content assertion; there is just no file."""
         workspace = ArtifactWorkspace(WorkspaceLimits(max_file_bytes=1))
         with workspace.prepare(_response(_artifact("big.txt", "toolong"))) as prepared:
-            assert prepared.artifacts[0].content == "toolong"
+            assert prepared.response.artifacts[0].content == "toolong"
             assert workspace.root is not None
             assert not (workspace.root / "big.txt").exists()
+
+    def test_the_sandbox_is_offered_as_the_root_evaluators_may_address(self) -> None:
+        """Without this the filesystem evaluator has nowhere legitimate to look."""
+        workspace = ArtifactWorkspace()
+        with workspace.prepare(_response(_artifact("out.txt", "x"))) as prepared:
+            assert prepared.root == workspace.root
+            assert prepared.root is not None
+            assert (prepared.root / "out.txt").is_file()
+
+    def test_the_offered_root_is_gone_once_the_block_exits(self) -> None:
+        """The grant is for one evaluation; a root outliving it would be a leak."""
+        workspace = ArtifactWorkspace()
+        with workspace.prepare(_response(_artifact("out.txt", "x"))) as prepared:
+            escaped = prepared.root
+        assert escaped is not None
+        assert not escaped.exists()
 
     def test_the_original_response_is_left_untouched(self) -> None:
         """Rewriting in place would corrupt the record of what the agent sent."""

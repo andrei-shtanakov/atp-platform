@@ -784,3 +784,92 @@ class TestRegistration:
         ev = registry.create("composite")
         assert ev.name == "composite"
         assert isinstance(ev, CompositeEvaluator)
+
+
+class TestWorkspaceRootReachesLeaves:
+    """The resolver rule, applied to the filesystem (ADR-008 track B).
+
+    A composite touches no files itself, so it would be easy to leave the
+    grant at the top level — and then every filesystem leaf inside a composite
+    would refuse, or worse, be given a root nobody chose. The grant travels
+    down exactly as the resolver does.
+    """
+
+    @pytest.fixture
+    def workspace(self, tmp_path):
+        (tmp_path / "report.md").write_text("findings")
+        return tmp_path
+
+    @pytest.mark.anyio
+    async def test_a_filesystem_leaf_is_granted_the_composites_root(
+        self,
+        evaluator: CompositeEvaluator,
+        sample_task: TestDefinition,
+        empty_response: ATPResponse,
+        workspace,
+    ) -> None:
+        evaluator.bind_workspace_root(workspace)
+        assertion = Assertion(
+            type="composite",
+            config={
+                "operator": "and",
+                "conditions": [
+                    {"type": "file_exists", "config": {"path": "report.md"}}
+                ],
+            },
+        )
+        result = await evaluator.evaluate(sample_task, empty_response, [], assertion)
+        assert result.passed
+
+    @pytest.mark.anyio
+    async def test_a_leaf_nested_two_levels_deep_is_granted_it_too(
+        self,
+        evaluator: CompositeEvaluator,
+        sample_task: TestDefinition,
+        empty_response: ATPResponse,
+        workspace,
+    ) -> None:
+        """Depth is where a per-level rule quietly stops being applied."""
+        evaluator.bind_workspace_root(workspace)
+        assertion = Assertion(
+            type="composite",
+            config={
+                "operator": "and",
+                "conditions": [
+                    {
+                        "type": "composite",
+                        "config": {
+                            "operator": "and",
+                            "conditions": [
+                                {
+                                    "type": "file_exists",
+                                    "config": {"path": "report.md"},
+                                }
+                            ],
+                        },
+                    }
+                ],
+            },
+        )
+        result = await evaluator.evaluate(sample_task, empty_response, [], assertion)
+        assert result.passed
+
+    @pytest.mark.anyio
+    async def test_an_ungranted_composite_leaves_its_filesystem_leaf_unevaluated(
+        self,
+        evaluator: CompositeEvaluator,
+        sample_task: TestDefinition,
+        empty_response: ATPResponse,
+    ) -> None:
+        """Fail-closed all the way down: unmeasured, not failed."""
+        assertion = Assertion(
+            type="composite",
+            config={
+                "operator": "and",
+                "conditions": [
+                    {"type": "file_exists", "config": {"path": "report.md"}}
+                ],
+            },
+        )
+        with pytest.raises(AssertionUnevaluated):
+            await evaluator.evaluate(sample_task, empty_response, [], assertion)

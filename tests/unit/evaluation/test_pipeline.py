@@ -14,6 +14,8 @@ submission cannot read as zero quality.
 
 from __future__ import annotations
 
+import contextlib
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -22,6 +24,7 @@ from atp.core.results import EvalCheck, EvalResult
 from atp.evaluation import (
     EvaluationPipeline,
     EvaluationPolicy,
+    PreparedResponse,
     SkipReason,
 )
 from atp.loader.models import Assertion, TaskDefinition, TestDefinition
@@ -89,7 +92,7 @@ class Resolver:
 
 pytestmark = pytest.mark.anyio
 
-TRUSTED = EvaluationPolicy(name="trusted_local")
+TRUSTED = EvaluationPolicy(name="trusted_local", trusted=True)
 RESTRICTED = EvaluationPolicy(
     name="untrusted_submission", allowed_assertion_types=frozenset({"contains"})
 )
@@ -234,7 +237,7 @@ class TestArtifactContextIsInjected:
         def tracking(response: ATPResponse):
             events.append("enter")
             try:
-                yield
+                yield PreparedResponse(response)
             finally:
                 events.append("exit")
 
@@ -253,7 +256,7 @@ class TestArtifactContextIsInjected:
         def tracking(response: ATPResponse):
             nonlocal entered
             entered = True
-            yield
+            yield PreparedResponse(response)
 
         pipeline = EvaluationPipeline(
             Resolver(),
@@ -284,3 +287,103 @@ def test_vocabulary_classifies_by_what_the_evaluator_does(
     from atp.evaluation import deterministic_assertion_types
 
     assert (assertion_type in deterministic_assertion_types()) is expected_deterministic
+
+
+class WorkspaceRecordingEvaluator(RecordingEvaluator):
+    """Evaluator that records the root and trust level it was granted."""
+
+    def __init__(self) -> None:
+        super().__init__("ws")
+        self.root: Path | None = None
+        self.trusted: bool | None = None
+
+    def bind_workspace_root(self, root: Path, *, trusted: bool = False) -> None:
+        self.root = root
+        self.trusted = trusted
+
+
+class TestWorkspaceRootIsGranted:
+    """An evaluator that reads files is told where, and never decides itself."""
+
+    async def test_the_root_comes_from_the_artifact_context(
+        self, tmp_path: Path
+    ) -> None:
+        """The directory the response was materialized into, and no other."""
+        evaluator = WorkspaceRecordingEvaluator()
+
+        @contextlib.contextmanager
+        def rooted(response: ATPResponse):
+            yield PreparedResponse(response, tmp_path)
+
+        pipeline = EvaluationPipeline(
+            Resolver(contains=evaluator), TRUSTED, artifacts=rooted
+        )
+        await pipeline.evaluate(_test_def(Assertion(type="contains")), _response(), [])
+        assert evaluator.root == tmp_path
+        assert evaluator.trusted is True
+
+    async def test_trust_comes_from_the_policy_not_from_the_suite(
+        self, tmp_path: Path
+    ) -> None:
+        """Declared by the plane. A submission has no way to claim it."""
+        evaluator = WorkspaceRecordingEvaluator()
+
+        @contextlib.contextmanager
+        def rooted(response: ATPResponse):
+            yield PreparedResponse(response, tmp_path)
+
+        untrusted = EvaluationPolicy(name="server", allowed_assertion_types=None)
+        pipeline = EvaluationPipeline(
+            Resolver(contains=evaluator), untrusted, artifacts=rooted
+        )
+        await pipeline.evaluate(_test_def(Assertion(type="contains")), _response(), [])
+        assert evaluator.trusted is False
+
+    async def test_an_absent_root_does_not_revoke_one_already_held(
+        self, tmp_path: Path
+    ) -> None:
+        """`no_artifacts` writes nothing, so it has nothing to grant.
+
+        Binding `None` looks harmless and is not: it would revoke a root the
+        evaluator was legitimately constructed with, turning a composition
+        choice into a silent refusal. The pipeline declines to bind instead.
+        """
+        evaluator = WorkspaceRecordingEvaluator()
+        evaluator.bind_workspace_root(tmp_path, trusted=True)
+        pipeline = EvaluationPipeline(Resolver(contains=evaluator), TRUSTED)
+        await pipeline.evaluate(_test_def(Assertion(type="contains")), _response(), [])
+        assert evaluator.root == tmp_path
+
+
+class TestTheArtifactContextContractIsChecked:
+    """A composition mistake must be named where it is made."""
+
+    async def test_a_context_yielding_the_old_shape_is_rejected_clearly(self) -> None:
+        """`ArtifactContext` yielded a bare response before the root travelled.
+
+        The check earns its keep by *not* being an `AttributeError` on `.root`
+        from inside the per-assertion path — and by not being a silent wrap
+        either, which would grant `None` and turn one wiring mistake into a
+        run full of unexplained refusals.
+        """
+
+        @contextlib.contextmanager
+        def old_style(response: ATPResponse):
+            yield response
+
+        pipeline = EvaluationPipeline(
+            Resolver(contains=RecordingEvaluator()), TRUSTED, artifacts=old_style
+        )
+        with pytest.raises(TypeError, match="must yield a PreparedResponse"):
+            await pipeline.evaluate(
+                _test_def(Assertion(type="contains")), _response(), []
+            )
+
+    async def test_the_check_does_not_run_when_there_is_nothing_to_evaluate(
+        self,
+    ) -> None:
+        """The context is never entered for a suite with no assertions."""
+        outcome = await EvaluationPipeline(Resolver(), TRUSTED).evaluate(
+            _test_def(), _response(), []
+        )
+        assert outcome.results == []

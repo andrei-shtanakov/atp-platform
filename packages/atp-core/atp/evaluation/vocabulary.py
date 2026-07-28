@@ -67,32 +67,24 @@ EXECUTES_UNTRUSTED_INPUT: Final[frozenset[str]] = frozenset({"code_exec"})
 #: makes evaluation non-deterministic.
 CALLS_EXTERNAL_SERVICE: Final[frozenset[str]] = frozenset({"llm_judge", "factuality"})
 
-#: Evaluators that address the *host* filesystem using a path taken from the
-#: suite rather than from a sandbox handed to them.
-#:
-#: `filesystem` reads `workspace_path` straight out of `assertion.config`.
-#: Server-side that is wrong twice over. It cannot measure the submission at
-#: all — the submitted artifacts are materialized into a per-evaluation
-#: sandbox the evaluator is never told about, so it inspects some unrelated
-#: directory and reports a confident pass or fail about it. And the pass/fail
-#: it reports is an existence answer about the server's own disk, handed to
-#: whoever ran the benchmark. Creating a benchmark is admin-only today, so
-#: that is a misconfiguration leak rather than a self-service oracle; the
-#: first reason stands on its own regardless.
-#:
-#: Nothing in the pipeline can redirect that config — it is the evaluator's
-#: own input — so withholding the evaluator is the only control available
-#: until it accepts a sandbox instead of naming a directory.
-READS_HOST_FILESYSTEM: Final[frozenset[str]] = frozenset({"filesystem"})
-
 #: Evaluators safe to run in-process against an untrusted submission: they
 #: only inspect the response and the trace.
 #:
-#: `composite` belongs here despite building sub-evaluators, because it now
-#: builds them through the resolver it is handed rather than a global registry
-#: (ADR-008 track A). Its leaves are therefore filtered by whatever policy
-#: governs it, and a leaf it may not evaluate is reported as unevaluated
-#: rather than as a failure.
+#: Two members are here because a *class* stopped being true of them, not
+#: because the class was relaxed.
+#:
+#: `composite` builds sub-evaluators through the resolver it is handed rather
+#: than a global registry (ADR-008 track A). Its leaves are therefore filtered
+#: by whatever policy governs it, and a leaf it may not evaluate is reported
+#: as unevaluated rather than as a failure.
+#:
+#: `filesystem` used to be the sole member of a `READS_HOST_FILESYSTEM` class:
+#: it took its root from `assertion.config`, so server-side it inspected some
+#: directory of the server's own rather than the submission, and reported a
+#: confident answer about it. It now receives the root from its composition
+#: (ADR-008 track B) — the per-evaluation artifact sandbox on the server — and
+#: cannot address anything outside it, so the class had no members left and
+#: was removed rather than kept as an empty set nobody would notice.
 #:
 #: Derived by subtraction, so adding an evaluator without classifying it makes
 #: it *permitted* — which is why `test_every_evaluator_is_classified` exists.
@@ -100,7 +92,6 @@ DETERMINISTIC_EVALUATORS: Final[frozenset[str]] = frozenset(
     set(ASSERTION_TO_EVALUATOR.values())
     - EXECUTES_UNTRUSTED_INPUT
     - CALLS_EXTERNAL_SERVICE
-    - READS_HOST_FILESYSTEM
 )
 
 
