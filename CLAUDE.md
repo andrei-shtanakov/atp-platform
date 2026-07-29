@@ -288,3 +288,13 @@ Task status: `todo` → `in_progress` → `done` (or `blocked`)
   влитую ветку (`git branch -d <branch>`) и `git fetch --prune`; убрать прочие влитые ветки.
 - Никогда не делать force-push в общие ветки; не трогать другие репо (см. scope выше).
 - Полное правило (SSOT): `../prograph-vault/authored/rules/git-workflow.md`.
+
+## Входящие запросы (inbox)
+
+В начале работы проверь входящие: `gh issue list --label inbox --state open`.
+Issue с лейблом `inbox` — запрос от соседнего репо, ещё **не** пункт плана.
+Принять = завести пункт в `TODO.md` с указанным `slug:`; принял под другим
+именем — поправь `slug:` в теле issue.
+Отказать = `gh issue close --reason "not planned"`.
+Нужна работа в соседнем репо — не редактируй его: заведи там issue
+(`slug:` + `from:` + проза). Правило: ADR-ECO-006.
