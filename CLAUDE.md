@@ -297,4 +297,5 @@ Issue с лейблом `inbox` — запрос от соседнего реп�
 именем — поправь `slug:` в теле issue.
 Отказать = `gh issue close --reason "not planned"`.
 Нужна работа в соседнем репо — не редактируй его: заведи там issue
-(`slug:` + `from:` + проза). Правило: ADR-ECO-006.
+(`slug:` + `from:` + проза). Правило: ADR-ECO-006 — канон в `ecosystem-kb`
+(чекаут `prograph-vault/`), `authored/decisions/2026-07-28-adr-eco-006-cross-repo-issue-inbox.md`.
