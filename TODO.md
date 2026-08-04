@@ -678,7 +678,8 @@ Plan: `docs/superpowers/plans/2026-04-20-admin-tournament-gui.md`
 ## mcp SDK v2 migration (deferred, blocked on upstream)
 
 - [ ] mcp SDK v2 (atp-dashboard): blocked on upstream — fastmcp (≤3.4.5) pins mcp<2.0. @trigger:"fastmcp release notes announce mcp>=2 support."
-      Then: lift the pins, migrate scripts/repro_mcp_concurrent_tools_list.py and
-      participant-kit-el-farol-en/bot_el_farol_random.py off the v1 client API
-      (ClientSession/sse_client → v2 Client), re-run tests/unit/dashboard/mcp/.
+      Then: lift the pins, migrate scripts/repro_mcp_concurrent_tools_list.py,
+      participant-kit-el-farol-en/bot_el_farol_random.py, and the 3 doc examples in
+      packages/atp-dashboard/atp/dashboard/v2/templates/ui/about.html off the v1
+      client API (ClientSession/sse_client → v2 Client), re-run tests/unit/dashboard/mcp/.
       Context: prograph-vault/authored/notes/2026-08-04-mcp-v2-migration-plan.md
