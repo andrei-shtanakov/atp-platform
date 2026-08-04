@@ -17,6 +17,11 @@ dependencies = [
     "opentelemetry-instrumentation-fastapi>=0.60b1",
     "slowapi>=0.1.9",
     "fastmcp>=3.0",
+    # Direct floor+ceiling for the transitive `mcp` SDK: >=1.28.1 is the
+    # patched version for CVE-2026-59950 / -52869 / -52870; <2 mirrors
+    # fastmcp's own ceiling (fastmcp<=3.4.5 requires mcp<2.0). Lift both
+    # together when fastmcp ships SDK-v2 support.
+    "mcp>=1.28.1,<2",
     "cachetools>=7.0.5",
     "game-environments>=1.0.0",
     # Runtime dependency: migrations/dashboard/versions/*.py are applied
