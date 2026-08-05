@@ -674,3 +674,12 @@ Plan: `docs/superpowers/plans/2026-04-20-admin-tournament-gui.md`
 - [ ] **g · Extend round deadline mid-round** — requires adding a service method and a new audit row since mutating `Round.deadline` after creation is currently disallowed. @owner:github:andrei-shtanakov @id:admin-extend-round-deadline
 - [ ] **Generalize admin create form to all 8 games** — currently hardcoded to `el_farol` dropdown. Add per-game config fieldsets keyed off the game registry. @owner:github:andrei-shtanakov @id:admin-create-form-all-games
 - [ ] **Long-lived bot MCP sessions (spec C)** — separate design and plan; the admin TTL change in this PR does not address bot-side session budget (still capped at `(ATP_TOKEN_EXPIRE_MINUTES − 10) × 60` in `TournamentService.create_tournament`). @owner:github:andrei-shtanakov @id:bot-mcp-session-budget
+
+## mcp SDK v2 migration (deferred, blocked on upstream)
+
+- [ ] mcp SDK v2 (atp-dashboard): blocked on upstream — fastmcp (≤3.4.5) pins mcp<2.0. @trigger:"fastmcp release notes announce mcp>=2 support."
+      Then: lift the pins, migrate scripts/repro_mcp_concurrent_tools_list.py,
+      participant-kit-el-farol-en/bot_el_farol_random.py, and the 3 doc examples in
+      packages/atp-dashboard/atp/dashboard/v2/templates/ui/about.html off the v1
+      client API (ClientSession/sse_client → v2 Client), re-run tests/unit/dashboard/mcp/.
+      Context: prograph-vault/authored/notes/2026-08-04-mcp-v2-migration-plan.md
