@@ -14,7 +14,11 @@ game/tournament stack (`game-environments`, `fastmcp`, `mcp`). The full server
 **Eco profile contract:**
 
 > The `eco` profile serves OpenAPI (`/docs`, `/openapi.json`), health,
-> auth/token/agent-management, and the Benchmark API. HTML UI is **not part of
+> auth/token/agent-management, and the Benchmark API. Composition-wise the
+> profile is defined subtractively — **full minus tournaments/games/MCP/UI** —
+> so every other non-game API router (suites, analytics, marketplace, roles,
+> tenants, …) rides along; the guaranteed contract is the benchmark surface,
+> the rest is not individually promised. HTML UI is **not part of
 > the profile** — consumers are the CLI, the SDK (`atp-platform-sdk`), and
 > external UIs (e.g. dispatcher). Tournament, game, and MCP surfaces are
 > excluded as a **product boundary**, not merely as an import-breaking
