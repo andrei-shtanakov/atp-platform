@@ -5,6 +5,7 @@ instances with proper configuration, middleware, and routes.
 """
 
 import asyncio
+import logging
 import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager, suppress
@@ -21,7 +22,6 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from atp.dashboard.database import init_database
-from atp.dashboard.tournament.deadlines import run_deadline_worker
 from atp.dashboard.v2.config import DashboardConfig, get_config
 from atp.dashboard.v2.evaluation_composition import (
     COMPLETION_ONLY_CAPABILITY,
@@ -39,6 +39,8 @@ from atp.dashboard.v2.routes import build_router
 V2_DIR = Path(__file__).parent
 TEMPLATES_DIR = V2_DIR / "templates"
 STATIC_DIR = V2_DIR / "static"
+
+logger = logging.getLogger(__name__)
 
 
 def assert_single_worker() -> None:
@@ -146,25 +148,57 @@ def create_app(
     # in app code silently dropped — see ``logging_config`` docstring.
     configure_app_logging()
 
+    is_full = config.server_profile == "full"
+    logger.info("Creating dashboard app with server profile: %s", config.server_profile)
+
     # Set up the FastMCP sub-app first so its lifespan can be composed
     # into the outer FastAPI lifespan. Phase 0.2 verified that Starlette
     # does NOT propagate sub-app lifespans under mount(), so we must
-    # drive FastMCP's session-manager lifespan ourselves.
-    from atp.dashboard.mcp import mcp_server, tournament_event_bus
-    from atp.dashboard.mcp import tools as _mcp_tools  # noqa: F401
-    from atp.dashboard.mcp.auth import MCPAuthMiddleware
+    # drive FastMCP's session-manager lifespan ourselves. The eco profile
+    # skips all of this: no tournaments, no MCP, no deadline worker.
+    mcp_app: Any = None
+    mcp_http_app: Any = None
+    run_deadline_worker: Any = None
+    tournament_event_bus: Any = None
+    MCPAuthMiddleware: Any = None
+    if is_full:
+        try:
+            from atp.dashboard.mcp import mcp_server, tournament_event_bus
+            from atp.dashboard.mcp import tools as _mcp_tools  # noqa: F401
+            from atp.dashboard.mcp.auth import MCPAuthMiddleware
+            from atp.dashboard.tournament.deadlines import run_deadline_worker
 
-    mcp_app = mcp_server.http_app(transport="sse")
-    # Spike: parallel streamable-HTTP mount at /mcp-http to test
-    # whether the cold-start race we observe on /mcp/sse is
-    # transport-specific or lives above transport. Same FastMCP
-    # instance, same tool registry — only the transport layer
-    # differs. Existing SSE mount stays intact so participant-kit
-    # bots are unaffected during the test.
-    mcp_http_app = mcp_server.http_app(transport="streamable-http")
+            api_router = build_router(include_tournaments=True)
+        except ModuleNotFoundError as exc:
+            if exc.name is not None and exc.name.split(".")[0] in {
+                "game_envs",
+                "fastmcp",
+                "mcp",
+            }:
+                raise RuntimeError(
+                    "Server profile 'full' requires the tournament stack: "
+                    "install atp-dashboard[tournaments] or set "
+                    "ATP_SERVER_PROFILE=eco."
+                ) from exc
+            raise
+        mcp_app = mcp_server.http_app(transport="sse")
+        # Spike: parallel streamable-HTTP mount at /mcp-http to test
+        # whether the cold-start race we observe on /mcp/sse is
+        # transport-specific or lives above transport. Same FastMCP
+        # instance, same tool registry — only the transport layer
+        # differs. Existing SSE mount stays intact so participant-kit
+        # bots are unaffected during the test.
+        mcp_http_app = mcp_server.http_app(transport="streamable-http")
+    else:
+        api_router = build_router(include_tournaments=False)
 
     @asynccontextmanager
     async def _combined_lifespan(app_: FastAPI) -> AsyncGenerator[None, None]:
+        if not is_full:
+            async with lifespan(app_):
+                yield
+            return
+
         assert_single_worker()
 
         async with lifespan(app_):
@@ -250,7 +284,12 @@ def create_app(
 
         return _asgi
 
-    app.add_middleware(_slowapi_except_streams)
+    if is_full:
+        app.add_middleware(_slowapi_except_streams)
+    else:
+        # Eco has no SSE paths to shield, so no need for the
+        # stream-bypassing wrapper.
+        app.add_middleware(SlowAPIMiddleware)
     app.add_middleware(JWTUserStateMiddleware)
     app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
@@ -263,68 +302,76 @@ def create_app(
         allow_headers=["*"],
     )
 
-    # Mount the MCP tournament server under /mcp.
-    # MCPAuthMiddleware sits between JWTUserStateMiddleware (which
-    # populates request.state.user_id) and FastMCP, rejecting
-    # unauthenticated handshakes with 401.
-    mcp_app.add_middleware(MCPAuthMiddleware)
-    app.mount("/mcp", mcp_app)
+    if is_full:
+        # Mount the MCP tournament server under /mcp.
+        # MCPAuthMiddleware sits between JWTUserStateMiddleware (which
+        # populates request.state.user_id) and FastMCP, rejecting
+        # unauthenticated handshakes with 401.
+        mcp_app.add_middleware(MCPAuthMiddleware)
+        app.mount("/mcp", mcp_app)
 
-    # Spike: streamable-HTTP transport mounted as a sibling at
-    # /mcp-http. Same auth gating; same FastMCP instance underneath
-    # so tools registered via @mcp_server.tool() are visible from
-    # both transports. Lets bots opt into the alternate transport
-    # without affecting existing /mcp/sse traffic.
-    mcp_http_app.add_middleware(MCPAuthMiddleware)
-    app.mount("/mcp-http", mcp_http_app)
+        # Spike: streamable-HTTP transport mounted as a sibling at
+        # /mcp-http. Same auth gating; same FastMCP instance underneath
+        # so tools registered via @mcp_server.tool() are visible from
+        # both transports. Lets bots opt into the alternate transport
+        # without affecting existing /mcp/sse traffic.
+        mcp_http_app.add_middleware(MCPAuthMiddleware)
+        app.mount("/mcp-http", mcp_http_app)
 
     # Mount API routes
-    app.include_router(build_router(include_tournaments=True), prefix="/api")
+    app.include_router(api_router, prefix="/api")
 
-    # Mount UI routes (HTMX + Pico CSS frontend)
-    from atp.dashboard.v2.routes.admin_ui import router as admin_ui_router
-    from atp.dashboard.v2.routes.ui import router as ui_router
-    from atp.dashboard.v2.routes.winners_ui import router as winners_ui_router
+    if is_full:
+        # Mount UI routes (HTMX + Pico CSS frontend)
+        from atp.dashboard.v2.routes.admin_ui import router as admin_ui_router
+        from atp.dashboard.v2.routes.ui import router as ui_router
+        from atp.dashboard.v2.routes.winners_ui import router as winners_ui_router
 
-    app.include_router(ui_router)
-    app.include_router(winners_ui_router)
-    app.include_router(admin_ui_router)
+        app.include_router(ui_router)
+        app.include_router(winners_ui_router)
+        app.include_router(admin_ui_router)
 
-    # Configure Jinja2 templates
-    if TEMPLATES_DIR.exists():
-        templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
-        app.state.templates = templates
+        # Configure Jinja2 templates
+        if TEMPLATES_DIR.exists():
+            templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+            app.state.templates = templates
 
-        # Mount static files for v2
-        if STATIC_DIR.exists():
-            app.mount(
-                "/static/v2",
-                StaticFiles(directory=str(STATIC_DIR)),
-                name="static_v2",
-            )
+            # Mount static files for v2
+            if STATIC_DIR.exists():
+                app.mount(
+                    "/static/v2",
+                    StaticFiles(directory=str(STATIC_DIR)),
+                    name="static_v2",
+                )
 
-        # Redirect root to the new UI
+            # Redirect root to the new UI
+            @app.get("/")
+            async def home() -> RedirectResponse:
+                """Redirect root to /ui/ dashboard."""
+                return RedirectResponse(url="/ui/", status_code=302)
+
+            # Legacy v1 routes — redirect to new /ui/ equivalents
+            @app.get("/login")
+            async def legacy_login() -> RedirectResponse:
+                return RedirectResponse(url="/ui/login", status_code=302)
+
+            @app.get("/register")
+            async def legacy_register() -> RedirectResponse:
+                return RedirectResponse(url="/ui/register", status_code=302)
+
+            @app.get("/games")
+            async def legacy_games() -> RedirectResponse:
+                return RedirectResponse(url="/ui/games", status_code=302)
+
+            @app.get("/analytics")
+            async def legacy_analytics() -> RedirectResponse:
+                return RedirectResponse(url="/ui/analytics", status_code=302)
+    else:
+
         @app.get("/")
-        async def home() -> RedirectResponse:
-            """Redirect root to /ui/ dashboard."""
-            return RedirectResponse(url="/ui/", status_code=302)
-
-        # Legacy v1 routes — redirect to new /ui/ equivalents
-        @app.get("/login")
-        async def legacy_login() -> RedirectResponse:
-            return RedirectResponse(url="/ui/login", status_code=302)
-
-        @app.get("/register")
-        async def legacy_register() -> RedirectResponse:
-            return RedirectResponse(url="/ui/register", status_code=302)
-
-        @app.get("/games")
-        async def legacy_games() -> RedirectResponse:
-            return RedirectResponse(url="/ui/games", status_code=302)
-
-        @app.get("/analytics")
-        async def legacy_analytics() -> RedirectResponse:
-            return RedirectResponse(url="/ui/analytics", status_code=302)
+        async def eco_root() -> dict[str, str]:
+            """Machine-readable root for the API-only eco profile."""
+            return {"profile": "eco", "docs": "/docs"}
 
     return app
 
