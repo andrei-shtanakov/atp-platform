@@ -397,8 +397,9 @@ def _require_authlib() -> None:
     if not _AUTHLIB_AVAILABLE:
         raise ConfigurationError(
             "OIDC SSO requires the 'authlib' package, which could not be "
-            "imported. Install the dashboard's 'enterprise' extra "
-            "(e.g. `uv sync --extra enterprise`)."
+            "imported. Install the dashboard's 'enterprise' extra: "
+            "`pip install atp-dashboard[enterprise]` (or, in the repo "
+            "workspace, `uv sync --extra enterprise`)."
         )
 
 
