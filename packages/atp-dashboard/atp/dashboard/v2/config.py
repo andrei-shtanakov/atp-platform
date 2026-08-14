@@ -7,7 +7,7 @@ supporting environment variables and sensible defaults.
 import logging
 import warnings
 from functools import lru_cache
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings
@@ -70,6 +70,13 @@ class DashboardConfig(BaseSettings):
     disable_auth: bool = Field(
         default=False,
         description="Disable authentication (WARNING: For development only!)",
+    )
+    server_profile: Literal["full", "eco"] = Field(
+        default="full",
+        description=(
+            "Server composition profile: 'full' (default) or 'eco' "
+            "(API-only benchmark server, no tournaments/MCP/UI)"
+        ),
     )
 
     # GitHub OAuth settings (for Device Flow)
@@ -241,6 +248,7 @@ class DashboardConfig(BaseSettings):
             "port": self.port,
             "debug": self.debug,
             "disable_auth": self.disable_auth,
+            "server_profile": self.server_profile,
             "github_client_id": self.github_client_id,
             "github_client_secret": "***" if self.github_client_secret else None,
             "batch_max_size": self.batch_max_size,
