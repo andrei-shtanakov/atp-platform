@@ -15,7 +15,9 @@ from atp.dashboard.schemas import (
     UserCreate,
 )
 from atp.dashboard.v2.dependencies import get_db_session
-from atp.dashboard.v2.routes import router
+from atp.dashboard.v2.routes import build_router
+
+router = build_router(include_tournaments=True)
 
 
 class TestGetSession:

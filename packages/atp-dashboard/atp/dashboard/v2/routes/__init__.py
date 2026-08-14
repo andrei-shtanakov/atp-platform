@@ -53,9 +53,6 @@ from atp.dashboard.v2.routes.benchmark_api import (
     router as benchmark_api_router,
 )
 from atp.dashboard.v2.routes.budgets import router as budgets_router
-from atp.dashboard.v2.routes.builtins_api import (
-    router as builtins_api_router,
-)
 from atp.dashboard.v2.routes.catalog import router as catalog_router
 from atp.dashboard.v2.routes.comparison import router as comparison_router
 from atp.dashboard.v2.routes.costs import router as costs_router
@@ -63,11 +60,7 @@ from atp.dashboard.v2.routes.definitions import router as definitions_router
 from atp.dashboard.v2.routes.device_auth import (
     router as device_auth_router,
 )
-from atp.dashboard.v2.routes.el_farol_dashboard import (
-    router as el_farol_dashboard_router,
-)
 from atp.dashboard.v2.routes.experiments import router as experiments_router
-from atp.dashboard.v2.routes.games import router as games_router
 from atp.dashboard.v2.routes.home import router as home_router
 from atp.dashboard.v2.routes.invite_api import router as invite_api_router
 from atp.dashboard.v2.routes.leaderboard import router as leaderboard_router
@@ -85,66 +78,95 @@ from atp.dashboard.v2.routes.tenants import router as tenants_router
 from atp.dashboard.v2.routes.tests import router as tests_router
 from atp.dashboard.v2.routes.timeline import router as timeline_router
 from atp.dashboard.v2.routes.token_api import router as token_api_router
-from atp.dashboard.v2.routes.tournament_api import (
-    router as tournament_api_router,
-)
-from atp.dashboard.v2.routes.tournament_live import (
-    router as tournament_live_router,
-)
 from atp.dashboard.v2.routes.traces import router as traces_router
 from atp.dashboard.v2.routes.trends import router as trends_router
 from atp.dashboard.v2.routes.upload import router as upload_router
 from atp.dashboard.v2.routes.users import router as users_router
 from atp.dashboard.v2.routes.websocket import router as websocket_router
-from atp.dashboard.v2.routes.winners_api import router as winners_api_router
 
-# Create the main API router that aggregates all sub-routers
-router = APIRouter()
 
-# Include all domain-specific routers
-router.include_router(auth_router)
-router.include_router(device_auth_router)
-router.include_router(home_router)
-router.include_router(agents_router)
-router.include_router(suites_router)
-router.include_router(tests_router)
-router.include_router(trends_router)
-router.include_router(comparison_router)
-router.include_router(leaderboard_router)
-router.include_router(public_leaderboard_router)
-router.include_router(marketplace_router)
-router.include_router(timeline_router)
-router.include_router(definitions_router)
-router.include_router(upload_router)
-router.include_router(templates_router)
-router.include_router(traces_router)
-router.include_router(metrics_router)
-router.include_router(costs_router)
-router.include_router(budgets_router)
-router.include_router(analytics_router)
-router.include_router(experiments_router)
-router.include_router(games_router)
-router.include_router(el_farol_dashboard_router)
-router.include_router(tenants_router)
-router.include_router(roles_router)
-router.include_router(sso_router)
-router.include_router(saml_router)
-router.include_router(audit_router)
-router.include_router(users_router)
-router.include_router(websocket_router)
-router.include_router(agent_traces_router)
-router.include_router(catalog_router)
-router.include_router(benchmark_api_router)
-router.include_router(tournament_api_router)
-router.include_router(tournament_live_router)
-router.include_router(token_api_router)
-router.include_router(agent_management_api_router)
-router.include_router(invite_api_router)
-router.include_router(builtins_api_router)
-router.include_router(winners_api_router)
+def build_core_router() -> APIRouter:
+    """Aggregate every non-tournament API router (both profiles)."""
+    router = APIRouter()
+    router.include_router(auth_router)
+    router.include_router(device_auth_router)
+    router.include_router(home_router)
+    router.include_router(agents_router)
+    router.include_router(suites_router)
+    router.include_router(tests_router)
+    router.include_router(trends_router)
+    router.include_router(comparison_router)
+    router.include_router(leaderboard_router)
+    router.include_router(public_leaderboard_router)
+    router.include_router(marketplace_router)
+    router.include_router(timeline_router)
+    router.include_router(definitions_router)
+    router.include_router(upload_router)
+    router.include_router(templates_router)
+    router.include_router(traces_router)
+    router.include_router(metrics_router)
+    router.include_router(costs_router)
+    router.include_router(budgets_router)
+    router.include_router(analytics_router)
+    router.include_router(experiments_router)
+    router.include_router(tenants_router)
+    router.include_router(roles_router)
+    router.include_router(sso_router)
+    router.include_router(saml_router)
+    router.include_router(audit_router)
+    router.include_router(users_router)
+    router.include_router(websocket_router)
+    router.include_router(agent_traces_router)
+    router.include_router(catalog_router)
+    router.include_router(benchmark_api_router)
+    router.include_router(token_api_router)
+    router.include_router(agent_management_api_router)
+    router.include_router(invite_api_router)
+    return router
+
+
+def build_tournament_router() -> APIRouter:
+    """Aggregate tournament/game routers (full profile only).
+
+    Imports live inside the function so the eco profile never imports
+    the game stack (game_envs) transitively.
+    """
+    from atp.dashboard.v2.routes.builtins_api import (
+        router as builtins_api_router,
+    )
+    from atp.dashboard.v2.routes.el_farol_dashboard import (
+        router as el_farol_dashboard_router,
+    )
+    from atp.dashboard.v2.routes.games import router as games_router
+    from atp.dashboard.v2.routes.tournament_api import (
+        router as tournament_api_router,
+    )
+    from atp.dashboard.v2.routes.tournament_live import (
+        router as tournament_live_router,
+    )
+    from atp.dashboard.v2.routes.winners_api import (
+        router as winners_api_router,
+    )
+
+    router = APIRouter()
+    router.include_router(games_router)
+    router.include_router(el_farol_dashboard_router)
+    router.include_router(tournament_api_router)
+    router.include_router(tournament_live_router)
+    router.include_router(builtins_api_router)
+    router.include_router(winners_api_router)
+    return router
+
+
+def build_router(*, include_tournaments: bool) -> APIRouter:
+    """Build the aggregated /api router for the requested profile."""
+    router = build_core_router()
+    if include_tournaments:
+        router.include_router(build_tournament_router())
+    return router
+
 
 __all__ = [
-    "router",
     "agent_traces_router",
     "benchmark_api_router",
     "catalog_router",
@@ -158,9 +180,7 @@ __all__ = [
     "costs_router",
     "definitions_router",
     "upload_router",
-    "el_farol_dashboard_router",
     "experiments_router",
-    "games_router",
     "home_router",
     "leaderboard_router",
     "marketplace_router",
@@ -178,11 +198,10 @@ __all__ = [
     "trends_router",
     "users_router",
     "websocket_router",
-    "tournament_api_router",
-    "tournament_live_router",
     "token_api_router",
     "agent_management_api_router",
     "invite_api_router",
-    "builtins_api_router",
-    "winners_api_router",
+    "build_core_router",
+    "build_tournament_router",
+    "build_router",
 ]

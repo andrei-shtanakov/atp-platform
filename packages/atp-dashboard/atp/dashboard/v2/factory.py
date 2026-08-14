@@ -33,7 +33,7 @@ from atp.dashboard.v2.rate_limit import (
     create_limiter,
     rate_limit_exceeded_handler,
 )
-from atp.dashboard.v2.routes import router as api_router
+from atp.dashboard.v2.routes import build_router
 
 # Template and static file directories
 V2_DIR = Path(__file__).parent
@@ -279,7 +279,7 @@ def create_app(
     app.mount("/mcp-http", mcp_http_app)
 
     # Mount API routes
-    app.include_router(api_router, prefix="/api")
+    app.include_router(build_router(include_tournaments=True), prefix="/api")
 
     # Mount UI routes (HTMX + Pico CSS frontend)
     from atp.dashboard.v2.routes.admin_ui import router as admin_ui_router
