@@ -15,14 +15,35 @@ Supported providers:
 - Generic OIDC provider
 """
 
+from __future__ import annotations
+
 import secrets
 from enum import StrEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
-from authlib.jose import JsonWebKey, JsonWebToken
-from authlib.jose.errors import DecodeError, ExpiredTokenError, InvalidClaimError
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+# authlib ships only in the optional ``enterprise`` extra (see
+# packages/atp-dashboard/pyproject.toml). Import it lazily so the dashboard
+# still imports and boots without that extra — validate_id_token() is the
+# only call site, and it guards itself with _require_authlib(). Mirrors
+# saml.py's _require_saml() pattern for python3-saml.
+try:
+    from authlib.jose import JsonWebKey, JsonWebToken
+    from authlib.jose.errors import DecodeError, ExpiredTokenError, InvalidClaimError
+
+    _AUTHLIB_AVAILABLE = True
+except ImportError:  # pragma: no cover - exercised only without the extra
+    _AUTHLIB_AVAILABLE = False
+    if not TYPE_CHECKING:
+
+        class _AuthlibUnavailableError(Exception):
+            """Placeholder exception type used only when authlib isn't installed."""
+
+        JsonWebKey = None
+        JsonWebToken = None
+        DecodeError = ExpiredTokenError = InvalidClaimError = _AuthlibUnavailableError
 
 
 class OIDCProvider(StrEnum):
@@ -365,6 +386,22 @@ class UserProvisioningError(SSOError):
     pass
 
 
+def _require_authlib() -> None:
+    """Raise if the optional authlib dependency isn't installed.
+
+    Called at the entry point that actually touches authlib's JOSE
+    implementation, so a dashboard built without the ``enterprise`` extra
+    still imports and runs — it just rejects OIDC ID-token validation with
+    an actionable message instead of crashing at import time.
+    """
+    if not _AUTHLIB_AVAILABLE:
+        raise ConfigurationError(
+            "OIDC SSO requires the 'authlib' package, which could not be "
+            "imported. Install the dashboard's 'enterprise' extra "
+            "(e.g. `uv sync --extra enterprise`)."
+        )
+
+
 class SSOManager:
     """Manager for OIDC-based SSO operations.
 
@@ -573,6 +610,7 @@ class SSOManager:
         Raises:
             TokenValidationError: If token validation fails
         """
+        _require_authlib()
         jwks_data = await self._fetch_jwks()
 
         try:
