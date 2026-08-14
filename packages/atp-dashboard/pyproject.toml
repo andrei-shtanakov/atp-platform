@@ -17,6 +17,12 @@ dependencies = [
     "opentelemetry-instrumentation-fastapi>=0.60b1",
     "slowapi>=0.1.9",
     "cachetools>=7.0.5",
+    # Runtime dependency: atp/dashboard/auth/sso/oidc.py imports httpx
+    # unconditionally (auth/__init__.py -> auth/sso -> oidc.py). Never
+    # caught before because atp-dashboard was never installed standalone —
+    # atp-adapters or the tournaments extra (mcp/fastmcp) always dragged
+    # httpx in transitively alongside it.
+    "httpx>=0.27",
     # Runtime dependency: migrations/dashboard/versions/*.py are applied
     # in prod via `alembic upgrade head`. Previously this was only in the
     # root dev dependency-group, so `uv sync --no-dev` in the production
