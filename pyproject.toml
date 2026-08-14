@@ -88,6 +88,9 @@ azure-openai = [
     "atp-adapters[azure-openai]",
 ]
 dashboard = [
+    "atp-dashboard[tournaments]>=1.0.0",
+]
+eco-server = [
     "atp-dashboard>=1.0.0",
 ]
 enterprise = [
@@ -108,9 +111,7 @@ pricing = [
 ]
 all = [
     "atp-adapters[cloud]",
-    "atp-dashboard>=1.0.0",
-    "atp-dashboard[enterprise]",
-    "atp-dashboard[analytics]",
+    "atp-dashboard[tournaments,enterprise,analytics]>=1.0.0",
     "anthropic>=0.76.0",
     "rich>=13.0",
     "textual>=0.47.0",

@@ -378,11 +378,8 @@ dependencies = [
     { name = "bcrypt" },
     { name = "cachetools" },
     { name = "fastapi" },
-    { name = "fastmcp" },
-    { name = "game-environments" },
     { name = "greenlet" },
     { name = "jinja2" },
-    { name = "mcp" },
     { name = "opentelemetry-instrumentation-fastapi" },
     { name = "pyjwt" },
     { name = "python-multipart" },
@@ -407,6 +404,11 @@ enterprise = [
 postgres = [
     { name = "asyncpg" },
 ]
+tournaments = [
+    { name = "fastmcp" },
+    { name = "game-environments" },
+    { name = "mcp" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -423,11 +425,11 @@ requires-dist = [
     { name = "bcrypt", specifier = ">=5.0.0" },
     { name = "cachetools", specifier = ">=7.0.5" },
     { name = "fastapi", specifier = ">=0.128.0" },
-    { name = "fastmcp", specifier = ">=3.0" },
-    { name = "game-environments", editable = "game-environments" },
+    { name = "fastmcp", marker = "extra == 'tournaments'", specifier = ">=3.0" },
+    { name = "game-environments", marker = "extra == 'tournaments'", editable = "game-environments" },
     { name = "greenlet", specifier = ">=3.3.1" },
     { name = "jinja2", specifier = ">=3.1.6" },
-    { name = "mcp", specifier = ">=1.28.1,<2" },
+    { name = "mcp", marker = "extra == 'tournaments'", specifier = ">=1.28.1,<2" },
     { name = "openpyxl", marker = "extra == 'analytics'", specifier = ">=3.1.5" },
     { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0.60b1" },
     { name = "pyjwt", specifier = ">=2.12.0" },
@@ -440,7 +442,7 @@ requires-dist = [
     { name = "sqlalchemy", specifier = ">=2.0.46" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.40.0" },
 ]
-provides-extras = ["enterprise", "analytics", "postgres", "dev"]
+provides-extras = ["tournaments", "enterprise", "analytics", "postgres", "dev"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "freezegun", specifier = ">=1.5.5" }]
@@ -548,7 +550,7 @@ all = [
     { name = "anthropic" },
     { name = "atp-adapters", extra = ["cloud"] },
     { name = "atp-core", extra = ["pricing"] },
-    { name = "atp-dashboard", extra = ["analytics", "enterprise"] },
+    { name = "atp-dashboard", extra = ["analytics", "enterprise", "tournaments"] },
     { name = "rich" },
     { name = "textual" },
 ]
@@ -565,13 +567,16 @@ cloud = [
     { name = "atp-adapters", extra = ["cloud"] },
 ]
 dashboard = [
-    { name = "atp-dashboard" },
+    { name = "atp-dashboard", extra = ["tournaments"] },
 ]
 dev = [
     { name = "pytest" },
     { name = "pytest-anyio" },
     { name = "pytest-cov" },
     { name = "ruff" },
+]
+eco-server = [
+    { name = "atp-dashboard" },
 ]
 enterprise = [
     { name = "atp-dashboard", extra = ["enterprise"] },
@@ -637,12 +642,11 @@ requires-dist = [
     { name = "atp-core", editable = "packages/atp-core" },
     { name = "atp-core", extras = ["pricing"], marker = "extra == 'all'", editable = "packages/atp-core" },
     { name = "atp-core", extras = ["pricing"], marker = "extra == 'pricing'", editable = "packages/atp-core" },
-    { name = "atp-dashboard", marker = "extra == 'all'", editable = "packages/atp-dashboard" },
-    { name = "atp-dashboard", marker = "extra == 'dashboard'", editable = "packages/atp-dashboard" },
-    { name = "atp-dashboard", extras = ["analytics"], marker = "extra == 'all'", editable = "packages/atp-dashboard" },
+    { name = "atp-dashboard", marker = "extra == 'eco-server'", editable = "packages/atp-dashboard" },
     { name = "atp-dashboard", extras = ["analytics"], marker = "extra == 'analytics'", editable = "packages/atp-dashboard" },
-    { name = "atp-dashboard", extras = ["enterprise"], marker = "extra == 'all'", editable = "packages/atp-dashboard" },
     { name = "atp-dashboard", extras = ["enterprise"], marker = "extra == 'enterprise'", editable = "packages/atp-dashboard" },
+    { name = "atp-dashboard", extras = ["tournaments"], marker = "extra == 'dashboard'", editable = "packages/atp-dashboard" },
+    { name = "atp-dashboard", extras = ["tournaments", "enterprise", "analytics"], marker = "extra == 'all'", editable = "packages/atp-dashboard" },
     { name = "authlib", specifier = ">=1.6.9" },
     { name = "bcrypt", specifier = ">=5.0.0" },
     { name = "click", specifier = ">=8.3.1" },
@@ -666,7 +670,7 @@ requires-dist = [
     { name = "textual", marker = "extra == 'all'", specifier = ">=0.47.0" },
     { name = "textual", marker = "extra == 'tui'", specifier = ">=0.47.0" },
 ]
-provides-extras = ["dev", "tui", "cloud", "bedrock", "vertex", "azure-openai", "dashboard", "enterprise", "analytics", "llm", "pricing", "all"]
+provides-extras = ["dev", "tui", "cloud", "bedrock", "vertex", "azure-openai", "dashboard", "eco-server", "enterprise", "analytics", "llm", "pricing", "all"]
 
 [package.metadata.requires-dev]
 dev = [
