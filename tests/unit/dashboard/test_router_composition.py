@@ -36,7 +36,13 @@ def test_core_router_has_no_tournament_routes() -> None:
 
 
 def test_routes_module_import_does_not_pull_games() -> None:
-    """Fast check; the authoritative proof is the subprocess test (Task 6)."""
+    """Fast check; the authoritative proof is the subprocess test (Task 6).
+
+    ATP_SERVER_PROFILE=eco is required: importing atp.dashboard.v2.routes
+    executes the parent package, which materializes factory's module-level
+    app for whatever profile the environment selects (spec §5).
+    """
+    import os
     import subprocess
     import sys
 
@@ -44,4 +50,8 @@ def test_routes_module_import_does_not_pull_games() -> None:
         "import sys; import atp.dashboard.v2.routes; "
         "sys.exit(1 if 'game_envs' in sys.modules else 0)"
     )
-    assert subprocess.run([sys.executable, "-c", code]).returncode == 0
+    env = os.environ | {
+        "ATP_SERVER_PROFILE": "eco",
+        "ATP_SECRET_KEY": "smoke",
+    }
+    assert subprocess.run([sys.executable, "-c", code], env=env).returncode == 0
