@@ -6,7 +6,9 @@ from fastapi.testclient import TestClient
 from atp.dashboard.auth import get_current_active_user
 from atp.dashboard.models import User
 from atp.dashboard.v2.factory import create_test_app
-from atp.dashboard.v2.routes import router
+from atp.dashboard.v2.routes import build_router
+
+router = build_router(include_tournaments=True)
 
 
 def _mock_admin_user() -> User:

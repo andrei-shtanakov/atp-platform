@@ -212,6 +212,7 @@ Key environment variables for the dashboard and SDK:
 - `ATP_DEBUG` - Enable debug mode (default: false)
 - `ATP_HOST` - Server host address (default: "127.0.0.1")
 - `ATP_PORT` - Server port (default: 8080)
+- `ATP_SERVER_PROFILE` - Server composition profile: `full` (default) or `eco` (API-only benchmark server — Benchmark API + auth/tokens/agents; no tournaments, MCP, or HTML UI). See `docs/superpowers/specs/2026-08-14-eco-server-profile-design.md`.
 - `ATP_DISABLE_AUTH` - Disable authentication (default: false, dev only!)
 - `ATP_GITHUB_CLIENT_ID` - GitHub OAuth App client ID (required for GitHub login)
 - `ATP_GITHUB_CLIENT_SECRET` - GitHub OAuth App client secret (required for GitHub login)

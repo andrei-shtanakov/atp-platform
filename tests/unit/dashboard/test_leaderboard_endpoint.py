@@ -219,15 +219,17 @@ class TestRouterConfiguration:
 
     def test_leaderboard_route_exists(self, client: TestClient) -> None:
         """Test that leaderboard/matrix route exists."""
-        from atp.dashboard.v2.routes import router
+        from atp.dashboard.v2.routes import build_router
 
+        router = build_router(include_tournaments=True)
         route_paths = [r.path for r in router.routes if hasattr(r, "path")]
         assert "/leaderboard/matrix" in route_paths
 
     def test_leaderboard_route_has_tag(self, client: TestClient) -> None:
         """Test that leaderboard route has correct tag."""
-        from atp.dashboard.v2.routes import router
+        from atp.dashboard.v2.routes import build_router
 
+        router = build_router(include_tournaments=True)
         for route in router.routes:
             if hasattr(route, "path") and route.path == "/leaderboard/matrix":
                 assert "leaderboard" in route.tags
