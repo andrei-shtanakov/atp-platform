@@ -65,7 +65,7 @@ jobs:
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Sync deps
-        run: uv sync --all-packages --group dev
+        run: uv sync --all-packages --all-extras --group dev
       - name: Tournament unit tests + static guards
         env:
           COVERAGE_FILE: .coverage.tournament-unit
@@ -93,7 +93,7 @@ jobs:
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Sync deps
-        run: uv sync --all-packages --group dev
+        run: uv sync --all-packages --all-extras --group dev
       - name: Tournament integration tests
         env:
           COVERAGE_FILE: .coverage.tournament-integration
@@ -122,7 +122,7 @@ jobs:
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Sync deps
-        run: uv sync --all-packages --group dev
+        run: uv sync --all-packages --all-extras --group dev
       - name: Tournament e2e tests
         env:
           COVERAGE_FILE: .coverage.tournament-e2e
@@ -155,7 +155,7 @@ jobs:
         with:
           version: "latest"
       - name: Sync deps
-        run: uv sync --all-packages --group dev
+        run: uv sync --all-packages --all-extras --group dev
       - name: Download tournament unit coverage data
         uses: actions/download-artifact@v8
         with:

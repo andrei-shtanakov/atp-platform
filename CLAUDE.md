@@ -172,7 +172,6 @@ atp/                         # Namespace package (symlinks to packages/ + local 
 ├── performance/   # Profiling, caching, memory tracking
 ├── benchmarks/    # Benchmark suites
 ├── generator/     # Test suite generation
-├── test_catalog/  # Test catalog (browse, run, publish curated/community test suites)
 ├── plugins/       # Plugin ecosystem management
 ├── sdk/           # Python SDK for programmatic test execution
 ├── tracing/       # Agent replay and trace management
@@ -189,7 +188,8 @@ atp/                         # Namespace package (symlinks to packages/ + local 
 ├── streaming/→ packages/atp-core/     # (symlink)
 ├── adapters/ → packages/atp-adapters/ # (symlink)
 ├── dashboard/→ packages/atp-dashboard/# (symlink)
-└── analytics/→ packages/atp-dashboard/# (symlink)
+├── analytics/→ packages/atp-dashboard/# (symlink)
+└── test_catalog/→ packages/atp-dashboard/# (symlink; test catalog — browse, run, publish curated/community test suites)
 
 game-environments/           # Standalone game theory library (8 games, 25+ strategies)
 atp-games/                   # ATP plugin for game-theoretic evaluation

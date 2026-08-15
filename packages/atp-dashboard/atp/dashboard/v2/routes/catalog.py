@@ -6,12 +6,12 @@ categories, suites, tests, and submission leaderboards.
 
 import logging
 
-from atp.test_catalog.repository import CatalogRepository
-from atp.test_catalog.sync import sync_builtin_catalog
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel
 
 from atp.dashboard.v2.dependencies import DBSession
+from atp.test_catalog.repository import CatalogRepository
+from atp.test_catalog.sync import sync_builtin_catalog
 
 logger = logging.getLogger(__name__)
 
