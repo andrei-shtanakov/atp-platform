@@ -7,7 +7,6 @@ sys.modules/meta_path tests cannot give (spec §7, PR-2).
 
 import subprocess
 import sys
-import venv
 from pathlib import Path
 
 import pytest
@@ -78,23 +77,46 @@ def test_minimal_wheel_install_boots_eco(tmp_path: Path) -> None:
         if line.startswith("Requires-Dist: game-environments"):
             assert "tournaments" in line, f"unconditional game dep: {line}"
 
-    env_dir = tmp_path / "venv"
-    # symlinks=True: uv-managed CPython on macOS resolves its shared lib via
-    # @executable_path/../lib/libpython3.12.dylib; a copied (non-symlinked)
-    # interpreter loses that relative path and aborts at startup.
-    venv.create(env_dir, with_pip=True, symlinks=True)
-    py = str(env_dir / "bin" / "python")
-    # Install the local atp-core wheel by explicit path FIRST. PyPI hosts an
-    # unrelated "atp-core" package (an "Attested Transport Protocol" SDK) at
-    # a higher version; atp-dashboard's unpinned `atp-core>=1.0.0` requirement
-    # would otherwise resolve against that impostor instead of our wheel.
-    # With our atp-core already installed and satisfying the constraint, pip
-    # never needs to consult the index for it.
+    # Use a standalone uv project so this packaging test obeys the repository's
+    # uv-only policy. Add both local wheels in one resolution: PyPI hosts an
+    # unrelated, higher-version "atp-core", which must not satisfy the
+    # dashboard wheel's atp-core dependency during this smoke test.
+    smoke_project = tmp_path / "smoke-project"
+    _run(
+        [
+            "uv",
+            "init",
+            "--bare",
+            "--no-workspace",
+            "--vcs",
+            "none",
+            str(smoke_project),
+        ]
+    )
     core_wheel = next(dist.glob("atp_core-*.whl"))
-    _run([py, "-m", "pip", "install", str(core_wheel)])
-    _run([py, "-m", "pip", "install", "--find-links", str(dist), str(wheel)])
+    _run(
+        [
+            "uv",
+            "add",
+            "--project",
+            str(smoke_project),
+            str(core_wheel),
+            str(wheel),
+        ]
+    )
     # cwd must not be the repo root: `python -c` prepends cwd to sys.path,
     # and the repo's own atp/ namespace package would shadow the wheel
-    # actually installed in the venv's site-packages.
-    proc = _run([py, "-c", CHILD], cwd=str(tmp_path))
+    # actually installed in the standalone project's environment.
+    proc = _run(
+        [
+            "uv",
+            "run",
+            "--project",
+            str(smoke_project),
+            "python",
+            "-c",
+            CHILD,
+        ],
+        cwd=str(tmp_path),
+    )
     assert "ECO-WHEEL-SMOKE-OK" in proc.stdout
