@@ -12,7 +12,8 @@
 
 ## Global Constraints
 
-- Package management: **uv only** (`uv run`, `uv add`); never pip except inside the PR-2 smoke venv.
+- Package management: **uv only** (`uv run`, `uv add`); never pip, including
+  inside the PR-2 wheel-smoke environment.
 - After every change: `uv run ruff format .`, `uv run ruff check .`, `uv run pyrefly check` — fix before moving on.
 - Line length 88; type hints everywhere; async tests use anyio.
 - Git: branch → PR; **no direct commits to `main`**; merge is done by the human.
@@ -783,7 +784,6 @@ sys.modules/meta_path tests cannot give (spec §7, PR-2).
 
 import subprocess
 import sys
-import venv
 from pathlib import Path
 
 import pytest
@@ -849,11 +849,35 @@ def test_minimal_wheel_install_boots_eco(tmp_path: Path) -> None:
         if line.startswith("Requires-Dist: game-environments"):
             assert "tournaments" in line, f"unconditional game dep: {line}"
 
-    env_dir = tmp_path / "venv"
-    venv.create(env_dir, with_pip=True)
-    py = str(env_dir / "bin" / "python")
-    _run([py, "-m", "pip", "install", "--find-links", str(dist), str(wheel)])
-    proc = _run([py, "-c", CHILD])
+    # Use a standalone uv project so the smoke install obeys the repository's
+    # uv-only package-management policy. Adding both local wheels ensures uv
+    # resolves atp-core from the artifact under test rather than from PyPI.
+    smoke_project = tmp_path / "smoke-project"
+    _run(
+        [
+            "uv",
+            "init",
+            "--bare",
+            "--no-workspace",
+            "--vcs",
+            "none",
+            str(smoke_project),
+        ]
+    )
+    core_wheel = next(dist.glob("atp_core-*.whl"))
+    _run(
+        [
+            "uv",
+            "add",
+            "--project",
+            str(smoke_project),
+            str(core_wheel),
+            str(wheel),
+        ]
+    )
+    proc = _run(
+        ["uv", "run", "--project", str(smoke_project), "python", "-c", CHILD]
+    )
     assert "ECO-WHEEL-SMOKE-OK" in proc.stdout
 ```
 
