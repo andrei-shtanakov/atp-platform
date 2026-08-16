@@ -156,11 +156,18 @@
     парсером как наша). То есть arbiter ждёт данных от нас, а не мы от них;
     до сверки наш TODO этого не отражал вовсе.
     @source-owner:arbiter @source-ref:arbiter@94ed8d2 @observed-at:2026-07-27 @recheck-by:2026-10-27
-  - [ ] **Прогон второго task_type тремя агентами** — данные для crossover-гейта arbiter; принят из #279 @owner:github:andrei-shtanakov @id:second-task-type-sweep
+  - [x] **Прогон второго task_type тремя агентами** — данные для crossover-гейта arbiter; принят из #279 @owner:github:andrei-shtanakov @id:second-task-type-sweep
     Принято по ADR-ECO-006 из входящего запроса arbiter. Запрошенный slug был
     `benchmark-2`; принимаем под своим именем — slug это запрос имени, а не право
     его назначить. Тело issue и `@blocked_by` у arbiter обновляются под принятое.
     Готово, когда в `benchmark_runs` есть `rank_score` для второго `suite_id`.
+    ✅ 2026-08-16: свип req-extraction (golden b2b8a055, 17 кейсов, runs=3) по
+    claude_code@claude-sonnet-4-6 / codex_cli@gpt-5.5 / opencode@glm-5.1 —
+    инжест в arbiter benchmark_runs (3 created). Все три на потолке:
+    score=1.0, rank_score=1.0, infra_error_rate=0.0 → для req-extraction
+    re-rank вырождается в ничью (сигнал task-dependence — отсутствие разброса
+    само по себе точка данных для гейта). Evidence:
+    `_bench_output/r07-pipecheck/second-task-type-2026-08-16-runs3/`.
 
   - **Phase 1 (2026-06-13): code-review вертикаль — тонкий срез.** Планы:
     [`docs/superpowers/plans/2026-06-13-r07-phase1-code-review-eval.md`](docs/superpowers/plans/2026-06-13-r07-phase1-code-review-eval.md)
