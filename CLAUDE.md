@@ -24,14 +24,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ATP's role in the ecosystem: task validation for Maestro (`validation_cmd` — see `docs/maestro-integration.md`) and eval-driven learning for arbiter (ATP guardrails relate to arbiter invariants as separate lifecycle phases — see `../arbiter/docs/guardrails-atp-mapping.md`). R-06a and R-13 closed 2026-04-25. **R-06b is not blocked and not ours to start** — Maestro shipped its whole side (M1…M5, `maestro/benchmark/` + `MaestroATPAdapter` over `atp-platform-sdk>=2.0.0`, see `../maestro/TODO.md:98-102`), and Maestro R-03 closed back in v0.2.0. What remains on the ATP side is narrow and named: the benchmark-run status endpoint exposes only `total_score`, so Maestro's `finalize()` gets `score_components={}` — see TODO.md.
 
-## `../_cowork_output/` is dev-only — never a code/runtime resource
+## `../_cowork_output/` — dev-only
 
-`../_cowork_output/` (the polyrepo **sibling** workspace; this repo's local sweep outputs live in the separately-named, gitignored `_bench_output/` directory) is the development-time coordination area (cross-team ADRs, status notes, contract drafts, PM/dev tooling). Users and teams installing or cloning this project do NOT have it. Rules:
-
-- Shipped/runtime code must never read, import, or resolve paths under `../_cowork_output/`.
-- Canonical shippable facts live inside the owning repo: the ecosystem agents-catalog SSOT is **`method/agents-catalog.toml` in this repo** (ADR-ECO-003, canon confirmed 2026-07-03); arbiter vendors a byte-identical copy (`config/agents-catalog.toml`), and `../_cowork_output/contracts/` holds a communication mirror only.
-- Vendoring a pinned copy INTO a repo is the correct pattern; referencing OUT to `../_cowork_output/` from shipped code is the antipattern.
-- Only workspace-level dev tooling and documentation may reference it. That tooling no longer lives in `../_cowork_output/devtools/`: it was moved out on 2026-07-10 into its own versioned repo, **`../devtools/`** (`git@github.com:andrei-shtanakov/devtools.git`), precisely because `_cowork_output/` is one machine's scratch and does not travel with a clone. The old path now holds only `MOVED.md`. Cross-repo checks (contract drift, agent-id conformance, graph-registry drift, release drift) live there and are read-only toward every other repo — `make drift`, `make conformance`, `make morning`.
+Координационный dev-scratch воркспейса; у пользователей и клонов проекта его НЕТ.
+Shipped/runtime-код никогда не читает и не резолвит пути под ним; кросс-репные
+контракты вендорятся пиненой копией внутрь, не ссылкой наружу. Ссылаться на него
+могут только dev-тулинг самого воркспейса и документация. Канонические факты живут
+в репо-владельце (пример: SSOT agents-catalog — `method/agents-catalog.toml`,
+ADR-ECO-003). Полное правило (SSOT): `../prograph-vault/authored/rules/cowork-output.md`.
 
 ## Project Overview
 
@@ -272,7 +272,10 @@ Task status: `todo` → `in_progress` → `done` (or `blocked`)
 ## Repo scope & boundaries
 
 - **Этот репо:** `atp-platform` — git-корень `all_ai_orchestrators/atp-platform/`, remote `git@github.com:andrei-shtanakov/atp-platform.git`.
-- **Соседи (READ-ONLY reference):** `../arbiter/`, `../deployer/`, `../dispatcher/`, `../maestro/`, `../libretto/`, `../proctor/`, `../prograph/`, `../prograph-vault/`, `../robin-runtime/`, `../robin-toolkit/`, `../spec-runner/`, `../spec-runner-vscode/`, `../steward/` — их код не редактировать.
+- **Соседи (READ-ONLY reference):** все остальные подпроекты воркспейса — их код не
+  редактировать. Состав флота — `ai-orchestrators-workspace/workspace-manifest.toml`
+  (SSOT); рукописные списки соседей в CLAUDE.md не ведём — они дрейфуют.
+- **Канон имени репо = имя каталога после обычного `git clone`** (`maestro`, `libretto`).
 - Нужна правка у соседа → **стоп**: запиши handoff в `../prograph-vault/authored/notes/`
   (кросс-проектное) или `../_cowork_output/` (черновик), не трогай его файлы.
 - Кросс-репные контракты — **вендорить пиненой копией внутрь**, не ссылаться наружу.
@@ -280,13 +283,19 @@ Task status: `todo` → `in_progress` → `done` (or `blocked`)
 
 ## Git workflow (у репо есть remote)
 
-- Ветка `<type>/<slug>` → push → `gh pr create`. **Прямые коммиты в `main` запрещены.**
+- Ветка `<type>/<slug>` → push → `gh pr create`. **Прямые коммиты в `main`
+  запрещены**, как и локальный мерж ветки в `main` в обход PR.
 - После открытия PR — прочитать ревью **GitHub Copilot**: валидные замечания исправлять
   новыми коммитами в ту же ветку; невалидные — ответить с обоснованием, **не применять
-  вслепую**; итерировать, пока не останется открытых замечаний.
+  вслепую**; итерировать, пока не останется открытых замечаний. Ревью не всегда
+  запрашивается само — если его нет, запросить явно:
+  `gh api -X POST repos/<owner>/<repo>/pulls/<n>/requested_reviewers -f 'reviewers[]=copilot-pull-request-reviewer[bot]'`.
 - **Не мержить.** Мерж делает пользователь.
 - После мержа пользователем: `git switch main && git pull --ff-only`, затем удалить
-  влитую ветку (`git branch -d <branch>`) и `git fetch --prune`; убрать прочие влитые ветки.
+  влитую ветку в **обеих половинах**: локально `git branch -d <ветка>` (после squash-мержа
+  `-d` откажется — сверить, что `git diff main <ветка>` пуст, и удалить
+  `git branch -D <ветка>`) и на origin
+  `git push origin --delete <ветка>`, если GitHub не удалил сам; затем `git fetch --prune`.
 - Никогда не делать force-push в общие ветки; не трогать другие репо (см. scope выше).
 - Полное правило (SSOT): `../prograph-vault/authored/rules/git-workflow.md`.
 
@@ -301,3 +310,9 @@ Issue с лейблом `inbox` — запрос от соседнего реп�
 (`slug:` + `from:` + проза). Правило: ADR-ECO-006 — канон в `ecosystem-kb`
 (каталог `prograph-vault/` в корне воркспейса),
 `authored/decisions/2026-07-28-adr-eco-006-cross-repo-issue-inbox.md`.
+
+Исходящее ожидание — вторая половина того же ритуала: «ждём соседа» существует
+**только** как чекбокс `TODO.md` с `@blocked_by:todo://<repo>/<id>` (переходно —
+`<repo>#<номер>`); память сессий, заметки и handoff-доки — лишь зеркало. Находка
+PF-BLOCKER-STALE по этому репо = «ожидание доставлено — действуй или переставь тег».
+Правило (SSOT): `../prograph-vault/authored/rules/cross-repo-waits.md`.
