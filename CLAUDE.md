@@ -30,7 +30,7 @@ ATP's role in the ecosystem: task validation for Maestro (`validation_cmd` — s
 Shipped/runtime-код никогда не читает и не резолвит пути под ним; кросс-репные
 контракты вендорятся пиненой копией внутрь, не ссылкой наружу. Ссылаться на него
 могут только dev-тулинг самого воркспейса и документация. Канонические факты живут
-в репо-владельце (пример: SSOT agents-catalog — `atp-platform/method/agents-catalog.toml`,
+в репо-владельце (пример: SSOT agents-catalog — `method/agents-catalog.toml`,
 ADR-ECO-003). Полное правило (SSOT): `../prograph-vault/authored/rules/cowork-output.md`.
 
 ## Project Overview
@@ -292,8 +292,9 @@ Task status: `todo` → `in_progress` → `done` (or `blocked`)
   `gh api -X POST repos/<owner>/<repo>/pulls/<n>/requested_reviewers -f 'reviewers[]=copilot-pull-request-reviewer[bot]'`.
 - **Не мержить.** Мерж делает пользователь.
 - После мержа пользователем: `git switch main && git pull --ff-only`, затем удалить
-  влитую ветку в **обеих половинах**: локально `git branch -d` (после squash-мержа `-d`
-  откажется — сверить, что `git diff main <ветка>` пуст, и удалить `-D`) и на origin
+  влитую ветку в **обеих половинах**: локально `git branch -d <ветка>` (после squash-мержа
+  `-d` откажется — сверить, что `git diff main <ветка>` пуст, и удалить
+  `git branch -D <ветка>`) и на origin
   `git push origin --delete <ветка>`, если GitHub не удалил сам; затем `git fetch --prune`.
 - Никогда не делать force-push в общие ветки; не трогать другие репо (см. scope выше).
 - Полное правило (SSOT): `../prograph-vault/authored/rules/git-workflow.md`.
