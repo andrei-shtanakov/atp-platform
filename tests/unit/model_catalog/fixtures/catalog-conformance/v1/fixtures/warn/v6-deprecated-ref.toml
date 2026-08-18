@@ -1,0 +1,18 @@
+# Must be flagged (V6, at least a warning): a live [[agents]] row references
+# a deprecated model. Non-fatal by the reference contract — a loader that
+# rejects it outright also conforms; silently accepting it does not.
+
+[models."beta-1"]
+vendor = "bmesh"
+status = "deprecated"
+
+[harnesses.beta_cli]
+kind      = "cli"
+model_env = "BETA_MODEL"
+routable  = false
+
+[[agents]]
+harness  = "beta_cli"
+model    = "beta-1"
+tested   = true
+routable = false

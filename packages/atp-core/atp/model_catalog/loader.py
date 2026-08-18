@@ -15,6 +15,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from atp.model_catalog.errors import (
+    CatalogMissingFileError,
     CatalogNotConfiguredError,
     CatalogSchemaError,
     CatalogTOMLError,
@@ -48,13 +49,23 @@ def _env_path(var: str) -> Path | None:
 
 def resolve_catalog_path(*, must_exist: bool) -> Path:
     """Resolve the catalog path (D2). must_exist=True requires an existing file;
-    must_exist=False returns the first candidate as a creation target."""
+    must_exist=False returns the first candidate as a creation target.
+
+    An explicit ``$ATP_CATALOG`` is authoritative: when it names a file that does
+    not exist, ``must_exist=True`` fails loud instead of falling through to the
+    XDG layers, which would silently ignore what the user asked for.
+    ``must_exist=False`` still returns it — that is the `atp models init` target.
+    """
     candidates: list[Path] = []
     explicit = _env_path("ATP_CATALOG")
     if explicit is not None:
         if explicit.exists() and not explicit.is_file():
             raise CatalogNotConfiguredError(
                 f"$ATP_CATALOG points at a non-file (expected a file path): {explicit}"
+            )
+        if must_exist and not explicit.exists():
+            raise CatalogMissingFileError(
+                f"$ATP_CATALOG points at a missing file: {explicit}"
             )
         candidates.append(explicit)
     xdg = _env_path("XDG_CONFIG_HOME")
@@ -79,7 +90,7 @@ def load_catalog(path: Path | None = None) -> ModelCatalog:
     """Load + validate a catalog. path given -> that file; None -> D2 resolution."""
     target = path if path is not None else resolve_catalog_path(must_exist=True)
     if not target.is_file():
-        raise CatalogNotConfiguredError(f"catalog file not found: {target}")
+        raise CatalogMissingFileError(f"catalog file not found: {target}")
     try:
         data = tomllib.loads(target.read_text(encoding="utf-8"))
     except tomllib.TOMLDecodeError as exc:
@@ -107,7 +118,13 @@ def resolve_default_model(explicit: str | None = None) -> str | None:
         catalog = load_catalog()
     except CatalogNotConfiguredError:
         return None
-    except (CatalogTOMLError, CatalogSchemaError, OSError, UnicodeDecodeError) as exc:
+    except (
+        CatalogMissingFileError,
+        CatalogTOMLError,
+        CatalogSchemaError,
+        OSError,
+        UnicodeDecodeError,
+    ) as exc:
         logger.warning("model catalog present but unusable, ignoring: %s", exc)
         return None
     if catalog.defaults is not None and catalog.defaults.default_model:

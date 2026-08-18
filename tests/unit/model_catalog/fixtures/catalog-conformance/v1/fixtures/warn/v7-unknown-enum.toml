@@ -1,0 +1,30 @@
+# Must be flagged (V7, at least a warning): unknown enum values — a model
+# status and a harness kind outside the ADR-ECO-003 vocabulary. The catalog
+# must NOT be silently accepted as fully healthy; degrade-with-warning
+# (arbiter) and hard schema rejection (pydantic loaders) both conform.
+# The unknown-status model is deliberately unreferenced so no reference
+# rule (V2/V3/V6) fires alongside V7.
+
+[models."alpha-1"]
+vendor = "acme"
+status = "active"
+
+[models."gamma-experimental"]
+vendor = "acme"
+status = "preview"
+
+[harnesses.alpha_cli]
+kind      = "cli"
+model_env = "ALPHA_MODEL"
+routable  = true
+
+[harnesses.gamma_box]
+kind      = "container"
+model_env = "GAMMA_MODEL"
+routable  = false
+
+[[agents]]
+harness  = "alpha_cli"
+model    = "alpha-1"
+tested   = true
+routable = true

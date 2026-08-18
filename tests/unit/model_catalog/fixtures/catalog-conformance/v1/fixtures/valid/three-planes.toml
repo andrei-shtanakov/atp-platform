@@ -1,0 +1,38 @@
+# Valid: all three ADR-ECO-003 planes, warning-free for every loader.
+# Exactly one routable enrollment per routable harness (Maestro default
+# resolution contract); every reference resolves; one vendor per model id.
+
+[models."alpha-1"]
+vendor  = "acme"
+status  = "active"
+aliases = ["alpha-latest"]
+
+[models."beta-1"]
+vendor  = "bmesh"
+status  = "active"
+aliases = []
+
+[harnesses.alpha_cli]
+kind       = "cli"
+shim       = "method/spawners/alpha_cli_shim.py"
+model_env  = "ALPHA_MODEL"
+model_flag = "--model"
+routable   = true
+
+[harnesses.beta_cli]
+kind      = "cli"
+shim      = "method/spawners/beta_cli_shim.py"
+model_env = "BETA_MODEL"
+routable  = false
+
+[[agents]]
+harness  = "alpha_cli"
+model    = "alpha-1"
+tested   = true
+routable = true
+
+[[agents]]
+harness  = "beta_cli"
+model    = "beta-1"
+tested   = true
+routable = false

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import warnings
+
 import pytest
 from pydantic import ValidationError
 
+from atp.model_catalog.errors import CatalogWarning
 from atp.model_catalog.schema import (
     AgentEntry,
     HarnessEntry,
@@ -42,6 +45,17 @@ def test_harness_entry_defaults() -> None:
     h = HarnessEntry(kind="cli", shim="s.py", model_env="M")
     assert h.model_flag is None
     assert h.routable is False
+
+
+def test_harness_entry_shim_is_optional() -> None:
+    # `shim` is ATP sweep machinery, not part of the shared catalog contract;
+    # requiring it would reject contract-valid catalogs (see V-rule tests below).
+    h = HarnessEntry(kind="cli", model_env="M")
+    assert h.shim is None
+
+
+def test_agent_entry_agent_id() -> None:
+    assert AgentEntry(harness="h", model="m").agent_id == "h@m"
 
 
 def test_agent_entry_defaults() -> None:
@@ -155,3 +169,107 @@ def test_default_model_with_empty_models_is_noop() -> None:
 def test_no_defaults_plane_is_noop() -> None:
     c = ModelCatalog(models={"m": {"vendor": "v", "status": "active"}})
     assert c.defaults is None
+
+
+# --- cross-plane rules V2..V6 (shared catalog-conformance vocabulary) --------
+
+_ACTIVE = {"vendor": "v", "status": "active"}
+_HARNESS = {"kind": "cli", "shim": "x", "model_env": "Y"}
+
+
+def test_v2_undeclared_model_rejected() -> None:
+    with pytest.raises(ValidationError, match="V2:"):
+        ModelCatalog(
+            models={"m": _ACTIVE},
+            harnesses={"h": _HARNESS},
+            agents=[{"harness": "h", "model": "MISSING"}],
+        )
+
+
+def test_v2_noop_when_models_plane_empty() -> None:
+    # An empty `models` plane declares nothing to check against (same posture as
+    # the defaults.default_model validator).
+    c = ModelCatalog(
+        models={},
+        harnesses={"h": _HARNESS},
+        agents=[{"harness": "h", "model": "whatever"}],
+    )
+    assert c.agents is not None
+
+
+def test_v3_retired_reference_rejected() -> None:
+    with pytest.raises(ValidationError, match="V3:"):
+        ModelCatalog(
+            models={"old": {"vendor": "v", "status": "retired"}},
+            harnesses={"h": _HARNESS},
+            agents=[{"harness": "h", "model": "old"}],
+        )
+
+
+def test_v3_retired_but_unreferenced_is_ok() -> None:
+    # retired-not-deleted is the SSOT regression guard; only a live reference fails.
+    c = ModelCatalog(
+        models={"m": _ACTIVE, "old": {"vendor": "v", "status": "retired"}},
+        harnesses={"h": _HARNESS},
+        agents=[{"harness": "h", "model": "m"}],
+    )
+    assert set(c.models) == {"m", "old"}
+
+
+def test_v4_duplicate_agent_id_rejected() -> None:
+    with pytest.raises(ValidationError, match="V4:"):
+        ModelCatalog(
+            models={"m": _ACTIVE},
+            harnesses={"h": _HARNESS},
+            agents=[
+                {"harness": "h", "model": "m", "tested": True},
+                {"harness": "h", "model": "m", "tested": False},
+            ],
+        )
+
+
+def test_v4_fires_without_the_models_plane() -> None:
+    # A duplicate join key is ambiguous regardless of which other planes exist.
+    with pytest.raises(ValidationError, match="V4:"):
+        ModelCatalog(
+            models={},
+            agents=[{"harness": "h", "model": "m"}, {"harness": "h", "model": "m"}],
+        )
+
+
+def test_v5_routable_agent_under_non_routable_harness_rejected() -> None:
+    with pytest.raises(ValidationError, match="V5:"):
+        ModelCatalog(
+            models={"m": _ACTIVE},
+            harnesses={"h": {**_HARNESS, "routable": False}},
+            agents=[{"harness": "h", "model": "m", "routable": True}],
+        )
+
+
+def test_v5_routable_agent_under_routable_harness_ok() -> None:
+    c = ModelCatalog(
+        models={"m": _ACTIVE},
+        harnesses={"h": {**_HARNESS, "routable": True}},
+        agents=[{"harness": "h", "model": "m", "routable": True}],
+    )
+    assert c.agents is not None and c.agents[0].routable is True
+
+
+def test_v6_deprecated_reference_warns_but_loads() -> None:
+    with pytest.warns(CatalogWarning, match="V6:"):
+        c = ModelCatalog(
+            models={"m": {"vendor": "v", "status": "deprecated"}},
+            harnesses={"h": _HARNESS},
+            agents=[{"harness": "h", "model": "m"}],
+        )
+    assert c.agents is not None
+
+
+def test_v6_silent_when_no_deprecated_reference() -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", CatalogWarning)
+        ModelCatalog(
+            models={"m": _ACTIVE, "old": {"vendor": "v", "status": "deprecated"}},
+            harnesses={"h": _HARNESS},
+            agents=[{"harness": "h", "model": "m"}],
+        )

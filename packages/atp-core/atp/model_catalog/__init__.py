@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from atp.model_catalog.errors import (
     CatalogError,
+    CatalogMissingFileError,
     CatalogNotConfiguredError,
     CatalogSchemaError,
     CatalogTOMLError,
+    CatalogWarning,
 )
 from atp.model_catalog.loader import (
     load_catalog,
@@ -26,9 +28,11 @@ __all__ = [
     "AgentEntry",
     "CatalogDefaults",
     "CatalogError",
+    "CatalogMissingFileError",
     "CatalogNotConfiguredError",
     "CatalogSchemaError",
     "CatalogTOMLError",
+    "CatalogWarning",
     "HarnessEntry",
     "ModelCatalog",
     "ModelEntry",

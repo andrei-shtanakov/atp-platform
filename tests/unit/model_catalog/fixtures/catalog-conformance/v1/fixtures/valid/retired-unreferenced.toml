@@ -1,0 +1,23 @@
+# Valid: a retired model may stay declared as long as no [[agents]] row
+# references it (retired-not-deleted is the SSOT regression-guard pattern:
+# deleting the entry would silently legalize a future re-enrollment).
+
+[models."alpha-1"]
+vendor = "acme"
+status = "active"
+
+[models."alpha-0"]
+vendor = "acme"
+status = "retired"
+
+[harnesses.alpha_cli]
+kind      = "cli"
+shim      = "method/spawners/alpha_cli_shim.py"
+model_env = "ALPHA_MODEL"
+routable  = true
+
+[[agents]]
+harness  = "alpha_cli"
+model    = "alpha-1"
+tested   = true
+routable = true

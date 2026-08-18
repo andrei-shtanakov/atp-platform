@@ -1,0 +1,85 @@
+# Machine-readable expectations for the catalog conformance fixtures (v1).
+# One [[case]] per fixture file; `expect` classes (defined in README.md):
+#   "valid"       — loads; zero errors, zero warnings
+#   "parse-error" — must fail TOML parsing
+#   "error"       — must be rejected; `code` names the violated rule (V1..V5)
+#   "flag"        — must be at least warned about (rejection also conforms);
+#                   `code` names the rule (V6, V7)
+# Rule vocabulary V1..V7 — arbiter catalog-loader design §4
+# (arbiter/docs/2026-07-05-catalog-loader-design.md); V2+V3 together mirror
+# devtools check-agent-id-conformance.py Check 5.
+
+version = 1
+
+[[case]]
+file   = "fixtures/valid/three-planes.toml"
+expect = "valid"
+
+[[case]]
+file   = "fixtures/valid/retired-unreferenced.toml"
+expect = "valid"
+
+[[case]]
+file   = "fixtures/invalid/broken.toml"
+expect = "parse-error"
+
+[[case]]
+file   = "fixtures/invalid/v1-unknown-harness.toml"
+expect = "error"
+code   = "V1"
+
+[[case]]
+file   = "fixtures/invalid/v2-unknown-model.toml"
+expect = "error"
+code   = "V2"
+
+[[case]]
+file   = "fixtures/invalid/v3-retired-ref.toml"
+expect = "error"
+code   = "V3"
+
+[[case]]
+file   = "fixtures/invalid/v4-dup-agent.toml"
+expect = "error"
+code   = "V4"
+
+[[case]]
+file   = "fixtures/invalid/v5-routable-conflict.toml"
+expect = "error"
+code   = "V5"
+
+[[case]]
+file   = "fixtures/warn/v6-deprecated-ref.toml"
+expect = "flag"
+code   = "V6"
+
+[[case]]
+file   = "fixtures/warn/v7-unknown-enum.toml"
+expect = "flag"
+code   = "V7"
+
+# --- Path-resolution scenarios ($ATP_CATALOG layer ONLY; ADR-ECO-003b D2) ---
+# XDG layers are outside the shared set until maestro closes
+# @id:xdg-catalog-path. `expect` classes:
+#   "loaded"             — the catalog at $ATP_CATALOG is loaded
+#   "not-configured"     — fail-loud when a catalog is REQUIRED and no layer
+#                          is configured (no hidden default)
+#   "missing-file-error" — $ATP_CATALOG points at a non-existent file: the
+#                          loader must surface an error, not silently behave
+#                          as unconfigured
+
+[[pathres]]
+id     = "env-set-file-exists"
+env    = "set"
+target = "fixtures/valid/three-planes.toml"
+expect = "loaded"
+
+[[pathres]]
+id     = "env-unset"
+env    = "unset"
+expect = "not-configured"
+
+[[pathres]]
+id     = "env-set-file-missing"
+env    = "set-missing"
+expect = "missing-file-error"

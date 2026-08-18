@@ -1,0 +1,4 @@
+# Invalid: not parseable as TOML at all (unclosed table header).
+[models."alpha-1"
+vendor = "acme"
+status = "active"

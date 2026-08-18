@@ -1,0 +1,11 @@
+source: devtools@2a5c1543643ac11da20f911c14c35b049e48eae8 contracts/catalog-conformance-fixtures/v1
+contract: catalog-conformance-fixtures v1
+vendored: 2026-08-18
+issue: atp-platform#292 (slug catalog-conformance-wiring, from devtools#catalog-conformance-single-owner)
+
+Pinned copy, not a live reference (workspace polyrepo rule:
+../prograph-vault/authored/rules/repo-boundaries.md). Do not edit the copy —
+refresh it by re-copying from a newer devtools commit and updating this file.
+Integrity is verified against manifest.json by
+tests/unit/model_catalog/test_catalog_conformance.py; manifest.json and this
+PIN file are outside the hashed surface.

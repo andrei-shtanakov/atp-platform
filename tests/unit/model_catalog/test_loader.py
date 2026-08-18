@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from atp.model_catalog.errors import (
+    CatalogMissingFileError,
     CatalogNotConfiguredError,
     CatalogSchemaError,
     CatalogTOMLError,
@@ -104,6 +105,56 @@ def test_xdg_config_home_pointing_at_file_fails(monkeypatch, tmp_path: Path) -> 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(f))
     with pytest.raises(CatalogNotConfiguredError, match="not a directory"):
         resolve_catalog_path(must_exist=True)
+
+
+def test_missing_atp_catalog_is_missing_file_error(monkeypatch, tmp_path: Path) -> None:
+    # An explicit $ATP_CATALOG is authoritative: a missing file is an error, not
+    # a fall-through to XDG (which would silently ignore the setting).
+    _clear(monkeypatch)
+    monkeypatch.setenv("ATP_CATALOG", str(tmp_path / "nope.toml"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "empty"))
+    with pytest.raises(CatalogMissingFileError, match="missing file"):
+        resolve_catalog_path(must_exist=True)
+
+
+def test_missing_atp_catalog_does_not_fall_through(monkeypatch, tmp_path: Path) -> None:
+    _clear(monkeypatch)
+    xdg = tmp_path / "xdg"
+    target = xdg / "atp" / "agents-catalog.toml"
+    target.parent.mkdir(parents=True)
+    target.write_text(_VALID, encoding="utf-8")
+    monkeypatch.setenv("ATP_CATALOG", str(tmp_path / "nope.toml"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg))
+    with pytest.raises(CatalogMissingFileError):
+        resolve_catalog_path(must_exist=True)
+
+
+def test_missing_atp_catalog_still_an_init_target(monkeypatch, tmp_path: Path) -> None:
+    # must_exist=False is the `atp models init` path: the absent file is the
+    # creation target, so it must NOT raise.
+    _clear(monkeypatch)
+    f = tmp_path / "nope.toml"
+    monkeypatch.setenv("ATP_CATALOG", str(f))
+    assert resolve_catalog_path(must_exist=False) == f
+
+
+def test_load_missing_explicit_path_is_missing_file_error(tmp_path: Path) -> None:
+    with pytest.raises(CatalogMissingFileError, match="not found"):
+        load_catalog(tmp_path / "nope.toml")
+
+
+def test_resolve_default_model_tolerates_missing_configured_file(
+    monkeypatch, tmp_path, caplog
+) -> None:
+    # The tolerant runtime resolver must degrade to None (and say so) rather
+    # than crash the evaluator on a stale $ATP_CATALOG.
+    import logging
+
+    _clear(monkeypatch)
+    monkeypatch.setenv("ATP_CATALOG", str(tmp_path / "nope.toml"))
+    with caplog.at_level(logging.WARNING):
+        assert resolve_default_model(None) is None
+    assert "unusable" in caplog.text
 
 
 def test_load_explicit_path(tmp_path: Path) -> None:

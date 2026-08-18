@@ -1,0 +1,17 @@
+# Invalid (V1, error): [[agents]].harness is not declared in [harnesses.*].
+# Both planes are present, so the reference check is armed in every loader.
+
+[models."alpha-1"]
+vendor = "acme"
+status = "active"
+
+[harnesses.alpha_cli]
+kind      = "cli"
+model_env = "ALPHA_MODEL"
+routable  = true
+
+[[agents]]
+harness  = "ghost_cli"
+model    = "alpha-1"
+tested   = true
+routable = false

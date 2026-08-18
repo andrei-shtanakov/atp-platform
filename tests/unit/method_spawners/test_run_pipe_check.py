@@ -694,6 +694,31 @@ def test_load_agent_catalog_undeclared_harness_fails_loudly(tmp_path: Path) -> N
     assert isinstance(ei.value.__cause__, CatalogError)
 
 
+def test_load_agent_catalog_shimless_harness_fails_loudly(tmp_path: Path) -> None:
+    # `shim` is optional in the shared catalog schema (it is ATP sweep
+    # machinery, not part of the cross-repo contract), so the sweep-side
+    # requirement lives here: a harness we would have to spawn without a shim
+    # must fail at load time, not with a None path deep inside _run_case.
+    from method.run_pipe_check import _load_agent_catalog
+
+    catalog = (
+        '[models."m"]\n'
+        'vendor = "v"\n'
+        'status = "active"\n'
+        "[harnesses.foo]\n"
+        'kind = "cli"\n'
+        'model_env = "FOO_MODEL"\n'  # no shim
+        "[[agents]]\n"
+        'harness = "foo"\n'
+        'model = "m"\n'
+        "tested = true\n"
+    )
+    path = tmp_path / "cat.toml"
+    path.write_text(catalog)
+    with pytest.raises(RuntimeError, match="without a `shim` path"):
+        _load_agent_catalog(path)
+
+
 _SWEEP = (
     '[models."m1"]\nvendor="v"\nstatus="active"\n'
     '[models."m2"]\nvendor="v"\nstatus="active"\n'
