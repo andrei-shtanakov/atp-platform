@@ -93,8 +93,8 @@ class ModelCatalog(BaseModel):
     agents: list[AgentEntry] | None = None
     defaults: CatalogDefaults | None = None
 
-    def _agents_by_status(self, status: str) -> list[str]:
-        """agent_ids whose model is declared with ``status`` (sorted, unique)."""
+    def _agent_ids_referencing_status(self, status: str) -> list[str]:
+        """agent_ids enrolled on a model declared with ``status`` (sorted, unique)."""
         agents = self.agents or []
         return sorted(
             {
@@ -131,7 +131,9 @@ class ModelCatalog(BaseModel):
             {a.model for a in self.agents if a.model not in self.models}
         )
         if undeclared:
-            raise ValueError(f"V2: agents reference undeclared model(s): {undeclared}")
+            raise ValueError(
+                f"V2: agents reference undeclared model id(s): {undeclared}"
+            )
         return self
 
     @model_validator(mode="after")
@@ -140,9 +142,9 @@ class ModelCatalog(BaseModel):
         # stay declared as a regression guard as long as nothing references it.
         if self.agents is None or not self.models:
             return self
-        retired = self._agents_by_status("retired")
+        retired = self._agent_ids_referencing_status("retired")
         if retired:
-            raise ValueError(f"V3: agents reference retired model(s): {retired}")
+            raise ValueError(f"V3: agent(s) enrolled on a retired model: {retired}")
         return self
 
     @model_validator(mode="after")
@@ -182,10 +184,10 @@ class ModelCatalog(BaseModel):
         # silent acceptance would hide a pending retirement.
         if self.agents is None or not self.models:
             return self
-        deprecated = self._agents_by_status("deprecated")
+        deprecated = self._agent_ids_referencing_status("deprecated")
         if deprecated:
             warnings.warn(
-                f"V6: agents reference deprecated model(s): {deprecated}",
+                f"V6: agent(s) enrolled on a deprecated model: {deprecated}",
                 CatalogWarning,
                 stacklevel=2,
             )

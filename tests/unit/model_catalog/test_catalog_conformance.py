@@ -80,7 +80,10 @@ def test_vendored_copy_matches_manifest() -> None:
     declared = {e["path"]: e["sha256"] for e in manifest["files"]}
     assert on_disk == declared
 
-    tree = "\n".join(f"{e['path']} {e['sha256']}" for e in manifest["files"]) + "\n"
+    # tree_sha256 is defined over *sorted* "<path> <sha256>" lines, so sort here
+    # rather than trusting the manifest's list order: a reordered (but otherwise
+    # identical) manifest is still the same tree.
+    tree = "\n".join(f"{path} {sha}" for path, sha in sorted(declared.items())) + "\n"
     assert hashlib.sha256(tree.encode("utf-8")).hexdigest() == manifest["tree_sha256"]
 
 
