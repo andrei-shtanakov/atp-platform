@@ -46,6 +46,36 @@
 
 ### Активные кросс-проектные задачи
 
+- [x] **Conformance-фикстуры каталога подключены (SSOT-набор devtools)** ✅ 2026-08-18 @owner:github:andrei-shtanakov @id:catalog-conformance-wiring
+  @provider:devtools @consumer:atp-platform
+  @source-owner:devtools @source-ref:devtools@2a5c154 @observed-at:2026-08-18 @recheck-by:2026-11-18
+  - Принято из inbox-issue #292 (`from: devtools#catalog-conformance-single-owner`,
+    PP-103 acceptance (b)). Набор вендорен пиненой копией в
+    `tests/unit/model_catalog/fixtures/catalog-conformance/v1/` + `PIN`; целостность
+    сверяется с `manifest.json` (пофайловый sha256 + `tree_sha256`) в
+    `tests/unit/model_catalog/test_catalog_conformance.py`.
+  - Каждый `[[case]]` и `[[pathres]]` из `expectations.toml` — тест. Негативные кейсы
+    проверяют, что сработало **именно то** правило (сообщения загрузчика несут префиксы
+    `V1:`..`V6:`): «упало хоть как-нибудь» скрывало бы ровно ту дивергенцию, ради которой
+    набор существует. Мутационная проверка: занулил валидаторы → 11 тестов красные.
+  - **Дивергенции закрыты починкой загрузчика, а не оспариванием ожиданий:**
+    - V2/V3/V4/V5 добавлены в `packages/atp-core/atp/model_catalog/schema.py` как ошибки
+      (неизвестная модель, ссылка на `retired`, дубль `agent_id`, routable-агент под
+      non-routable харнессом); V6 — `CatalogWarning` (deprecated ещё работает, но молча
+      принимать нельзя). V7 остаётся жёстким schema-fail через `Literal` статуса —
+      это конформно классу `flag`.
+    - `harnesses.*.shim` стал опциональным: это ATP-специфика свипа, а не часть общего
+      контракта, и требование поля отвергало контракт-валидные каталоги по причине,
+      которой нет ни у одного соседнего загрузчика (набор проходил бы «зелёным по
+      неправильной причине»). Требование переехало в `method/run_pipe_check.py`,
+      где шимы реально спавнятся.
+    - `pathres/env-set-file-missing`: заданный `$ATP_CATALOG` с несуществующим файлом
+      больше не проваливается тихо в XDG-слой — новый `CatalogMissingFileError`
+      (толерантный `resolve_default_model()` его по-прежнему глотает с warning).
+  - Открыто: `harnesses.*.kind` остаётся свободной строкой (V7 ловится только по
+    статусу модели); словарь `kind` на уровне загрузчика — не наш пункт.
+    XDG-слои резолюции вне набора v1 (ждут maestro `@id:xdg-catalog-path`).
+
 - [x] **ADR-ECO-003d pricing-view: cloud-`$` над per-class usage** (effort M) ✅ 2026-07-07
   - Спека: [`docs/superpowers/specs/2026-07-07-pricing-view-cost-derivation-design.md`](docs/superpowers/specs/2026-07-07-pricing-view-cost-derivation-design.md);
     план: [`docs/superpowers/plans/2026-07-07-pricing-view.md`](docs/superpowers/plans/2026-07-07-pricing-view.md).

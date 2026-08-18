@@ -1,0 +1,23 @@
+# Invalid (V4, error): duplicate agent_id — the same (harness, model) pair
+# enrolled twice. agent_id = "<harness>@<model>" is the byte-exact join key.
+
+[models."alpha-1"]
+vendor = "acme"
+status = "active"
+
+[harnesses.alpha_cli]
+kind      = "cli"
+model_env = "ALPHA_MODEL"
+routable  = true
+
+[[agents]]
+harness  = "alpha_cli"
+model    = "alpha-1"
+tested   = true
+routable = false
+
+[[agents]]
+harness  = "alpha_cli"
+model    = "alpha-1"
+tested   = false
+routable = false

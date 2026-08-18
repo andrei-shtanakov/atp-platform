@@ -2,15 +2,33 @@
 
 The `models` plane is the user-runtime contract: strict on the known fields,
 tolerant of unknown ones. `harnesses`/`agents` are the dev-SSOT planes, typed in
-SP-E; a referential validator ties agents to declared harnesses when both planes
-are present (a models-only user catalog is a no-op — SP-A fork A).
+SP-E; cross-plane validators tie them together when both planes are present (a
+models-only user catalog is a no-op — SP-A fork A).
+
+Rule vocabulary V1..V7 comes from the shared catalog-conformance contract
+(vendored at `tests/unit/model_catalog/fixtures/catalog-conformance/v1/`;
+owner: devtools). Every rule message is prefixed with its code so a consumer —
+and the conformance suite — can tell *which* rule fired:
+
+* V1 `agents.harness` not declared in `[harnesses.*]` — error
+* V2 `agents.model` not declared in `[models.*]` — error
+* V3 `agents` references a `status="retired"` model — error
+* V4 duplicate `agent_id` (`<harness>@<model>`) — error
+* V5 `agents.routable = true` under a `routable = false` harness — error
+* V6 `agents` references a `status="deprecated"` model — warning (`CatalogWarning`)
+* V7 unknown `status` value — hard schema failure via the `Literal` below
+  (rejection is a conformant response to the contract's "flag" class)
 """
 
 from __future__ import annotations
 
+import warnings
+from collections import Counter
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, model_validator
+
+from atp.model_catalog.errors import CatalogWarning
 
 
 class ModelEntry(BaseModel):
@@ -24,12 +42,18 @@ class ModelEntry(BaseModel):
 
 
 class HarnessEntry(BaseModel):
-    """One harness in the dev-SSOT `harnesses` plane."""
+    """One harness in the dev-SSOT `harnesses` plane.
+
+    ``shim`` is ATP-side sweep machinery, not part of the shared cross-repo
+    catalog contract, so it is optional here: requiring it would make ATP reject
+    contract-valid catalogs for a reason no sibling loader shares. The pipe-check
+    harness enforces its presence for the harnesses it actually spawns.
+    """
 
     model_config = ConfigDict(extra="allow")
 
     kind: str
-    shim: str
+    shim: str | None = None
     model_env: str
     model_flag: str | None = None
     routable: bool = False
@@ -44,6 +68,11 @@ class AgentEntry(BaseModel):
     model: str
     tested: bool = False
     routable: bool = False
+
+    @property
+    def agent_id(self) -> str:
+        """The ecosystem join key: ``<harness>@<model>`` (ADR-ECO-003)."""
+        return f"{self.harness}@{self.model}"
 
 
 class CatalogDefaults(BaseModel):
@@ -64,8 +93,19 @@ class ModelCatalog(BaseModel):
     agents: list[AgentEntry] | None = None
     defaults: CatalogDefaults | None = None
 
+    def _agent_ids_referencing_status(self, status: str) -> list[str]:
+        """agent_ids enrolled on a model declared with ``status`` (sorted, unique)."""
+        agents = self.agents or []
+        return sorted(
+            {
+                a.agent_id
+                for a in agents
+                if a.model in self.models and self.models[a.model].status == status
+            }
+        )
+
     @model_validator(mode="after")
-    def _agents_reference_declared_harnesses(self) -> ModelCatalog:
+    def _v1_agents_reference_declared_harnesses(self) -> ModelCatalog:
         # Referential integrity fires only when BOTH planes are present
         # (present-empty counts as present); a models-only user catalog is a
         # no-op, preserving SP-A fork A.
@@ -76,7 +116,81 @@ class ModelCatalog(BaseModel):
             {a.harness for a in self.agents if a.harness not in declared}
         )
         if undeclared:
-            raise ValueError(f"agents reference undeclared harness(es): {undeclared}")
+            raise ValueError(
+                f"V1: agents reference undeclared harness(es): {undeclared}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _v2_agents_reference_declared_models(self) -> ModelCatalog:
+        # Like V1, armed only when both planes carry content: a catalog with an
+        # empty `models` plane declares no models to check against.
+        if self.agents is None or not self.models:
+            return self
+        undeclared = sorted(
+            {a.model for a in self.agents if a.model not in self.models}
+        )
+        if undeclared:
+            raise ValueError(
+                f"V2: agents reference undeclared model id(s): {undeclared}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _v3_agents_do_not_reference_retired_models(self) -> ModelCatalog:
+        # retired = "do not enroll this pair" (ADR-ECO-003a). A retired model may
+        # stay declared as a regression guard as long as nothing references it.
+        if self.agents is None or not self.models:
+            return self
+        retired = self._agent_ids_referencing_status("retired")
+        if retired:
+            raise ValueError(f"V3: agent(s) enrolled on a retired model: {retired}")
+        return self
+
+    @model_validator(mode="after")
+    def _v4_agent_ids_are_unique(self) -> ModelCatalog:
+        # agent_id is the byte-exact cross-repo join key; a duplicate makes the
+        # enrollment ambiguous no matter which planes are present.
+        if self.agents is None:
+            return self
+        counts = Counter(a.agent_id for a in self.agents)
+        dupes = sorted(k for k, n in counts.items() if n > 1)
+        if dupes:
+            raise ValueError(f"V4: duplicate agent_id(s): {dupes}")
+        return self
+
+    @model_validator(mode="after")
+    def _v5_routable_agents_need_routable_harness(self) -> ModelCatalog:
+        if self.harnesses is None or self.agents is None:
+            return self
+        conflicts = sorted(
+            {
+                a.agent_id
+                for a in self.agents
+                if a.routable
+                and a.harness in self.harnesses
+                and not self.harnesses[a.harness].routable
+            }
+        )
+        if conflicts:
+            raise ValueError(
+                f"V5: routable agent(s) under a non-routable harness: {conflicts}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _v6_warn_on_deprecated_model_references(self) -> ModelCatalog:
+        # Non-fatal by the reference contract: deprecated still runs, but a
+        # silent acceptance would hide a pending retirement.
+        if self.agents is None or not self.models:
+            return self
+        deprecated = self._agent_ids_referencing_status("deprecated")
+        if deprecated:
+            warnings.warn(
+                f"V6: agent(s) enrolled on a deprecated model: {deprecated}",
+                CatalogWarning,
+                stacklevel=2,
+            )
         return self
 
     @model_validator(mode="after")

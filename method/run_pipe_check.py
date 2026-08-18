@@ -86,10 +86,12 @@ def _load_agent_catalog(
     of ``(harness, model)`` pairs with ``tested = true`` — the ATP sweep set,
     in ``[[agents]]`` declaration order.
 
-    Document shape and referential integrity (every agent references a declared
-    harness) are enforced by ``atp.model_catalog`` (SP-E). The tested filter and
-    the projection to the harness's shapes stay here (ATP sweep usage). Runtime
-    availability (shim binary, API keys) stays in ``_preflight``.
+    Document shape and cross-plane integrity (rules V1..V6 of the shared
+    catalog-conformance contract) are enforced by ``atp.model_catalog`` (SP-E).
+    The tested filter, the projection to the harness's shapes, and the ``shim``
+    requirement stay here: ``shim`` is ATP sweep machinery, optional in the
+    shared schema. Runtime availability (shim binary, API keys) stays in
+    ``_preflight``.
     """
     try:
         cat = load_catalog(path)
@@ -105,7 +107,19 @@ def _load_agent_catalog(
             f"agents-catalog {path} has no harnesses/agents plane — not a sweep catalog"
         )
 
-    harnesses = {name: (h.shim, h.model_env) for name, h in cat.harnesses.items()}
+    harnesses: dict[str, tuple[str, str]] = {}
+    shimless: list[str] = []
+    for name, h in cat.harnesses.items():
+        if h.shim:
+            harnesses[name] = (h.shim, h.model_env)
+        else:
+            shimless.append(name)
+    if shimless:
+        raise RuntimeError(
+            f"agents-catalog {path} declares harness(es) without a `shim` path: "
+            f"{sorted(shimless)} — the ATP sweep cannot spawn them"
+        )
+
     agent_models = [(a.harness, a.model) for a in cat.agents if a.tested]
     return harnesses, agent_models
 

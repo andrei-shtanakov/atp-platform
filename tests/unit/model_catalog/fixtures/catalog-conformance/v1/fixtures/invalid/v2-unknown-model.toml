@@ -1,0 +1,16 @@
+# Invalid (V2, error): [[agents]].model is not declared in [models.*].
+
+[models."alpha-1"]
+vendor = "acme"
+status = "active"
+
+[harnesses.alpha_cli]
+kind      = "cli"
+model_env = "ALPHA_MODEL"
+routable  = true
+
+[[agents]]
+harness  = "alpha_cli"
+model    = "ghost-9"
+tested   = true
+routable = false

@@ -1,0 +1,56 @@
+{
+  "contract": "catalog-conformance-fixtures",
+  "contract_version": "v1",
+  "surface_note": "sha256 of every file in v1/ except this manifest; consumers also exclude their own PIN file when verifying a vendored copy",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "d7b0a6104c27f8b9efcc3b86bad85e1ac6f6f5a3bc85a52735ba79d11589fa74"
+    },
+    {
+      "path": "expectations.toml",
+      "sha256": "808ce6f5c63f1da40cbdb606bd51cf5829efcadd0115d814fd5c06db347a9c03"
+    },
+    {
+      "path": "fixtures/invalid/broken.toml",
+      "sha256": "b9c58c8c4b134cf358a360b27eccd251576dcca93b114a094d4b51fda6465aa1"
+    },
+    {
+      "path": "fixtures/invalid/v1-unknown-harness.toml",
+      "sha256": "ffb29ed68f512a3d3610b3c31018b1e9f4c148b7b487e22d0a105bb09ccaa355"
+    },
+    {
+      "path": "fixtures/invalid/v2-unknown-model.toml",
+      "sha256": "a5a863abed7ffb9c3321a16425969766d6de7f17e5bfb121486135d664ed2b57"
+    },
+    {
+      "path": "fixtures/invalid/v3-retired-ref.toml",
+      "sha256": "fff4056b41b8d65b1435e39ebdeba08f186439afab64dc45d8ba8033c483a5f9"
+    },
+    {
+      "path": "fixtures/invalid/v4-dup-agent.toml",
+      "sha256": "b3bd6ea59557c0f11098d15eb3a7162b0a5effc161f57f1501d3bd91a3c07b57"
+    },
+    {
+      "path": "fixtures/invalid/v5-routable-conflict.toml",
+      "sha256": "8292fe7892c8ca588ecd31ce833289f31b4bc1a66c44476b589f913265d00bff"
+    },
+    {
+      "path": "fixtures/valid/retired-unreferenced.toml",
+      "sha256": "0cd7e73032ef2c62ce9325e078a152a93721695ab99d09edd545c646d74bc03f"
+    },
+    {
+      "path": "fixtures/valid/three-planes.toml",
+      "sha256": "2f865144c36c87f8277ea8a488965b51285906c32eceadc796e0e23b3c571901"
+    },
+    {
+      "path": "fixtures/warn/v6-deprecated-ref.toml",
+      "sha256": "f4fc1a4b7d1b1d70eb02b9b68a1802f37f6e37176dfc2b1934b3e0c32cef2b0a"
+    },
+    {
+      "path": "fixtures/warn/v7-unknown-enum.toml",
+      "sha256": "ce84abc52c31727a59ef5d716b2a2df9b1ac6ffcef1ee3b98ab1737cfacba0f6"
+    }
+  ],
+  "tree_sha256": "ba80067e0911fc13206688d1c79612579b72e52dabe8d2cebd210bebac13d0c1"
+}

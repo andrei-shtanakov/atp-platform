@@ -1,0 +1,18 @@
+# Invalid (V3, error): a live [[agents]] row references a retired model.
+# Mirrors devtools check-agent-id-conformance.py Check 5 ("enrollment
+# references missing/retired models") — retired means "do not enroll".
+
+[models."alpha-0"]
+vendor = "acme"
+status = "retired"
+
+[harnesses.alpha_cli]
+kind      = "cli"
+model_env = "ALPHA_MODEL"
+routable  = true
+
+[[agents]]
+harness  = "alpha_cli"
+model    = "alpha-0"
+tested   = true
+routable = false

@@ -1,0 +1,17 @@
+# Invalid (V5, error): [[agents]].routable = true while the harness itself
+# declares routable = false — a cross-plane contradiction.
+
+[models."alpha-1"]
+vendor = "acme"
+status = "active"
+
+[harnesses.alpha_cli]
+kind      = "cli"
+model_env = "ALPHA_MODEL"
+routable  = false
+
+[[agents]]
+harness  = "alpha_cli"
+model    = "alpha-1"
+tested   = true
+routable = true

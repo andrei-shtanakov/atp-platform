@@ -1,3 +1,8 @@
+# Vendored pinned contract copies must stay byte-identical to what the owning
+# repo published (their sha256 manifests are the pin surface), and some of their
+# fixtures are deliberately malformed. Formatting/validating hooks skip them.
+exclude: ^tests/unit/model_catalog/fixtures/catalog-conformance/
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
