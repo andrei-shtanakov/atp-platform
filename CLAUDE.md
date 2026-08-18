@@ -43,7 +43,12 @@ ATP (Agent Test Platform) is a framework-agnostic platform for testing and evalu
 
 ```bash
 # Package management (ONLY use uv, never pip)
-uv sync --group dev                 # Install all deps including dev tools
+uv sync --all-extras --group dev    # Full dev env (what the CI test job installs)
+# `--all-extras` is REQUIRED, not optional: since #288 the tournament stack sits behind
+# the atp-dashboard[tournaments] extra, so a bare `uv sync --group dev` leaves ~18 test
+# modules uncollectable (no fastmcp) and the `full` server profile refuses to start.
+# The tournament CI jobs add `--all-packages`, which also syncs the workspace members'
+# own extras; it is not needed for the root test suite.
 uv add <package>                    # Add a new package
 uv run <tool>                       # Run tool
 uv add --dev <package> --upgrade-package <package>  # Upgrade dev package

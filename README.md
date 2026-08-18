@@ -27,7 +27,7 @@ See the [Quick Start Guide](docs/guides/quickstart.md) for a full walkthrough.
 ```bash
 git clone https://github.com/andrei-shtanakov/atp-platform.git
 cd atp-platform
-uv sync --group dev
+uv sync --all-extras --group dev
 uv run pytest tests/ -v  # verify installation
 ```
 
