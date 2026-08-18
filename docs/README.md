@@ -497,8 +497,8 @@ Help us improve documentation:
 ### Common Commands
 
 ```bash
-# Install ATP
-uv sync
+# Install ATP (--all-extras is required to run the full suite)
+uv sync --all-extras --group dev
 
 # Verify installation
 uv run pytest tests/ -v

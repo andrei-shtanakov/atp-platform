@@ -9,7 +9,7 @@ git clone https://github.com/andrei-shtanakov/atp-platform.git
 cd atp-platform
 
 # Install all dependencies (including dev tools)
-uv sync --group dev
+uv sync --all-extras --group dev
 
 # Verify the setup
 uv run pytest tests/ -v -m "not slow"
