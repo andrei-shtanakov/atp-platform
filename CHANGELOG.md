@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [2.2.0] - 2026-08-18
+
 ### Added
 
 - **`composite` runs on the benchmark plane again, under the policy that
@@ -56,6 +60,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exercised by the devtools-owned conformance fixtures, vendored pinned under
   `tests/unit/model_catalog/fixtures/catalog-conformance/v1/` and verified
   against their sha256 manifest. (#293)
+- **A shippable model catalog with its own CLI** — `atp models init` writes a
+  starter catalog, `atp models list` reads the resolved one. Resolution is
+  `$ATP_CATALOG` → XDG (`~/.config/atp/agents-catalog.toml`) → fail loud, with no
+  bundled default: a hidden fallback would let the platform answer with a model
+  set nobody chose. The evaluator's default model resolves through the catalog's
+  `[defaults]` plane, tolerant of a missing or broken optional catalog. (#237, #239)
+- **Cloud-`$` cost derived from stored token usage**, behind the `[pricing]`
+  extra. A cache-aware LiteLLM pricer turns per-class usage into honest dollars
+  and is derived-not-stored, so a price change re-derives without re-running a
+  sweep. Measured usage only — an estimated fallback would put invented numbers
+  next to real ones. (#236)
+- **`ATP_SERVER_PROFILE=eco`** — an API-only benchmark server (Benchmark API plus
+  auth/tokens/agents; no tournaments, MCP, or HTML UI) for deployments that want
+  the benchmark plane without the rest. Tournament dependencies moved behind an
+  `atp-dashboard[tournaments]` extra, which `atp-platform[dashboard]` still
+  pulls. (#287, #288)
+- **A usage-capture seam in the orchestrator** (ADR-ECO-003e M0), observe-only:
+  a typed `UsageRecord` contract, a JSONL sink, and `python -m atp.cost.probe_report`
+  for coverage. It records what the run actually reported rather than what a
+  price table guesses. (#251)
+- **`receipt_chain` checker** — verifies Libretto `receipts.jsonl` hash chains, so
+  a run's own ledger becomes evaluation input rather than a claim to trust. The
+  compatibility contract is vendored under `method/contract/openprose/`. (#252)
+- **A grader spine for agent-eval-cases**: a uniform `CaseVerdict`, a checker
+  registry separate from the evaluator registry, a shared output envelope, and a
+  task-type taxonomy. Deterministic checkers gate; rubric scoring does not. (#176, #177)
+- **A dimensioned evaluation store, and a dashboard that reads it** — canonical
+  persistence with `task_type`/`language` as real columns, plus an eval
+  leaderboard and trend view. (#179, #180, #181)
+- **The benchmark plane got its safety boundary**: a versioned score contract for
+  the Maestro handshake, a bounded artifact workspace for untrusted submissions,
+  a deterministic server-side assertion allowlist, and an explicit composition
+  root that hands evaluation capability in instead of letting call sites reach
+  for a global registry. (#266, #269, #270, #271)
+- **Force-advance a tournament round** from the admin UI, with the endpoint
+  behind it. (#247)
+- **Terraform IaC for the all-in-AWS Bedrock demo**, replacing the hand-run
+  `examples/aws-cloud` walkthrough. (#167)
+- **A deterministic `req-extraction` example** that grades without an LLM. (#166)
+- **The `atp-method` evaluation harness grew a working contour** (dev-side, shipped
+  via the `atp-method` package): a `SUITE.lock.toml` golden-suite lock that refuses
+  a paid run on suite drift; Path A corpus grounding that points a CLI's *native*
+  tools at a verified corpus (`claude_code`, `codex_cli`, `pi`, `opencode`); a
+  wider agent roster including the first open model promoted to routable; raw
+  per-case stdout/stderr capture with `error_class` classification and an
+  `infra_error_rate` signal, so capability and reliability stay separable; and
+  per-class token usage with `usage_source` in the emitted payload. (#171-#174,
+  #176-#177, #182-#183, #192-#193, #195, #204, #215-#216, #221, #223, #227-#231,
+  #234-#235, #242)
 
 ### Fixed
 
@@ -68,6 +121,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   response body.** `SubmitRequest.response` is a bare dict, so the protocol was
   first checked inside the handler, where a `ValidationError` became an
   unhandled exception. A self-service caller now gets told what is wrong. (#272)
+- **Non-JSON values (datetimes) in artifact `data_json` no longer break the
+  dashboard** — they are coerced on the way in. (#169)
+- **The pipe-check harness stopped paying 3× for 1× of signal** — `runs=N` graded
+  only one run per case; all runs are graded now. Alongside: cache tokens count
+  toward the `claude_code` shim's total, the sweep no longer silently reports
+  infra failures as 0.0 scores, case artifacts actually reach the model (it was
+  reviewing an empty diff), `--task-type` cannot contradict the suite's own, and
+  the `opencode` shim isolates its data dir per invocation to stop SQLite lock
+  contention between concurrent runs. (#184, #202, #213, #222, #232, #233)
 
 ### Changed
 
@@ -94,6 +156,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   EvidenceRef v1 incl. `gate-verdict`), and closed graduation-target vocabulary. Events never
   mutate governed knowledge; graduation happens only via reviewed PR. Plus `.github/CODEOWNERS`
   declaring the governed paths (v1 acceptance) and contract tests with fixtures.
+- **`track_response_cost` is deprecated** and emits a `DeprecationWarning`; the
+  usage-capture seam above replaces it. Removal is scheduled for ADR-ECO-003e M1. (#251)
 
 ## [2.1.0] - 2026-06-12
 
@@ -247,6 +311,8 @@ platform for testing and evaluating AI agents.
 - Natural language test generation
 - Trace import and storage tracking
 
-[Unreleased]: https://github.com/andrei-shtanakov/atp-platform/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/andrei-shtanakov/atp-platform/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/andrei-shtanakov/atp-platform/compare/v2.1.0...v2.2.0
+[2.1.0]: https://github.com/andrei-shtanakov/atp-platform/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/andrei-shtanakov/atp-platform/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/andrei-shtanakov/atp-platform/releases/tag/v1.0.0
