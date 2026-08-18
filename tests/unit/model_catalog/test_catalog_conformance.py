@@ -66,7 +66,7 @@ def _surface_files() -> list[Path]:
 
 def test_pin_file_names_the_source_commit() -> None:
     pin = (CONTRACT_DIR / "PIN").read_text(encoding="utf-8")
-    assert "devtools@2a5c1543643ac11da20f911c14c35b049e48eae8" in pin
+    assert "devtools@2533ff7b8c3afd74110b3838325bf76ba46ba186" in pin
 
 
 def test_vendored_copy_matches_manifest() -> None:
@@ -164,14 +164,39 @@ def test_v6_deprecated_reference_is_a_warning_not_a_rejection() -> None:
 
 
 def test_v7_unknown_status_is_a_hard_schema_failure() -> None:
-    """ATP's chosen answer to the V7 "flag" class: reject via the status Literal.
+    """ATP's answer to the `status` half of V7: reject via the Literal.
 
-    Note the divergence this documents: `harnesses.*.kind` is an open string, so
-    only the unknown *model status* is caught. Both together are the fixture, and
-    rejecting the file conforms; a loader-level `kind` vocabulary is not ours yet.
+    The fixture varies `status` and `kind` at once, and the field-level Literal
+    fires before any model validator, so this file never reaches the kind check —
+    which is precisely why the set carries the kind-only fixture below.
     """
     path = CONTRACT_DIR / "fixtures/warn/v7-unknown-enum.toml"
     with pytest.raises(CatalogSchemaError, match="status"):
+        load_catalog(path)
+
+
+def test_v7_unknown_kind_is_a_warning_not_a_rejection() -> None:
+    """ATP's answer to the `kind` half of V7: warn, keep loading.
+
+    `kind` only describes how a harness is launched, so an unrecognized one must
+    be visible without breaking a catalog that adds a launch mechanism before we
+    know about it. The vocabulary belongs to ADR-ECO-003; we restate it to make
+    the deviation observable, which is what the "flag" class asks for.
+    """
+    path = CONTRACT_DIR / "fixtures/warn/v7-unknown-kind.toml"
+    with pytest.warns(CatalogWarning, match="V7:"):
+        catalog = load_catalog(path)
+    assert catalog.harnesses is not None
+
+
+def test_v1_empty_harnesses_plane_fails_closed() -> None:
+    """An empty `[harnesses]` plane declares zero harnesses (devtools#47 canon).
+
+    The rival reading — a bare header as unarmed scaffolding — would make the
+    catalog silently valid. ATP was already fail-closed here; this pins it.
+    """
+    path = CONTRACT_DIR / "fixtures/invalid/v1-empty-harnesses.toml"
+    with pytest.raises(CatalogSchemaError, match="V1:"):
         load_catalog(path)
 
 

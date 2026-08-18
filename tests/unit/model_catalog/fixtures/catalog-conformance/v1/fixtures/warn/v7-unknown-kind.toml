@@ -1,0 +1,26 @@
+# Must be flagged (V7, at least a warning): an unknown harness `kind` with
+# every `status` inside the ADR-ECO-003 vocabulary. Complements
+# v7-unknown-enum.toml, which varies both fields at once and therefore lets
+# a loader that schema-fails on `status` pass without ever checking `kind`
+# (devtools#47). Here `kind` is the ONLY deviation, so a loader that does
+# not flag unknown kinds is observably red on this case.
+
+[models."alpha-1"]
+vendor = "acme"
+status = "active"
+
+[harnesses.alpha_cli]
+kind      = "cli"
+model_env = "ALPHA_MODEL"
+routable  = true
+
+[harnesses.gamma_box]
+kind      = "container"
+model_env = "GAMMA_MODEL"
+routable  = false
+
+[[agents]]
+harness  = "alpha_cli"
+model    = "alpha-1"
+tested   = true
+routable = true

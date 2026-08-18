@@ -17,6 +17,7 @@ from atp.model_catalog.loader import (
     resolve_default_model,
 )
 from atp.model_catalog.schema import (
+    KNOWN_HARNESS_KINDS,
     AgentEntry,
     CatalogDefaults,
     HarnessEntry,
@@ -25,6 +26,7 @@ from atp.model_catalog.schema import (
 )
 
 __all__ = [
+    "KNOWN_HARNESS_KINDS",
     "AgentEntry",
     "CatalogDefaults",
     "CatalogError",

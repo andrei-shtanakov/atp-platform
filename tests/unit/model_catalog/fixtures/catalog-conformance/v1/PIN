@@ -1,7 +1,8 @@
-source: devtools@2a5c1543643ac11da20f911c14c35b049e48eae8 contracts/catalog-conformance-fixtures/v1
+source: devtools@2533ff7b8c3afd74110b3838325bf76ba46ba186 contracts/catalog-conformance-fixtures/v1
 contract: catalog-conformance-fixtures v1
 vendored: 2026-08-18
-issue: atp-platform#292 (slug catalog-conformance-wiring, from devtools#catalog-conformance-single-owner)
+issue: atp-platform#294 (slug catalog-conformance-pin-bump-v1-gaps, from devtools#catalog-conformance-v1-gaps)
+previous pin: devtools@2a5c154 (atp-platform#292, vendored 2026-08-18)
 
 Pinned copy, not a live reference (workspace polyrepo rule:
 ../prograph-vault/authored/rules/repo-boundaries.md). Do not edit the copy —

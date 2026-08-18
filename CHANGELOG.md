@@ -40,6 +40,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   under `coverage.records_unreadable` rather than parsed with today's field
   names. (#272)
 
+- **An unknown harness `kind` is flagged instead of accepted silently.** V7 was
+  only half-enforced: the model `status` `Literal` rejected the mixed fixture
+  before `kind` was ever examined. `KNOWN_HARNESS_KINDS` restates the
+  ADR-ECO-003 vocabulary and an unfamiliar value raises `CatalogWarning` —
+  a warning rather than a rejection, because `kind` describes launch mechanics
+  and a catalog naming a new one must still load. (#295)
+
 - **The model catalog validates across planes, in the shared V1..V7 vocabulary.**
   Only V1 (an agent naming an undeclared harness) was checked. An agent naming
   an undeclared model (V2), one referencing a `retired` model (V3), a duplicate

@@ -46,6 +46,27 @@
 
 ### Активные кросс-проектные задачи
 
+- [x] **Пин conformance-фикстур поднят до v1-gaps (два новых кейса)** ✅ 2026-08-18 @owner:github:andrei-shtanakov @id:catalog-conformance-pin-bump-v1-gaps
+  @provider:devtools @consumer:atp-platform
+  @source-owner:devtools @source-ref:devtools@2533ff7 @observed-at:2026-08-18 @recheck-by:2026-11-18
+  - Принято из inbox-issue #294 (`from: devtools#catalog-conformance-v1-gaps`). Аддитивно:
+    семантика существующих кейсов не менялась, пин `2a5c154` → `2533ff7`.
+  - `invalid/v1-empty-harnesses.toml` (пустая плоскость `[harnesses]` при живых `[[agents]]`
+    = V1 fail-closed) — ATP был конформен уже, тест это фиксирует.
+  - `warn/v7-unknown-kind.toml` варьирует ТОЛЬКО `kind` и был **красным**: это ровно та дыра,
+    которую пункт `@id:catalog-conformance-wiring` оставлял открытой (старая V7-фикстура
+    валилась по `status`, до `kind` дело не доходило). Закрыто: `KNOWN_HARNESS_KINDS` в
+    `packages/atp-core/atp/model_catalog/schema.py` + `CatalogWarning`.
+  - **Выбрана асимметрия, а не симметрия:** неизвестный `status` — жёсткий schema-fail,
+    неизвестный `kind` — предупреждение. `status` управляет зачислением (`retired`/`deprecated`
+    решают, можно ли агенту работать), `kind` лишь описывает механику запуска, поэтому каталог
+    с новым способом запуска обязан продолжать грузиться. Maestro на этом кейсе заявил
+    осознанную дивергенцию (словарь принадлежит ADR-ECO-003, не потребителю) — мы восстанавливаем
+    словарь у себя ровно ради наблюдаемости, ценой дубля, о котором сказано в комментарии.
+  - Мутационная проверка: зануление V1 и V7-kind → оба новых кейса красные.
+  - Побочно: README набора всё ещё описывает ATP как «нет проверок V2/V3/V6» — устарело после
+    #293; заведено обратно в devtools (см. issue там).
+
 - [x] **Conformance-фикстуры каталога подключены (SSOT-набор devtools)** ✅ 2026-08-18 @owner:github:andrei-shtanakov @id:catalog-conformance-wiring
   @provider:devtools @consumer:atp-platform
   @source-owner:devtools @source-ref:devtools@2a5c154 @observed-at:2026-08-18 @recheck-by:2026-11-18
@@ -72,8 +93,7 @@
     - `pathres/env-set-file-missing`: заданный `$ATP_CATALOG` с несуществующим файлом
       больше не проваливается тихо в XDG-слой — новый `CatalogMissingFileError`
       (толерантный `resolve_default_model()` его по-прежнему глотает с warning).
-  - Открыто: `harnesses.*.kind` остаётся свободной строкой (V7 ловится только по
-    статусу модели); словарь `kind` на уровне загрузчика — не наш пункт.
+  - `harnesses.*.kind` больше не свободная строка — закрыто пин-бампом ниже.
     XDG-слои резолюции вне набора v1 (ждут maestro `@id:xdg-catalog-path`).
 
 - [x] **ADR-ECO-003d pricing-view: cloud-`$` над per-class usage** (effort M) ✅ 2026-07-07
