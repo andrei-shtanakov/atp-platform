@@ -40,8 +40,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   under `coverage.records_unreadable` rather than parsed with today's field
   names. (#272)
 
+- **The model catalog validates across planes, in the shared V1..V7 vocabulary.**
+  Only V1 (an agent naming an undeclared harness) was checked. An agent naming
+  an undeclared model (V2), one referencing a `retired` model (V3), a duplicate
+  `agent_id` (V4) and a routable agent under a non-routable harness (V5) are now
+  errors; a reference to a `deprecated` model (V6) raises `CatalogWarning`,
+  since deprecated still runs but must not pass silently. The rule set is
+  exercised by the devtools-owned conformance fixtures, vendored pinned under
+  `tests/unit/model_catalog/fixtures/catalog-conformance/v1/` and verified
+  against their sha256 manifest. (#293)
+
 ### Fixed
 
+- **`$ATP_CATALOG` pointing at a missing file no longer falls through to XDG.**
+  An explicit catalog path is an instruction, and quietly loading a different
+  file — or reporting "not configured" — ignored it. Resolution now raises the
+  new `CatalogMissingFileError`; `resolve_default_model()` stays tolerant and
+  degrades to `None` with a warning. (#293)
 - **`POST /api/v1/runs/{id}/submit` returns 422, not 500, for a malformed
   response body.** `SubmitRequest.response` is a bare dict, so the protocol was
   first checked inside the handler, where a `ValidationError` became an
@@ -49,6 +64,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`harnesses.*.shim` is optional in the model-catalog schema.** It is ATP
+  sweep machinery, not part of the cross-repo catalog contract, and requiring it
+  rejected contract-valid catalogs for a reason no sibling loader shares — which
+  would have made the conformance set pass for the wrong reason. The requirement
+  moved to `method/run_pipe_check.py`, where shims are actually spawned. (#293)
 - **`score_semantics` and `score_components` are required** on
   `RunResponse` and `RunStatusResponse`. Consumers see no wire change; a
   default would have let a call site publish a label it never derived. (#272)
