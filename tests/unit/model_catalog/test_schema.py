@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from atp.model_catalog.errors import CatalogWarning
 from atp.model_catalog.schema import (
+    KNOWN_HARNESS_KINDS,
     AgentEntry,
     HarnessEntry,
     ModelCatalog,
@@ -273,3 +274,33 @@ def test_v6_silent_when_no_deprecated_reference() -> None:
             harnesses={"h": _HARNESS},
             agents=[{"harness": "h", "model": "m"}],
         )
+
+
+def test_v7_unknown_harness_kind_warns_but_loads() -> None:
+    with pytest.warns(CatalogWarning, match="V7:"):
+        c = ModelCatalog(
+            models={"m": _ACTIVE},
+            harnesses={"h": {**_HARNESS, "kind": "container"}},
+            agents=[{"harness": "h", "model": "m"}],
+        )
+    assert c.harnesses is not None and c.harnesses["h"].kind == "container"
+
+
+def test_v7_names_the_offending_harness_and_kind() -> None:
+    with pytest.warns(CatalogWarning, match=r"h=container") as caught:
+        ModelCatalog(models={}, harnesses={"h": {**_HARNESS, "kind": "container"}})
+    assert "V7:" in str(caught[0].message)
+
+
+def test_v7_silent_for_every_known_kind() -> None:
+    # The vocabulary is ADR-ECO-003's; restating it must not flag its own members.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", CatalogWarning)
+        for kind in KNOWN_HARNESS_KINDS:
+            ModelCatalog(models={}, harnesses={"h": {**_HARNESS, "kind": kind}})
+
+
+def test_v7_kind_check_needs_no_agents_plane() -> None:
+    # A harness-only catalog still gets its kinds checked.
+    with pytest.warns(CatalogWarning, match="V7:"):
+        ModelCatalog(models={}, harnesses={"h": {**_HARNESS, "kind": "wat"}})

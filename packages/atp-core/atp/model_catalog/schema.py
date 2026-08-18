@@ -16,8 +16,12 @@ and the conformance suite — can tell *which* rule fired:
 * V4 duplicate `agent_id` (`<harness>@<model>`) — error
 * V5 `agents.routable = true` under a `routable = false` harness — error
 * V6 `agents` references a `status="deprecated"` model — warning (`CatalogWarning`)
-* V7 unknown `status` value — hard schema failure via the `Literal` below
-  (rejection is a conformant response to the contract's "flag" class)
+* V7 unknown enum value — an unknown `status` is a hard schema failure via the
+  `Literal` below (rejection is a conformant response to the "flag" class); an
+  unknown harness `kind` is a warning, so a catalog naming a launch mechanism we
+  do not recognize still loads. The two halves are deliberately asymmetric:
+  `status` gates enrollment (`retired`/`deprecated` decide whether an agent may
+  run), while `kind` only describes how a harness is launched.
 """
 
 from __future__ import annotations
@@ -29,6 +33,11 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from atp.model_catalog.errors import CatalogWarning
+
+# The harness-kind vocabulary is owned by ADR-ECO-003, not by this loader; it is
+# restated here so an unfamiliar value is *observable* (V7). Deliberately a
+# warning, not a Literal: a catalog that adds a launch mechanism must still load.
+KNOWN_HARNESS_KINDS = frozenset({"cli", "api-baseline", "local"})
 
 
 class ModelEntry(BaseModel):
@@ -188,6 +197,28 @@ class ModelCatalog(BaseModel):
         if deprecated:
             warnings.warn(
                 f"V6: agent(s) enrolled on a deprecated model: {deprecated}",
+                CatalogWarning,
+                stacklevel=2,
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _v7_warn_on_unknown_harness_kind(self) -> ModelCatalog:
+        # The `status` half of V7 is caught by ModelEntry's Literal before any
+        # model validator runs; `kind` is checked here so a catalog whose only
+        # deviation is an unknown kind is still not accepted silently.
+        if self.harnesses is None:
+            return self
+        unknown = sorted(
+            {
+                f"{name}={h.kind}"
+                for name, h in self.harnesses.items()
+                if h.kind not in KNOWN_HARNESS_KINDS
+            }
+        )
+        if unknown:
+            warnings.warn(
+                f"V7: harness(es) with an unknown kind: {unknown}",
                 CatalogWarning,
                 stacklevel=2,
             )

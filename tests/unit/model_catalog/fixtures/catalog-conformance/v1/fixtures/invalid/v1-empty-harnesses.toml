@@ -1,0 +1,18 @@
+# Invalid (V1, error): the [harnesses] plane is PRESENT but EMPTY while
+# [[agents]] rows exist. Canon (devtools#47, 2026-08-18): an empty plane
+# declares zero harnesses, so every enrollment references an undeclared
+# harness — fail-closed, same as an unknown name. The rival reading
+# ("bare header = schema scaffolding, checks unarmed") would make this
+# catalog silently valid; a loader that accepts it diverges.
+
+[models."alpha-1"]
+vendor = "acme"
+status = "active"
+
+[harnesses]
+
+[[agents]]
+harness  = "alpha_cli"
+model    = "alpha-1"
+tested   = true
+routable = false

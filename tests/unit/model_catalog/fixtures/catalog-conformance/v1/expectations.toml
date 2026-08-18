@@ -29,6 +29,11 @@ expect = "error"
 code   = "V1"
 
 [[case]]
+file   = "fixtures/invalid/v1-empty-harnesses.toml"
+expect = "error"
+code   = "V1"
+
+[[case]]
 file   = "fixtures/invalid/v2-unknown-model.toml"
 expect = "error"
 code   = "V2"
@@ -55,6 +60,11 @@ code   = "V6"
 
 [[case]]
 file   = "fixtures/warn/v7-unknown-enum.toml"
+expect = "flag"
+code   = "V7"
+
+[[case]]
+file   = "fixtures/warn/v7-unknown-kind.toml"
 expect = "flag"
 code   = "V7"
 

@@ -5,15 +5,19 @@
   "files": [
     {
       "path": "README.md",
-      "sha256": "d7b0a6104c27f8b9efcc3b86bad85e1ac6f6f5a3bc85a52735ba79d11589fa74"
+      "sha256": "70647584f4ef60a9fbe2245be3b64888387b912c30518d17024b0e8f3bdd4800"
     },
     {
       "path": "expectations.toml",
-      "sha256": "808ce6f5c63f1da40cbdb606bd51cf5829efcadd0115d814fd5c06db347a9c03"
+      "sha256": "bc28cccc90c71b06a86d6fca930b82849e4cb4df956de86e0e3487d3560b8ff5"
     },
     {
       "path": "fixtures/invalid/broken.toml",
       "sha256": "b9c58c8c4b134cf358a360b27eccd251576dcca93b114a094d4b51fda6465aa1"
+    },
+    {
+      "path": "fixtures/invalid/v1-empty-harnesses.toml",
+      "sha256": "9038d39fc5155370b950e20bbde6f220641f3adfe891a25301bf08b911badfe6"
     },
     {
       "path": "fixtures/invalid/v1-unknown-harness.toml",
@@ -50,7 +54,11 @@
     {
       "path": "fixtures/warn/v7-unknown-enum.toml",
       "sha256": "ce84abc52c31727a59ef5d716b2a2df9b1ac6ffcef1ee3b98ab1737cfacba0f6"
+    },
+    {
+      "path": "fixtures/warn/v7-unknown-kind.toml",
+      "sha256": "210e5e935c94d170dc609c53d4c0ef107febac52055e8b1f23c9323a460f1358"
     }
   ],
-  "tree_sha256": "ba80067e0911fc13206688d1c79612579b72e52dabe8d2cebd210bebac13d0c1"
+  "tree_sha256": "a78f6cbd4f9da6adeb0ca02c85a1a81f26f608b9da92d8cb134fc13008e0c52a"
 }
