@@ -9,7 +9,9 @@ refactor.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +19,8 @@ import pytest
 
 from atp.dashboard.benchmark.schemas import RunResponse, RunStatusResponse
 from atp.dashboard.benchmark.score_contract import (
+    AGGREGATED_EVALUATION,
+    COMPLETION_RATE,
     SCORE_CONTRACT_VERSION,
     empty_score_components,
     run_score_semantics,
@@ -49,11 +53,39 @@ EVALUATED_RECORDS: list[dict[str, Any]] = [
 ]
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "benchmark_score_contract"
+#: The handoff a consumer vendors against; its pins are asserted below.
+DOC = Path(__file__).resolve().parents[3] / "docs" / "maestro-score-contract-handoff.md"
+
+#: The fixture whose `score_semantics` block is the canonical one. It is the
+#: payload of a real completion-only run, `coverage` included — not the bare
+#: `run_score_semantics()` default, which omits coverage and hashes to
+#: something else.
+CANONICAL_SOURCE = "run_status_completion_only.json"
 
 
 def _load(name: str) -> dict[str, Any]:
     """Read a published contract fixture."""
     return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
+
+
+def _fixture_digest(name: str) -> str:
+    """sha256 of a fixture's bytes, exactly as a consumer vendors them."""
+    return hashlib.sha256((FIXTURES / name).read_bytes()).hexdigest()
+
+
+def canonical_semantics_digest() -> str:
+    """sha256 of the canonical `score_semantics`, per the documented recipe.
+
+    JSON with sorted keys and no whitespace, over the block published in
+    `CANONICAL_SOURCE`. Kept as one function so the document and the test can
+    never disagree about which bytes are being hashed.
+    """
+    canonical = json.dumps(
+        _load(CANONICAL_SOURCE)["score_semantics"],
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _status(
@@ -209,3 +241,67 @@ class TestNoNewPersistence:
         columns = set(Run.__table__.columns.keys())
         assert "score_components" not in columns
         assert "score_semantics" not in columns
+
+
+class TestHandoffPinsAreRecomputed:
+    """The handoff document's pins are checked, not merely written down.
+
+    A sha256 typed into prose is a guarantee nobody verifies: it drifts on the
+    exact commit that changes the bytes, and says nothing while it does. That
+    is what happened between `f58ff7f` and `05bd939` — the latter added
+    `coverage`, a third fixture and `kind: aggregated_evaluation`, leaving two
+    of three published pins wrong and one fixture undeclared, which the
+    consumer only found while vendoring (issue #298). These tests move the
+    pins under the same CI that guards the fixtures themselves: change the
+    bytes without updating the table and this fails.
+    """
+
+    #: Every fixture line in the document's pins table: name, sha256.
+    _ROW = re.compile(r"^\|\s*`([^`]+\.json)`\s*\|\s*`([0-9a-f]{64})`\s*\|", re.M)
+    #: The lone canonical-semantics digest, in its own fenced block.
+    _CANONICAL = re.compile(r"^sha256\s+([0-9a-f]{64})\s*$", re.M)
+
+    @staticmethod
+    def _doc() -> str:
+        """The handoff text a consumer vendors against."""
+        return DOC.read_text(encoding="utf-8")
+
+    def test_canonical_semantics_digest_matches_the_document(self) -> None:
+        """The recipe is stated in the document; here it is executed."""
+        declared = self._CANONICAL.findall(self._doc())
+        assert len(declared) == 1, "expected exactly one canonical digest"
+        assert declared[0] == canonical_semantics_digest()
+
+    def test_every_fixture_pin_matches_the_bytes_on_disk(self) -> None:
+        pinned = dict(self._ROW.findall(self._doc()))
+        assert pinned, "the pins table lost its rows"
+        for name, digest in pinned.items():
+            assert digest == _fixture_digest(name), f"stale pin for {name}"
+
+    def test_no_fixture_is_published_without_a_pin(self) -> None:
+        """The failure that let `run_status_evaluated.json` ship undeclared."""
+        pinned = set(dict(self._ROW.findall(self._doc())))
+        on_disk = {path.name for path in FIXTURES.glob("*.json")}
+        assert pinned == on_disk
+
+    def test_the_document_still_describes_the_current_kinds(self) -> None:
+        """Prose drifts the same way pins do; the load-bearing words are few."""
+        doc = self._doc()
+        for kind in (COMPLETION_RATE, AGGREGATED_EVALUATION):
+            assert kind in doc
+        assert "coverage" in doc
+
+    def test_every_kind_shipped_in_a_fixture_is_named_in_the_document(self) -> None:
+        """A fixture may carry a `kind` the document never mentions.
+
+        `run_status_forward_compat.json` does, on purpose — it publishes an
+        unlisted kind so a consumer proves it survives one. A document that
+        enumerates only today's two then reads as a closed set, and invites the
+        exhaustive match that the same fixture would break. Caught in review on
+        the PR that fixed the pins, which is one reviewer later than it should
+        have been.
+        """
+        doc = self._doc()
+        for name in sorted(path.name for path in FIXTURES.glob("*.json")):
+            kind = _load(name)["score_semantics"]["kind"]
+            assert kind in doc, f"{name} ships kind={kind!r}, undocumented"
