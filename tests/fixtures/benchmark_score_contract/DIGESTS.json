@@ -1,0 +1,12 @@
+{
+  "_generated_by": "scripts/write_score_contract_digests.py — do NOT hand-edit",
+  "canonical_score_semantics_sha256": "43bd52de337bb38737fbafac049ed5ba2f53e3285dd1466a4418422f9ead9de1",
+  "contract_version": 1,
+  "files": {
+    "packages/atp-dashboard/atp/dashboard/benchmark/score_contract.py": "fb543c00189b67748828f9249511b1468b69945136f3ce00c7abb9ed5d77bf1c",
+    "tests/fixtures/benchmark_score_contract/run_status_completion_only.json": "cd5e79e92e46d9ef81be60dd577663eed294057dc9e8935a849846a962dcfca1",
+    "tests/fixtures/benchmark_score_contract/run_status_evaluated.json": "0e2169cb04550be8d6b4cccd396ac4ee8ad68b03bae78e706e6913adaf68fa4a",
+    "tests/fixtures/benchmark_score_contract/run_status_forward_compat.json": "09f85de6e767ab635ec10755657372877211555aec168689a2afb24e895c3a3b"
+  },
+  "sidecar_format_version": 1
+}

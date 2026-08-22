@@ -10,8 +10,10 @@ refactor.
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -73,19 +75,37 @@ def _fixture_digest(name: str) -> str:
     return hashlib.sha256((FIXTURES / name).read_bytes()).hexdigest()
 
 
-def canonical_semantics_digest() -> str:
-    """sha256 of the canonical `score_semantics`, per the documented recipe.
+def _load_sidecar_writer() -> Any:
+    """The generator module — imported, not reimplemented.
 
-    JSON with sorted keys and no whitespace, over the block published in
-    `CANONICAL_SOURCE`. Kept as one function so the document and the test can
-    never disagree about which bytes are being hashed.
+    The recipe for the canonical digest is published in the handoff document,
+    emitted into `DIGESTS.json`, and asserted here. Three readers, one
+    implementation: a second copy would be free to drift from the one the
+    consumer actually downloads, which is the whole class of defect this
+    contract keeps tripping over.
     """
-    canonical = json.dumps(
-        _load(CANONICAL_SOURCE)["score_semantics"],
-        sort_keys=True,
-        separators=(",", ":"),
+    path = (
+        Path(__file__).resolve().parents[3]
+        / "scripts"
+        / ("write_score_contract_digests.py")
     )
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    spec = importlib.util.spec_from_file_location("score_contract_digests", path)
+    if spec is None or spec.loader is None:  # pragma: no cover - packaging error
+        raise RuntimeError(f"cannot load the digest writer from {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["score_contract_digests"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+SIDECAR_WRITER = _load_sidecar_writer()
+
+#: Re-exported so the assertions below read as they did before the recipe moved.
+canonical_semantics_digest = SIDECAR_WRITER.canonical_semantics_digest
+
+#: Payload fixtures only — `DIGESTS.json` sits in the same directory and is not
+#: one of them. Every `*.json` glob over that directory has to say so.
+fixture_names = SIDECAR_WRITER.fixture_names
 
 
 def _status(
@@ -281,7 +301,7 @@ class TestHandoffPinsAreRecomputed:
     def test_no_fixture_is_published_without_a_pin(self) -> None:
         """The failure that let `run_status_evaluated.json` ship undeclared."""
         pinned = set(dict(self._ROW.findall(self._doc())))
-        on_disk = {path.name for path in FIXTURES.glob("*.json")}
+        on_disk = set(fixture_names())
         assert pinned == on_disk
 
     def test_the_document_still_describes_the_current_kinds(self) -> None:
@@ -302,6 +322,93 @@ class TestHandoffPinsAreRecomputed:
         have been.
         """
         doc = self._doc()
-        for name in sorted(path.name for path in FIXTURES.glob("*.json")):
+        for name in fixture_names():
             kind = _load(name)["score_semantics"]["kind"]
             assert kind in doc, f"{name} ships kind={kind!r}, undocumented"
+
+
+class TestDigestSidecarIsRecomputed:
+    """`DIGESTS.json` — the machine-readable half, under the same CI as the prose.
+
+    The handoff document is for a human; its pins became checkable in #298/#299.
+    The other half stayed manual and sat on the consumer's side: maestro's
+    upstream-drift test compares against a sibling checkout of this repo and
+    **skips** when there is none, so for an installed user it degraded into
+    trigger prose — the same shape of defect, one repo over (maestro#204).
+
+    A published digest map makes that check "download one file and compare".
+    These tests are what keep the map worth downloading.
+    """
+
+    @staticmethod
+    def _on_disk() -> dict[str, Any]:
+        return json.loads(SIDECAR_WRITER.SIDECAR.read_text(encoding="utf-8"))
+
+    def test_sidecar_matches_a_fresh_recomputation(self) -> None:
+        """Forgetting to regenerate is a red test, not a silent lie."""
+        assert self._on_disk() == SIDECAR_WRITER.build_sidecar(), (
+            "DIGESTS.json is stale — run "
+            "`uv run python scripts/write_score_contract_digests.py`"
+        )
+
+    def test_rendering_is_byte_stable(self) -> None:
+        """A no-op regeneration must produce a no-op diff, or nobody reruns it."""
+        assert SIDECAR_WRITER.SIDECAR.read_text(encoding="utf-8") == (
+            SIDECAR_WRITER.render(SIDECAR_WRITER.build_sidecar())
+        )
+
+    def test_every_published_fixture_has_an_entry(self) -> None:
+        """The #298 failure, restated for the sidecar.
+
+        A fixture shipped without a line is exactly how `run_status_evaluated`
+        went undeclared in the document. Here the map is generated, so the only
+        way to reintroduce it is to edit the file by hand — which this forbids.
+        """
+        entries = set(self._on_disk()["files"])
+        expected = {
+            f"tests/fixtures/benchmark_score_contract/{name}"
+            for name in SIDECAR_WRITER.fixture_names()
+        }
+        assert expected <= entries
+
+    def test_the_contract_module_is_pinned_too(self) -> None:
+        """The consumer's amendment, and the reason for it.
+
+        A fixture that drifts from its parser shows up on their side as a
+        failure on a live run rather than a red test, so the payloads alone
+        would leave the sharper failure unguarded.
+        """
+        entries = self._on_disk()["files"]
+        assert SIDECAR_WRITER.CONTRACT_MODULE in entries
+        assert (
+            entries[SIDECAR_WRITER.CONTRACT_MODULE]
+            == hashlib.sha256(
+                (SIDECAR_WRITER.REPO_ROOT / SIDECAR_WRITER.CONTRACT_MODULE).read_bytes()
+            ).hexdigest()
+        )
+
+    def test_the_sidecar_does_not_describe_itself(self) -> None:
+        """It lives beside the fixtures; a self-entry could never be correct."""
+        assert not any(key.endswith("DIGESTS.json") for key in self._on_disk()["files"])
+
+    def test_canonical_digest_agrees_with_the_document(self) -> None:
+        """Two publications, one recipe — the document and the sidecar."""
+        declared = TestHandoffPinsAreRecomputed._CANONICAL.findall(
+            DOC.read_text(encoding="utf-8")
+        )
+        assert declared == [self._on_disk()["canonical_score_semantics_sha256"]]
+
+    def test_contract_version_is_the_shipped_one(self) -> None:
+        """Consumers branch on this; it must come from the code, not a literal."""
+        assert self._on_disk()["contract_version"] == SCORE_CONTRACT_VERSION
+
+    def test_no_commit_sha_is_published(self) -> None:
+        """Deliberately absent, and the absence is load-bearing.
+
+        At the moment this file is written the commit that will carry it does
+        not exist, so the field could only ever be stale or empty. The consumer
+        asked for it to be left out; a later reader must not add it back as an
+        obvious improvement.
+        """
+        blob = json.dumps(self._on_disk())
+        assert "commit" not in blob and "sha1" not in blob
