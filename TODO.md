@@ -164,8 +164,10 @@
 - [ ] **Экспортировать разбивку скора в benchmark-run status** (для Maestro R-06b M3) @owner:github:andrei-shtanakov @id:export-score-breakdown
   @provider:atp-platform @consumer:maestro
   @source-owner:maestro @source-ref:maestro@07d408d @observed-at:2026-07-26 @recheck-by:2026-10-26
-  - `../maestro/TODO.md:100`: «`score_components={}` пока ATP не экспортирует breakdown» —
-    их `finalize()` читает из `GET /api/v1/runs/{id}/status` только `total_score`.
+  - `../maestro/TODO.md:123` (сверено 2026-08-22; было `:100`): «`score_components={}`
+    пока ATP не экспортирует breakdown» — их `finalize()` читал из
+    `GET /api/v1/runs/{id}/status` только `total_score`. Пункт у них закрыт, цитата
+    оставлена как свидетельство того, к чему принуждал добаковый wire.
   - Потребитель известен и уже написан — это не спекулятивная фича.
   - [x] **`score_components` реально заполняется** ✅ 2026-07-26 (шаг 6): сабмит
     проходит через `atp.evaluation`-пайплайн под серверной политикой
@@ -183,14 +185,26 @@
     [`docs/maestro-score-contract-handoff.md`](docs/maestro-score-contract-handoff.md).
     Схема честно объявляет `quality_signal: false` и `kind: completion_rate`: на этой
     плоскости 100 означает «ответ завершён», а не «ответ хорош».
-  - [ ] **Осталось не у нас:** consumer contract-тест и обновление статуса зависимости — @owner:github:andrei-shtanakov @id:score-breakdown-consumer-contract
-    сторона maestro (их репо, отсюда read-only); указатель в KB — `../prograph-vault/`.
-    Сверено 2026-07-27: у maestro **нет открытого пункта** под это. Их `TODO.md:117`
-    (закрытый M3) до сих пор фиксирует «`score_components={}` пока ATP не экспортирует
-    breakdown» — после #272 это уже неверно, но заметка на их стороне. Наше утверждение
-    «осталось не у нас» — это наше ожидание, а не их зафиксированный план.
+  - [x] **Сторона потребителя закрыта** ✅ 2026-08-22 (maestro PR #202, merge `46de3f5`): @owner:github:andrei-shtanakov @id:score-breakdown-consumer-contract
+    contract-тест есть (`../maestro/tests/test_benchmark_score_contract.py`, 33 кейса
+    поверх завендоренных фикстур), статус зависимости у них обновлён, заметка про
+    «`score_components={}` пока ATP не экспортирует breakdown» снята с открытого плана
+    (`../maestro/TODO.md:123` — теперь закрытый пункт M3, историческая запись).
+    Их открытый остаток — только `atp-score-contract-upstream-drift`
+    (`../maestro/TODO.md:148`): перевендорить, когда мы тронем `score_contract.py` или
+    фикстуры выше `05bd939`. Указатель в KB — `../prograph-vault/`, отсюда read-only.
   @provider:atp-platform @consumer:maestro
-    @source-owner:maestro @source-ref:maestro@d0fd80e @observed-at:2026-07-27 @recheck-by:2026-10-27
+    @source-owner:maestro @source-ref:maestro@a272533 @observed-at:2026-08-22 @recheck-by:2026-11-22
+  - [x] **Пины в handoff-доке машинно проверяются** ✅ 2026-08-22 (issue #298, from: maestro): @owner:github:andrei-shtanakov @id:score-contract-handoff-pins-stale
+    `05bd939` добавил `coverage`, третью фикстуру и `kind: aggregated_evaluation`, а
+    `docs/maestro-score-contract-handoff.md` не тронул — два пина из трёх разъехались с
+    байтами, третья фикстура не была объявлена вовсе, и проза («`score_components` is
+    `{}` today») противоречила коду. Нашёл это потребитель при вендоринге, не CI.
+    Починены и пины, и проза; **и сам класс дефекта**: `TestHandoffPinsAreRecomputed`
+    (`tests/unit/dashboard/test_score_contract.py`) пересчитывает каждый sha256 из
+    байтов на диске и падает, если фикстура опубликована без строки в таблице. Байты
+    фикстур и `score_contract.py` намеренно не тронуты — иначе сработал бы
+    `atp-score-contract-upstream-drift` у maestro на изменение, которого не было.
   - [ ] **Deferred, с явным триггером:** первый реально вычисленный компонент → EPIC @owner:github:andrei-shtanakov @id:score-component-persistence-epic
     выбирает persistence-модель. DB-колонки нет намеренно: `{}` в каждой строке `Run`
     завёл бы вторую persistence-репрезентацию рядом с существующей `ScoreComponent`
