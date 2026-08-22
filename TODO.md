@@ -205,6 +205,22 @@
     байтов на диске и падает, если фикстура опубликована без строки в таблице. Байты
     фикстур и `score_contract.py` намеренно не тронуты — иначе сработал бы
     `atp-score-contract-upstream-drift` у maestro на изменение, которого не было.
+  - [ ] **Sidecar с дайджестами фикстур — ждём «да/нет» от maestro** @owner:github:andrei-shtanakov @id:score-contract-digest-sidecar @blocked_by:todo://maestro/atp-score-contract-digest-sidecar
+    Вторая половина той же конструкции, что чинил #298, осталась ручной — уже у них.
+    Их `../maestro/TODO.md:149-151`: drift-тест «сверяется с соседним чекаутом, когда он
+    есть, и **скипается**, когда его нет, поэтому у установленного пользователя гарантию
+    несёт этот пункт». То есть детект «апстрим уехал» требует нашего чекаута рядом, а без
+    него вырождается в `@trigger`-прозу — зеркало дефекта из #298.
+    Предложение (заведено maestro#204): публиковать
+    `tests/fixtures/benchmark_score_contract/DIGESTS.json` — дайджесты фикстур +
+    канонический `score_semantics` + `contract_version`, генерируемый и сверяемый тем же
+    `TestHandoffPinsAreRecomputed`, что уже сторожит доку. Их проверка тогда — скачать
+    один файл и сравнить, без чекаута и без скипа.
+    **Наш артефакт, но не строим без потребителя:** сайдкар без читателя — ровно тот
+    спекулятивный контракт, от которого отказались в v1. Скажут «да» — публикуем;
+    скажут «нет» — пункт закрывается, никто не заблокирован (их пин снят с байтов).
+  @provider:atp-platform @consumer:maestro
+    @source-owner:maestro @source-ref:maestro@6170b3f @observed-at:2026-08-22 @recheck-by:2026-11-22
   - [ ] **Deferred, с явным триггером:** первый реально вычисленный компонент → EPIC @owner:github:andrei-shtanakov @id:score-component-persistence-epic
     выбирает persistence-модель. DB-колонки нет намеренно: `{}` в каждой строке `Run`
     завёл бы вторую persistence-репрезентацию рядом с существующей `ScoreComponent`
