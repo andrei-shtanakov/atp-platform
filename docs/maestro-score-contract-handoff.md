@@ -67,14 +67,22 @@ deliberately — see "Deferred" below.
 
 ### The one field to branch on: `quality_signal`
 
-`kind` is one of two values, and `quality_signal` tracks it exactly:
+**`kind` is an open set; `quality_signal` is the stable branch key.** Today's producer
+emits one of two kinds, and `quality_signal` tracks them exactly:
 
-| `kind` | `quality_signal` | what `total_score` counts |
+| `kind` (today) | `quality_signal` | what `total_score` counts |
 |---|---|---|
 | `completion_rate` | `false` | completions only — no evaluator ran |
 | `aggregated_evaluation` | `true` | at least one evaluator *ran* and produced a result |
 
-The label follows evidence, not capability. A server wired with evaluators still
+That table describes this producer, not the contract's ceiling. A later kind is an
+additive change and must not break you — `run_status_forward_compat.json` deliberately
+carries an unlisted one (`weighted_quality`) for exactly that reason. So match on
+`quality_signal`, and treat `kind` as a label to log rather than a value to exhaust: an
+`else` branch that assumes "not `aggregated_evaluation` ⇒ not quality" would misread the
+first kind we add.
+
+The boolean follows evidence, not capability. A server wired with evaluators still
 publishes `completion_rate` for a suite that asserts nothing, for a submission that did
 not complete, and for one whose every assertion the policy withheld — because none of
 those is a measurement.

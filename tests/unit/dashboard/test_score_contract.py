@@ -290,3 +290,18 @@ class TestHandoffPinsAreRecomputed:
         for kind in (COMPLETION_RATE, AGGREGATED_EVALUATION):
             assert kind in doc
         assert "coverage" in doc
+
+    def test_every_kind_shipped_in_a_fixture_is_named_in_the_document(self) -> None:
+        """A fixture may carry a `kind` the document never mentions.
+
+        `run_status_forward_compat.json` does, on purpose — it publishes an
+        unlisted kind so a consumer proves it survives one. A document that
+        enumerates only today's two then reads as a closed set, and invites the
+        exhaustive match that the same fixture would break. Caught in review on
+        the PR that fixed the pins, which is one reviewer later than it should
+        have been.
+        """
+        doc = self._doc()
+        for name in sorted(path.name for path in FIXTURES.glob("*.json")):
+            kind = _load(name)["score_semantics"]["kind"]
+            assert kind in doc, f"{name} ships kind={kind!r}, undocumented"
