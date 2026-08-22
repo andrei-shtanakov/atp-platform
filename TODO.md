@@ -205,7 +205,7 @@
     байтов на диске и падает, если фикстура опубликована без строки в таблице. Байты
     фикстур и `score_contract.py` намеренно не тронуты — иначе сработал бы
     `atp-score-contract-upstream-drift` у maestro на изменение, которого не было.
-  - [ ] **Sidecar с дайджестами фикстур — принято потребителем, публикуем** @owner:github:andrei-shtanakov @id:score-contract-digest-sidecar
+  - [x] **Sidecar с дайджестами фикстур опубликован** ✅ 2026-08-22 @owner:github:andrei-shtanakov @id:score-contract-digest-sidecar
     Вторая половина той же конструкции, что чинил #298, осталась ручной — уже у них.
     Их `../maestro/TODO.md:149-151`: drift-тест «сверяется с соседним чекаутом, когда он
     есть, и **скипается**, когда его нет, поэтому у установленного пользователя гарантию
@@ -227,6 +227,13 @@
     коммита ещё нет, поле было бы незаполнимым. Сайдкар они **не вендорят**: их `PIN`
     держит те же дайджесты, проверка — скачать и сверить карту, с флагом на ключ, которого
     в `PIN` нет, и на `contract_version != 1`.
+    **Сделано:** `tests/fixtures/benchmark_score_contract/DIGESTS.json`, генератор
+    `scripts/write_score_contract_digests.py`, сторожевые тесты
+    `TestDigestSidecarIsRecomputed` (сайдкар сверяется со свежим пересчётом, рендер
+    байт-стабилен, ни одна фикстура не публикуется без строки, `score_contract.py`
+    в карте, SHA коммита отсутствует намеренно). Раздел в handoff-доке добавлен.
+    Мутационная проверка: правка байта в фикстуре роняет и пины доки, и сайдкар.
+    Ключи карты — repo-relative пути: голый `score_contract.py` в этом репо неоднозначен.
   @provider:atp-platform @consumer:maestro
     @source-owner:maestro @source-ref:maestro@6170b3f @observed-at:2026-08-22 @recheck-by:2026-11-22
   - [ ] **Deferred, с явным триггером:** первый реально вычисленный компонент → EPIC @owner:github:andrei-shtanakov @id:score-component-persistence-epic
