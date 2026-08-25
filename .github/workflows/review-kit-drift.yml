@@ -1,0 +1,79 @@
+# Scheduled-НАБЛЮДЕНИЕ (guarantee B, two-contract-guarantees), НЕ PR-гейт:
+# workflow никогда не добавлять required-чеком. Copy-integrity (guarantee A)
+# живёт отдельно — джоба review-kit-integrity в ci.yml, чекер из base.
+# Сравниваются байты вендор-копии кита против upstream HEAD steward, не
+# коммиты: движение master steward без правки кита — честный clean.
+# Дрейф — красный прогон с diff в step summary; решение о ре-вендоре за
+# владельцем atp-platform (рецепт — комментарий в scripts/review/PIN).
+# Прецеденты формы: impresario-contract-drift и arch-evidence-freshness
+# у steward.
+name: review-kit-drift
+
+on:
+  schedule:
+    - cron: "35 6 * * *" # ежедневно 06:35 UTC; фактический старт дрейфует на 40-70 мин
+  workflow_dispatch:
+    inputs:
+      synthetic:
+        description: "Синтетический кейс: drift правит вендор-копию в ephemeral-чекауте"
+        default: "none"
+        type: choice
+        options: ["none", "drift"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: review-kit-drift
+  cancel-in-progress: true
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: ws/atp-platform
+      - uses: actions/checkout@v6
+        with:
+          repository: andrei-shtanakov/steward
+          path: ws/steward
+
+      - name: synthetic non-clean (только ручной прогон)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.synthetic == 'drift' }}
+        run: printf '\n' >> ws/atp-platform/scripts/review/checksum.sh
+
+      - name: compare vendored kit to steward HEAD
+        run: |
+          status=0
+          compare() {
+            local vendored="$1" upstream="$2"
+            if cmp -s "$vendored" "$upstream"; then
+              echo "clean: $vendored == steward HEAD $upstream"
+            else
+              status=1
+              echo "DRIFT: $vendored != steward HEAD $upstream"
+              {
+                echo "### DRIFT: $vendored"
+                echo '```'
+                diff -u "$vendored" "$upstream" || true
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
+          }
+          for rel in scripts/review/build-prompt.sh \
+                     scripts/review/collect-context.sh \
+                     scripts/review/apply-threshold.sh \
+                     scripts/review/local.sh \
+                     scripts/review/checksum.sh \
+                     .github/codex/review-schema.json; do
+            compare "ws/atp-platform/$rel" "ws/steward/$rel"
+          done
+          if [ "$status" -eq 0 ]; then
+            echo "## review-kit-drift: clean" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Дрейф апстрима — решение о ре-вендоре за владельцем" \
+              "atp-platform (двухшаговая дисциплина смены состава — шапка" \
+              "checksum.sh)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"

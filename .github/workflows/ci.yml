@@ -283,3 +283,42 @@ jobs:
             esac
           done < handles.txt
           exit $rc
+
+  # Copy-integrity вендор-копии codex-review-кита (продюсер — steward).
+  # Бутстрап-контракт кита (шапка checksum.sh): чекер обязан исполняться
+  # ИЗВЛЕЧЁННЫМ ИЗ BASE — иначе PR, правящий checksum.sh вместе с его
+  # строкой PIN, глушит проверку, которую сам же исполняет. Первый PR кита —
+  # детекция: чекера в base ещё нет, целостность держится на ревью самого
+  # PR, после мержа проверка включается сама. Вторая гарантия
+  # (upstream-drift) — отдельная вахта review-kit-drift.yml, не PR-гейт.
+  review-kit-integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: checksum.sh из base против дерева PR
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          if git cat-file -e "$BASE_SHA:scripts/review/checksum.sh" 2>/dev/null; then
+            # Обычный файл, не симлинк — тот же страж, что у извлечения
+            # механики codex-review из base у продюсера.
+            mode=$(git ls-tree "$BASE_SHA" -- scripts/review/checksum.sh | cut -d' ' -f1)
+            case "$mode" in
+              100644|100755) ;;
+              *)
+                echo "::error::checksum.sh в base — не обычный файл (режим $mode)"
+                exit 1 ;;
+            esac
+            mkdir -p "$RUNNER_TEMP/trusted-kit"
+            git show "$BASE_SHA:scripts/review/checksum.sh" \
+              > "$RUNNER_TEMP/trusted-kit/checksum.sh"
+            sh "$RUNNER_TEMP/trusted-kit/checksum.sh" \
+              --pin scripts/review/PIN --root .
+          else
+            echo "::notice::бутстрап: checksum.sh в base ещё нет —" \
+              "целостность этого PR держится на его ревью; после мержа" \
+              "чекер из base включится сам."
+          fi
