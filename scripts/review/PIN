@@ -1,0 +1,9 @@
+# SOURCE: steward @ e4c43cc (master, 2026-08-25)
+# Ре-вендор: скопировать 6 файлов из steward, пересчитать строки:
+#   shasum -a 256 <файл>  — формат строки: '<sha256>  <путь-от-корня>'
+d5edbcef9192974161ccba2754b5b191d66bf5ae23ee87367e8c5cdec613fa92  scripts/review/build-prompt.sh
+996ddbb0f7a61e52db29698c5b34d800f57d7ef57d1d50fb2cf408d76a53fc5f  scripts/review/collect-context.sh
+eddc90d16f50562f472918a606c4f0957c4f7b9f06c0f16e10f8c12773e319b1  scripts/review/apply-threshold.sh
+4214c3e25c17e571f8985690d81c05d170a1b60d443b760316a37d795c650d08  scripts/review/local.sh
+0e89a08d44b7a82960cdefd9faa557991fd85cf98800f6e8f98fd78f43f2045f  scripts/review/checksum.sh
+119004344e8930d8ab5d78b560e88964446b982c110947b94a99e991bb8d1eb6  .github/codex/review-schema.json

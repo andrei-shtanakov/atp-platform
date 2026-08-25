@@ -785,3 +785,21 @@ Plan: `docs/superpowers/plans/2026-04-20-admin-tournament-gui.md`
       packages/atp-dashboard/atp/dashboard/v2/templates/ui/about.html off the v1
       client API (ClientSession/sse_client → v2 Client), re-run tests/unit/dashboard/mcp/.
       Context: prograph-vault/authored/notes/2026-08-04-mcp-v2-migration-plan.md
+
+## codex-review: потребитель кита steward (принят 2026-08-25)
+
+- [ ] PR-B: caller-workflow гейта codex-review — после мержа PR-A @owner:github:andrei-shtanakov @id:codex-review-caller
+      (по образцу пилота spec-runner: механика из base, потолки,
+      generated-декларация, экономный триггер по драфту/лейблу) + лейбл
+      `codex-review` + секрет `CODEX_REVIEW_API_KEY` (кладёт владелец в
+      настройки репо)
+
+  PR-A (этот): кит завендорен — `scripts/review/` (5 POSIX-скриптов) +
+  `.github/codex/review-schema.json`, PIN @ steward `e4c43cc`;
+  copy-integrity — джоба `review-kit-integrity` в ci.yml, чекер из base
+  (на первом PR — бутстрап-notice); upstream-drift — вахта
+  `review-kit-drift.yml` (не PR-гейт); `review-prompt.md` — данные репо,
+  вне integrity; generated-декларация — `.gitattributes`. Ре-вендор —
+  рецепт в комментарии PIN; дисциплина раундов гейта — спека steward §13;
+  умолчание итераций — экономный цикл (local.sh → драфт → один платный
+  прогон, см. Git workflow в CLAUDE.md).
