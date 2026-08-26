@@ -52,6 +52,18 @@ on:
   # болезнь, что у `labeled` выше: событие приходит на снятие ЛЮБОГО лейбла,
   # и уборка `needs-triage` пережигала бы платный прогон на неизменном SHA.
   # Возврат из драфта в ревью и так покрыт: `ready_for_review` перезапускает.
+  #
+  # Движение BASE после прогона ничего не перезапускает — принятое свойство,
+  # не дыра этого файла (major гейта на atp-platform#306 по копии этого
+  # workflow, отклонён с доводом — steward#115): вердикт ключуется head SHA,
+  # а событие «base сдвинулся» в PR-контур форджи не приходит вовсе, поэтому
+  # перезапуск кодом workflow невыразим; ключевание merge-ref-OID тоже ничего
+  # не запускает — OID пересчитывается без события. Так стареет ЛЮБОЙ PR-чек
+  # форджи, не только этот, и лекарство системное — у владельца репо, разом
+  # для всех чеков: branch-правило «Require branches to be up to date» либо
+  # merge queue; для агентского пути — update-branch-дисциплина брокера
+  # (todo://steward/merge-broker-update-branch-discipline). Пока мержит
+  # человек, границей служит его взгляд на плашку out-of-date.
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
@@ -326,7 +338,14 @@ jobs:
 
       - name: Ревью
         if: steps.diff.outputs.skip == 'false'
-        uses: openai/codex-action@52fe01ec70a42f454c9d2ebd47598f9fd6893d56  # v1.11
+        # v1.12 (2026-08-20): изоляция привилегий на Linux-раннере усилена,
+        # оверрайды, конфликтующие с protected execution settings, отклоняются
+        # — прямо наша модель угроз (ключ в джобе, читающей недоверенный
+        # текст). Новое требование unprivileged user namespaces для дефолтной
+        # safety-strategy `drop-sudo` закрыто самим action'ом: его
+        # префлайт-шаг включает kernel.unprivileged_userns_clone ДО сброса
+        # sudo, а этот джоб sudo/Docker/привилегированных сокетов не трогает.
+        uses: openai/codex-action@86365089eb2b84e0a8fb0717b304f8bdcb13b20e  # v1.12
         with:
           openai-api-key: ${{ secrets.CODEX_REVIEW_API_KEY }}
           # Модель задаётся ЯВНО. Первый живой прогон упал на дефолте действия
