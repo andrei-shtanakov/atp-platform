@@ -788,7 +788,7 @@ Plan: `docs/superpowers/plans/2026-04-20-admin-tournament-gui.md`
 
 ## codex-review: потребитель кита steward (принят 2026-08-25)
 
-- [ ] PR-B: caller-workflow гейта codex-review — после мержа PR-A @owner:github:andrei-shtanakov @id:codex-review-caller
+- [x] PR-B: caller-workflow гейта codex-review — влит #306 (`2f9f9a6`, 2026-08-25; major отклонён с доводом, мерж поверх красного, довод у продюсера steward#117) @owner:github:andrei-shtanakov @id:codex-review-caller
       (по образцу пилота spec-runner: механика из base, потолки,
       generated-декларация, экономный триггер по драфту/лейблу) + лейбл
       `codex-review` + секрет `CODEX_REVIEW_API_KEY` (кладёт владелец в
