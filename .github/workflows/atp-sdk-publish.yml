@@ -28,7 +28,7 @@ jobs:
         run: cd packages/atp-sdk && uv build --out-dir dist
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2: release/v1 is a mutable ref on the privileged publish path (R-2 baseline 2026-08-25, owner decision 2026-08-27)
         with:
           packages-dir: packages/atp-sdk/dist/
           # Idempotent: re-pushing an existing tag (e.g. retroactive tagging
