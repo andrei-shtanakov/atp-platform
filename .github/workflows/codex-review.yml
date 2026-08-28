@@ -88,6 +88,16 @@ jobs:
     # (`always()`) не находит вердикта и честно краснеет «чек Codex не
     # отработал». Значение с запасом над большими дифами (~4 мин максимум
     # наблюдался), но много ниже дефолта.
+    #
+    # Потолок — НЕ гарантия во время аварии Actions (steward#124, боевой день
+    # dispatcher 2026-08-26): cancel и сам timeout-minutes исполняет тот же
+    # контроллер Actions, который в аварию лежит — джобы висели 21–25+ минут
+    # против потолка 20, снял только ручной force-cancel
+    # (POST .../runs/{id}/force-cancel). Ран, застрявший ДО очереди («Cannot
+    # cancel a workflow run that has not been queued yet»), не снимает даже
+    # он — только ждать GC платформы; такой ран не создаёт check-runs, поэтому
+    # required-чеки висят как Expected. Диагностика: githubstatus components,
+    # Actions != operational.
     timeout-minutes: 20
     permissions:
       contents: read
