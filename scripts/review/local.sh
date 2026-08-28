@@ -50,7 +50,7 @@ remote_explicit=0
 usage() {
     echo "usage: local.sh [--base <ref>] [--head <ref>] [--remote <name>]" \
         "[--fetch] [--format markdown|text]" \
-        "[--max-diff-bytes N] [--max-diff-files N]" >&2
+        "[--max-diff-bytes N] [--max-diff-files N] [--fingerprint-only]" >&2
 }
 
 while [ $# -gt 0 ]; do
@@ -79,9 +79,31 @@ while [ $# -gt 0 ]; do
             [ -n "$2" ] || { echo "--max-diff-files передан с пустым значением" >&2; exit 2; }
             max_diff_files="$2"; shift 2 ;;
         --fetch)  do_fetch=1; shift ;;
+        # Отпечаток входа ревью (@id:review-dedup-diff-hash, steward#126):
+        # пройти весь путь подготовки входа — резолв диапазона, диф, контекст,
+        # generated-фильтр, потолки, сборку промпта — и вместо вызова ревьюера
+        # напечатать в stdout ровно одну строку: 64-hex sha256 от framed-склейки
+        # компонент входа. Режим обязан быть ОФФЛАЙН-вычислимым: одинаковый
+        # вход должен давать одинаковый отпечаток независимо от доступности
+        # remote, иначе наследование вердикта зависит от сети.
+        --fingerprint-only) fp_only=1; shift ;;
         *) usage; exit 2 ;;
     esac
 done
+
+if [ "${fp_only:-0}" -eq 1 ] && [ "$do_fetch" -eq 1 ]; then
+    echo "--fingerprint-only несовместим с --fetch: отпечаток вычисляется" \
+        "оффлайн, по локальному состоянию." >&2
+    exit 2
+fi
+fp_only="${fp_only:-0}"
+
+# Информационные строки прогона (диапазон, контекст, пустой диф) в fp-режиме
+# уходят в stderr: контракт stdout для --fingerprint-only — ровно одна строка
+# отпечатка при непустом успешно подготовленном входе и ничего при пустом дифе.
+info() {
+    if [ "$fp_only" -eq 1 ]; then echo "$@" >&2; else echo "$@"; fi
+}
 
 # --- нужен ли remote вообще -------------------------------------------------
 # Резолюция/угадывание remote'а имеет смысл только там, где remote РЕАЛЬНО
@@ -248,7 +270,10 @@ fi
 # которая назвала бы настоящую причину (ветки нет, `set-head`), управление
 # не доходит. Порядок — часть контракта: при переименованной ветке причина
 # обязана быть настоящей что с `--fetch`, что без него.
-if [ -n "$track_branch" ]; then
+# В fp-режиме сетевой проверки свежести нет вовсе (ls-remote — сеть): отпечаток
+# считается по локальному состоянию, устаревшая база даст ЧЕСТНО другой
+# отпечаток, чем у CI/свежего прогона, — промах кэша в сторону полного ревью.
+if [ -n "$track_branch" ] && [ "$fp_only" -eq 0 ]; then
     ls_remote_ok=1
     if ! remote_line=$(git ls-remote --heads "$remote" "$track_branch" 2>/dev/null); then
         ls_remote_ok=0
@@ -322,9 +347,9 @@ if ! mb=$(git merge-base "$base" "$head_sha" 2>/dev/null); then
         "нет общего предка либо база не разрешается." >&2
     exit 2
 fi
-echo "база:     $(git rev-parse --short "$base")"
-echo "голова:   $(git rev-parse --short "$head_sha")"
-echo "диапазон: ${mb}..${head_sha}"
+info "база:     $(git rev-parse --short "$base")"
+info "голова:   $(git rev-parse --short "$head_sha")"
+info "диапазон: ${mb}..${head_sha}"
 
 work=$(mktemp -d)
 # shellcheck disable=SC2064
@@ -332,7 +357,10 @@ trap "rm -rf '$work'" EXIT
 
 git diff "$mb..$head_sha" > "$work/diff.patch"
 if [ ! -s "$work/diff.patch" ]; then
-    echo "ревьюировать нечего: диф пуст"
+    # Отдельный штатный исход и в fp-режиме: отпечаток пустому входу не
+    # выдумывается — stdout остаётся пустым, вызывающий читает «ревьюировать
+    # нечего» как «наследовать нечего и ревьюировать нечего».
+    info "ревьюировать нечего: диф пуст"
     exit 0
 fi
 
@@ -382,11 +410,11 @@ if [ -f "$kit_dir/collect-context.sh" ]; then
     case "$ctx_code" in
         0)
             use_context=1
-            echo "контекст: $(grep -c "^--- ФАЙЛ " "$work/context.txt") файл(ов)" \
+            info "контекст: $(grep -c "^--- ФАЙЛ " "$work/context.txt") файл(ов)" \
                 "из $(git rev-parse --short "$mb")"
             ;;
         3)
-            echo "контекст: не настроен ($manifest нет в базе) — ревью по одному дифу"
+            info "контекст: не настроен ($manifest нет в базе) — ревью по одному дифу"
             ;;
         *)
             cat "$work/context.err" >&2
@@ -399,7 +427,7 @@ elif git cat-file -e "$mb:$manifest" 2>/dev/null; then
         "механика потеряна, данные остались." >&2
     exit 2
 else
-    echo "контекст: сборщика нет в ките — ревью по одному дифу"
+    info "контекст: сборщика нет в ките — ревью по одному дифу"
 fi
 
 # Ветвление, а не сборка аргументов в строку: `ctx_args="--context $work/..."` с
@@ -519,6 +547,79 @@ if [ -n "$max_diff_bytes" ] || [ -n "$max_diff_files" ]; then
     fi
 fi
 sh "$kit_dir/build-prompt.sh" "$@" > "$work/prompt.txt"
+
+# --- отпечаток входа ревью (--fingerprint-only) -----------------------------
+# Компоненты хешируются как framed byte streams: перед байтами каждой — имя и
+# ТОЧНАЯ длина в байтах, поэтому склейка инъективна (байты компоненты не могут
+# изобразить заголовок следующей — читатель знает, сколько читать). Версия
+# протокола — первая строка потока: смена самой механики отпечатка (состав,
+# framing) обязана инвалидировать все старые наследования, для этого достаточно
+# поднять v1 → v2. Состав: итоговый prompt.txt (он уже несёт канонизированный
+# диф, base-контекст и текст инструкций с детерминированными маркерами), точные
+# байты схемы и порога, эффективное значение review_cmd (смена модели/effort —
+# другой ревьюер, наследовать нельзя). Диф — вывод git diff: на одной машине
+# детерминирован; расхождение версий/конфига git между машинами даст промах
+# кэша — в сторону полного ревью, не в сторону ложного наследования.
+if [ "$fp_only" -eq 1 ]; then
+    threshold_script="$kit_dir/apply-threshold.sh"
+    # `-f` вместе с `-r`: читаемый КАТАЛОГ проходит `-r`, а `cat` на нём падает
+    # уже внутри сборки потока (находка гейта этой же ветки).
+    if [ ! -f "$threshold_script" ] || [ ! -r "$threshold_script" ]; then
+        echo "порог нечитаем или не файл: $threshold_script — порог есть" \
+            "компонент отпечатка." >&2
+        exit 2
+    fi
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha_cmd="sha256sum"
+    elif command -v shasum >/dev/null 2>&1; then
+        sha_cmd="shasum -a 256"
+    else
+        echo "нет ни sha256sum, ни shasum — отпечаток не построить." >&2
+        exit 2
+    fi
+    fp_component() {
+        # $1 — имя компоненты, $2 — файл с её точными байтами. Каждый шаг с
+        # явным `|| return 1`: сбой чтения обязан провалить сборку потока, а
+        # не выродиться в отпечаток от неполного входа.
+        fp_len=$(wc -c < "$2" | tr -d ' 	') || return 1
+        printf 'component %s length %s\n' "$1" "$fp_len" || return 1
+        cat "$2" || return 1
+    }
+    assemble_fp_stream() {
+        printf 'protocol codex-terminal-review-fingerprint-v1\n' &&
+            fp_component prompt "$work/prompt.txt" &&
+            fp_component schema "$schema" &&
+            fp_component threshold "$threshold_script" &&
+            fp_component review_cmd "$work/review-cmd.txt"
+    }
+    printf '%s' "$review_cmd" > "$work/review-cmd.txt"
+    # Поток — через файл, не пайплайн: статус пайплайна в POSIX sh — статус
+    # ПОСЛЕДНЕЙ команды, и упавший производитель молча маскировался бы хешем
+    # обрезанного потока.
+    if ! assemble_fp_stream > "$work/fp-stream.bin"; then
+        echo "не удалось собрать поток отпечатка (компонент нечитаем)." >&2
+        exit 2
+    fi
+    if ! fp_line=$($sha_cmd < "$work/fp-stream.bin"); then
+        echo "хеширование отпечатка не удалось ($sha_cmd)." >&2
+        exit 2
+    fi
+    # Дайджест валидируется, а не обрезается: хешер с кодом 0, но битым
+    # выводом (сломанный shim в PATH) иначе печатал бы «отпечаток»,
+    # нарушающий контракт 64-hex, — и будущий caller унёс бы его как
+    # cache key (находка гейта этой же ветки).
+    set -- $fp_line
+    fp_digest="${1:-}"
+    case "$fp_digest" in
+        *[!0-9a-f]*) fp_digest="" ;;
+    esac
+    if [ "${#fp_digest}" -ne 64 ]; then
+        echo "хешер вернул не 64-hex дайджест ($sha_cmd): '$fp_line'" >&2
+        exit 2
+    fi
+    printf '%s\n' "$fp_digest"
+    exit 0
+fi
 
 # Промпт идёт на stdin, а не аргументом: диф — недоверенный текст, и в argv он
 # не попадает ни здесь, ни в CI. Ревьюер в песочнице read-only: он читает, а не
