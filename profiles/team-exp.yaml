@@ -1,0 +1,23 @@
+# Урезанный team-exp для behaviour-конвейера devtools (смоук WS-SMOKE-001).
+# Источник формы — steward profiles/team-exp.yaml @ 4a1c7c44 (пин конвейера);
+# оставлены только узлы, которые авторит governance/runner.py (S2:
+# charter → requirements → behaviour-spec) + delegate-узел tasks.
+# design/acceptance/decomposition полного team-exp намеренно не включены:
+# required-узлы по умолчанию, их отсутствие в бандле дало бы
+# required_absent на S4 (см. governance/bundle_state.py).
+profile: team-exp
+solo_auto_approve: true
+artifacts:
+  - {id: charter, template: charter.md, owner_role: product, upstream: []}
+  - id: requirements
+    template: requirements.md
+    owner_role: product
+    upstream: [charter]
+  - id: behaviour-spec
+    template: behaviour-spec.md
+    owner_role: product
+    upstream: [requirements]
+  - id: tasks
+    owner_role: stream-owner
+    upstream: [behaviour-spec]
+    delegate: spec-runner

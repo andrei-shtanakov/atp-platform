@@ -1,0 +1,42 @@
+# Role catalog v1 — SSOT for governance role identity (DEC-007, decided 2026-07-26).
+#
+# A role slug is a stable machine name, not a display name and not a @github-handle.
+# `owner_role` on an artifact/profile node names exactly ONE accountable role; multiple
+# roles are modelled by separate fields (`reviewer_roles`, `allowed_approver_roles`) —
+# never as a tuple inside `owner_role`.
+#
+# Ownership vs authority: this file owns role *identity*. `profiles/authority.yaml` owns
+# what an agent MAY do (role/phase allowlist) and deliberately does not define identity;
+# its closed vocabulary (decompose|implement|review|benchmark) is a different axis.
+#
+# This is GOVERNANCE DATA — changes go through PR review like the gate profiles,
+# risk-model.yaml and authority.yaml. dispatcher and spec-runner vendor a pinned copy;
+# they carry role slugs, they do not define the form.
+#
+# STATUS 2026-08-08 (PR-1+PR-2 of DEC-007 §1): steward loads and validates this
+# file fail-closed (src/steward/roles.py) — slug uniqueness, slug_pattern
+# fullmatch, closed key set — and gate-check resolves every frontmatter role
+# reference against it (unresolvable slug = config error, exit 2). Composition
+# is pinned to `version` by tests/roles/test_catalog_data.py: any composition
+# change requires a version bump. Data migration has landed: profiles/*.yaml
+# and both spec bundles (repo's own spec/*.md and WS-005-gate-verdicts) carry
+# canonical singular owner_role + reviewer_roles/allowed_approver_roles. The
+# legacy "@role[,@role]" reader in meta.py stays in place transitionally —
+# not for steward's own data, but because spec-runner still authors that form
+# until its SpecMeta v2 lands (TODO.md §2). Loader validation and the
+# composition pin are unchanged by this migration.
+#
+# Validation owed by steward tooling (TODO): slug uniqueness; every slug matches
+# slug_pattern; every owner_role/reviewer_roles/allowed_approver_roles reference resolves;
+# a role in use cannot be deleted without an explicit migration and a version bump.
+
+version: 1
+slug_pattern: "^[a-z][a-z0-9-]{1,31}$"
+
+roles:
+  - {slug: product,      display: "Product"}
+  - {slug: architects,   display: "Architecture"}
+  - {slug: qa,           display: "QA"}
+  - {slug: tech-lead,    display: "Tech lead"}
+  - {slug: stream-owner, display: "Workstream owner"}
+  - {slug: owner,        display: "Solo owner"}   # lite profile / solo mode
