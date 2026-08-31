@@ -1,0 +1,222 @@
+# Gate catalog v1 — SSOT for governance gate identity (design decision 2026-08-08).
+#
+# A gate is a named governance check that blocks or warns in gate-check. Every
+# gate entry is immutable by slug: slug cannot be renamed or reused; a gate
+# flagged `deprecated` carries a `since` date and exactly one of
+# `replaced_by: GC-NEW` (points to its successor) or `replacement: none` (the
+# literal string "none" — no successor). The catalog is versioned; the
+# version field bumps on any change to the composition (new gates,
+# deprecations, deletions).
+#
+# Gate obligations ('quality' | 'approval') reflect the *intent* of the check:
+# quality = correctness/completeness gate (gate-check concern); approval =
+# evidence/authorization gate (a separate governance concern from quality,
+# but implemented the same way — a gate-check finding). The active set
+# ('status: active') forms the v2 contract; no other status appears in
+# runtime use. GC-APPROVAL-MISSING (AP-5, 2026-08-08) is the first and only
+# approval-obligation gate: it enforces the release-stage merge-evidence
+# policy (steward.gatecheck.approval.check_approval_evidence) — presence of
+# first-parent merge provenance plus a classified, non-agent, non-unknown
+# merge actor for every approved artifact confirmed on the default branch.
+#
+# Stages are profile/policy-scoped contexts that select which gate applies
+# (e.g., "authoring" vs "release"). Each active gate declares which stages
+# accept it (via `stages` list); a stage not listed for a gate means the gate
+# is inactive in that context.
+#
+# applicable_roles: Absent means role-agnostic — the check runs against the
+# artifact or bundle, not a specific role. At present, all 20 active gates are
+# role-agnostic (field omitted). When a gate *does* need role dispatch (future),
+# it will carry a non-empty list here. GC-APPROVAL-MISSING explicitly omits this
+# field. GC-APPROVAL-ROLE is intentionally absent from the catalog — the boundary
+# between gate identity (this catalog) and GC-GIT-ROLE's role-based authorization
+# policy requires a separate design decision and is out of scope for v1.
+#
+# Gate id namespaces and the obligation/enforcement boundary (owner ruling,
+# 2026-08-12, steward#62 / maestro#160):
+#
+#   1. `GC-` is a RESERVED, CLOSED namespace: only this catalog mints GC-* ids.
+#      Any writer emitting a GC-* id unknown to its vendored catalog copy must
+#      fail closed — never degrade to a pass, never invent the entry.
+#   2. Producer-specific ids are ALLOWED outside that namespace in the form
+#      `<namespace>.<name>` (see gate_id_namespaces.producer_pattern). They are
+#      owned by the producer that emits them; steward defines neither their
+#      semantics nor their lifecycle. The leading segment names the originating
+#      tool, NOT the owner of the id: `steward.risk_classify_*` written by
+#      Maestro is a Maestro-owned id. steward never claims an id merely because
+#      it carries a `steward.` prefix — outside GC-*, steward defines nothing.
+#      Should steward ever gate on risk classification itself, that gate gets a
+#      GC-* id, so the two namespaces cannot collide retroactively.
+#   3. No canonical mapping is issued for existing producer ids
+#      (`steward.risk_classify_*`, `human.owner_approval`,
+#      `maestro.validate_strict`). They are enforcement points of the consumer's
+#      own runtime, not gate-check gates; minting GC-* aliases would claim
+#      steward ownership of checks steward does not execute. They keep their
+#      names.
+#   4. The `obligation` vocabulary is a SHARED taxonomy: a producer may classify
+#      its own namespaced ids with it, on its own responsibility. Catalog
+#      membership is decided ONLY by resolving the id against the catalog —
+#      never inferred from the presence of an `obligation` field.
+#   5. `obligation` is the INTENT axis and is catalog-owned. ENFORCEMENT (does
+#      the gate block a transition) is a per-run policy of the consumer, not a
+#      property of gate identity — in steward it lives in `verdict: fail|warn`
+#      plus the stage policy, never here. Standing cross-repo commitment:
+#      steward will never define an `enforcement` key in this catalog and will
+#      never admit the tokens `mandatory` / `advisory` into
+#      obligation_vocabulary, so a consumer carrying its own
+#      `enforcement: mandatory|advisory` field can never collide with this
+#      contract. Enforced by the loader, not by this comment
+#      (`obligation_reserved_tokens` below; top-level keys are a closed set).
+#
+# `gate_id_namespaces` and `obligation_reserved_tokens` are a PUBLISHED MIRROR
+# of the loader's rule, carried in the file so a consumer vendoring a pinned
+# copy gets the patterns machine-readably. They are not a knob: the loader
+# rejects any value diverging from its own constants.
+#
+# Approval model: catalog = data artifact; ownership = the gate-check engine;
+# changes = PR review + merge (like profiles/roles.yaml, profiles/risk-model.yaml).
+# Provenance: design decision by @id:oq-1-approval-evidence (2026-08-08);
+# note that the ecosystem contains two distinct OQ-1 identifiers — this one
+# concerns gate identity, while a second OQ-1 addresses Maestro contract binding.
+# Always cite @id:oq-1-approval-evidence when referencing this decision.
+
+version: 2
+
+gate_id_namespaces:
+  canonical_pattern: "^GC-[A-Z0-9]+(-[A-Z0-9]+)*$"
+  producer_pattern: "^[a-z][a-z0-9-]*\\.[a-z0-9_]+(\\.[a-z0-9_]+)*$"
+
+obligation_vocabulary:
+  - quality
+  - approval
+
+# Tokens permanently barred from obligation_vocabulary: they belong to the
+# consumer-owned enforcement axis (see ruling 5 in the header).
+obligation_reserved_tokens:
+  - mandatory
+  - advisory
+
+stage_vocabulary:
+  - authoring
+  - release
+
+gates:
+  GC-ARCH-CONFORMANCE:
+    obligation: quality
+    status: active
+    title: "conformance verdict or finding violates stage policy"
+    stages: [authoring, release]
+
+  GC-ARCH-EVIDENCE:
+    obligation: quality
+    status: active
+    title: "component/interface/constraint lacks evidence"
+    stages: [authoring, release]
+
+  GC-ARCH-SCHEMA:
+    obligation: quality
+    status: active
+    title: "manifest unparseable or schema-invalid"
+    stages: [authoring, release]
+
+  GC-BEH-COVERAGE:
+    obligation: quality
+    status: active
+    title: "Must/Should requirement lacks coverage"
+    stages: [authoring, release]
+
+  GC-BEH-TRACE:
+    obligation: quality
+    status: active
+    title: "scenario does not trace to requirement"
+    stages: [authoring, release]
+
+  GC-CHECK-PLANNED:
+    obligation: quality
+    status: active
+    title: "blocking scenario without valid check binding"
+    stages: [authoring, release]
+
+  GC-COMPILE:
+    obligation: quality
+    status: active
+    title: "decomposition block contains invalid dep-link"
+    stages: [authoring, release]
+
+  GC-COMPLETENESS:
+    obligation: quality
+    status: active
+    title: "required artifact missing from bundle"
+    stages: [authoring, release]
+
+  GC-DUP:
+    obligation: quality
+    status: active
+    title: "artifact node claimed twice"
+    stages: [authoring, release]
+
+  GC-GIT-BRANCH:
+    obligation: quality
+    status: active
+    title: "approved without default-branch confirmation"
+    stages: [authoring, release]
+
+  GC-GIT-ROLE:
+    obligation: quality
+    status: active
+    title: "approved without owner-role approval"
+    stages: [authoring, release]
+
+  GC-META:
+    obligation: quality
+    status: active
+    title: "malformed frontmatter"
+    stages: [authoring, release]
+
+  GC-STAGE:
+    obligation: quality
+    status: active
+    title: "stage not recognized in profile"
+    stages: [authoring, release]
+
+  GC-STALE:
+    obligation: quality
+    status: active
+    title: "upstream changed since approval"
+    stages: [authoring, release]
+
+  GC-STALE-KEY:
+    obligation: quality
+    status: active
+    title: "upstream_hashes pins unknown upstream"
+    stages: [authoring, release]
+
+  GC-STALE-UNPINNED:
+    obligation: quality
+    status: active
+    title: "approved without verifiable upstream_hashes pin"
+    stages: [authoring, release]
+
+  GC-TRACE:
+    obligation: quality
+    status: active
+    title: "traces_to does not resolve upstream"
+    stages: [authoring, release]
+
+  GC-TRACE-EMPTY:
+    obligation: quality
+    status: active
+    title: "traces_to link absent from downstream"
+    stages: [authoring, release]
+
+  GC-UPSTREAM:
+    obligation: quality
+    status: active
+    title: "approved before upstream"
+    stages: [authoring, release]
+
+  GC-APPROVAL-MISSING:
+    obligation: approval
+    status: active
+    title: "required merge evidence is absent"
+    stages: [release]

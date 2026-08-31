@@ -1,0 +1,108 @@
+# Risk model v1 — canonical (WS-006 M1; path fixed by OQ-4, 2026-07-12).
+# Data, not code (REQ-601): reviewed via PR like the lite/team floor profiles.
+# Provenance: consumers record sha256 of this file in every verdict-record.
+# Profile sets the floor; the model only escalates (DESIGN-601). Combinator:
+# tier = max(floor, class, blast, trust) — monotone, no weights (DESIGN-604).
+
+version: 1
+tiers: [low, medium, high, critical]
+
+# Static team baseline the model can never go below (DESIGN-601).
+profile_floors:
+  lite: low
+  team: medium
+
+class_tiers:
+  docs: low
+  config: medium
+  code: medium
+  state-machine: high
+  policy: high          # profiles/risk-model/policies — meta-level: changes the rules
+  contract: high
+  ci-deploy: critical   # supply chain
+  secrets: critical
+  unknown: medium       # fail-closed floor for unmapped paths (REQ-603); key mandatory
+
+blast_tiers:
+  single-repo: low
+  cross-repo: high
+  ecosystem-contract: critical
+
+trust_tiers:
+  none: low
+  ci: high
+  external-api: high
+  deploy: critical
+  secrets: critical
+
+# Mandatory-gate set as a function of tier (REQ-606, DESIGN-611 `obligation: by_tier`).
+# The profile's own checks still apply on top; lists are cumulative top-down.
+tier_gates:
+  low: []
+  medium: [steward.gate_check]
+  high: [steward.gate_check, maestro.validate_strict, human.owner_approval,
+         git.required_reviews]
+  critical: [steward.gate_check, maestro.validate_strict, human.owner_approval,
+             git.required_reviews, human.transition_approval]
+
+waiver_policy:
+  critical: forbidden   # decided 2026-07-12 (OQ-3); other tiers: waiver file via PR
+
+# path -> class: per-repo section -> _generic -> built-in default {"**": unknown}.
+# First match wins inside a section. Paths are repo-root-relative.
+path_class:
+  Maestro:
+    - {glob: "contracts/**",           class: contract}
+    - {glob: "maestro/correlation.py", class: contract}      # contracts reference impl
+    - {glob: "maestro/models.py",      class: state-machine}
+    - {glob: "maestro/scheduler.py",   class: state-machine}
+    - {glob: "docs/**",                class: docs}
+    - {glob: "maestro/**",             class: code}
+  arbiter:
+    - {glob: "contracts/**",           class: contract}
+    - {glob: "policies/**",            class: policy}
+    - {glob: "arbiter-core/src/**",    class: code}
+  steward:
+    - {glob: "profiles/**",            class: policy}        # includes this file (OQ-4)
+    - {glob: "src/steward/gatecheck/**", class: policy}      # enforcement code = meta-level
+    - {glob: "src/steward/riskclassify/**", class: policy}
+    - {glob: "src/**",                 class: code}
+    - {glob: "spec/**",                class: docs}          # spec governance is gate-check's job
+    - {glob: "workstreams/**",         class: docs}
+  dispatcher:
+    - {glob: "dispatcher/core/**",     class: code}
+    - {glob: "dispatcher/**",          class: code}
+  spec-runner:
+    - {glob: "src/**",                 class: code}
+  atp-platform:
+    - {glob: "method/agents-catalog.toml", class: contract}  # ecosystem agents-catalog SSOT (ADR-ECO-003), vendored by consumers
+    - {glob: "method/**",       class: policy}   # eval methodology + schemas: meta-level, changes the rules
+    - {glob: "ci-templates/**", class: ci-deploy}
+    - {glob: "atp/**",          class: code}
+
+_generic:
+  - {glob: "**/.github/workflows/**", class: ci-deploy}
+  - {glob: "**/Dockerfile*",          class: ci-deploy}
+  - {glob: "**/.env*",                class: secrets}
+  - {glob: "**/*secret*",             class: secrets}
+  - {glob: "**/docs/**",              class: docs}
+  - {glob: "**/*.md",                 class: docs}
+  - {glob: "**/tests/**",             class: code}
+  - {glob: "**/pyproject.toml",       class: config}
+  - {glob: "**/uv.lock",              class: config}
+
+trust_rules:
+  - {glob: "**/.github/workflows/**", boundary: ci}
+  - {glob: "**/Dockerfile*",          boundary: deploy}
+  - {glob: "**/deploy/**",            boundary: deploy}
+  - {glob: "**/.env*",                boundary: secrets}
+  - {glob: "**/*secret*",             boundary: secrets}
+declared_flags: [external-api]   # from the task spec, not detectable from paths
+
+# Lives here per OQ-2 (2026-07-12). cross-repo at 1 consumer, ecosystem-contract at >=2.
+consumer_registry:
+  "Maestro/contracts/observability":       [spec-runner, arbiter, dispatcher]
+  "Maestro/contracts/work-correlation":    [dispatcher]
+  "arbiter/contracts/budget":              [Maestro, dispatcher]
+  "arbiter/contracts/policy-decision-ref": [Maestro, dispatcher]
+  "atp-platform/method/agents-catalog.toml": [Maestro, arbiter]
