@@ -298,9 +298,13 @@ Task status: `todo` → `in_progress` → `done` (or `blocked`)
   красноту/зависание не перегонять. **Copilot по умолчанию не запрашивать** —
   только по явной просьбе владельца. SSOT: `../prograph-vault/authored/rules/git-workflow.md`.
 - **Мерж — агент по умолчанию** (ADR-ECO-011 «DarkFactory», ратифицирован 2026-08-30):
-  при approve ревью-контура и зелёных обязательных проверках PR мержит агент —
-  `gh pr merge` **от учётки ai-prosto** (`merged_by` — наблюдаемый различитель
-  agent/human, аудит `gh pr list --json mergedBy`) — и выполняет хвост чистки ниже.
+  при approve ревью-контура и зелёных обязательных проверках PR мержит агент и сам
+  выполняет хвост чистки ниже. Мерж — **только от профиля ai-prosto**:
+  `GH_CONFIG_DIR=~/.config/review gh pr merge`, и перед ним сверить логин
+  (`GH_CONFIG_DIR=~/.config/review gh api user --jq .login` → `ai-prosto`). Голый
+  `gh pr merge` уйдёт от основного аккаунта и запишет агентский мерж человеческим,
+  обнулив `merged_by` — наблюдаемый различитель agent/human
+  (аудит `gh pr list --json mergedBy`).
   Request-changes или неприбывшее включённое ревью = `unknown` ⇒ мерж не выполняется,
   PR остаётся человеку. Человеческий мерж — opt-in: строка `Мерж: человек` в этой
   секции (здесь НЕ объявлена) либо `merge_policy` экосистемного конфига. Объявление
