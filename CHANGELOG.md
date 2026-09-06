@@ -37,11 +37,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   member distributions to the workspace, so every `uv sync` job resolves them
   locally and stays green no matter what the published metadata claims — which
   is exactly how 2.1.0 shipped broken past a full CI run. The new job builds the
-  wheel, installs it into a clean venv outside the repo where only PyPI can
-  satisfy the metadata, imports every bundled stack (runner, evaluators,
-  adapters, dashboard, server) rather than just the CLI entrypoint, and
-  dry-resolves every extra the wheel's own `Provides-Extra` metadata declares —
-  read from the wheel so the check cannot drift from what is declared.
+  wheel, installs it into a standalone (non-workspace) uv project outside the
+  repo where only PyPI can satisfy the metadata, imports every bundled stack
+  (runner, evaluators, adapters, dashboard, server) rather than just the CLI
+  entrypoint, and resolves every extra the wheel's own `Provides-Extra` metadata
+  declares — read from the wheel so the check cannot drift from what is
+  declared.
 - **`tests/unit/dist_metadata/test_root_metadata.py`** — the mechanical link the
   root dependency list otherwise lacks. It derives the bundled members from the
   symlinks under `atp/`, then asserts the root declares every runtime and

@@ -241,9 +241,14 @@ jobs:
     # resolves atp-core / atp-adapters / atp-platform-sdk from the workspace, so
     # every `uv sync` job above is green even when the published metadata names a
     # distribution that does not exist on PyPI (or, worse, an unrelated project
-    # squatting the name). This job installs the built wheel into a clean venv
-    # OUTSIDE the repo, where only PyPI can satisfy the metadata.
+    # squatting the name). This job installs the built wheel into a clean
+    # environment OUTSIDE the repo, where only PyPI can satisfy the metadata.
     runs-on: ubuntu-latest
+    # The standalone projects below only constrain `requires-python`, so without
+    # this uv picks whatever interpreter it likes and the version actually under
+    # test drifts from the one this job sets up.
+    env:
+      UV_PYTHON: "3.12"
     steps:
       - uses: actions/checkout@v7
 
@@ -260,20 +265,29 @@ jobs:
       - name: Build wheel
         run: uv build --out-dir "$RUNNER_TEMP/dist"
 
-      - name: Install the wheel resolving from PyPI only
+      # A standalone bare uv project outside the repo, the same shape as
+      # tests/integration/packaging/test_eco_wheel_smoke.py: it obeys the
+      # uv-only policy (AGENTS.md — no `uv pip install`), and unlike `uv sync`
+      # here it is not a workspace, so `[tool.uv.sources]` cannot redirect the
+      # member distributions and only PyPI can satisfy the wheel's metadata.
+      - name: Install the wheel into a standalone uv project
         working-directory: ${{ runner.temp }}
         run: |
-          uv venv -p 3.12 "$RUNNER_TEMP/wheel-venv"
-          uv pip install --python "$RUNNER_TEMP/wheel-venv/bin/python" \
-            "$RUNNER_TEMP"/dist/atp_platform-*.whl
+          wheel=$(echo "$RUNNER_TEMP"/dist/atp_platform-*.whl)
+          uv init --bare --no-workspace --vcs none --python 3.12 "$RUNNER_TEMP/wheel-smoke"
+          uv add --project "$RUNNER_TEMP/wheel-smoke" "$wheel"
 
+      # Every step below runs from $RUNNER_TEMP, never the repo root: `python
+      # -c` prepends the working directory to sys.path, and the repo's own atp/
+      # namespace package would shadow the wheel actually under test.
       - name: Smoke-test the installed CLI
         working-directory: ${{ runner.temp }}
         run: |
           cp "$GITHUB_WORKSPACE/examples/test_suites/01_smoke_tests.yaml" .
-          "$RUNNER_TEMP/wheel-venv/bin/atp" --version
-          "$RUNNER_TEMP/wheel-venv/bin/atp" list-agents
-          "$RUNNER_TEMP/wheel-venv/bin/atp" validate --suite=01_smoke_tests.yaml
+          run() { uv run --project "$RUNNER_TEMP/wheel-smoke" "$@"; }
+          run atp --version
+          run atp list-agents
+          run atp validate --suite=01_smoke_tests.yaml
 
       # The CLI entrypoint alone would leave most of the base dependencies
       # unexercised, and they exist for the bundled members' code: the runner,
@@ -285,7 +299,7 @@ jobs:
         env:
           ATP_SERVER_PROFILE: eco
         run: |
-          "$RUNNER_TEMP/wheel-venv/bin/python" - <<'PY'
+          uv run --project "$RUNNER_TEMP/wheel-smoke" python - <<'PY'
           import importlib
 
           modules = [
@@ -326,12 +340,13 @@ jobs:
       # Extras come from the built wheel's own metadata rather than a list
       # maintained here, so a newly declared extra cannot go unchecked and an
       # alias kept for compatibility (`eco-server`, now empty) is still proven
-      # to resolve.
+      # to resolve. `uv add --no-sync` resolves without installing; an extra the
+      # wheel does not provide is only a warning to uv, so grep for it.
       - name: Resolve every declared extra
         working-directory: ${{ runner.temp }}
         run: |
           wheel=$(echo "$RUNNER_TEMP"/dist/atp_platform-*.whl)
-          extras=$("$RUNNER_TEMP/wheel-venv/bin/python" - "$wheel" <<'PY'
+          extras=$(uv run --project "$RUNNER_TEMP/wheel-smoke" python - "$wheel" <<'PY'
           import sys, zipfile
           from email.parser import BytesParser
 
@@ -343,10 +358,18 @@ jobs:
           )
           test -n "$extras" || { echo "no extras found in wheel metadata"; exit 1; }
           echo "extras: $extras"
+          uv init --bare --no-workspace --vcs none --python 3.12 "$RUNNER_TEMP/extra-smoke"
+          # pipefail so a failing `uv add` is not masked by the tee it feeds.
+          set -o pipefail
           for extra in $extras; do
             echo "::group::extra $extra"
-            uv pip install --python "$RUNNER_TEMP/wheel-venv/bin/python" \
-              --dry-run "atp-platform[$extra] @ $wheel"
+            uv add --no-sync --project "$RUNNER_TEMP/extra-smoke" \
+              "atp-platform[$extra] @ file://$wheel" 2>&1 | tee "$RUNNER_TEMP/extra.log"
+            if grep -q "does not have an extra named" "$RUNNER_TEMP/extra.log"; then
+              echo "extra $extra is declared in metadata but unusable"
+              exit 1
+            fi
+            uv remove --no-sync --project "$RUNNER_TEMP/extra-smoke" atp-platform
             echo "::endgroup::"
           done
 
