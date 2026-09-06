@@ -236,6 +236,56 @@ jobs:
         if: always()
         run: docker compose -f deploy/docker-compose.yml down -v
 
+  wheel-install:
+    # Guards the failure that shipped 2.1.0 uninstallable. `[tool.uv.sources]`
+    # resolves atp-core / atp-adapters / atp-platform-sdk from the workspace, so
+    # every `uv sync` job above is green even when the published metadata names a
+    # distribution that does not exist on PyPI (or, worse, an unrelated project
+    # squatting the name). This job installs the built wheel into a clean venv
+    # OUTSIDE the repo, where only PyPI can satisfy the metadata.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Build wheel
+        run: uv build --out-dir "$RUNNER_TEMP/dist"
+
+      - name: Install the wheel resolving from PyPI only
+        working-directory: ${{ runner.temp }}
+        run: |
+          uv venv -p 3.12 "$RUNNER_TEMP/wheel-venv"
+          uv pip install --python "$RUNNER_TEMP/wheel-venv/bin/python" \
+            "$RUNNER_TEMP"/dist/atp_platform-*.whl
+
+      - name: Smoke-test the installed CLI
+        working-directory: ${{ runner.temp }}
+        run: |
+          cp "$GITHUB_WORKSPACE/examples/test_suites/01_smoke_tests.yaml" .
+          "$RUNNER_TEMP/wheel-venv/bin/atp" --version
+          "$RUNNER_TEMP/wheel-venv/bin/atp" list-agents
+          "$RUNNER_TEMP/wheel-venv/bin/atp" validate --suite=01_smoke_tests.yaml
+
+      - name: Resolve every declared extra
+        working-directory: ${{ runner.temp }}
+        run: |
+          wheel=$(echo "$RUNNER_TEMP"/dist/atp_platform-*.whl)
+          for extra in all cloud dashboard tournaments enterprise analytics postgres llm pricing tui; do
+            echo "::group::extra $extra"
+            uv pip install --python "$RUNNER_TEMP/wheel-venv/bin/python" \
+              --dry-run "atp-platform[$extra] @ $wheel"
+            echo "::endgroup::"
+          done
+
   plan-owners:
     # Existence of a GitHub login/team needs the network, so it is deliberately
     # NOT in the pre-commit hook (which must stay usable offline). The hook

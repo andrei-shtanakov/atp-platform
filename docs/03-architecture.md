@@ -1117,7 +1117,18 @@ The platform is decomposed into 4 packages within a monorepo using Python implic
 |---------|----------|----------|-------------|
 | **atp-core** | `packages/atp-core/` | protocol, core, loader, chaos, cost, scoring, statistics, streaming | pydantic, structlog, opentelemetry |
 | **atp-adapters** | `packages/atp-adapters/` | All agent adapters (HTTP, CLI, Container, cloud, MCP) | atp-core, httpx |
-| **atp-platform** | root `pyproject.toml` | runner, evaluators, reporters, cli, sdk, mock_tools, ... | atp-core, atp-adapters |
+| **atp-platform** | root `pyproject.toml` | runner, evaluators, reporters, cli, sdk, mock_tools, ... | everything the bundled code imports (see below) |
 | **atp-dashboard** | `packages/atp-dashboard/` | Web dashboard, analytics, rate limiting, webhooks | atp-core, FastAPI, SQLAlchemy, slowapi |
 
 All existing `from atp.X import Y` imports continue working unchanged via shared namespace and symlinks.
+
+**Only `atp-platform` is published.** The `packages/*` members are build units
+for the monorepo, not distributions: `atp/core`, `atp/adapters` and
+`atp/dashboard` are symlinks that hatchling dereferences at build time, so the
+single `atp-platform` wheel already contains their code. It therefore declares
+*their* third-party requirements too, and must never depend on the member
+distribution names — `atp-core` on PyPI is an unrelated project, and depending
+on the (nonexistent) `atp-adapters` is what made 2.1.0 uninstallable. The three
+members carry a `Private :: Do Not Upload` classifier so PyPI would reject them,
+and the `wheel-install` CI job installs the built wheel outside the workspace,
+where `[tool.uv.sources]` cannot paper over a wrong dependency.

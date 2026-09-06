@@ -1,5 +1,11 @@
+# Internal build unit — NOT published to PyPI. Its code ships inside the
+# atp-platform wheel (atp/ holds symlinks that hatchling dereferences at
+# build time), and its runtime requirements are declared in the root
+# pyproject.toml. The name "atp-dashboard" is unclaimed on PyPI.
+# The Private classifier below makes PyPI reject an upload outright.
 [project]
 name = "atp-dashboard"
+classifiers = ["Private :: Do Not Upload"]
 version = "1.0.0"
 description = "Web dashboard and analytics for ATP Agent Test Platform"
 requires-python = ">=3.12"
