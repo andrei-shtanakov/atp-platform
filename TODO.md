@@ -502,6 +502,15 @@ All packages published.
 | `game-environments` | [game-environments](https://pypi.org/project/game-environments/) | Published v1.0.0 |
 | `atp-games` | [atp-games](https://pypi.org/project/atp-games/) | Published v1.0.0 |
 
+`packages/atp-core`, `packages/atp-adapters` and `packages/atp-dashboard` are
+**not** on this list and must never be added to it. They are build units whose
+code is bundled into the `atp-platform` wheel by the symlinks in `atp/`, and
+their names are not ours to take: `atp-core` on PyPI is an unrelated project.
+Depending on those names is what shipped 2.1.0 uninstallable; each now carries a
+`Private :: Do Not Upload` classifier, and the `wheel-install` CI job installs
+the built wheel outside the workspace so a wrong dependency fails a PR instead
+of a release.
+
 ### Package dependency graph
 
 ```
@@ -584,6 +593,7 @@ See full spec: `docs/superpowers/specs/2026-04-02-platform-api-and-sdk-design.md
 - [x] **Decouple atp-dashboard from atp-platform**: shared result models moved to `atp.core.results`, dashboard depends on atp-core.
 - [ ] **Merge SSO/SAML route models**: remove request/response model duplication. @owner:github:andrei-shtanakov @id:merge-sso-saml-models @epic:eco.atp-platform
 - [ ] **Clean up examples and configs** from the shell mode and older assumptions. @owner:github:andrei-shtanakov @id:cleanup-shell-mode-configs @epic:eco.atp-platform
+- [ ] **Slim the base install: import `atp.dashboard` lazily from the CLI.** `atp/cli/commands/catalog.py` imports `atp.dashboard.database` at module scope, so `atp --version` cannot start without FastAPI/uvicorn/alembic/slowapi. Those therefore sit in the base dependencies, and the `eco-server` extra is an empty alias. Deferring the import inside the command bodies would let the server stack move back behind an extra. @owner:github:andrei-shtanakov @id:lazy-dashboard-import-cli @epic:eco.atp-platform
 
 ## Dashboard UI
 

@@ -1,5 +1,13 @@
+# Internal build unit — NOT published to PyPI. Its code ships inside the
+# atp-platform wheel (atp/ holds symlinks that hatchling dereferences at
+# build time), and its runtime requirements are declared in the root
+# pyproject.toml. The name "atp-adapters" is unclaimed on PyPI, and
+# atp-platform 2.1.0 shipped depending on it — an install error for every user
+# until it was removed.
+# The Private classifier below makes PyPI reject an upload outright.
 [project]
 name = "atp-adapters"
+classifiers = ["Private :: Do Not Upload"]
 version = "1.0.0"
 description = "Agent adapters for ATP Agent Test Platform"
 requires-python = ">=3.12"
@@ -20,18 +28,6 @@ dev = [
     "pytest-anyio>=0.0.0",
     "pytest-cov>=4.0",
 ]
-
-[project.entry-points."atp.adapters"]
-http = "atp.adapters.http:HTTPAdapter"
-cli = "atp.adapters.cli:CLIAdapter"
-container = "atp.adapters.container:ContainerAdapter"
-langgraph = "atp.adapters.langgraph:LangGraphAdapter"
-crewai = "atp.adapters.crewai:CrewAIAdapter"
-autogen = "atp.adapters.autogen:AutoGenAdapter"
-bedrock = "atp.adapters.bedrock.adapter:BedrockAdapter"
-vertex = "atp.adapters.vertex.adapter:VertexAdapter"
-azure_openai = "atp.adapters.azure_openai.adapter:AzureOpenAIAdapter"
-mcp = "atp.adapters.mcp.adapter:MCPAdapter"
 
 [build-system]
 requires = ["hatchling"]

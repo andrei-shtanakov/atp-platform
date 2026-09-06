@@ -531,45 +531,72 @@ version = "2.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },
-    { name = "atp-adapters" },
-    { name = "atp-core" },
+    { name = "alembic" },
+    { name = "atp-platform-sdk" },
     { name = "authlib" },
     { name = "bcrypt" },
+    { name = "cachetools" },
     { name = "click" },
+    { name = "cryptography" },
+    { name = "fastapi" },
     { name = "greenlet" },
     { name = "httpx" },
     { name = "jinja2" },
+    { name = "jsonschema" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-exporter-otlp-proto-grpc" },
+    { name = "opentelemetry-instrumentation-fastapi" },
+    { name = "opentelemetry-sdk" },
     { name = "pillow" },
+    { name = "prometheus-client" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
     { name = "pyjwt" },
     { name = "python-dotenv" },
     { name = "python-multipart" },
+    { name = "pyyaml" },
     { name = "rich" },
+    { name = "ruamel-yaml" },
+    { name = "slowapi" },
     { name = "sqlalchemy" },
+    { name = "structlog" },
+    { name = "uvicorn", extra = ["standard"] },
 ]
 
 [package.optional-dependencies]
 all = [
     { name = "anthropic" },
-    { name = "atp-adapters", extra = ["cloud"] },
-    { name = "atp-core", extra = ["pricing"] },
-    { name = "atp-dashboard", extra = ["analytics", "enterprise", "tournaments"] },
+    { name = "authlib" },
+    { name = "boto3" },
+    { name = "fastmcp" },
+    { name = "game-environments" },
+    { name = "google-cloud-aiplatform" },
+    { name = "litellm" },
+    { name = "mcp" },
+    { name = "openai" },
+    { name = "openpyxl" },
+    { name = "python3-saml" },
     { name = "rich" },
     { name = "textual" },
 ]
 analytics = [
-    { name = "atp-dashboard", extra = ["analytics"] },
+    { name = "openpyxl" },
 ]
 azure-openai = [
-    { name = "atp-adapters", extra = ["azure-openai"] },
+    { name = "openai" },
 ]
 bedrock = [
-    { name = "atp-adapters", extra = ["bedrock"] },
+    { name = "boto3" },
 ]
 cloud = [
-    { name = "atp-adapters", extra = ["cloud"] },
+    { name = "boto3" },
+    { name = "google-cloud-aiplatform" },
+    { name = "openai" },
 ]
 dashboard = [
-    { name = "atp-dashboard", extra = ["tournaments"] },
+    { name = "fastmcp" },
+    { name = "game-environments" },
+    { name = "mcp" },
 ]
 dev = [
     { name = "pytest" },
@@ -577,26 +604,32 @@ dev = [
     { name = "pytest-cov" },
     { name = "ruff" },
 ]
-eco-server = [
-    { name = "atp-dashboard" },
-]
 enterprise = [
-    { name = "atp-dashboard", extra = ["enterprise"] },
+    { name = "authlib" },
+    { name = "python3-saml" },
 ]
 llm = [
     { name = "anthropic" },
     { name = "litellm" },
     { name = "openai" },
 ]
+postgres = [
+    { name = "asyncpg" },
+]
 pricing = [
-    { name = "atp-core", extra = ["pricing"] },
+    { name = "litellm" },
+]
+tournaments = [
+    { name = "fastmcp" },
+    { name = "game-environments" },
+    { name = "mcp" },
 ]
 tui = [
     { name = "rich" },
     { name = "textual" },
 ]
 vertex = [
-    { name = "atp-adapters", extra = ["vertex"] },
+    { name = "google-cloud-aiplatform" },
 ]
 
 [package.dev-dependencies]
@@ -633,46 +666,61 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiosqlite", specifier = ">=0.22.1" },
-    { name = "anthropic", marker = "extra == 'all'", specifier = ">=0.76.0" },
+    { name = "alembic", specifier = ">=1.18.4" },
     { name = "anthropic", marker = "extra == 'llm'", specifier = ">=0.76.0" },
-    { name = "atp-adapters", editable = "packages/atp-adapters" },
-    { name = "atp-adapters", extras = ["azure-openai"], marker = "extra == 'azure-openai'", editable = "packages/atp-adapters" },
-    { name = "atp-adapters", extras = ["bedrock"], marker = "extra == 'bedrock'", editable = "packages/atp-adapters" },
-    { name = "atp-adapters", extras = ["cloud"], marker = "extra == 'all'", editable = "packages/atp-adapters" },
-    { name = "atp-adapters", extras = ["cloud"], marker = "extra == 'cloud'", editable = "packages/atp-adapters" },
-    { name = "atp-adapters", extras = ["vertex"], marker = "extra == 'vertex'", editable = "packages/atp-adapters" },
-    { name = "atp-core", editable = "packages/atp-core" },
-    { name = "atp-core", extras = ["pricing"], marker = "extra == 'all'", editable = "packages/atp-core" },
-    { name = "atp-core", extras = ["pricing"], marker = "extra == 'pricing'", editable = "packages/atp-core" },
-    { name = "atp-dashboard", marker = "extra == 'eco-server'", editable = "packages/atp-dashboard" },
-    { name = "atp-dashboard", extras = ["analytics"], marker = "extra == 'analytics'", editable = "packages/atp-dashboard" },
-    { name = "atp-dashboard", extras = ["enterprise"], marker = "extra == 'enterprise'", editable = "packages/atp-dashboard" },
-    { name = "atp-dashboard", extras = ["tournaments"], marker = "extra == 'dashboard'", editable = "packages/atp-dashboard" },
-    { name = "atp-dashboard", extras = ["tournaments", "enterprise", "analytics"], marker = "extra == 'all'", editable = "packages/atp-dashboard" },
+    { name = "asyncpg", marker = "extra == 'postgres'", specifier = ">=0.31.0" },
+    { name = "atp-platform", extras = ["bedrock", "vertex", "azure-openai"], marker = "extra == 'cloud'" },
+    { name = "atp-platform", extras = ["cloud", "dashboard", "enterprise", "analytics", "tui", "llm", "pricing"], marker = "extra == 'all'" },
+    { name = "atp-platform", extras = ["tournaments"], marker = "extra == 'dashboard'" },
+    { name = "atp-platform-sdk", editable = "packages/atp-sdk" },
     { name = "authlib", specifier = ">=1.6.9" },
+    { name = "authlib", marker = "extra == 'enterprise'", specifier = ">=1.6.7" },
     { name = "bcrypt", specifier = ">=5.0.0" },
+    { name = "boto3", marker = "extra == 'bedrock'", specifier = ">=1.42.39" },
+    { name = "cachetools", specifier = ">=7.0.5" },
     { name = "click", specifier = ">=8.3.1" },
+    { name = "cryptography", specifier = ">=46.0.7" },
+    { name = "fastapi", specifier = ">=0.128.0" },
+    { name = "fastmcp", marker = "extra == 'tournaments'", specifier = ">=3.0" },
+    { name = "game-environments", marker = "extra == 'tournaments'", editable = "game-environments" },
+    { name = "google-cloud-aiplatform", marker = "extra == 'vertex'", specifier = ">=1.135.0" },
     { name = "greenlet", specifier = ">=3.3.1" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "jinja2", specifier = ">=3.1.6" },
+    { name = "jsonschema", specifier = ">=4.26.0" },
     { name = "litellm", marker = "extra == 'llm'" },
+    { name = "litellm", marker = "extra == 'pricing'", specifier = ">=1.91" },
+    { name = "mcp", marker = "extra == 'tournaments'", specifier = ">=1.28.1,<2" },
+    { name = "openai", marker = "extra == 'azure-openai'", specifier = ">=2.15.0" },
     { name = "openai", marker = "extra == 'llm'", specifier = ">=2.15.0" },
+    { name = "openpyxl", marker = "extra == 'analytics'", specifier = ">=3.1.5" },
+    { name = "opentelemetry-api", specifier = ">=1.39.1" },
+    { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.39.1" },
+    { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0.60b1" },
+    { name = "opentelemetry-sdk", specifier = ">=1.39.1" },
     { name = "pillow", specifier = ">=12.1.1" },
+    { name = "prometheus-client", specifier = ">=0.24.1" },
+    { name = "pydantic", specifier = ">=2.0" },
+    { name = "pydantic-settings", specifier = ">=2.12.0" },
     { name = "pyjwt", specifier = ">=2.12.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-anyio", marker = "extra == 'dev'", specifier = ">=0.0.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "python-multipart", specifier = ">=0.0.22" },
+    { name = "python3-saml", marker = "extra == 'enterprise'", specifier = ">=1.16.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "rich", specifier = ">=13.0" },
-    { name = "rich", marker = "extra == 'all'", specifier = ">=13.0" },
     { name = "rich", marker = "extra == 'tui'", specifier = ">=13.0" },
+    { name = "ruamel-yaml", specifier = ">=0.18" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4" },
+    { name = "slowapi", specifier = ">=0.1.9" },
     { name = "sqlalchemy", specifier = ">=2.0.46" },
-    { name = "textual", marker = "extra == 'all'", specifier = ">=0.47.0" },
+    { name = "structlog", specifier = ">=25.5.0" },
     { name = "textual", marker = "extra == 'tui'", specifier = ">=0.47.0" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.40.0" },
 ]
-provides-extras = ["dev", "tui", "cloud", "bedrock", "vertex", "azure-openai", "dashboard", "eco-server", "enterprise", "analytics", "llm", "pricing", "all"]
+provides-extras = ["dev", "tui", "bedrock", "vertex", "azure-openai", "cloud", "eco-server", "tournaments", "dashboard", "enterprise", "analytics", "postgres", "llm", "pricing", "all"]
 
 [package.metadata.requires-dev]
 dev = [
