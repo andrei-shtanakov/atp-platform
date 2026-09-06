@@ -15,9 +15,10 @@ COPY . .
 # serves OpenAI-compatible local servers for an air-gapped judge). --extra
 # bedrock adds boto3, required by both the Bedrock adapter (agent under test) and
 # the Bedrock-Claude judge (AsyncAnthropicBedrock) in the all-in-AWS variant.
-# --extra dashboard maps to atp-dashboard[tournaments] (docker-compose.yml's
+# --extra dashboard adds the tournament/MCP stack: docker-compose.yml's
 # `dashboard` service runs `atp dashboard` with no ATP_SERVER_PROFILE set, i.e.
-# the full profile, which requires the tournament/MCP stack).
+# the full profile, and that profile refuses to start without it. The rest of
+# the server stack (FastAPI, uvicorn, alembic, slowapi) is in the base install.
 RUN uv sync --no-dev --all-packages --extra llm --extra bedrock --extra dashboard
 
 # Default: show version

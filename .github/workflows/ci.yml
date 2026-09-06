@@ -275,11 +275,75 @@ jobs:
           "$RUNNER_TEMP/wheel-venv/bin/atp" list-agents
           "$RUNNER_TEMP/wheel-venv/bin/atp" validate --suite=01_smoke_tests.yaml
 
+      # The CLI entrypoint alone would leave most of the base dependencies
+      # unexercised, and they exist for the bundled members' code: the runner,
+      # the evaluators, the adapters and the whole dashboard/server stack. A
+      # requirement missing for any of those is an ImportError for a user and
+      # nothing at all for `atp --version`.
+      - name: Import every bundled stack
+        working-directory: ${{ runner.temp }}
+        env:
+          ATP_SERVER_PROFILE: eco
+        run: |
+          "$RUNNER_TEMP/wheel-venv/bin/python" - <<'PY'
+          import importlib
+
+          modules = [
+              "atp.protocol",
+              "atp.core.results",
+              "atp.core.telemetry",
+              "atp.core.metrics",
+              "atp.loader.loader",
+              "atp.model_catalog",
+              "atp.scoring",
+              "atp.statistics",
+              "atp.streaming",
+              "atp.chaos",
+              "atp.adapters",
+              "atp.adapters.http",
+              "atp.adapters.cli",
+              "atp.adapters.container",
+              "atp.runner.orchestrator",
+              "atp.evaluators.registry",
+              "atp.reporters.registry",
+              "atp.baseline",
+              "atp.generator",
+              "atp.performance",
+              "atp.plugins",
+              "atp.sdk",
+              "atp.tracing",
+              "atp.analytics.estimator",
+              "atp.test_catalog.repository",
+              "atp.dashboard",
+              "atp.dashboard.v2.factory",
+              "atp.server",
+          ]
+          for name in modules:
+              importlib.import_module(name)
+          print(f"imported {len(modules)} modules")
+          PY
+
+      # Extras come from the built wheel's own metadata rather than a list
+      # maintained here, so a newly declared extra cannot go unchecked and an
+      # alias kept for compatibility (`eco-server`, now empty) is still proven
+      # to resolve.
       - name: Resolve every declared extra
         working-directory: ${{ runner.temp }}
         run: |
           wheel=$(echo "$RUNNER_TEMP"/dist/atp_platform-*.whl)
-          for extra in all cloud dashboard tournaments enterprise analytics postgres llm pricing tui; do
+          extras=$("$RUNNER_TEMP/wheel-venv/bin/python" - "$wheel" <<'PY'
+          import sys, zipfile
+          from email.parser import BytesParser
+
+          with zipfile.ZipFile(sys.argv[1]) as archive:
+              name = next(n for n in archive.namelist() if n.endswith(".dist-info/METADATA"))
+              metadata = BytesParser().parsebytes(archive.read(name))
+          print(" ".join(metadata.get_all("Provides-Extra") or []))
+          PY
+          )
+          test -n "$extras" || { echo "no extras found in wheel metadata"; exit 1; }
+          echo "extras: $extras"
+          for extra in $extras; do
             echo "::group::extra $extra"
             uv pip install --python "$RUNNER_TEMP/wheel-venv/bin/python" \
               --dry-run "atp-platform[$extra] @ $wheel"
