@@ -1,10 +1,11 @@
 # SOURCE: steward @ a2d7e71 (master, 2026-09-14; харнесс-слой ревьюера claude|codex, схема v2 kind; волна devtools#228)
 # Ре-вендор: скопировать файлы из steward, пересчитать строки:
 #   shasum -a 256 <файл>  — формат строки: '<sha256>  <путь-от-корня>'
-# harness-claude (7-й член, переходный `?` в checksum.sh) приедет PR-2 волны devtools#228
+# 7 членов: harness-claude — адаптер claude, бит исполнения 100755 обязателен
 d5edbcef9192974161ccba2754b5b191d66bf5ae23ee87367e8c5cdec613fa92  scripts/review/build-prompt.sh
 54693c1515c68550eadf02044967082cfbdbc9d12225979bb20aceeaa700b4f6  scripts/review/collect-context.sh
 d96d44c10dc106504144f66c2716849ba0ff1401cae1539cf82fe93baddeb286  scripts/review/apply-threshold.sh
 bdce1ef81ef198768adec88b380067d717e3b1fd6ed144909e431d193df9eb97  scripts/review/local.sh
 7c02fb7d59b5b5673fe534a535362c25a99efc60a4b719c3eca09fd103b09c08  scripts/review/checksum.sh
 8b66c434c6bdd75b535a5141c691fdd95edda56001369b862a0a2361e710b968  .github/codex/review-schema.json
+b35580d4aa84a87cb20e0b77a3aba63c0723ba34ecdf8bd82f6550af5e076aeb  scripts/review/harness-claude
