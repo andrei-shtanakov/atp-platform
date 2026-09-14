@@ -23,13 +23,80 @@ if ! repo_root=$(git rev-parse --show-toplevel 2>/dev/null); then
 fi
 schema="${REVIEW_SCHEMA:-$repo_root/.github/codex/review-schema.json}"
 prompt="${REVIEW_PROMPT:-$repo_root/.github/codex/review-prompt.md}"
+# --- харнесс ревьюера (спека 2026-09-14) ------------------------------------
 # REVIEW_CMD — КОМАНДА, не путь к бинарю: умолчание несёт `exec` внутри
 # себя, а не как отдельный литерал ниже в вызове. Раньше `exec` был жёстко
 # приклеен к вызову, и REVIEW_CMD='codex exec --model X' искал файл с таким
-# именем целиком (ENOENT → код 3 "ревьюер не отработал"), хотя план и
-# описывает умолчание именно как `codex exec`. Подменить хочется команду
-# целиком, включая флаги, — не только бинарь.
-review_cmd="${REVIEW_CMD:-codex exec}"
+# именем целиком (ENOENT → код 3 "ревьюер не отработал"). Подменить хочется
+# команду целиком, включая флаги, — не только бинарь.
+#
+# Приоритет: НЕПУСТОЙ REVIEW_CMD — осознанный оверрайд целиком, резолв
+# харнесса не запускается (D5); REVIEW_CMD="" — как unset, так работал
+# `${REVIEW_CMD:-…}` и до патча, и обещание совместимости обязано это
+# сохранить. Иначе — REVIEW_HARNESS (умолчание codex: строка `codex exec`
+# в отпечатке НЕ меняется, опубликованные наследования остаются валидными —
+# D1) и REVIEW_MODEL. Кит читает только окружение процесса: ни файлового,
+# ни git-конфига (D2) — harness.env остаётся деталью review-pr.sh.
+#
+# REVIEW_MODEL="" и REVIEW_HARNESS="" — ОТКАЗЫ, не умолчания: пустое
+# значение приходит только от явной, но сломанной настройки (`export
+# REVIEW_MODEL=` без значения), и молча уйти на codex значило бы сжечь
+# ровно тот лимит, ради которого переменная выставлялась. Факт объявления
+# проверяется `${REVIEW_MODEL+x}`, а не `${REVIEW_MODEL:-…}` (D6).
+# reviewer_exec — путь для АБСОЛЮТНОГО вызова ревьюера (находка терминального
+# ревью этой ветки, см. run_reviewer() ниже); пусто — вызов идёт словами
+# $review_cmd через word splitting, как и раньше. Инициализация здесь, а не
+# только в ветке claude: под `set -u` переменная обязана существовать при
+# любом исходе резолва (REVIEW_CMD-оверрайд её не выставляет вовсе).
+reviewer_exec=""
+if [ -n "${REVIEW_CMD:-}" ]; then
+    review_cmd="$REVIEW_CMD"
+else
+    if [ -n "${REVIEW_MODEL+x}" ] && [ -z "$REVIEW_MODEL" ]; then
+        echo "REVIEW_MODEL задан пустым — уберите переменную или назовите" \
+            "модель." >&2
+        exit 2
+    fi
+    case "${REVIEW_HARNESS-codex}" in
+        codex)
+            review_cmd="codex exec${REVIEW_MODEL:+ -m $REVIEW_MODEL}"
+            ;;
+        claude)
+            # Адаптер — член кита; зовётся по АБСОЛЮТНОМУ пути
+            # `$kit_dir/harness-claude` (находка терминального ревью этой
+            # ветки — префикс `PATH="$kit_dir:$PATH"` у вызова действовал бы
+            # и для codex-умолчания, и посторонний `scripts/review/codex` у
+            # потребителя — не член PIN, checksum лишние файлы игнорирует по
+            # контракту — подменил бы ревьюера при зелёном copy-integrity;
+            # PATH теперь не трогается вовсе, см. run_reviewer() ниже). В
+            # отпечаток и --print-review-cmd идёт голое имя `harness-claude`,
+            # а не абсолютный путь — иначе отпечатки разошлись бы между
+            # машинами; строка машинно-независима и называет тот же файл
+            # кита. Перекос версий копий кита — штатный режим раскатки: нет
+            # адаптера — именованный отказ, не `command not found` → код 3.
+            # checksum.sh сверяет байты, не режим, поэтому потерянный при
+            # вендоринге бит исполнения ловится здесь.
+            if [ ! -f "$kit_dir/harness-claude" ]; then
+                echo "REVIEW_HARNESS=claude, а $kit_dir/harness-claude нет:" \
+                    "кит обновлён наполовину — ре-вендорьте кит целиком" \
+                    "или уберите переменную (умолчание codex)." >&2
+                exit 2
+            fi
+            if [ ! -x "$kit_dir/harness-claude" ]; then
+                echo "адаптер без бита исполнения:" \
+                    "chmod +x $kit_dir/harness-claude" >&2
+                exit 2
+            fi
+            reviewer_exec="$kit_dir/harness-claude"
+            review_cmd="harness-claude --model ${REVIEW_MODEL:-claude-opus-5}"
+            ;;
+        *)
+            echo "неизвестный харнесс REVIEW_HARNESS='${REVIEW_HARNESS}'" \
+                "(claude|codex)." >&2
+            exit 2
+            ;;
+    esac
+fi
 
 base=""
 head_ref="HEAD"
@@ -50,7 +117,8 @@ remote_explicit=0
 usage() {
     echo "usage: local.sh [--base <ref>] [--head <ref>] [--remote <name>]" \
         "[--fetch] [--format markdown|text]" \
-        "[--max-diff-bytes N] [--max-diff-files N] [--fingerprint-only]" >&2
+        "[--max-diff-bytes N] [--max-diff-files N] [--fingerprint-only]" \
+        "[--print-review-cmd]" >&2
 }
 
 while [ $# -gt 0 ]; do
@@ -86,6 +154,9 @@ while [ $# -gt 0 ]; do
         # компонент входа. Режим обязан быть ОФФЛАЙН-вычислимым: одинаковый
         # вход должен давать одинаковый отпечаток независимо от доступности
         # remote, иначе наследование вердикта зависит от сети.
+        # Печать эффективной команды ревьюера (D9): единственный источник
+        # таблицы резолва — кит; review-pr.sh берёт отсюда reviewer_label.
+        --print-review-cmd) print_cmd=1; shift ;;
         --fingerprint-only) fp_only=1; shift ;;
         *) usage; exit 2 ;;
     esac
@@ -97,6 +168,17 @@ if [ "${fp_only:-0}" -eq 1 ] && [ "$do_fetch" -eq 1 ]; then
     exit 2
 fi
 fp_only="${fp_only:-0}"
+
+print_cmd="${print_cmd:-0}"
+if [ "$print_cmd" -eq 1 ]; then
+    if [ "$do_fetch" -eq 1 ] || [ "$fp_only" -eq 1 ]; then
+        echo "--print-review-cmd несовместим с --fetch и --fingerprint-only:" \
+            "он печатает команду и выходит, не трогая диапазон." >&2
+        exit 2
+    fi
+    printf '%s\n' "$review_cmd"
+    exit 0
+fi
 
 # Информационные строки прогона (диапазон, контекст, пустой диф) в fp-режиме
 # уходят в stderr: контракт stdout для --fingerprint-only — ровно одна строка
@@ -389,6 +471,12 @@ fi
 # дерева автора (см. шапку); для контекста это верно наполовину — СПИСОК и
 # СОДЕРЖИМОЕ читаются через `git show <merge-base>:<путь>`, то есть из той же
 # точки, что и в CI, а вот сам сборщик берётся из кита автора, как и остальное.
+#
+# Манифест, в отличие от схемы и промпта выше, — НЕ путь в файловой системе,
+# а путь в дереве base от корня репозитория: он читается `git show`/`ls-tree`,
+# и к `$repo_root` его приклеивать нельзя. От cwd он не зависит —
+# `collect-context.sh` резолвит его `--full-tree` (steward#150); абсолютный
+# путь или `..` в переопределении сборщик отвергает кодом 2.
 manifest="${REVIEW_CONTEXT_MANIFEST:-.github/codex/review-context.txt}"
 use_context=0
 
@@ -417,8 +505,14 @@ if [ -f "$kit_dir/collect-context.sh" ]; then
             info "контекст: не настроен ($manifest нет в базе) — ревью по одному дифу"
             ;;
         *)
+            # Формулировка НЕЙТРАЛЬНА к причине: сюда приходит и «манифест
+            # есть, но сломан», и отказ по форме пути `--manifest`, который
+            # сборщик выносит ДО проверки наличия в base — утверждать
+            # «манифест есть» здесь значило бы заявлять непроверенное.
+            # Причина уже напечатана сборщиком строкой выше.
             cat "$work/context.err" >&2
-            echo "манифест контекста есть, но пакет не собран (код $ctx_code)." >&2
+            echo "сборщик контекста отказал (код $ctx_code) —" \
+                "ревью без контекста не выдаётся за ревью с ним." >&2
             exit 2
             ;;
     esac
@@ -625,11 +719,30 @@ fi
 # не попадает ни здесь, ни в CI. Ревьюер в песочнице read-only: он читает, а не
 # правит рабочее дерево.
 #
-# $review_cmd НАМЕРЕННО без кавычек: REVIEW_CMD — команда целиком (может
-# нести свои флаги, например 'codex exec --model X'), и должна разбиться на
-# отдельные argv-слова через word splitting, а не уйти одним литералом в
-# argv[0], где `exec`/бинарь с пробелом внутри имени не существует (ENOENT).
-if ! $review_cmd --sandbox read-only \
+# $review_cmd НАМЕРЕННО без кавычек (ветка без reviewer_exec, ниже): REVIEW_CMD
+# — команда целиком (может нести свои флаги, например 'codex exec --model X'),
+# и должна разбиться на отдельные argv-слова через word splitting, а не уйти
+# одним литералом в argv[0], где `exec`/бинарь с пробелом внутри имени не
+# существует (ENOENT).
+#
+# Ревьюер запускается БЕЗ правки PATH (находка терминального ревью на этой
+# ветке): префикс `PATH="$kit_dir:$PATH"` ставил каталог кита первым и для
+# codex-умолчания, и посторонний файл scripts/review/codex у потребителя —
+# не член PIN, checksum лишние файлы игнорирует по контракту — подменил бы
+# ревьюера при зелёном copy-integrity. Адаптер зовётся по абсолютному пути;
+# в review_cmd (отпечаток, --print-review-cmd) остаётся голое имя — строка
+# машинно-независима и называет тот же файл кита.
+run_reviewer() {
+    if [ -n "$reviewer_exec" ]; then
+        # review_cmd = "harness-claude --model X": голое имя заменяется путём,
+        # его флаги (после первого пробела) идут перед аргументами вызова.
+        set -- ${review_cmd#* } "$@"
+        "$reviewer_exec" "$@"
+    else
+        $review_cmd "$@"
+    fi
+}
+if ! run_reviewer --sandbox read-only \
         --output-schema "$schema" \
         --output-last-message "$work/verdict.json" \
         - < "$work/prompt.txt" >/dev/null 2>"$work/reviewer.err"; then
