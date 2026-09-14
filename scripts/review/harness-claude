@@ -1,0 +1,135 @@
+#!/bin/sh
+# harness-claude — адаптер claude CLI под codex-диалект review-kit.
+#
+# Зачем: local.sh зовёт ревьюера строкой `$review_cmd --sandbox read-only
+# --output-schema <s> --output-last-message <v> - < prompt.txt` — диалект
+# `codex exec`. REVIEW_CMD — задуманная точка подмены, но флаги вокруг неё
+# codex-специфичны, поэтому нужна не другая строка, а программа, которая
+# говорит на codex-диалекте снаружи и на claude-диалекте внутри. Файл — член
+# кита (спека 2026-09-14, D3): переходник devtools покрывал только
+# review-pr.sh, а хук и ручной local.sh оставались на codex.
+#
+# Единственный член кита, который запускается по АБСОЛЮТНОМУ пути
+# `$kit_dir/harness-claude`, а не через $review_cmd/PATH (D7, пересмотрено
+# терминальным ревью этой ветки — см. local.sh::run_reviewer): строка в
+# отпечатке и --print-review-cmd всё равно несёт голое имя `harness-claude`,
+# чтобы оставаться машинно-независимой и называть тот же файл кита. Отсюда —
+# без расширения .sh и с битом исполнения; потерянный бит ловит префлайт
+# local.sh.
+#
+# Контракт выхода — как у codex exec для кита: не-0 → кит печатает «ревьюер
+# не отработал» и выходит кодом 3; пустой вердикт кит ловит сам. Молчаливый
+# approve при сломанном ревьюере невозможен по построению. Коды: 0 —
+# вердикт записан; 2 — аргументы/префлайт; 3 — claude не отработал или
+# ответ негоден. Для кита 2 и 3 равнозначны (любой не-0 → его код 3), но
+# различие бесплатно и полезно при ручном вызове.
+#
+# Литерал протокола `codex-terminal-review` в маркерах ревью НЕ
+# переименовывается: это имя протокола, не бинаря (D4).
+#
+# Read-only не «на слово CLI»: --restricted снимает Bash/REPL/WebFetch и
+# игнорирует пользовательские settings, --tools оставляет ровно чтение
+# (Read/Glob/Grep), --permission-prompts none автоматически отказывает всему
+# остальному, --strict-mcp-config отрезает MCP оператора,
+# --no-session-persistence не сорит сессиями в целевом репо.
+set -eu
+
+fail() {
+    _code="$1"; shift
+    echo "harness-claude: $*" >&2
+    exit "$_code"
+}
+
+model="claude-opus-5"
+sandbox=""
+schema=""
+verdict=""
+stdin_marker=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --model)
+            [ $# -ge 2 ] || fail 2 "--model требует значение"
+            model="$2"; shift 2 ;;
+        --sandbox)
+            [ $# -ge 2 ] || fail 2 "--sandbox требует значение"
+            sandbox="$2"; shift 2 ;;
+        --output-schema)
+            [ $# -ge 2 ] || fail 2 "--output-schema требует путь"
+            schema="$2"; shift 2 ;;
+        --output-last-message)
+            [ $# -ge 2 ] || fail 2 "--output-last-message требует путь"
+            verdict="$2"; shift 2 ;;
+        -) stdin_marker=1; shift ;;
+        # Неизвестный флаг — отказ, не молчаливое игнорирование: кит нового
+        # поколения мог добавить семантику, которую адаптер не понимает, и
+        # «продолжить как понял» дало бы ревью не на тех условиях.
+        *) fail 2 "неизвестный аргумент: $1" ;;
+    esac
+done
+[ "$sandbox" = "read-only" ] \
+    || fail 2 "поддержан только --sandbox read-only (получено: '${sandbox}')"
+[ -n "$schema" ] || fail 2 "--output-schema обязателен"
+[ -r "$schema" ] || fail 2 "схема нечитаема: $schema"
+[ -n "$verdict" ] || fail 2 "--output-last-message обязателен"
+# Каталог вместо файла: без этой проверки `mv "$tmp" "$verdict"` переносит
+# временный файл ВНУТРЬ каталога (POSIX-семантика mv), кит получает код 0
+# без вердикта по заявленному пути — находка терминального ревью этой ветки.
+[ ! -d "$verdict" ] || fail 2 "путь вердикта — каталог, а не файл: $verdict"
+[ "$stdin_marker" -eq 1 ] || fail 2 "ожидается '-' (промпт со stdin)"
+
+# Префлайты — по образцу jq/sha256sum-префлайтов кита: отсутствие бинаря —
+# конфигурация (код 2), не «ревьюер не отработал». Без префлайта jq его
+# отсутствие выродилось бы в 127 → код 3 кита, вопреки контракту.
+command -v claude >/dev/null 2>&1 || fail 2 "claude не найден в PATH"
+command -v jq >/dev/null 2>&1 \
+    || fail 2 "jq не найден в PATH — нужен для разбора ответа claude"
+
+# Временный файл вердикта — В КАТАЛОГЕ целевого файла: `mv` через границу
+# файловой системы перестаёт быть rename, и атомарность теряется. Конверт
+# claude — тоже в файл, не в переменную: `$(...)` съедает хвостовые переводы
+# строк, а разбирать удобнее файл. Оба убираются через trap на любом исходе;
+# после успешного `mv` временного файла уже нет, и rm -f безвреден.
+verdict_dir=$(dirname "$verdict")
+tmp=$(mktemp "$verdict_dir/.verdict.XXXXXX") \
+    || fail 2 "не удалось создать временный файл в $verdict_dir"
+trap 'rm -f "$tmp"' EXIT
+envelope=$(mktemp) || fail 2 "не удалось создать временный файл для ответа"
+trap 'rm -f "$tmp" "$envelope"' EXIT
+
+# Промпт идёт со stdin (как и у codex) — диф не попадает в argv.
+# stderr claude проходит насквозь в reviewer.err кита.
+set +e
+claude -p --model "$model" \
+    --json-schema "$(cat "$schema")" \
+    --output-format json \
+    --restricted --strict-mcp-config --no-session-persistence \
+    --permission-prompts none \
+    --tools Read Glob Grep > "$envelope"
+claude_code=$?
+set -e
+[ "$claude_code" -eq 0 ] || fail 3 "claude завершился кодом $claude_code"
+
+# Разбор конверта: только успешный ответ с непустым объектом
+# structured_output становится вердиктом. `jq -e` даёт не-0 и на false/null
+# фильтра, и на битом JSON (код 2 парсера) — оба случая один класс.
+# `is_error` обязан быть явным `false`: `null | not` даёт true, и конверт
+# без поля проходил бы как успешный.
+if ! jq -e '
+        type == "object"
+        and (.is_error == false)
+        and .subtype == "success"
+        and (.structured_output | type == "object")
+        and (.structured_output | length > 0)
+    ' "$envelope" >/dev/null 2>&1; then
+    fail 3 "ответ claude без валидного structured_output"
+fi
+# Каноническая сериализация — `jq -c`: байты определяет jq, а не контракт;
+# читатели сравнивают JSON-семантически.
+jq -c '.structured_output' "$envelope" > "$tmp" \
+    || fail 3 "не удалось извлечь structured_output"
+mv "$tmp" "$verdict"
+# Пройденный по значению `$verdict` каталог отсечён префлайтом выше, но
+# защита в глубину не лишняя: если `mv` всё же не оставил обычный файл по
+# заявленному пути (гонка, экзотическая ФС), кит не должен получить код 0
+# без вердикта.
+[ -f "$verdict" ] || fail 3 "вердикт не записан: $verdict"
