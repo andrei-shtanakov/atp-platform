@@ -9,6 +9,7 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
+          "kind",
           "severity",
           "title",
           "file",
@@ -20,6 +21,10 @@
           "confidence"
         ],
         "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["defect", "file-missing"]
+          },
           "severity": {
             "type": "string",
             "enum": ["blocker", "major", "minor", "nit"]
