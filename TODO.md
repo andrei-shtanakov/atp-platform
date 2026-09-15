@@ -46,6 +46,27 @@
 
 ### Активные кросс-проектные задачи
 
+- [ ] **Выпустить v2.2.0 и подтвердить на чистой машине, что релиз ставится без checkout** @owner:github:andrei-shtanakov @id:publish-installable-container-cli
+  @provider:atp-platform @consumer:deployer
+  - Принято из inbox-issue #320 (`from: deployer#first-consumer-seam`, `slug:
+    publish-installable-container-cli`). Приём оформлен задним числом: работа была сделана
+    по параллельному запросу владельца, issue при этом не смотрели — ритуал ADR-ECO-006
+    пропущен, хотя запрос был заведён за час до начала.
+  - **Код закрыт**, PR #321 (мерж `0133dd7`): `atp-platform` больше не зависит от
+    неопубликованного `atp-adapters` и от `atp-core`, который на PyPI **чужой проект**
+    («Attested Transport Protocol», патчит `requests` на локальный MITM-прокси —
+    имя занято, `packages/atp-core` под ним не опубликовать никогда); корень объявляет
+    то, что реально импортирует вложенный код (`pydantic`, `pyyaml`, `fastapi`,
+    `atp-platform-sdk`); точки входа `atp.adapters` переехали из неопубликованного
+    дистрибутива в корень, иначе `atp plugins list --type=adapter` в установленном
+    окружении пуст.
+  - **Остался ровно один критерий** — первый: он проверяется только на опубликованном
+    релизе, а `v2.2.0` не затегирован. Два других проверены на собранном колесе в
+    standalone uv-проекте вне репо (`atp, version 2.2.0`; `container` в `plugins list`).
+  - Готово, когда: тег `v2.2.0` → `publish.yml` → на чистой машине
+    `uv tool install atp-platform` без checkout, `atp --version`, `container` в
+    `atp plugins list --type=adapter`. После этого отписаться в #320 и закрыть его.
+
 - [x] **Пин conformance-фикстур поднят до v1-gaps (два новых кейса)** ✅ 2026-08-18 @owner:github:andrei-shtanakov @id:catalog-conformance-pin-bump-v1-gaps
   @provider:devtools @consumer:atp-platform
   @source-owner:devtools @source-ref:devtools@2533ff7 @observed-at:2026-08-18 @recheck-by:2026-11-18
