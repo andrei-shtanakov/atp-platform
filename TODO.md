@@ -46,7 +46,7 @@
 
 ### Активные кросс-проектные задачи
 
-- [ ] **Догнать вендор-копию review-kit до релиза «область ревью» (срез B)** @owner:github:andrei-shtanakov @id:review-kit-catchup-scope
+- [x] **Догнать вендор-копию review-kit до релиза «область ревью» (срез B)** ✅ 2026-09-19 @owner:github:andrei-shtanakov @id:review-kit-catchup-scope
   @provider:steward @consumer:atp-platform
   @source-owner:steward @source-ref:steward#172 @observed-at:2026-09-19 @recheck-by:2026-12-19
   - Принято из inbox-issue #326 (`from: steward`, `slug: review-kit-catchup-scope`).
@@ -62,10 +62,20 @@
     только `checksum.sh` с переходным членом `?scripts/review/prose-paths.env` и своя строка
     PIN; PR-2 — файл правила, `local.sh`, остальные разошедшиеся члены и их строки PIN.
   - `.github/hooks/pre-push` в этом репо нет — шаг волны про хук неприменим.
-  - Готово, когда: `sh scripts/review/checksum.sh --pin scripts/review/PIN` чисто на 8 членах;
-    `sh scripts/review/local.sh --base main --head HEAD --fingerprint-only` на прозаической
-    ветке даёт код 5 при пустом stdout, на кодовой — 64-hex; `review-pr.sh` на этом репо
-    ходит харнессом claude без отказа.
+  - **Сделано** PR #328 (инвентарь) + #329 (правило, `local.sh`, `collect-context.sh`,
+    `harness-claude`, восьмая строка PIN, шапка `SOURCE` @ `steward c18bf87`). Все критерии
+    предъявлены на `main`: чекер — чисто, 8 членов; прозаический диапазон — код 5 при пустом
+    stdout; кодовый — 64-hex; `--print-review-cmd` → `harness-claude --model claude-opus-5`.
+  - Попутно: вахта `review-kit-drift.yml` сравнивала шесть членов из восьми (`harness-claude`
+    и `prose-paths.env` были вне наблюдения) — список дополнен.
+  - Попутно: фильтр уводил из-под ревью `.claude/skills/*/SKILL.md`, `.agents/skills/**`,
+    `CLAUDE.md`, `AGENTS.md` — инструкции, по которым работают агенты (регрессия покрытия:
+    до среза B диф шёл модели целиком). Возвращены repo-конфигом
+    `.github/codex/review-scope.env` (`PROSE_REVIEW=paths`); он умеет только расширять ревью.
+  - Исходящие: devtools#265 (`.claude/*`/`.agents/*` в `CODE_OVERRIDE` SSOT — тогда наш
+    конфиг сократится), steward#174 (шапка `checksum.sh` противоречит сама себе),
+    steward#176 (три minor по `local.sh`, главный — молчаливое частичное усечение дифа).
+    Ответа не ждём: правки приедут обычным ре-вендором, `@blocked_by` не заводим.
 
 - [x] **Пин conformance-фикстур поднят до v1-gaps (два новых кейса)** ✅ 2026-08-18 @owner:github:andrei-shtanakov @id:catalog-conformance-pin-bump-v1-gaps
   @provider:devtools @consumer:atp-platform
