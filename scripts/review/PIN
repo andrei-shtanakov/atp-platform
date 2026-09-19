@@ -1,16 +1,12 @@
-# SOURCE: steward @ c18bf87 (master, 2026-09-19; срез B области ревью — фильтр прозы в local.sh и код выхода 5; steward#172)
+# SOURCE: steward @ 0a98f23 (master, 2026-09-19; объявление удержанных путей, фикс sidecar/пустых ключей)
 # Ре-вендор: скопировать файлы из steward, пересчитать строки:
 #   shasum -a 256 <файл>  — формат строки: '<sha256>  <путь-от-корня>'
 # 8 членов. harness-claude — адаптер claude, бит исполнения 100755 обязателен.
-# prose-paths.env — правило области ревью: пиненая копия SSOT devtools, приезжает
-# через steward; правка ТОЛЬКО ре-вендором, не на месте. В зашитом инвентаре он
-# пока переходный член (?path) и обязательным станет следующим релизом кита —
-# но в этой копии он есть, а значит пинуется и проверяется наравне с прочими.
-d5edbcef9192974161ccba2754b5b191d66bf5ae23ee87367e8c5cdec613fa92  scripts/review/build-prompt.sh
+9129b747929409321bf817829968e667981c6da94bab55735a79d6de1fd7d295  scripts/review/build-prompt.sh
 85bc71445f87186791e24fcf713fad2520c289fd8188c6b15f0a39bf1d4a239b  scripts/review/collect-context.sh
 d96d44c10dc106504144f66c2716849ba0ff1401cae1539cf82fe93baddeb286  scripts/review/apply-threshold.sh
-d686b1beccfe42f2117e38f266ec81b38e946598a3e2c81297d56f0703e0f392  scripts/review/local.sh
-b5b47b443a078704b6ba5f94682330ff2f4de92d34a0febfe71db298b101a2f1  scripts/review/checksum.sh
+18e87312b58caa8434d1814f2c8b6754497b03b362ff757048adc9eef672c316  scripts/review/local.sh
+e39665f21d554ff28dd2e81c55c76f3fca826bdb6263f4712cc84ceea1ad86c7  scripts/review/checksum.sh
 8b66c434c6bdd75b535a5141c691fdd95edda56001369b862a0a2361e710b968  .github/codex/review-schema.json
 ec4d8002dc1155f437dea986345e458c4963e4693957f344e3cf00a858cbb9d3  scripts/review/harness-claude
 daacdfe6d263b7190ab009771172bb87c2f6ac46a50be78f0607957a0fdea355  scripts/review/prose-paths.env
