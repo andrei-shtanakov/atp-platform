@@ -66,6 +66,8 @@ jobs:
                      scripts/review/apply-threshold.sh \
                      scripts/review/local.sh \
                      scripts/review/checksum.sh \
+                     scripts/review/harness-claude \
+                     scripts/review/prose-paths.env \
                      .github/codex/review-schema.json; do
             compare "ws/atp-platform/$rel" "ws/steward/$rel"
           done
