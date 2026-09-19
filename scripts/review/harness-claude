@@ -44,12 +44,27 @@ model="claude-opus-5"
 sandbox=""
 schema=""
 verdict=""
+effort=""
 stdin_marker=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --model)
             [ $# -ge 2 ] || fail 2 "--model требует значение"
             model="$2"; shift 2 ;;
+        --effort)
+            [ $# -ge 2 ] || fail 2 "--effort требует значение"
+            [ -n "$2" ] || fail 2 "--effort требует непустое значение"
+            # Зеркало проверки local.sh (гейт финального ревью этой ветки,
+            # major): значение эффорта в REVIEW_EFFORT долетает сюда через
+            # word-splitting строки review_cmd, и то же ограничение (одно
+            # безопасное слово) держит адаптер согласованным при прямом
+            # вызове, минуя local.sh.
+            case "$2" in
+                *[!A-Za-z0-9._:/@+-]*)
+                    fail 2 "--effort: недопустимое значение (разрешены буквы," \
+                        "цифры и . _ : / @ + -): $2" ;;
+            esac
+            effort="$2"; shift 2 ;;
         --sandbox)
             [ $# -ge 2 ] || fail 2 "--sandbox требует значение"
             sandbox="$2"; shift 2 ;;
@@ -77,29 +92,109 @@ done
 [ ! -d "$verdict" ] || fail 2 "путь вердикта — каталог, а не файл: $verdict"
 [ "$stdin_marker" -eq 1 ] || fail 2 "ожидается '-' (промпт со stdin)"
 
+# Фильтр "конверт годен" — общий для sidecar usage (ниже) и для разбора
+# вердикта (в конце файла): раньше это был один и тот же jq-текст,
+# продублированный дважды (minor финального ревью этой ветки). `is_error`
+# обязан быть явным `false`: `null | not` даёт true, и конверт без поля
+# проходил бы как успешный.
+ENVELOPE_OK='type == "object" and (.is_error == false) and .subtype == "success" and (.structured_output | type == "object") and (.structured_output | length > 0)'
+
+# Sidecar usage (спека review-eval §7, D12): валидация и подготовка временного
+# файла — целиком в префлайте, ПЕРЕД проверками наличия бинарей claude/jq
+# ниже, а не внутри write_usage(): раньше пустое значение, каталог вместо
+# файла, несоздаваемый каталог и неписуемый mktemp обнаруживались только
+# ПОСЛЕ платного вызова claude — находка финального ревью этой ветки.
+# Каталог вместо файла — та же причина, что и у проверки $verdict выше: `mv`
+# перенёс бы временный файл ВНУТРЬ каталога, а не на заявленный путь.
+# Инвалидация прежнего файла (rm -f) — тоже ЗДЕСЬ, а не после проверки
+# claude/jq: наличие sidecar-файла обязано означать результат ИМЕННО этого
+# прогона (контракт eval), и это верно даже когда прогон обрывается раньше
+# из-за отсутствующего бинаря — устаревший файл не должен пережить отказ
+# независимо от его причины.
+usage_tmp=""
+if [ -n "${REVIEW_USAGE_OUT+x}" ] && [ -z "$REVIEW_USAGE_OUT" ]; then
+    fail 2 "REVIEW_USAGE_OUT задан пустым — уберите переменную или назовите путь"
+fi
+if [ -n "${REVIEW_USAGE_OUT:-}" ]; then
+    [ ! -d "$REVIEW_USAGE_OUT" ] \
+        || fail 2 "REVIEW_USAGE_OUT: путь — каталог, а не файл: $REVIEW_USAGE_OUT"
+    rm -f "$REVIEW_USAGE_OUT" \
+        || fail 2 "REVIEW_USAGE_OUT: не удалить прежний файл $REVIEW_USAGE_OUT"
+    usage_dir=$(dirname "$REVIEW_USAGE_OUT")
+    mkdir -p "$usage_dir" || fail 2 "REVIEW_USAGE_OUT: не создать каталог $usage_dir"
+    usage_tmp=$(mktemp "$usage_dir/.usage.XXXXXX") \
+        || fail 2 "REVIEW_USAGE_OUT: не создать временный файл"
+    trap 'rm -f "$usage_tmp"' EXIT
+fi
+
 # Префлайты — по образцу jq/sha256sum-префлайтов кита: отсутствие бинаря —
 # конфигурация (код 2), не «ревьюер не отработал». Без префлайта jq его
-# отсутствие выродилось бы в 127 → код 3 кита, вопреки контракту.
+# отсутствие выродилось бы в 127 → код 3 кита, вопреки контракту. Идут
+# ПОСЛЕ валидации REVIEW_USAGE_OUT (включая инвалидацию прежнего файла)
+# нарочно: устаревший sidecar обязан быть снят независимо от того, какой
+# именно бинарь потом окажется отсутствующим.
 command -v claude >/dev/null 2>&1 || fail 2 "claude не найден в PATH"
 command -v jq >/dev/null 2>&1 \
     || fail 2 "jq не найден в PATH — нужен для разбора ответа claude"
 
+write_usage() {
+    # $1 — outcome (success|error); конверт — $envelope (может быть не-JSON).
+    # Префлайт выше уже создал $usage_tmp, когда REVIEW_USAGE_OUT задан —
+    # здесь только заполняем файл и переносим его на место. Провал ПОСЛЕ
+    # платного вызова claude — не тот же класс, что провал ДО него: если
+    # сам ревьюер уже отказал (claude_code != 0), об этом обязан сообщить код
+    # 3 (сбой ревьюера), а не 2 (конфигурация) — иначе код 3 маскируется
+    # неудачным sidecar'ом.
+    [ -n "${REVIEW_USAGE_OUT:-}" ] || return 0
+    usage_fail_code=2
+    [ "$claude_code" -eq 0 ] || usage_fail_code=3
+    if [ "$envelope_single_json" -eq 1 ] && jq -e 'type == "object"' "$envelope" >/dev/null 2>&1; then
+        jq -c --arg model "$model" --arg effort "$effort" --arg outcome "$1" '{
+            schema: "review-usage/v1", provider: "claude", model: $model,
+            requested_effort: (if $effort == "" then null else $effort end),
+            usage: (if (.usage|type) == "object" then {
+                input_tokens: (.usage.input_tokens // null),
+                output_tokens: (.usage.output_tokens // null),
+                cache_creation_input_tokens: (.usage.cache_creation_input_tokens // null),
+                cache_read_input_tokens: (.usage.cache_read_input_tokens // null)
+            } else null end),
+            total_cost_usd: (.total_cost_usd // null),
+            provider_duration_ms: (.duration_ms // null),
+            outcome: $outcome }' "$envelope" > "$usage_tmp" \
+            || fail "$usage_fail_code" "REVIEW_USAGE_OUT: не собрать sidecar"
+    else
+        jq -nc --arg model "$model" --arg effort "$effort" --arg outcome "$1" '{
+            schema: "review-usage/v1", provider: "claude", model: $model,
+            requested_effort: (if $effort == "" then null else $effort end),
+            usage: null, total_cost_usd: null, provider_duration_ms: null,
+            outcome: $outcome }' > "$usage_tmp" \
+            || fail "$usage_fail_code" "REVIEW_USAGE_OUT: не собрать sidecar"
+    fi
+    mv "$usage_tmp" "$REVIEW_USAGE_OUT" \
+        || fail "$usage_fail_code" "REVIEW_USAGE_OUT: не сохранить $REVIEW_USAGE_OUT"
+}
+
 # Временный файл вердикта — В КАТАЛОГЕ целевого файла: `mv` через границу
 # файловой системы перестаёт быть rename, и атомарность теряется. Конверт
 # claude — тоже в файл, не в переменную: `$(...)` съедает хвостовые переводы
-# строк, а разбирать удобнее файл. Оба убираются через trap на любом исходе;
-# после успешного `mv` временного файла уже нет, и rm -f безвреден.
+# строк, а разбирать удобнее файл. Все временные файлы убираются через trap
+# на любом исходе; после успешного `mv` временного файла уже нет, и rm -f
+# безвреден.
 verdict_dir=$(dirname "$verdict")
 tmp=$(mktemp "$verdict_dir/.verdict.XXXXXX") \
     || fail 2 "не удалось создать временный файл в $verdict_dir"
-trap 'rm -f "$tmp"' EXIT
+trap 'rm -f "$usage_tmp" "$tmp"' EXIT
 envelope=$(mktemp) || fail 2 "не удалось создать временный файл для ответа"
-trap 'rm -f "$tmp" "$envelope"' EXIT
+trap 'rm -f "$usage_tmp" "$tmp" "$envelope"' EXIT
 
 # Промпт идёт со stdin (как и у codex) — диф не попадает в argv.
 # stderr claude проходит насквозь в reviewer.err кита.
+set -- -p --model "$model"
+if [ -n "$effort" ]; then
+    set -- "$@" --effort "$effort"
+fi
 set +e
-claude -p --model "$model" \
+claude "$@" \
     --json-schema "$(cat "$schema")" \
     --output-format json \
     --restricted --strict-mcp-config --no-session-persistence \
@@ -107,20 +202,41 @@ claude -p --model "$model" \
     --tools Read Glob Grep > "$envelope"
 claude_code=$?
 set -e
+
+# Ровно ОДИН top-level JSON-документ (гейт финального ревью этой ветки,
+# minor): без `-s` jq применяет фильтр к КАЖДОМУ top-level значению потока
+# по отдельности, а не к ответу целиком — конкатенация двух валидных
+# success-конвертов иначе тихо проходила бы ENVELOPE_OK ниже, и
+# `jq -c '{...}' "$envelope"`/`jq -c '.structured_output' "$envelope"`
+# печатали бы построчный JSONL там, где ожидается один JSON-объект: sidecar
+# и вердикт молча портились бы на N строк вместо одной. Вычислено ОДИН раз
+# (используется в write_usage() и в проверке ниже), а не по месту в каждой
+# точке, чтобы не гонять `jq` трижды за один прогон.
+envelope_single_json=1
+[ "$(jq -c '.' "$envelope" 2>/dev/null | wc -l | tr -d ' ')" = "1" ] \
+    || envelope_single_json=0
+
+# Sidecar usage — сразу после разбора конверта как JSON, ДО того как код
+# выхода/subtype/structured_output решают код выхода адаптера (D12):
+# ошибочный ответ тоже стоил денег. Провал `write_usage` теперь МЕНЯЕТ код
+# выхода (см. её тело): 2, когда claude сам отработал, но sidecar не
+# собрался/не сохранился, и 3, когда сам claude уже отказал — код сбоя
+# ревьюера не маскируется неудачным sidecar'ом.
+if [ "$claude_code" -eq 0 ] && [ "$envelope_single_json" -eq 1 ] \
+    && jq -e "$ENVELOPE_OK" "$envelope" >/dev/null 2>&1; then
+    write_usage success
+else
+    write_usage error
+fi
+
 [ "$claude_code" -eq 0 ] || fail 3 "claude завершился кодом $claude_code"
 
 # Разбор конверта: только успешный ответ с непустым объектом
 # structured_output становится вердиктом. `jq -e` даёт не-0 и на false/null
-# фильтра, и на битом JSON (код 2 парсера) — оба случая один класс.
-# `is_error` обязан быть явным `false`: `null | not` даёт true, и конверт
-# без поля проходил бы как успешный.
-if ! jq -e '
-        type == "object"
-        and (.is_error == false)
-        and .subtype == "success"
-        and (.structured_output | type == "object")
-        and (.structured_output | length > 0)
-    ' "$envelope" >/dev/null 2>&1; then
+# фильтра, и на битом JSON (код 2 парсера) — оба случая один класс;
+# многодокументный поток — третий, гейтится отдельно выше по той же причине.
+if [ "$envelope_single_json" -ne 1 ] \
+    || ! jq -e "$ENVELOPE_OK" "$envelope" >/dev/null 2>&1; then
     fail 3 "ответ claude без валидного structured_output"
 fi
 # Каноническая сериализация — `jq -c`: байты определяет jq, а не контракт;
