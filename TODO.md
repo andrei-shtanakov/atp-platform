@@ -46,6 +46,27 @@
 
 ### Активные кросс-проектные задачи
 
+- [ ] **Догнать вендор-копию review-kit до релиза «область ревью» (срез B)** @owner:github:andrei-shtanakov @id:review-kit-catchup-scope
+  @provider:steward @consumer:atp-platform
+  @source-owner:steward @source-ref:steward#172 @observed-at:2026-09-19 @recheck-by:2026-12-19
+  - Принято из inbox-issue #326 (`from: steward`, `slug: review-kit-catchup-scope`).
+  - **Премиса issue снята до приёмки**: «шесть членов без `harness-claude`» описывает копию
+    от 2026-08-25. Первый из двух названных релизов (харнесс-слой) завендорен 2026-09-19
+    в PR #324/#325 — копия стоит на `steward @ a2d7e71`, семь членов. Остался ровно один
+    долг, срез B: `scripts/review/prose-paths.env` (пиненая копия SSOT devtools, приезжает
+    через steward), фильтр области в `local.sh`, новый код выхода 5 «всё отфильтровано».
+  - Волна по флоту (steward-план Task 6) этот репо не касается — решение владельца steward
+    от 2026-09-18: `atp-platform` и `arbiter` идут отдельной работой.
+  - **Двухфазно**, иначе джоба `review-kit-integrity` (она исполняет `checksum.sh` из base,
+    то есть со старым инвентарём) отвечает «PIN перечисляет файл вне состава кита»: PR-1 —
+    только `checksum.sh` с переходным членом `?scripts/review/prose-paths.env` и своя строка
+    PIN; PR-2 — файл правила, `local.sh`, остальные разошедшиеся члены и их строки PIN.
+  - `.github/hooks/pre-push` в этом репо нет — шаг волны про хук неприменим.
+  - Готово, когда: `sh scripts/review/checksum.sh --pin scripts/review/PIN` чисто на 8 членах;
+    `sh scripts/review/local.sh --base main --head HEAD --fingerprint-only` на прозаической
+    ветке даёт код 5 при пустом stdout, на кодовой — 64-hex; `review-pr.sh` на этом репо
+    ходит харнессом claude без отказа.
+
 - [x] **Пин conformance-фикстур поднят до v1-gaps (два новых кейса)** ✅ 2026-08-18 @owner:github:andrei-shtanakov @id:catalog-conformance-pin-bump-v1-gaps
   @provider:devtools @consumer:atp-platform
   @source-owner:devtools @source-ref:devtools@2533ff7 @observed-at:2026-08-18 @recheck-by:2026-11-18
