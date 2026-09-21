@@ -1,12 +1,12 @@
-# SOURCE: steward @ 0a98f23 (master, 2026-09-19; объявление удержанных путей, фикс sidecar/пустых ключей)
+# SOURCE: steward @ 5bfd829 (master, 2026-09-21; граница доверия отдельно от диапазона дифа — --trusted-base; инструкции агентов в CODE_OVERRIDE)
 # Ре-вендор: скопировать файлы из steward, пересчитать строки:
 #   shasum -a 256 <файл>  — формат строки: '<sha256>  <путь-от-корня>'
 # 8 членов. harness-claude — адаптер claude, бит исполнения 100755 обязателен.
 9129b747929409321bf817829968e667981c6da94bab55735a79d6de1fd7d295  scripts/review/build-prompt.sh
 85bc71445f87186791e24fcf713fad2520c289fd8188c6b15f0a39bf1d4a239b  scripts/review/collect-context.sh
 d96d44c10dc106504144f66c2716849ba0ff1401cae1539cf82fe93baddeb286  scripts/review/apply-threshold.sh
-18e87312b58caa8434d1814f2c8b6754497b03b362ff757048adc9eef672c316  scripts/review/local.sh
+f44c08bca0a1f6d817a0693af43efd1f3b996b055e06c33f86d7475f3a8deeb7  scripts/review/local.sh
 e39665f21d554ff28dd2e81c55c76f3fca826bdb6263f4712cc84ceea1ad86c7  scripts/review/checksum.sh
 8b66c434c6bdd75b535a5141c691fdd95edda56001369b862a0a2361e710b968  .github/codex/review-schema.json
 ec4d8002dc1155f437dea986345e458c4963e4693957f344e3cf00a858cbb9d3  scripts/review/harness-claude
-daacdfe6d263b7190ab009771172bb87c2f6ac46a50be78f0607957a0fdea355  scripts/review/prose-paths.env
+e3bb30a2aed2994e7e60f0532107b7d0a0bfcc8947862b6f61361e597a7a9967  scripts/review/prose-paths.env
