@@ -46,7 +46,7 @@
 
 ### Активные кросс-проектные задачи
 
-- [ ] **Опубликовать релиз, который ставится без checkout исходников (CLI + container-адаптер)** @owner:github:andrei-shtanakov @id:publish-installable-container-cli
+- [x] **Опубликовать релиз, который ставится без checkout исходников (CLI + container-адаптер)** ✅ 2026-09-22 @owner:github:andrei-shtanakov @id:publish-installable-container-cli
   @provider:atp-platform @consumer:deployer
   @source-owner:deployer @source-ref:deployer#52 @observed-at:2026-09-22 @recheck-by:2026-12-22
   - Принято из inbox-issue #320 (`from: deployer#first-consumer-seam`,
@@ -59,11 +59,12 @@
   - **Проверено 2026-09-22** на колесе с `main` (782b66c) в standalone-проекте вне репо,
     резолв только с PyPI: `atp, version 2.2.0`; `atp plugins list --type=adapter`
     показывает `container`. Все критерии issue, кроме одного.
-  - **Не сделано — сам релиз.** На PyPI по-прежнему 2.1.0. `pyproject.toml` уже 2.2.0 и
-    `CHANGELOG.md` несёт `## [2.2.0] - 2026-08-18` (61bee43), но тег `v2.2.0` не выпускался,
-    а фикс #321 лежит в `[Unreleased]`. Релиз: свернуть `[Unreleased]` в 2.2.0 с датой тега
-    → `git tag v2.2.0` → push тега (`publish.yml` срабатывает на `v*`). Закрывать issue
-    после `uv tool install atp-platform==2.2.0` на чистой машине.
+  - **Релиз выпущен 2026-09-22.** `CHANGELOG.md` свёрнут (PR #336: `[Unreleased]` → 2.2.0,
+    дата тега вместо никогда не тегированной 2026-08-18 из 61bee43), тег `v2.2.0` на
+    merge-коммите 8717e8b, `publish.yml` run 35711956385 — success. Проверено с PyPI
+    (`uv add --no-cache atp-platform==2.2.0`, standalone-проект вне репо, `uv.lock`:
+    `source = { registry = "https://pypi.org/simple" }`): `atp, version 2.2.0`,
+    `container` в `atp plugins list --type=adapter`. Issue #320 закрыт `completed`.
 
 - [x] **Догнать вендор-копию review-kit до релиза «область ревью» (срез B)** ✅ 2026-09-19 @owner:github:andrei-shtanakov @id:review-kit-catchup-scope
   @provider:steward @consumer:atp-platform
