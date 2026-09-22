@@ -46,6 +46,25 @@
 
 ### Активные кросс-проектные задачи
 
+- [ ] **Опубликовать релиз, который ставится без checkout исходников (CLI + container-адаптер)** @owner:github:andrei-shtanakov @id:publish-installable-container-cli
+  @provider:atp-platform @consumer:deployer
+  @source-owner:deployer @source-ref:deployer#52 @observed-at:2026-09-22 @recheck-by:2026-12-22
+  - Принято из inbox-issue #320 (`from: deployer#first-consumer-seam`,
+    `slug: publish-installable-container-cli`). deployer этим **не заблокирован** —
+    у них workaround (source-install из тега); пункт заведён, чтобы дефект жил у владельца.
+  - **Код закрыт на `main`** PR #321 (2026-09-06): все три дефекта issue — `atp-adapters`
+    не на PyPI, безусловные импорты `fastapi`/`atp_sdk` без объявленных базовых
+    зависимостей. Сторож от повторения — CI-джоба `wheel-install`
+    (`.github/workflows/ci.yml`) + `tests/unit/dist_metadata/test_root_metadata.py`.
+  - **Проверено 2026-09-22** на колесе с `main` (782b66c) в standalone-проекте вне репо,
+    резолв только с PyPI: `atp, version 2.2.0`; `atp plugins list --type=adapter`
+    показывает `container`. Все критерии issue, кроме одного.
+  - **Не сделано — сам релиз.** На PyPI по-прежнему 2.1.0. `pyproject.toml` уже 2.2.0 и
+    `CHANGELOG.md` несёт `## [2.2.0] - 2026-08-18` (61bee43), но тег `v2.2.0` не выпускался,
+    а фикс #321 лежит в `[Unreleased]`. Релиз: свернуть `[Unreleased]` в 2.2.0 с датой тега
+    → `git tag v2.2.0` → push тега (`publish.yml` срабатывает на `v*`). Закрывать issue
+    после `uv tool install atp-platform==2.2.0` на чистой машине.
+
 - [x] **Догнать вендор-копию review-kit до релиза «область ревью» (срез B)** ✅ 2026-09-19 @owner:github:andrei-shtanakov @id:review-kit-catchup-scope
   @provider:steward @consumer:atp-platform
   @source-owner:steward @source-ref:steward#172 @observed-at:2026-09-19 @recheck-by:2026-12-19
