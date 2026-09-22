@@ -7,28 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- **`pip install atp-platform` works again.** 2.1.0 shipped uninstallable:
-  its metadata required `atp-adapters>=1.0.0`, a distribution that does not
-  exist on PyPI, so the resolver refused the release outright. Two further
-  faults hid behind it. `atp-core` on PyPI is **not** this project — it is an
-  unrelated "Attested Transport Protocol" package that patches `requests` and
-  redirects traffic through a local MITM proxy — so the same line pointed a
-  second dependency at a stranger's code. And because the wheel bundles every
-  workspace member (`atp/core`, `atp/adapters`, `atp/dashboard` are symlinks
-  that hatchling dereferences at build time) while delegating their
-  requirements to those two names, the base install declared neither `pydantic`
-  nor `pyyaml` nor `fastapi` — `import atp` could not have succeeded even had
-  the names resolved. The root distribution now declares what the code it
-  bundles actually imports, and the extras name third-party requirements
-  directly instead of routing through unpublished member distributions.
-- **Adapter entry points reach installed environments.** The `atp.adapters`
-  group was declared in `packages/atp-adapters/pyproject.toml`, a distribution
-  this repo never publishes, so no installed environment ever advertised the
-  built-in adapters to plugin discovery. Moved to the root `pyproject.toml`
-  alongside the evaluator and reporter groups. Adapter *creation* was
-  unaffected — `atp/adapters/registry.py` resolves the built-ins itself.
+## [2.2.0] - 2026-09-22
 
 ### Added
 
@@ -62,10 +41,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   than in a test, so pinning the payloads alone would leave the sharper failure
   unguarded. No commit SHA — at write time the commit carrying the file does not
   exist yet, so the field could only ever be stale (requested omitted, maestro#204).
-
-## [2.2.0] - 2026-08-18
-
-### Added
 
 - **`composite` runs on the benchmark plane again, under the policy that
   governs it** (ADR-008 track A). It used to resolve its leaves through the
@@ -165,6 +140,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   #234-#235, #242)
 
 ### Fixed
+
+- **`pip install atp-platform` works again.** 2.1.0 shipped uninstallable:
+  its metadata required `atp-adapters>=1.0.0`, a distribution that does not
+  exist on PyPI, so the resolver refused the release outright. Two further
+  faults hid behind it. `atp-core` on PyPI is **not** this project — it is an
+  unrelated "Attested Transport Protocol" package that patches `requests` and
+  redirects traffic through a local MITM proxy — so the same line pointed a
+  second dependency at a stranger's code. And because the wheel bundles every
+  workspace member (`atp/core`, `atp/adapters`, `atp/dashboard` are symlinks
+  that hatchling dereferences at build time) while delegating their
+  requirements to those two names, the base install declared neither `pydantic`
+  nor `pyyaml` nor `fastapi` — `import atp` could not have succeeded even had
+  the names resolved. The root distribution now declares what the code it
+  bundles actually imports, and the extras name third-party requirements
+  directly instead of routing through unpublished member distributions.
+- **Adapter entry points reach installed environments.** The `atp.adapters`
+  group was declared in `packages/atp-adapters/pyproject.toml`, a distribution
+  this repo never publishes, so no installed environment ever advertised the
+  built-in adapters to plugin discovery. Moved to the root `pyproject.toml`
+  alongside the evaluator and reporter groups. Adapter *creation* was
+  unaffected — `atp/adapters/registry.py` resolves the built-ins itself.
 
 - **`$ATP_CATALOG` pointing at a missing file no longer falls through to XDG.**
   An explicit catalog path is an instruction, and quietly loading a different
