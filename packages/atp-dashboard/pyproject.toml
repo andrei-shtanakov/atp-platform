@@ -38,12 +38,14 @@ dependencies = [
 
 [project.optional-dependencies]
 tournaments = [
-    "fastmcp>=3.0",
-    # Direct floor+ceiling for the transitive `mcp` SDK: >=1.28.1 is the
-    # patched version for CVE-2026-59950 / -52869 / -52870; <2 mirrors
-    # fastmcp's own ceiling (fastmcp<=3.4.5 requires mcp<2.0). Lift both
-    # together when fastmcp ships SDK-v2 support.
-    "mcp>=1.28.1,<2",
+    # fastmcp 4.x is the first line built on the `mcp` SDK v2 (it requires
+    # mcp>=2,<3). Both carry a major ceiling: Dependabot only ever raises the
+    # floor, so an open bound would silently resolve the next breaking major.
+    "fastmcp>=4.0.5,<5",
+    # Direct floor+ceiling for the transitive `mcp` SDK. Every 2.x postdates
+    # the 1.28.1 patch for CVE-2026-59950 / -52869 / -52870, so the old CVE
+    # floor is subsumed. Lift together with fastmcp's own ceiling.
+    "mcp>=2.0,<3",
     "game-environments>=1.0.0",
 ]
 enterprise = [

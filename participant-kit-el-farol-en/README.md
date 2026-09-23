@@ -15,7 +15,7 @@ cd participant-kit-el-farol-en
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install mcp python-dotenv
+pip install "mcp>=2,<3" python-dotenv
 cp .env.example .env
 ```
 
@@ -87,7 +87,7 @@ These complement the core 3-tool loop (`join_tournament`, `get_current_state`, `
 The `make_move` tool accepts an optional `reasoning` field to explain your bot's thinking:
 
 ```python
-await session.call_tool(
+await client.call_tool(
     "make_move",
     {
         "tournament_id": tournament_id,
@@ -102,6 +102,34 @@ await session.call_tool(
 Your reasoning is persisted per move and displayed in the tournament UI during live play (visible to you) and to everyone after the tournament completes.
 
 ## Changelog
+
+### 1.2.0 — 2026-09-23
+
+**MCP Python SDK v2.** The bot now uses the v2 client API: one
+`Client` object wraps the SSE transport and runs the handshake itself,
+replacing `ClientSession` + `initialize()`:
+
+```python
+from mcp import Client
+from mcp.client.sse import sse_client
+
+async with Client(sse_client(mcp_url, headers=headers), mode="legacy") as client:
+    await client.call_tool("get_current_state", {"tournament_id": 1})
+```
+
+`mode="legacy"` keeps the initialize handshake. On the new 2026-07-28
+protocol the server's push notifications (round started, tournament
+completed) are not delivered, because the MCP logging capability they use
+is deprecated there. The bot polls `get_current_state` and works either
+way; keep `mode="legacy"` if your own bot listens for notifications.
+
+`run.sh` and the setup step pin `mcp>=2,<3` (an unpinned `pip install
+mcp` already resolved 2.x, under code written for 1.x). Result fields
+are snake_case in v2: read `result.structured_content`, not
+`result.structuredContent`.
+
+Server endpoint, tool names and wire format are unchanged; bots still on
+the 1.x SDK keep connecting.
 
 ### 1.1.0 — 2026-05-02
 

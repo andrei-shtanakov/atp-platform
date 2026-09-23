@@ -838,14 +838,31 @@ Plan: `docs/superpowers/plans/2026-04-20-admin-tournament-gui.md`
 - [ ] **Generalize admin create form to all 8 games** — currently hardcoded to `el_farol` dropdown. Add per-game config fieldsets keyed off the game registry. @owner:github:andrei-shtanakov @id:admin-create-form-all-games @epic:eco.atp-platform
 - [ ] **Long-lived bot MCP sessions (spec C)** — separate design and plan; the admin TTL change in this PR does not address bot-side session budget (still capped at `(ATP_TOKEN_EXPIRE_MINUTES − 10) × 60` in `TournamentService.create_tournament`). @owner:github:andrei-shtanakov @id:bot-mcp-session-budget @epic:eco.atp-platform
 
-## mcp SDK v2 migration (deferred, blocked on upstream)
+## mcp SDK v2 migration
 
-- [ ] mcp SDK v2 (atp-dashboard): blocked on upstream — fastmcp (≤3.4.5) pins mcp<2.0. @trigger:"fastmcp release notes announce mcp>=2 support." @id:atp-dashboard-mcp-sdk-v2-migration @epic:eco.ops
-      Then: lift the pins, migrate scripts/repro_mcp_concurrent_tools_list.py,
-      participant-kit-el-farol-en/bot_el_farol_random.py, and the 3 doc examples in
-      packages/atp-dashboard/atp/dashboard/v2/templates/ui/about.html off the v1
-      client API (ClientSession/sse_client → v2 Client), re-run tests/unit/dashboard/mcp/.
-      Context: prograph-vault/authored/notes/2026-08-04-mcp-v2-migration-plan.md
+- [x] mcp SDK v2 (atp-dashboard) ✅ 2026-09-23 @id:atp-dashboard-mcp-sdk-v2-migration @epic:eco.ops
+      Триггер сработал: fastmcp 4.x требует `mcp>=2,<3` (найдено через Dependabot #323,
+      который поднимал только корневой потолок без lock и без `packages/atp-dashboard`).
+      Сделано: `fastmcp>=4.0.5,<5` + `mcp>=2.0,<3` в обоих `pyproject.toml`; скрипт repro,
+      бот El Farol и 3 примера в `about.html` переведены на `Client(sse_client(...))`;
+      e2e `tests/e2e/dashboard/test_mcp_sdk_v2_client_e2e.py`. Клиенты SDK 1.x
+      (протокол 2025-11-25) продолжают работать без изменений — проверено вживую.
+- [ ] **Push-уведомления турнира — уйти с logging capability** @owner:github:andrei-shtanakov @id:mcp-push-notifications-off-logging @epic:eco.atp-platform
+      `round_started`/`tournament_completed`/`session_sync` шлются через `send_log_message`
+      (`packages/atp-dashboard/atp/dashboard/mcp/notifications.py`, `tools.py`), а протокол
+      2026-07-28 объявил logging устаревшим (SEP-2577): на таком соединении сервер молча
+      отбрасывает сообщение, отправленное после возврата tool-call. Клиент SDK v2 по
+      умолчанию (`mode="auto"`) согласует именно 2026-07-28 → пушей нет; обходной путь
+      в доках — `mode="legacy"`. Закреплено тестом
+      `test_default_mode_negotiates_modern_protocol_without_push` — когда он покраснеет,
+      пересмотреть раздел «Server notifications» в `about.html`.
+      Варианты: resource subscriptions / отдельный канал событий; решать, когда первый
+      участник упрётся в отсутствие пушей на современном протоколе.
+- [ ] **`get_current_state` падает на pending-турнире с неполным составом** @owner:github:andrei-shtanakov @id:mcp-get-current-state-pending-crash @epic:eco.atp-platform
+      `IndexError: list index out of range` из `service.get_state_for`, когда вступили не
+      все игроки; клиент видит ошибку tool-call вместо состояния. `join_tournament` тот же
+      случай уже ловит и отдаёт `{"status": "pending"}` (`tools.py`, `_join_tournament_mcp`).
+      Не регрессия миграции — всплыло при написании e2e для SDK v2.
 
 ## codex-review: потребитель кита steward (принят 2026-08-25)
 

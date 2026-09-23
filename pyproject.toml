@@ -137,8 +137,8 @@ cloud = [
 # dependencies; kept as a no-op alias so existing installs keep resolving.
 eco-server = []
 tournaments = [
-    "fastmcp>=3.0",
-    "mcp>=1.28.1,<2",
+    "fastmcp>=4.0.5,<5",
+    "mcp>=2.0,<3",
     "game-environments>=1.0.0",
 ]
 dashboard = [

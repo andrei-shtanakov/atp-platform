@@ -46,7 +46,7 @@ from dataclasses import dataclass
 import anyio
 import uvicorn
 from fastmcp import FastMCP
-from mcp import ClientSession
+from mcp import Client
 from mcp.client.sse import sse_client
 
 # ---------------------------------------------------------------------------
@@ -114,7 +114,7 @@ async def hold_sse_session(
     results: list[ClientResult],
     list_tools_budget_s: float,
 ) -> None:
-    """Connect SSE, initialize, list_tools (under a timeout that
+    """Connect SSE (``Client`` initializes on entry), list_tools (under a timeout that
     matches Claude SDK's ToolSearch budget), then hold the session
     open until the test driver releases the gate. Mimics the prod
     bot lifetime: handshake then long-lived activity.
@@ -125,24 +125,22 @@ async def hold_sse_session(
     indefinitely, which would mask the prod symptom.
     """
     try:
-        async with sse_client(sse_url) as (read, write):
-            async with ClientSession(read, write) as session:
-                await session.initialize()
-                # Apply Claude-SDK-style budget here. If FastMCP is
-                # slow under concurrent load, this surfaces as a
-                # timeout the same way SDK's ToolSearch gives up.
-                with anyio.fail_after(list_tools_budget_s):
-                    tools_result = await session.list_tools()
-                tool_names = sorted(t.name for t in tools_result.tools)
-                results.append(ClientResult(label=label, tools_seen=tool_names))
-                print(
-                    f"[{label}] saw {len(tool_names)} tools",
-                    flush=True,
-                )
-                # Hold the session alive while subsequent clients
-                # do their own handshake — this is what makes the
-                # repro match the prod scenario.
-                await hold_event.wait()
+        async with Client(sse_client(sse_url)) as client:
+            # Apply Claude-SDK-style budget here. If FastMCP is
+            # slow under concurrent load, this surfaces as a
+            # timeout the same way SDK's ToolSearch gives up.
+            with anyio.fail_after(list_tools_budget_s):
+                tools_result = await client.list_tools()
+            tool_names = sorted(t.name for t in tools_result.tools)
+            results.append(ClientResult(label=label, tools_seen=tool_names))
+            print(
+                f"[{label}] saw {len(tool_names)} tools",
+                flush=True,
+            )
+            # Hold the session alive while subsequent clients
+            # do their own handshake — this is what makes the
+            # repro match the prod scenario.
+            await hold_event.wait()
     except TimeoutError:
         results.append(
             ClientResult(
