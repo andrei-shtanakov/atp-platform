@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **MCP tournament server on fastmcp 4 / `mcp` SDK v2.** The `tournaments`
+  extra now requires `fastmcp>=4.0.5,<5` and `mcp>=2.0,<3` (was `fastmcp>=3.0`,
+  `mcp>=1.28.1,<2`); fastmcp 4 is the first line built on SDK v2. The `/mcp/sse`
+  and `/mcp-http` endpoints, tool names and payloads are unchanged, and clients
+  on SDK 1.x keep connecting on the 2025-11-25 protocol.
+- **Client examples use the SDK v2 `Client`.** The three `/ui/about` snippets,
+  the El Farol participant kit (1.2.0) and
+  `scripts/repro_mcp_concurrent_tools_list.py` now connect with
+  `Client(sse_client(...), mode="legacy")` instead of `ClientSession` +
+  `initialize()`, and the kit pins `mcp>=2,<3` (its unpinned `pip install mcp`
+  had already been resolving 2.x under 1.x code).
+
+### Known limitations
+
+- **No push notifications on the 2026-07-28 protocol.** Tournament events are
+  sent as MCP log messages, a capability that protocol revision deprecates: the
+  server drops those sent after a tool call returns. An SDK v2 client negotiates
+  that revision by default, so `/ui/about` and the kit use `mode="legacy"`, which
+  keeps the initialize handshake and the previous delivery. Polling
+  `get_current_state` works on every protocol version.
+
 ## [2.2.0] - 2026-09-22
 
 ### Added

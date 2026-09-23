@@ -7,15 +7,14 @@ import random
 from typing import Any
 
 from dotenv import load_dotenv
-from mcp import ClientSession
+from mcp import Client
 from mcp.client.sse import sse_client
 
 
 def _parse_tool_result(result: Any) -> dict[str, Any]:
-    if hasattr(result, "structuredContent") and isinstance(
-        result.structuredContent, dict
-    ):
-        return result.structuredContent
+    structured = getattr(result, "structured_content", None)
+    if isinstance(structured, dict):
+        return structured
 
     content = getattr(result, "content", None)
     if isinstance(content, list):
@@ -99,67 +98,64 @@ async def main() -> None:
     rng = random.Random(seed)
     headers = {"Authorization": f"Bearer {token}"}
 
-    async with sse_client(mcp_url, headers=headers) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
+    # mode="legacy" keeps the initialize handshake (pre-2026-07-28 protocol),
+    # the same wire behaviour as the 1.x SDK. This bot polls, but the server's
+    # push notifications only reach legacy-handshake sessions.
+    async with Client(sse_client(mcp_url, headers=headers), mode="legacy") as client:
+        join_payload: dict[str, Any] = {
+            "tournament_id": tournament_id,
+            "agent_name": agent_name,
+        }
+        if join_token:
+            join_payload["join_token"] = join_token
 
-            join_payload: dict[str, Any] = {
-                "tournament_id": tournament_id,
-                "agent_name": agent_name,
-            }
-            if join_token:
-                join_payload["join_token"] = join_token
+        join = await client.call_tool("join_tournament", join_payload)
+        print("joined:", _parse_tool_result(join))
 
-            join = await session.call_tool("join_tournament", join_payload)
-            print("joined:", _parse_tool_result(join))
+        last_played_round = 0
+        while True:
+            raw_state = await client.call_tool(
+                "get_current_state", {"tournament_id": tournament_id}
+            )
+            state = _parse_tool_result(raw_state)
+            status = str(state.get("status", "")).lower()
+            if status in {"completed", "cancelled"}:
+                print("tournament status:", status)
+                break
 
-            last_played_round = 0
-            while True:
-                raw_state = await session.call_tool(
-                    "get_current_state", {"tournament_id": tournament_id}
-                )
-                state = _parse_tool_result(raw_state)
-                status = str(state.get("status", "")).lower()
-                if status in {"completed", "cancelled"}:
-                    print("tournament status:", status)
+            pending = bool(state.get("pending_submission", False))
+            round_number = int(state.get("round_number", 0))
+            total_rounds = int(state.get("total_rounds", 0))
+
+            if not pending:
+                if round_number >= total_rounds and last_played_round >= total_rounds:
+                    print("tournament finished")
                     break
+                await asyncio.sleep(0.5)
+                continue
 
-                pending = bool(state.get("pending_submission", False))
-                round_number = int(state.get("round_number", 0))
-                total_rounds = int(state.get("total_rounds", 0))
+            if round_number == last_played_round:
+                await asyncio.sleep(0.5)
+                continue
 
-                if not pending:
-                    if (
-                        round_number >= total_rounds
-                        and last_played_round >= total_rounds
-                    ):
-                        print("tournament finished")
-                        break
-                    await asyncio.sleep(0.5)
-                    continue
-
-                if round_number == last_played_round:
-                    await asyncio.sleep(0.5)
-                    continue
-
-                intervals = _choose_random_intervals(state, rng)
-                action_payload: dict[str, Any] = {"intervals": intervals}
-                # Optionally add reasoning (max 8000 chars; visible
-                # to owner during play)
-                # action_payload["reasoning"] = (
-                #     "Random strategy: choosing intervals to "
-                #     "optimize threshold"
-                # )
-                move = await session.call_tool(
-                    "make_move",
-                    {
-                        "tournament_id": tournament_id,
-                        "action": action_payload,
-                    },
-                )
-                move_payload = _parse_tool_result(move)
-                print(f"round {round_number}: intervals={intervals} -> {move_payload}")
-                last_played_round = round_number
+            intervals = _choose_random_intervals(state, rng)
+            action_payload: dict[str, Any] = {"intervals": intervals}
+            # Optionally add reasoning (max 8000 chars; visible
+            # to owner during play)
+            # action_payload["reasoning"] = (
+            #     "Random strategy: choosing intervals to "
+            #     "optimize threshold"
+            # )
+            move = await client.call_tool(
+                "make_move",
+                {
+                    "tournament_id": tournament_id,
+                    "action": action_payload,
+                },
+            )
+            move_payload = _parse_tool_result(move)
+            print(f"round {round_number}: intervals={intervals} -> {move_payload}")
+            last_played_round = round_number
 
 
 if __name__ == "__main__":

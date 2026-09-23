@@ -16,6 +16,6 @@ fi
 
 source .venv/bin/activate
 python -m pip install --upgrade pip >/dev/null
-python -m pip install mcp python-dotenv >/dev/null
+python -m pip install "mcp>=2,<3" python-dotenv >/dev/null
 
 python bot_el_farol_random.py

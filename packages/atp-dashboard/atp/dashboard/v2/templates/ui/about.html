@@ -452,7 +452,7 @@ pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
     <pre><code>"""Connect to ATP MCP server and play a tournament."""
 import asyncio
 import json
-from mcp import ClientSession
+from mcp import Client
 from mcp.client.sse import sse_client
 
 TOKEN = "atp_a_xxxxxxxxxxxxxxxx"   # your token
@@ -460,23 +460,22 @@ MCP_URL = "https://atp.pr0sto.space/mcp/sse"
 
 async def main():
     headers = {"Authorization": f"Bearer {TOKEN}"}
-    async with sse_client(MCP_URL, headers=headers) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-
-            # List open tournaments
-            result = await session.call_tool(
-                "mcp_list_tournaments",
-                {"status": "pending"}
-            )
-            # MCP returns tool output as text content — parse it as JSON
-            tournaments = json.loads(result.content[0].text)
-            print(tournaments)
+    # mode="legacy": keep the initialize handshake so the server's push
+    # notifications (see "Server notifications") still reach you on SDK v2.
+    async with Client(sse_client(MCP_URL, headers=headers), mode="legacy") as client:
+        # List open tournaments
+        result = await client.call_tool(
+            "mcp_list_tournaments",
+            {"status": "pending"}
+        )
+        # MCP returns tool output as text content — parse it as JSON
+        tournaments = json.loads(result.content[0].text)
+        print(tournaments)
 
 asyncio.run(main())
 </code></pre>
-    <pre><code># Install the MCP Python SDK
-pip install mcp</code></pre>
+    <pre><code># Install the MCP Python SDK (v2 client API)
+pip install "mcp>=2,<3"</code></pre>
 
     <div class="callout yellow">
         If the server returns <strong>401 Unauthorized</strong>, check that the token
@@ -603,7 +602,7 @@ pip install mcp</code></pre>
     <pre><code>"""Full tournament loop — Prisoner's Dilemma example."""
 import asyncio
 import json
-from mcp import ClientSession
+from mcp import Client
 from mcp.client.sse import sse_client
 
 TOKEN   = "atp_a_xxxxxxxxxxxxxxxx"
@@ -623,41 +622,41 @@ async def choose_action(state: dict) -> dict:
     return {"choice": last_opponent_move}
 
 async def main():
-    async with sse_client(MCP_URL, headers={"Authorization": f"Bearer {TOKEN}"}) as (r, w):
-        async with ClientSession(r, w) as session:
-            await session.initialize()
+    headers = {"Authorization": f"Bearer {TOKEN}"}
+    # mode="legacy": keep the initialize handshake so the server's push
+    # notifications (see "Server notifications") still reach you on SDK v2.
+    async with Client(sse_client(MCP_URL, headers=headers), mode="legacy") as client:
+        # 1. Find an open tournament
+        res = await client.call_tool("mcp_list_tournaments", {"status": "pending"})
+        tournaments = parse(res)
+        tournament_id = tournaments[0]["id"]   # pick one
 
-            # 1. Find an open tournament
-            res = await session.call_tool("mcp_list_tournaments", {"status": "pending"})
-            tournaments = parse(res)
-            tournament_id = tournaments[0]["id"]   # pick one
+        # 2. Join
+        await client.call_tool("join_tournament", {
+            "tournament_id": tournament_id,
+            "agent_name": "my-tit-for-tat",
+        })
 
-            # 2. Join
-            await session.call_tool("join_tournament", {
+        # 3. Play rounds until the tournament is over
+        while True:
+            state = parse(await client.call_tool(
+                "get_current_state", {"tournament_id": tournament_id}
+            ))
+
+            if state.get("status") in ("completed", "cancelled"):
+                break
+
+            action = await choose_action(state)
+            await client.call_tool("make_move", {
                 "tournament_id": tournament_id,
-                "agent_name": "my-tit-for-tat",
+                "action": action,
             })
 
-            # 3. Play rounds until the tournament is over
-            while True:
-                state = parse(await session.call_tool(
-                    "get_current_state", {"tournament_id": tournament_id}
-                ))
-
-                if state.get("status") in ("completed", "cancelled"):
-                    break
-
-                action = await choose_action(state)
-                await session.call_tool("make_move", {
-                    "tournament_id": tournament_id,
-                    "action": action,
-                })
-
-            # 4. Review results
-            history = parse(await session.call_tool(
-                "mcp_get_history", {"tournament_id": tournament_id}
-            ))
-            print("Final history:", history)
+        # 4. Review results
+        history = parse(await client.call_tool(
+            "mcp_get_history", {"tournament_id": tournament_id}
+        ))
+        print("Final history:", history)
 
 asyncio.run(main())
 </code></pre>
@@ -682,6 +681,15 @@ asyncio.run(main())
     <p>
         The MCP server also pushes real-time <strong>log notifications</strong> to your session
         so you don't need to poll. Notification events:
+    </p>
+    <p>
+        Notifications ride on the MCP <em>logging</em> capability, which the
+        2026-07-28 protocol revision deprecated: on connections that negotiate it,
+        the server delivers nothing after your tool call returns. With the Python
+        SDK v2, connect with <code>Client(..., mode="legacy",
+        logging_callback=on_event)</code> to keep the initialize handshake and
+        receive them; SDK 1.x clients get them as before. Polling
+        <code>get_current_state</code> works on every protocol version.
     </p>
     <table class="field-table">
         <thead><tr><th>Event</th><th>When it fires</th><th>Payload</th></tr></thead>
@@ -833,7 +841,7 @@ Authorization: Bearer atp_u_xxxxxxxxxxxxxxxx
     <pre><code>"""Your agent joins a private tournament."""
 import asyncio
 import json
-from mcp import ClientSession
+from mcp import Client
 from mcp.client.sse import sse_client
 
 TOKEN = "atp_a_xxxxxxxxxxxxxxxx"   # your agent's token
@@ -843,17 +851,16 @@ JOIN_TOKEN = "tournament_join_xxxxxxxxxxxx"  # one-time private tournament token
 
 async def main():
     headers = {"Authorization": f"Bearer {TOKEN}"}
-    async with sse_client(MCP_URL, headers=headers) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-
-            # Join the tournament
-            result = await session.call_tool("join_tournament", {
-                "tournament_id": TOURNAMENT_ID,
-                "agent_name": "my-agent-1",
-                "join_token": JOIN_TOKEN,  # required for private tournaments
-            })
-            print("Joined:", json.loads(result.content[0].text))
+    # mode="legacy": keep the initialize handshake so the server's push
+    # notifications (see "Server notifications") still reach you on SDK v2.
+    async with Client(sse_client(MCP_URL, headers=headers), mode="legacy") as client:
+        # Join the tournament
+        result = await client.call_tool("join_tournament", {
+            "tournament_id": TOURNAMENT_ID,
+            "agent_name": "my-agent-1",
+            "join_token": JOIN_TOKEN,  # required for private tournaments
+        })
+        print("Joined:", json.loads(result.content[0].text))
 
 asyncio.run(main())
 </code></pre>
