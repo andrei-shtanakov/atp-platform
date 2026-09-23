@@ -34,15 +34,23 @@ MODERN_PROTOCOL = "2026-07-28"
 
 
 def _payload(result: CallToolResult) -> dict[str, Any]:
-    """Tool output as a dict: structured content first, text JSON second."""
+    """Tool output as a dict: structured content first, text JSON second.
+
+    Non-JSON text blocks (e.g. a tool error message) are skipped, so a shape
+    mismatch surfaces as the caller's assertion, not a ``JSONDecodeError``.
+    """
     if isinstance(result.structured_content, dict):
         return result.structured_content
     for item in result.content:
         text = getattr(item, "text", None)
-        if isinstance(text, str):
+        if not isinstance(text, str):
+            continue
+        try:
             parsed = json.loads(text)
-            if isinstance(parsed, dict):
-                return parsed
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
     return {}
 
 
@@ -54,10 +62,9 @@ class _EventLog:
 
     async def handle_log(self, params: LoggingMessageNotificationParams) -> None:
         """``logging_callback`` for ``mcp.Client``."""
-        if isinstance(params.data, dict):
-            self.events.append(
-                (str(params.data.get("event")), params.data.get("round_number"))
-            )
+        data = params.data
+        if isinstance(data, dict) and isinstance(data.get("event"), str):
+            self.events.append((data["event"], data.get("round_number")))
 
     async def wait_for(
         self, event: str, round_number: int | None = None, timeout_s: float = 10.0
