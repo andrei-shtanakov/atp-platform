@@ -47,20 +47,31 @@ def _payload(result: CallToolResult) -> dict[str, Any]:
 
 
 class _EventLog:
-    """Collects ``event`` names from server log notifications."""
+    """Collects ``(event, round_number)`` from server log notifications."""
 
     def __init__(self) -> None:
-        self.events: list[str] = []
+        self.events: list[tuple[str, int | None]] = []
 
     async def handle_log(self, params: LoggingMessageNotificationParams) -> None:
         """``logging_callback`` for ``mcp.Client``."""
         if isinstance(params.data, dict):
-            self.events.append(str(params.data.get("event")))
+            self.events.append(
+                (str(params.data.get("event")), params.data.get("round_number"))
+            )
 
-    async def wait_for(self, event: str, timeout_s: float = 10.0) -> bool:
-        """Poll until ``event`` arrives; False on timeout."""
+    async def wait_for(
+        self, event: str, round_number: int | None = None, timeout_s: float = 10.0
+    ) -> bool:
+        """Poll until ``event`` (for ``round_number``, if given) arrives."""
+
+        def seen() -> bool:
+            return any(
+                name == event and (round_number is None or rnd == round_number)
+                for name, rnd in self.events
+            )
+
         with anyio.move_on_after(timeout_s):
-            while event not in self.events:
+            while not seen():
                 await anyio.sleep(0.05)
             return True
         return False
@@ -131,10 +142,12 @@ async def test_legacy_mode_client_plays_and_receives_notifications(
                 "make_move",
                 {"tournament_id": tournament_id, "action": {"choice": choice}},
             )
-        # Delivered by the background forwarder after make_move returned —
+        # Round 1's round_started already fired when bob joined, so pin
+        # round 2: it exists only once both moves resolved round 1, and is
+        # delivered by the background forwarder after make_move returned —
         # exactly the path the 2026-07-28 protocol no longer carries.
-        assert await admin_log.wait_for("round_started"), admin_log.events
-        assert await bob_log.wait_for("round_started"), bob_log.events
+        assert await admin_log.wait_for("round_started", 2), admin_log.events
+        assert await bob_log.wait_for("round_started", 2), bob_log.events
 
 
 async def test_default_mode_negotiates_modern_protocol_without_push(
