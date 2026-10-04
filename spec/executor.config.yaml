@@ -1,3 +1,5 @@
 executor:
+  # политика флота (devtools contracts/fleet-config-policy/v1, 2026-10-04): попытка, правящая файлы верификации, проваливается
+  harness_guard: strict
   commands:
     test: "uv run pytest tests/unit -v"
