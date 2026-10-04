@@ -31,6 +31,14 @@ if ! repo_root=$(git rev-parse --show-toplevel 2>/dev/null); then
 fi
 schema="${REVIEW_SCHEMA:-$repo_root/.github/codex/review-schema.json}"
 prompt="${REVIEW_PROMPT:-$repo_root/.github/codex/review-prompt.md}"
+# Режим спецификаций (`--spec`, steward#184): свой промпт — сосед
+# review-prompt.md, не член инвентаря кита (checksum.sh), как и он. У спеки нет
+# исполнения, поэтому условия находки и шкала кода там не сходятся по
+# построению; режим меняет только промпт и включает прозу в область ревью.
+# Пустой REVIEW_PROMPT_SPEC — отказ, как у REVIEW_MODEL: молча уйти на
+# умолчание значило бы ревьюировать не тем, что просили.
+prompt_spec="${REVIEW_PROMPT_SPEC:-$repo_root/.github/codex/review-prompt-spec.md}"
+spec_mode=0
 # --- харнесс ревьюера (спека 2026-09-14) ------------------------------------
 # REVIEW_CMD — КОМАНДА, не путь к бинарю: умолчание несёт `exec` внутри
 # себя, а не как отдельный литерал ниже в вызове. Раньше `exec` был жёстко
@@ -254,7 +262,7 @@ usage() {
         "[--head <ref>] [--remote <name>]" \
         "[--fetch] [--format markdown|text]" \
         "[--max-diff-bytes N] [--max-diff-files N] [--fingerprint-only]" \
-        "[--print-review-cmd] [--include-prose]" >&2
+        "[--print-review-cmd] [--include-prose] [--spec]" >&2
 }
 
 while [ $# -gt 0 ]; do
@@ -316,6 +324,7 @@ while [ $# -gt 0 ]; do
         --print-review-cmd) print_cmd=1; shift ;;
         --fingerprint-only) fp_only=1; shift ;;
         --include-prose) include_prose=1; shift ;;
+        --spec) spec_mode=1; shift ;;
         *) usage; exit 2 ;;
     esac
 done
@@ -378,6 +387,28 @@ if [ "$fp_only" -eq 0 ]; then
         echo "REVIEW_USAGE_OUT: не удалить прежний файл $REVIEW_USAGE_OUT" >&2
         exit 2
     }
+fi
+
+# Режим спецификаций: промпт — отдельный файл, проза — в области ревью (спека
+# и есть проза). Промпт входит в отпечаток входа, поэтому смена режима меняет
+# отпечаток сама — вердикт кода не наследуется ревью спеки и наоборот.
+# Стоит НИЖЕ сброса sidecar: отказ режима не должен оставить прежний вердикт
+# лежать как результат этого прогона (находка приёмочного ревью #196).
+if [ "$spec_mode" -eq 1 ]; then
+    if [ -n "${REVIEW_PROMPT_SPEC+x}" ] && [ -z "$REVIEW_PROMPT_SPEC" ]; then
+        echo "REVIEW_PROMPT_SPEC задан пустым — уберите переменную или назовите" \
+            "файл промпта режима спецификаций" >&2
+        exit 2
+    fi
+    if [ ! -f "$prompt_spec" ]; then
+        echo "--spec: нет промпта режима спецификаций: $prompt_spec" \
+            "(файл кита .github/codex/review-prompt-spec.md — сосед" \
+            "review-prompt.md; либо укажите REVIEW_PROMPT_SPEC)" >&2
+        exit 2
+    fi
+    prompt="$prompt_spec"
+    include_prose=1
+    info "режим спецификаций (steward#184): промпт $prompt_spec, проза в области ревью"
 fi
 
 # --- нужен ли remote вообще -------------------------------------------------
