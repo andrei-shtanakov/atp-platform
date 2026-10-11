@@ -271,19 +271,15 @@ while [ $# -gt 0 ]; do
         # сдвиг мимо края позиционных параметров: без сторожа `shift 2` на bash
         # молча съедает лишнее (exit 1), а на dash падает с сообщением самого
         # shell мимо usage() — платформозависимое поведение опаснее прямого exit 2.
-        # `base_explicit` ставится только на НЕПУСТОМ значении: пустое
-        # `--base ""` ниже (`[ -z "$base" ]`) молча уезжает на ветку по
-        # умолчанию, то есть прогон фактически идёт путём умолчания — и
-        # советовать ему `--trusted-base` для «суженной базы» было бы
-        # советом состоянию, которого нет (находка minor круга 3). Отказ
-        # на пустом значении — как у `--trusted-base` ниже — был бы
-        # честнее, но это СМЕНА семантики `--base` у ~22 потребителей,
-        # и решать её внутри приёма двух чужих заявок нельзя:
-        # @id:review-kit-empty-base-ruling.
+        # Пустое `--base ""` — отказ, как у `--trusted-base` ниже: пустая
+        # переменная у вызывающего молча превращалась в прогон против ветки
+        # по умолчанию, то есть явная, но сломанная настройка читалась как
+        # её противоположность (решение владельца 2026-10-06,
+        # @id:review-kit-empty-base-ruling).
         --base)
             [ $# -ge 2 ] || { usage; exit 2; }
-            base="$2"
-            [ -z "$base" ] || base_explicit=1
+            [ -n "$2" ] || { echo "--base передан с пустым значением" >&2; exit 2; }
+            base="$2"; base_explicit=1
             shift 2 ;;
         # Пустое значение — отказ, а не "как будто не передавали": тот же
         # довод, что у --max-diff-bytes ниже. Молчаливый съезд на умолчание
@@ -395,6 +391,16 @@ fi
 # Стоит НИЖЕ сброса sidecar: отказ режима не должен оставить прежний вердикт
 # лежать как результат этого прогона (находка приёмочного ревью #196).
 if [ "$spec_mode" -eq 1 ]; then
+    # Явный REVIEW_PROMPT (даже пустой) с --spec — отказ, а не подмена
+    # (steward#198/#199): молча ревьюировать не тем промптом, что просили, —
+    # тот же довод, что у REVIEW_MODEL. Хуже того, devtools review-pr.sh подаёт
+    # через REVIEW_PROMPT доверенный промпт из base, и подмена отдала бы
+    # инструкции ревьюеру копии из дерева PR. Промпт спеки — свой канал.
+    if [ -n "${REVIEW_PROMPT+x}" ]; then
+        echo "--spec несовместим с REVIEW_PROMPT (промпт режима кода) — уберите" \
+            "REVIEW_PROMPT; промпт режима спецификаций задаётся REVIEW_PROMPT_SPEC" >&2
+        exit 2
+    fi
     if [ -n "${REVIEW_PROMPT_SPEC+x}" ] && [ -z "$REVIEW_PROMPT_SPEC" ]; then
         echo "REVIEW_PROMPT_SPEC задан пустым — уберите переменную или назовите" \
             "файл промпта режима спецификаций" >&2
@@ -746,7 +752,17 @@ work=$(mktemp -d)
 verdict_tmp=""
 trap 'rm -rf "$work"; [ -z "$verdict_tmp" ] || rm -f "$verdict_tmp"' EXIT
 
-git diff "$mb..$head_sha" > "$work/diff.patch"
+# Форма дифа пинится у КАЖДОГО `git diff` кита: generated-фильтр
+# build-prompt.sh разбирает заголовок `diff --git a/… b/…`, а список путей
+# сверяется с декларацией от корня. `diff.noprefix`/`srcPrefix`/цвет/внешний
+# diff из конфига пользователя молча выключили бы фильтр, а `diff.relative`
+# дал бы cwd-относительные пути — из подкаталога рукописный `sub/X` совпал бы
+# с корневой декларацией `/X` и спрятался. При конфиге по умолчанию вывод
+# побайтово тот же — отпечаток не меняется.
+diff_form="-c diff.noprefix=false -c diff.mnemonicPrefix=false -c diff.relative=false"
+diff_form="$diff_form -c diff.srcPrefix=a/ -c diff.dstPrefix=b/"
+# shellcheck disable=SC2086 # diff_form — намеренно список слов
+git $diff_form diff --no-color --no-ext-diff "$mb..$head_sha" > "$work/diff.patch"
 if [ ! -s "$work/diff.patch" ]; then
     # Отдельный штатный исход и в fp-режиме: отпечаток пустому входу не
     # выдумывается — stdout остаётся пустым, вызывающий читает «ревьюировать
@@ -1069,7 +1085,8 @@ if [ -n "$prose_globs" ]; then
     # этот страж вообще заведён, только теперь спрятанный внутри пайпа.
     # `pipefail` в POSIX sh недоступен (правило репо), значит статус можно
     # получить только раздельным вызовом.
-    if ! git diff -z --no-renames --name-only "$mb..$head_sha" \
+    # shellcheck disable=SC2086 # diff_form — намеренно список слов
+    if ! git $diff_form diff -z --no-renames --name-only "$mb..$head_sha" \
             > "$work/changed-paths.z"; then
         echo "не удалось перечислить изменённые пути для фильтра области" \
             "ревью (git diff --name-only, диапазон ${mb}..${head_sha})." >&2
@@ -1164,7 +1181,9 @@ if [ -n "$prose_globs" ]; then
     # соседний `--name-only` чуть выше обёрнут именно с доводом «сбой git не
     # должен читаться как результат» — здесь сбой (128) под `set -e` утёк бы
     # кодом вне объявленного набора 0/1/2/3/5.
-    if ! git diff "$mb..$head_sha" -- "$@" > "$work/diff.patch"; then
+    # shellcheck disable=SC2086 # diff_form — намеренно список слов
+    if ! git $diff_form diff --no-color --no-ext-diff "$mb..$head_sha" -- "$@" \
+        > "$work/diff.patch"; then
         echo "не удалось собрать диф после фильтра области ревью" \
             "(git diff -- <pathspec>, диапазон ${mb}..${head_sha})." >&2
         exit 3
@@ -1298,8 +1317,9 @@ fi
 # курируемые каталоги, снапшот-каталоги) строится контрпример; декларация
 # же сама проходит ревью через PR. `core.quotePath=false` даёт сырые пути,
 # согласованные между diff --name-only и check-attr; кавыченные заголовки
-# самого дифа — @id:review-kit-quoted-diff-headers.
-git -c core.quotePath=false diff --name-only "$mb..$head_sha" \
+# самого дифа build-prompt.sh раскодирует в те же сырые байты.
+# shellcheck disable=SC2086 # diff_form — намеренно список слов
+git $diff_form -c core.quotePath=false diff --name-only "$mb..$head_sha" \
     > "$work/changed-paths.txt"
 # `--source` появился в git 2.38, и возможность ПРОБУЕТСЯ отдельно от
 # боевого вызова: на старом git фильтр ДЕГРАДИРУЕТ до отсутствия —
@@ -1314,8 +1334,11 @@ collect_declared() {
     # $1 — tree-ish, $2 — файл результата: объявленные пути дифа по
     # декларации этого дерева. `linguist-generated=true` даёт "true", голый
     # атрибут — "set"; оба — объявление. Парсинг с ХВОСТА строки: путь может
-    # содержать ": ". `sort` — для `comm` ниже.
-    if ! git -c core.quotePath=false check-attr --stdin \
+    # содержать ": ". `sort` — для `comm` ниже. `-C "$repo_root"`: check-attr
+    # трактует пути относительно cwd, а в списке они root-относительные — из
+    # подкаталога анкорный паттерн (`/uv.lock`) иначе не совпадал бы
+    # (@id:review-kit-generated-filter-cwd).
+    if ! git -C "$repo_root" -c core.quotePath=false check-attr --stdin \
         --source="$1" linguist-generated \
         < "$work/changed-paths.txt" > "$work/generated-attrs.txt"; then
         echo "не удалось прочитать linguist-generated из дерева $1" \
@@ -1366,7 +1389,8 @@ if git check-attr --source="$trusted_base" linguist-generated -- probe \
         gitattr_probe="$work/changed-paths.txt"
     else
         gitattr_probe="$work/trusted-changed-paths.txt"
-        if ! git -c core.quotePath=false diff --name-only \
+        # shellcheck disable=SC2086 # diff_form — намеренно список слов
+        if ! git $diff_form -c core.quotePath=false diff --name-only \
             "$trusted_mb..$head_sha" > "$gitattr_probe"; then
             echo "не удалось перечислить пути отрезка" \
                 "$trusted_mb..$head_sha (git diff --name-only) —" \

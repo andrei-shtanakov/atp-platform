@@ -169,11 +169,16 @@ fi
 #
 # Опускается РОВНО объявленное — членство пути в `--generated-list`, никакой
 # классификации внутри кита (довод у объявления generated_list выше).
-# Кавыченные заголовки (`diff --git "a/..." ...` у путей со спецсимволами) с
-# сырым путём списка не совпадают: их блок остаётся в дифе, и худший исход —
-# явный отказ по потолку, не молчаливое опущение (fail в сторону ревью);
-# нормализация кавыченной формы — отдельная правка кита
-# (@id:review-kit-quoted-diff-headers).
+# Заголовок разбирается по форме git, а не по полям awk
+# (@id:review-kit-quoted-diff-headers): кавыченная сторона (`"a/d\303\251"` —
+# не-ASCII и спецсимволы) раскодируется из C-escape в сырые байты, как в
+# списке (`core.quotePath=false`); некавыченная может содержать пробелы.
+# Некавыченный заголовок с несколькими точками ` b/` неоднозначен — блок
+# остаётся в дифе (в сторону ревью). Контракт для ЛЮБОГО вызывающего: диф в
+# форме git с префиксами `a/`/`b/` и путями от корня (local.sh пинит это
+# `diff_form`). Беспрефиксную форму не угадываем — `a/x b/y` в ней неотличим
+# от префиксной; неразобранный заголовок назван в stderr, блок остаётся в
+# дифе. `LC_ALL=C` — байтовые сравнения и `%c` как один байт.
 # Фильтр включается ТОЛЬКО при непустом списке: awk на выходе нормализует
 # хвостовой перевод строки, и прогон без generated-файлов получил бы другой
 # маркер и не-побайтовый диф — свойство «без опций вывод неизменен»
@@ -182,9 +187,81 @@ fi
 if [ -n "$generated_list" ] && [ -s "$generated_list" ]; then
 # trap уже может стоять у вызывающего окружения — свой файл прибираем сами.
 filtered=$(mktemp)
-awk -v gen_file="$generated_list" '
+LC_ALL=C awk -v gen_file="$generated_list" '
+    # Раскодировать тело C-кавычек git (без внешних кавычек) в сырые байты.
+    function unquote(s,    out, i, c, n, d) {
+        out = ""
+        for (i = 1; i <= length(s); i++) {
+            c = substr(s, i, 1)
+            if (c != "\\") { out = out c; continue }
+            c = substr(s, ++i, 1)
+            if (c ~ /[0-7]/) {
+                n = 0
+                for (d = 0; d < 3 && substr(s, i, 1) ~ /[0-7]/; d++) n = n * 8 + substr(s, i++, 1)
+                i--
+                out = out sprintf("%c", n)
+            } else if (c == "t") out = out "\t"
+            else if (c == "n") out = out "\n"
+            else if (c == "r") out = out "\r"
+            else if (c == "a") out = out "\007"
+            else if (c == "b") out = out "\010"
+            else if (c == "f") out = out "\014"
+            else if (c == "v") out = out "\013"
+            else out = out c
+        }
+        return out
+    }
+    # s начинается с кавычки: вернуть раскодированное тело, хвост — в q_rest.
+    # Незакрытая кавычка — "" (не совпадёт ни с чем: пустые строки списка
+    # отброшены).
+    function take_quoted(s,    i, c) {
+        q_rest = ""
+        for (i = 2; i <= length(s); i++) {
+            c = substr(s, i, 1)
+            if (c == "\\") { i++; continue }
+            if (c == "\"") { q_rest = substr(s, i + 1); return unquote(substr(s, 2, i - 2)) }
+        }
+        return ""
+    }
+    # Снять префикс стороны (`a/`/`b/`); чужой префикс — "" (не совпадёт).
+    function strip(p, prefix) {
+        return substr(p, 1, 2) == prefix ? substr(p, 3) : ""
+    }
+    # Последняя сторона заголовка: после закрывающей кавычки — ничего.
+    function side(p, prefix) {
+        if (substr(p, 1, 1) == "\"") { p = take_quoted(p); if (q_rest != "") return "" }
+        return strip(p, prefix)
+    }
+    # Разобрать хвост заголовка в old_path/new_path; 0 — разбор неоднозначен.
+    function parse_header(h,    k, p, n, rest) {
+        if (substr(h, 1, 1) == "\"") {
+            old_path = strip(take_quoted(h), "a/")
+            if (old_path == "" || substr(q_rest, 1, 1) != " ") return 0
+            new_path = side(substr(q_rest, 2), "b/")
+            return 1
+        }
+        if ((k = index(h, " \"")) > 0) {
+            old_path = side(substr(h, 1, k - 1), "a/")
+            new_path = side(substr(h, k + 1), "b/")
+            return 1
+        }
+        # Некавыченный: точка раздела ` b/` обязана быть ЕДИНСТВЕННОЙ. Угадывать
+        # по равным половинам нельзя — `a/x b/y b/x b/y` это и неизменённый
+        # `x b/y`, и rename `x` → `y b/x b/y`: объявленный путь спрятал бы
+        # перенос рукописного кода (parser differential).
+        n = 0; rest = h
+        while ((k = index(rest, " b/")) > 0) { n++; rest = substr(rest, k + 3) }
+        if (n != 1) return 0
+        k = index(h, " b/")
+        old_path = side(substr(h, 1, k - 1), "a/")
+        new_path = side(substr(h, k + 1), "b/")
+        return 1
+    }
     BEGIN {
-        while ((getline line < gen_file) > 0) gen[line] = 1
+        while ((getline line < gen_file) > 0) {
+            if (substr(line, 1, 1) == "\"") line = take_quoted(line)
+            if (line != "") gen[line] = 1
+        }
         close(gen_file)
     }
     /^diff --git / {
@@ -194,8 +271,8 @@ awk -v gen_file="$generated_list" '
         # кода уходили под слабое правило артефакта (четырнадцатый заход
         # гейта на #99). Для обычного блока стороны совпадают и правило
         # вырождается в прежнее членство.
-        new_path = $NF; sub(/^b\//, "", new_path)
-        old_path = $(NF-1); sub(/^a\//, "", old_path)
+        old_path = ""; new_path = ""
+        if (!parse_header(substr($0, 12)) || old_path == "" || new_path == "") unparsed++
         generated = (new_path in gen) && (old_path in gen)
         if (generated) {
             printf "--- generated-файл опущен из дифа: %s — не ревьюируется построчно, проверяй согласованность с источником по дереву ---\n", new_path
@@ -204,6 +281,10 @@ awk -v gen_file="$generated_list" '
     }
     generated { next }
     { print }
+    END {
+        if (unparsed > 0)
+            printf "предупреждение: %d заголовок(ов) diff --git не разобран(о) — generated-фильтр к ним не применён, блоки остаются в дифе (ожидается форма git diff с префиксами a/ b/).\n", unparsed > "/dev/stderr"
+    }
 ' "$diff" > "$filtered"
 diff="$filtered"
 fi
